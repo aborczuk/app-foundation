@@ -1,0 +1,155 @@
+# app-foundation System Catalog
+#
+# C4 Context + Container level: what runs where, external services, auth, topology.
+# Schema: Backstage entity vocabulary (Component, Resource, dependsOn).
+#
+# This file owns:  topology, external service registry, auth mechanisms, hosting
+# This file defers: dependency versions → pyproject.toml
+#                   runtime behavior detail → specs/{feature}/behavior-map.md
+#                   task status → specs/{feature}/tasks.md
+#
+# Maintenance rule: any change that adds/modifies a service, resource, or external
+# integration MUST update this file in the same commit.
+
+system:
+  name: app-foundation
+  description: >
+    Event-driven application template with ClickUp control plane, MCP code intelligence,
+    and speckit task management governance. Reusable foundation for Python projects
+    integrating task management automation and code analysis tooling.
+
+# ---------------------------------------------------------------------------
+# Components — runnable packages (wheel packages in pyproject.toml)
+# ---------------------------------------------------------------------------
+components:
+
+  - name: clickup_control_plane
+    kind: Component
+    type: service
+    lifecycle: production
+    entrypoint: "uvicorn src.clickup_control_plane.app:app --host 0.0.0.0 --port 8000"
+    spec: specs/015-control-plane-dispatch/spec.md
+    behavior_map: specs/015-control-plane-dispatch/behavior-map.md
+    runs_on: local  # update with deployment target (Digital Ocean, AWS, etc)
+    depends_on:
+      - clickup-api
+      - n8n
+      - sqlite-control-plane
+    notes: >
+      FastAPI webhook intake for ClickUp events. Verifies HMAC signature,
+      evaluates dispatch policy, deduplicates events, and forwards to n8n.
+
+  - name: mcp_trello
+    kind: Component
+    type: service
+    lifecycle: production
+    entrypoint: "uv run python -m src.mcp_trello"
+    spec: specs/007-mcp-trello-bridge/spec.md
+    behavior_map: specs/007-mcp-trello-bridge/behavior-map.md
+    runs_on: local
+    depends_on:
+      - trello-api
+    notes: >
+      FastMCP server exposing sync_tasks_to_trello tool. Syncs tasks.md phases
+      and tasks to Trello lists/cards with idempotent deduplication.
+
+  - name: mcp_codebase
+    kind: Component
+    type: service
+    lifecycle: production
+    entrypoint: "uv run python -m src.mcp_codebase"
+    spec: specs/008-codebase-mcp-toolkit/spec.md
+    behavior_map: specs/008-codebase-mcp-toolkit/behavior-map.md
+    runs_on: local
+    depends_on:
+      - pyright
+    notes: >
+      FastMCP server exposing get_type (hover-based LSP inference) and
+      get_diagnostics (pyright --outputjson subprocess) tools.
+
+  - name: mcp_clickup
+    kind: Component
+    type: service
+    lifecycle: production
+    entrypoint: "uv run python -m src.mcp_clickup"
+    spec: specs/018-speckit-clickup-sync/spec.md
+    behavior_map: specs/018-speckit-clickup-sync/behavior-map.md
+    runs_on: local
+    depends_on:
+      - clickup-api
+    notes: >
+      FastMCP server exposing ClickUp metadata tools for task synchronization
+      and artifact management.
+
+# ---------------------------------------------------------------------------
+# Resources — infrastructure owned by this system
+# ---------------------------------------------------------------------------
+resources:
+
+  - name: sqlite-control-plane
+    kind: Resource
+    type: database
+    path: .speckit/control-plane.db  # default; override via CONTROL_PLANE_DB_PATH
+    mode: WAL
+    used_by: [clickup_control_plane]
+    notes: Webhook dedupe log and active-run lock table.
+
+  - name: n8n
+    kind: Resource
+    type: workflow-engine
+    hosted_on: digital-ocean  # update with instance URL
+    config: docker-compose.n8n.yml
+    used_by: [clickup_control_plane]
+    routes:
+      - path: /control-plane/build-spec
+        workflow_type: build_spec
+      - path: /control-plane/qa-loop
+        workflow_type: qa_loop
+    notes: Receives POST dispatches from clickup_control_plane.
+
+# ---------------------------------------------------------------------------
+# External services — third-party APIs and local processes
+# ---------------------------------------------------------------------------
+external_services:
+
+  - name: clickup-api
+    type: task-management
+    auth: bearer-token
+    env_vars: [CLICKUP_API_TOKEN, CLICKUP_WEBHOOK_SECRET, CONTROL_PLANE_ALLOWLIST]
+    base_url: "https://api.clickup.com/api/v2"
+    used_by: [clickup_control_plane, mcp_clickup]
+    setup: specs/015-control-plane-dispatch/quickstart.md
+
+  - name: trello-api
+    type: project-management
+    auth: api-key-token
+    env_vars: [TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID]
+    used_by: [mcp_trello]
+    setup: specs/007-mcp-trello-bridge/quickstart.md
+
+  - name: pyright
+    type: language-server
+    auth: none
+    install: "uv sync --group dev"
+    used_by: [mcp_codebase]
+    notes: Both pyright-langserver (persistent LSP) and pyright CLI (diagnostics subprocess).
+
+# ---------------------------------------------------------------------------
+# Environments
+# ---------------------------------------------------------------------------
+environments:
+
+  - name: local
+    config: .env.control-plane.example
+    log_dir: .speckit/logs/
+    notes: Development environment for local testing and debugging.
+
+  - name: staging
+    config: config/staging.yaml
+    log_dir: /var/log/app-foundation/staging/
+    notes: Staging deployment with ClickUp webhook integration.
+
+  - name: production
+    config: config/prod.yaml
+    log_dir: /var/log/app-foundation/prod/
+    notes: Production deployment with live ClickUp and n8n integration.

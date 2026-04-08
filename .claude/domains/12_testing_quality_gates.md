@@ -6,7 +6,7 @@
 
 - **Test-Driven Development (TDD)**: Tests MUST be written before implementation, using them to define behavior, edge cases, and failure modes.
 - **Deterministic Tests by Default**: Tests MUST be deterministic; flaky tests are defects and MUST be fixed or quarantined with an explicit owner and expiry.
-- **Tests as Blocking CI Gates**: In ALL critical code paths (auth, payments, trading/execution, data access, agent tool calls), tests are mandatory CI gates.
+- **Tests as Blocking CI Gates**: In ALL critical code paths (auth, payments, financial/business logic, data access, agent tool calls), tests are mandatory CI gates.
 - **Automation-First Validation Gates**: End-to-end (E2E) and checkpoint validation MUST prioritize deterministic automated gates over human confirmation.
 - **PASS/FAIL Oracles**: If a deterministic pass/fail oracle exists, it MUST be implemented as an automated gate.
 - **State-Transition Coverage**: Lifecycle/state machines MUST have tests covering transitions, retries, duplicates, and out-of-order scenarios.
