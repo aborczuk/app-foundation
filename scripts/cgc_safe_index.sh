@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CODEGRAPH_DIR="$REPO_ROOT/.codegraph"
+
+IGNORE_DIRS_DEFAULT="node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs"
+
+export DEFAULT_DATABASE="${DEFAULT_DATABASE:-falkordb}"
+export FALKORDB_PATH="${FALKORDB_PATH:-$CODEGRAPH_DIR/falkordb.db}"
+export FALKORDB_SOCKET_PATH="${FALKORDB_SOCKET_PATH:-$CODEGRAPH_DIR/falkordb.sock}"
+export KUZUDB_PATH="${KUZUDB_PATH:-$CODEGRAPH_DIR/kuzudb}"
+export IGNORE_DIRS="${IGNORE_DIRS:-$IGNORE_DIRS_DEFAULT}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/cgc_safe_index.sh [--force] <path>
+
+Examples:
+  scripts/cgc_safe_index.sh src/clickup_control_plane
+  CGC_ALLOW_FORCE=1 scripts/cgc_safe_index.sh --force src/clickup_control_plane
+  CGC_ALLOW_REPO_INDEX=1 scripts/cgc_safe_index.sh .
+
+Safety:
+  - Full-repo indexing (target '.', '/', or repo root) is blocked by default.
+  - To allow non-force full-repo indexing intentionally, set CGC_ALLOW_REPO_INDEX=1.
+  - Forced indexing requires explicit opt-in: CGC_ALLOW_FORCE=1.
+  - Forced full-repo indexing is always blocked.
+EOF
+}
+
+FORCE=0
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  usage
+  exit 0
+fi
+
+if [ "${1:-}" = "--force" ]; then
+  FORCE=1
+  shift
+fi
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  usage
+  exit 0
+fi
+
+if [ "$#" -ne 1 ]; then
+  usage
+  exit 2
+fi
+
+TARGET="$1"
+TARGET_TRIMMED="${TARGET%/}"
+
+is_repo_root_target() {
+  local candidate="$1"
+
+  if [ "$candidate" = "." ] || [ "$candidate" = "/" ] || [ "$candidate" = "$REPO_ROOT" ]; then
+    return 0
+  fi
+
+  if [ -d "$candidate" ]; then
+    local candidate_abs
+    candidate_abs="$(cd "$candidate" && pwd -P)"
+    if [ "$candidate_abs" = "$REPO_ROOT" ]; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+if [ "$FORCE" -eq 1 ] && is_repo_root_target "$TARGET_TRIMMED"; then
+  echo "Refusing unsafe full-repo force re-index: cgc index --force $TARGET" >&2
+  echo "Use a scoped path (example: scripts/cgc_safe_index.sh --force src/clickup_control_plane)." >&2
+  exit 1
+fi
+
+if [ "$FORCE" -eq 1 ] && [ "${CGC_ALLOW_FORCE:-0}" != "1" ]; then
+  echo "Refusing forced index without explicit opt-in." >&2
+  echo "Set CGC_ALLOW_FORCE=1 for a one-off scoped force re-index." >&2
+  exit 1
+fi
+
+if [ "$FORCE" -eq 0 ] && is_repo_root_target "$TARGET_TRIMMED" && [ "${CGC_ALLOW_REPO_INDEX:-0}" != "1" ]; then
+  echo "Refusing default full-repo index target: $TARGET" >&2
+  echo "Use a scoped target (recommended) or set CGC_ALLOW_REPO_INDEX=1 intentionally." >&2
+  exit 1
+fi
+
+cd "$REPO_ROOT"
+if [ "$FORCE" -eq 1 ]; then
+  echo "Running scoped force index for: $TARGET"
+  uv run cgc index --force "$TARGET"
+else
+  echo "Running incremental index for: $TARGET"
+  uv run cgc index "$TARGET"
+fi
