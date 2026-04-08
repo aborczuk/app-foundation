@@ -141,21 +141,21 @@ There are two event ledgers to track governance milestones and enforce state mac
 
 ### Codebase MCP Toolkit
 
-**CodeGraphContext** (server name: `codegraph`) — graph-based code intelligence via tree-sitter + KùzuDB:
+**CodeGraphContext** (server name: `codegraph`) — graph-based code intelligence via tree-sitter + Redis (FalkorDB module, via redislite):
 - `find_code` — keyword/fuzzy search for symbols across the codebase
 - `analyze_code_relationships` — 16 query types: find_callers, find_callees, find_all_callers, find_all_callees, find_importers, who_modifies, class_hierarchy, overrides, dead_code, call_chain, module_deps, variable_scope, find_complexity, find_functions_by_argument, find_functions_by_decorator
 - `find_dead_code` — unused function detection
 - `calculate_cyclomatic_complexity` / `find_most_complex_functions` — code quality metrics
 - `execute_cypher_query` — raw Cypher queries against the graph
 
-Registration: `uv run cgc mcp start` with `cwd: /Users/andreborczuk/ib-trading`
+Registration: `uv run cgc mcp start` with `cwd: /Users/andreborczuk/app-foundation`
 Requires one-time index: `scripts/cgc_index_repo.sh`
 
 **codebase-lsp** (server name: `codebase-lsp`) — pyright-backed type inference and diagnostics:
 - `get_type` — infer the Python type at a specific source location (file, line, column)
 - `get_diagnostics` — return the full pyright diagnostic list for a Python file
 
-Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/ib-trading`
+Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app-foundation`
 
 **GitHub** (server name: `github`) — GitHub API bridge for repository and issue management:
 - `search_files` / `get_file_contents` — discover and read code in the repository
@@ -163,7 +163,7 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/ib-
 - `list_pull_requests` / `get_pull_request` — review and manage PR state
 - `search_code` — cross-repository and deep-code discovery
 
-Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` with `cwd: /Users/andreborczuk/ib-trading`
+Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` with `cwd: /Users/andreborczuk/app-foundation`
 
 **Mandatory workflow order**:
 1.  **Discovery**: Use `github` (if remote context needed) and `codegraph` (local context) first to identify all symbols, callers/callees, and existing issues.
