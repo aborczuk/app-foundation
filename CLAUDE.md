@@ -1,4 +1,4 @@
-# app-foundation Development Guidelines
+# analytics-platform Development Guidelines
 
 Template-extracted from ib-trading. Last updated: 2026-04-08
 
@@ -59,7 +59,7 @@ ruff check . && ruff format . --check
 Python 3.12: Follow standard conventions
 
 ## Recent Changes
-- 020-app-foundation: Template extraction from ib-trading; removed trading-specific dependencies (ib-async, gspread, google-auth); focused on control plane + MCP servers + speckit governance
+- 020-analytics-platform: Template extraction from ib-trading; removed trading-specific dependencies (ib-async, gspread, google-auth); focused on control plane + MCP servers + speckit governance
 
 <!-- MANUAL ADDITIONS START -->
 
@@ -214,7 +214,7 @@ For any markdown file >100 lines, use `scripts/read-markdown.sh` to enforce grep
 source scripts/read-markdown.sh
 read_markdown_section <file> <section_heading>
 ```
-Example: `read_markdown_section specs/020-app-foundation/plan.md "External Ingress"`
+Example: `read_markdown_section specs/020-analytics-platform/plan.md "External Ingress"`
 
 This is automatic and mandatory — it greps for the section, then reads only the relevant window (token-efficient).
 

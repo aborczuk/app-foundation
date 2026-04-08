@@ -12,9 +12,9 @@
 # integration MUST update this file in the same commit.
 
 system:
-  name: app-foundation
+  name: analytics-platform
   description: >
-    Event-driven application template with ClickUp control plane, MCP code intelligence,
+    Analytics platform template with ClickUp control plane, MCP code intelligence,
     and speckit task management governance. Reusable foundation for Python projects
     integrating task management automation and code analysis tooling.
 

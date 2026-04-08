@@ -1,6 +1,6 @@
 <!-- Amendment history: see constitution-changelog.md (repo root) -->
 
-# app-foundation Pipeline Constitution
+# analytics-platform Pipeline Constitution
 
 ## Core Principles
 
@@ -53,7 +53,7 @@ source scripts/read-markdown.sh
 read_markdown_section <file_path> <section_heading>
 ```
 This enforces grep-first navigation (line number lookup before reading window). Example:
-`read_markdown_section specs/020-app-foundation/plan.md "External Ingress"`. Violating this
+`read_markdown_section specs/020-analytics-platform/plan.md "External Ingress"`. Violating this
 rule wastes tokens and violates token-budget governance. For files <100 lines, direct Read is acceptable.
 
 All other quality checks (spec completeness, contract validation, test requirements) are verified within individual speckit skill executions.
