@@ -1,0 +1,261 @@
+name: Codex ClickUp Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: ClickUp task id
+        required: true
+        type: string
+      workflow_type:
+        description: Routed workflow type (build_spec or qa_loop)
+        required: true
+        type: string
+      event_id:
+        description: Control-plane event id
+        required: false
+        type: string
+      context_ref:
+        description: Task context reference
+        required: false
+        type: string
+      execution_policy:
+        description: Execution policy metadata
+        required: false
+        type: string
+      occurred_at_utc:
+        description: Original event timestamp
+        required: false
+        type: string
+      callback_url:
+        description: Control-plane completion callback URL
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  codex_clickup_dispatch:
+    name: Codex ClickUp Dispatch
+    runs-on: ubuntu-latest
+    env:
+      TASK_ID: ${{ inputs.task_id }}
+      WORKFLOW_TYPE: ${{ inputs.workflow_type }}
+      EVENT_ID: ${{ inputs.event_id }}
+      CONTEXT_REF: ${{ inputs.context_ref }}
+      EXECUTION_POLICY: ${{ inputs.execution_policy }}
+      OCCURRED_AT_UTC: ${{ inputs.occurred_at_utc }}
+      INPUT_CALLBACK_URL: ${{ inputs.callback_url }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Authenticate Codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::Missing secret OPENAI_API_KEY"
+            exit 1
+          fi
+          echo "::add-mask::${OPENAI_API_KEY}"
+          printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run Codex
+        id: run_codex
+        continue-on-error: true
+        run: |
+          set +e
+          cat > /tmp/codex_prompt.txt <<EOF
+You are running from a GitHub Actions workflow triggered by ClickUp automation.
+
+Task metadata:
+- task_id: ${TASK_ID}
+- workflow_type: ${WORKFLOW_TYPE}
+- event_id: ${EVENT_ID}
+- context_ref: ${CONTEXT_REF}
+- execution_policy: ${EXECUTION_POLICY}
+- occurred_at_utc: ${OCCURRED_AT_UTC}
+
+Required execution behavior:
+1. Implement required code changes in this repository for this task.
+2. Run relevant validation for changed files.
+3. Provide a concise final summary with what changed and validation status.
+4. Avoid destructive git commands.
+EOF
+
+          codex exec --cd . --sandbox workspace-write --output-last-message /tmp/codex_last_message.txt - < /tmp/codex_prompt.txt > /tmp/codex_stdout.txt 2> /tmp/codex_stderr.txt
+          EXIT_CODE=$?
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+          python3 - <<'PY'
+from pathlib import Path
+
+last = Path('/tmp/codex_last_message.txt')
+stdout = Path('/tmp/codex_stdout.txt')
+stderr = Path('/tmp/codex_stderr.txt')
+
+def clean(path: Path) -> str:
+    if not path.exists():
+        return ''
+    return path.read_text(encoding='utf-8', errors='replace').strip()
+
+message = clean(last)
+if not message:
+    parts = [p for p in (clean(stdout), clean(stderr)) if p]
+    message = '\n\n'.join(parts) if parts else 'No output from codex exec.'
+
+Path('/tmp/codex_details.txt').write_text(message[:20000], encoding='utf-8')
+PY
+
+          exit 0
+
+      - name: Persist generated changes
+        id: persist
+        if: ${{ steps.run_codex.outputs.exit_code == '0' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "branch=" >> "$GITHUB_OUTPUT"
+            echo "pr_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SAFE_TASK=$(echo "${TASK_ID}" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//')
+          SAFE_TYPE=$(echo "${WORKFLOW_TYPE}" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//')
+          BRANCH="automation/${SAFE_TYPE}/${SAFE_TASK}-${GITHUB_RUN_ID}"
+
+          git checkout -b "${BRANCH}"
+          git add -A
+          git commit -m "automation(${WORKFLOW_TYPE}): task ${TASK_ID}"
+          git push origin "${BRANCH}"
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+          PR_URL=""
+          if command -v gh >/dev/null 2>&1; then
+            set +e
+            PR_URL=$(gh pr create --base main --head "${BRANCH}" --title "automation(${WORKFLOW_TYPE}): task ${TASK_ID}" --body "Automated Codex run for task ${TASK_ID}." 2>/tmp/pr_create.err)
+            PR_RC=$?
+            set -e
+            if [ "${PR_RC}" -ne 0 ]; then
+              PR_URL=""
+            fi
+          fi
+
+          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Build completion payload
+        id: completion
+        if: always()
+        env:
+          CODEX_EXIT_CODE: ${{ steps.run_codex.outputs.exit_code }}
+          PERSIST_OUTCOME: ${{ steps.persist.outcome }}
+          PR_URL: ${{ steps.persist.outputs.pr_url }}
+          CONTROL_PLANE_COMPLETION_URL: ${{ secrets.CONTROL_PLANE_COMPLETION_URL }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+codex_exit = int((os.environ.get('CODEX_EXIT_CODE') or '1').strip() or '1')
+persist_outcome = (os.environ.get('PERSIST_OUTCOME') or 'skipped').strip().lower()
+run_url = os.environ['RUN_URL']
+pr_url = (os.environ.get('PR_URL') or '').strip()
+
+status = 'completed' if codex_exit == 0 and persist_outcome != 'failure' else 'failed'
+summary = (
+    f"Codex workflow '{os.environ['WORKFLOW_TYPE']}' completed for task {os.environ['TASK_ID']}."
+    if status == 'completed'
+    else f"Codex workflow '{os.environ['WORKFLOW_TYPE']}' failed for task {os.environ['TASK_ID']}."
+)
+
+details_path = Path('/tmp/codex_details.txt')
+details = details_path.read_text(encoding='utf-8', errors='replace').strip() if details_path.exists() else ''
+if persist_outcome == 'failure':
+    details = (details + '\n\nPersist step failed while committing/pushing generated changes.').strip()
+if not details:
+    details = 'No details captured.'
+
+callback_url = (
+    (os.environ.get('INPUT_CALLBACK_URL') or '').strip()
+    or (os.environ.get('CONTROL_PLANE_COMPLETION_URL') or '').strip()
+    or 'https://67.205.175.182.nip.io/control-plane/workflow/completion'
+)
+
+artifact_links = [run_url]
+if pr_url:
+    artifact_links.append(pr_url)
+
+payload = {
+    'task_id': os.environ['TASK_ID'],
+    'workflow_type': os.environ['WORKFLOW_TYPE'],
+    'status': status,
+    'summary': summary,
+    'details': details[:20000],
+    'artifact_links': artifact_links,
+    'run_id': f"gh_run_{os.environ['GITHUB_RUN_ID']}",
+}
+
+Path('/tmp/completion_payload.json').write_text(json.dumps(payload), encoding='utf-8')
+Path('/tmp/completion_status.txt').write_text(status, encoding='utf-8')
+Path('/tmp/completion_callback_url.txt').write_text(callback_url, encoding='utf-8')
+PY
+
+          echo "status=$(cat /tmp/completion_status.txt)" >> "$GITHUB_OUTPUT"
+          echo "callback_url=$(cat /tmp/completion_callback_url.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Post completion callback
+        if: always()
+        env:
+          CONTROL_PLANE_COMPLETION_TOKEN: ${{ secrets.CONTROL_PLANE_COMPLETION_TOKEN }}
+        run: |
+          set -euo pipefail
+          CALLBACK_URL='${{ steps.completion.outputs.callback_url }}'
+
+          if [ -z "${CALLBACK_URL}" ]; then
+            echo "::error::No callback URL resolved."
+            exit 1
+          fi
+
+          if [ -n "${CONTROL_PLANE_COMPLETION_TOKEN:-}" ]; then
+            curl -fsS -X POST \
+              -H "Content-Type: application/json" \
+              -H "X-Completion-Token: ${CONTROL_PLANE_COMPLETION_TOKEN}" \
+              --data-binary @/tmp/completion_payload.json \
+              "${CALLBACK_URL}"
+          else
+            curl -fsS -X POST \
+              -H "Content-Type: application/json" \
+              --data-binary @/tmp/completion_payload.json \
+              "${CALLBACK_URL}"
+          fi
+
+      - name: Mark workflow failed when completion status is failed
+        if: always()
+        run: |
+          if [ '${{ steps.completion.outputs.status }}' != 'completed' ]; then
+            echo "::error::Codex execution failed."
+            exit 1
+          fi

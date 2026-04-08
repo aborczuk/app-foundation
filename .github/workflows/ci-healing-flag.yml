@@ -1,0 +1,101 @@
+name: CI Failure Flag
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  flag-breaking-change:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flag CI regression as breaking change
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = run.head_branch || 'unknown-branch';
+            const sha = run.head_sha || 'unknown-sha';
+            const shortSha = sha.slice(0, 7);
+            const title = `CI regression on ${branch}`;
+            const labels = ['ci-failure', 'breaking-change', 'healing-task'];
+
+            // Ensure labels exist (idempotent).
+            const labelColors = {
+              'ci-failure': 'd73a4a',
+              'breaking-change': 'b60205',
+              'healing-task': '5319e7',
+            };
+
+            for (const name of labels) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (err) {
+                if (err.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color: labelColors[name],
+                    description: `Auto-generated label for ${name}`,
+                  });
+                } else {
+                  throw err;
+                }
+              }
+            }
+
+            const body = [
+              '## CI Failure Detected (Breaking Change)',
+              '',
+              `- Workflow: **${run.name}**`,
+              `- Branch: **${branch}**`,
+              `- Commit: **${shortSha}**`,
+              `- Event: **${run.event}**`,
+              `- Triggering run: ${run.html_url}`,
+              '',
+              '### Policy',
+              'A failing CI run is treated as a breaking change and must be fixed before considering this work complete.',
+              '',
+              '### Suggested next actions',
+              '1. Reproduce locally (lint + tests).',
+              '2. Fix root cause and push a patch.',
+              '3. Confirm CI returns green and close this issue.',
+            ].join('\n');
+
+            const openIssues = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const existing = openIssues.data.find(
+              (issue) => issue.title === title && !issue.pull_request
+            );
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body,
+              });
+              core.info(`Updated existing issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels,
+              });
+              core.info(`Created issue #${created.data.number}`);
+            }

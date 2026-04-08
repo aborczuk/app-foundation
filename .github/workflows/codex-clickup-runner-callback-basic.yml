@@ -1,0 +1,142 @@
+name: Codex ClickUp Runner Callback Basic
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: ClickUp task id
+        required: true
+        type: string
+      workflow_type:
+        description: Routed workflow type
+        required: true
+        type: string
+      event_id:
+        description: Control-plane event id
+        required: false
+        type: string
+      context_ref:
+        description: Task context reference
+        required: false
+        type: string
+      execution_policy:
+        description: Execution policy metadata
+        required: false
+        type: string
+      occurred_at_utc:
+        description: Original event timestamp
+        required: false
+        type: string
+      callback_url:
+        description: Completion callback URL
+        required: false
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Authenticate Codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "Missing secret OPENAI_API_KEY"
+            exit 1
+          fi
+          printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Run Codex
+        id: codex
+        continue-on-error: true
+        env:
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          WORKFLOW_TYPE: ${{ github.event.inputs.workflow_type }}
+          EVENT_ID: ${{ github.event.inputs.event_id }}
+          CONTEXT_REF: ${{ github.event.inputs.context_ref }}
+          EXECUTION_POLICY: ${{ github.event.inputs.execution_policy }}
+          OCCURRED_AT_UTC: ${{ github.event.inputs.occurred_at_utc }}
+        run: |
+          set +e
+          codex exec --cd . --sandbox danger-full-access --output-last-message /tmp/codex_last_message.txt "Run workflow '${WORKFLOW_TYPE}' for task '${TASK_ID}' with context_ref '${CONTEXT_REF}' and execution_policy '${EXECUTION_POLICY}'. Implement required code changes, run relevant validation, and provide a concise final summary." 2>&1 | tee /tmp/codex_exec.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          SANDBOX_BLOCKED=0
+          if grep -Eiq "bwrap: loopback: Failed RTM_NEWADDR|sandbox failure before commands start|Operation not permitted|I can.t execute anything in this environment right now due a sandbox failure" /tmp/codex_exec.log /tmp/codex_last_message.txt 2>/dev/null; then
+            SANDBOX_BLOCKED=1
+            EXIT_CODE=86
+          fi
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          echo "sandbox_blocked=${SANDBOX_BLOCKED}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Post completion callback
+        if: always()
+        env:
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          WORKFLOW_TYPE: ${{ github.event.inputs.workflow_type }}
+          CALLBACK_URL_INPUT: ${{ github.event.inputs.callback_url }}
+          CONTROL_PLANE_COMPLETION_TOKEN: ${{ secrets.CONTROL_PLANE_COMPLETION_TOKEN }}
+          CODEX_EXIT_CODE: ${{ steps.codex.outputs.exit_code }}
+          SANDBOX_BLOCKED: ${{ steps.codex.outputs.sandbox_blocked }}
+        run: |
+          STATUS="failed"
+          if [ "${SANDBOX_BLOCKED:-0}" = "1" ]; then
+            STATUS="failed"
+          elif [ "${CODEX_EXIT_CODE:-1}" = "0" ]; then
+            STATUS="completed"
+          fi
+
+          SUMMARY="Codex workflow '${WORKFLOW_TYPE}' ${STATUS} for task ${TASK_ID}."
+          DETAILS=$(cat /tmp/codex_last_message.txt 2>/dev/null || echo "No output from codex exec.")
+          if [ "${SANDBOX_BLOCKED:-0}" = "1" ]; then
+            SUMMARY="Codex workflow '${WORKFLOW_TYPE}' failed for task ${TASK_ID}: sandbox_blocked."
+            DETAILS=$(printf "reason_code=sandbox_blocked\n%s" "${DETAILS}")
+          fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          RUN_ID="gh_run_${GITHUB_RUN_ID}"
+
+          CALLBACK_URL="${CALLBACK_URL_INPUT:-}"
+          if [ -z "${CALLBACK_URL}" ]; then
+            CALLBACK_URL="https://67.205.175.182.nip.io/control-plane/workflow/completion"
+          fi
+
+          jq -n \
+            --arg task_id "$TASK_ID" \
+            --arg workflow_type "$WORKFLOW_TYPE" \
+            --arg status "$STATUS" \
+            --arg summary "$SUMMARY" \
+            --arg details "${DETAILS:0:20000}" \
+            --arg run_url "$RUN_URL" \
+            --arg run_id "$RUN_ID" \
+            '{task_id:$task_id, workflow_type:$workflow_type, status:$status, summary:$summary, details:$details, artifact_links:[$run_url], run_id:$run_id}' > /tmp/completion_payload.json
+
+          if [ -n "${CONTROL_PLANE_COMPLETION_TOKEN:-}" ]; then
+            curl -fsS -X POST \
+              -H "Content-Type: application/json" \
+              -H "X-Completion-Token: ${CONTROL_PLANE_COMPLETION_TOKEN}" \
+              --data-binary @/tmp/completion_payload.json \
+              "${CALLBACK_URL}"
+          else
+            curl -fsS -X POST \
+              -H "Content-Type: application/json" \
+              --data-binary @/tmp/completion_payload.json \
+              "${CALLBACK_URL}"
+          fi
+
+      - name: Fail workflow when Codex failed
+        if: always()
+        run: |
+          if [ '${{ steps.codex.outputs.sandbox_blocked }}' = '1' ]; then
+            echo "Codex execution blocked by sandbox runtime"
+            exit 1
+          fi
+          if [ '${{ steps.codex.outputs.exit_code }}' != '0' ]; then
+            echo "Codex execution failed"
+            exit 1
+          fi

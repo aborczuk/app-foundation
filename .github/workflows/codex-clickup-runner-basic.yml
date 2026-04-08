@@ -1,0 +1,36 @@
+name: Codex ClickUp Runner Basic
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: ClickUp task id
+        required: true
+        type: string
+      workflow_type:
+        description: Routed workflow type
+        required: true
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Authenticate Codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "Missing secret OPENAI_API_KEY"
+            exit 1
+          fi
+          printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Run Codex
+        run: codex exec --cd . --sandbox workspace-write "Run workflow '${{ github.event.inputs.workflow_type }}' for task '${{ github.event.inputs.task_id }}' and report completion."

@@ -1,0 +1,277 @@
+name: Codex Review Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: codex-review-gate-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codex-review-gate:
+    if: >-
+      ${{
+        github.event_name != 'issue_comment' ||
+        (
+          github.event.issue.pull_request != null &&
+          (
+            github.event.comment.user.login == 'codex[bot]' ||
+            github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+            (
+              github.event.comment.user.type == 'Bot' &&
+              (
+                github.event.comment.user.login == 'codex' ||
+                github.event.comment.user.login == 'chatgpt-codex-connector'
+              )
+            )
+          )
+        )
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Evaluate Codex review verdict for current head
+        id: codex
+        uses: actions/github-script@v7
+        env:
+          CODEX_REVIEW_BOT_LOGIN: ${{ vars.CODEX_REVIEW_BOT_LOGIN }}
+          CODEX_REVIEW_COMMENT_LOGIN: ${{ vars.CODEX_REVIEW_COMMENT_LOGIN }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const normalizeLogin = (value) =>
+              (value || "").toLowerCase().trim();
+            const reviewLogin = process.env.CODEX_REVIEW_BOT_LOGIN || "codex[bot]";
+            const commentLogin = process.env.CODEX_REVIEW_COMMENT_LOGIN || "chatgpt-codex-connector[bot]";
+            const acceptedLogins = new Set([
+              normalizeLogin(reviewLogin),
+              normalizeLogin(commentLogin),
+            ]);
+            const acceptedBotAliases = new Set(["codex", "chatgpt-codex-connector"]);
+            const isAcceptedActor = (user) => {
+              const login = normalizeLogin(user?.login || "");
+              if (acceptedLogins.has(login)) {
+                return true;
+              }
+              return (user?.type || "").toLowerCase() === "bot" && acceptedBotAliases.has(login);
+            };
+
+            let pull_number;
+            let headSha;
+            if (context.eventName === "pull_request") {
+              pull_number = context.payload.pull_request.number;
+              headSha = context.payload.pull_request.head.sha;
+            } else if (context.eventName === "pull_request_review") {
+              pull_number = context.payload.pull_request.number;
+              headSha = context.payload.pull_request.head.sha;
+            } else if (context.eventName === "issue_comment") {
+              if (!context.payload.issue.pull_request) {
+                core.setOutput("verdict", "IGNORED");
+                core.setOutput("summary", "Issue comment is not on a pull request.");
+                return;
+              }
+              pull_number = context.payload.issue.number;
+              const pr = await github.rest.pulls.get({ owner, repo, pull_number });
+              headSha = pr.data.head.sha;
+            } else {
+              core.setFailed(`Unsupported event: ${context.eventName}`);
+              return;
+            }
+
+            const passPhrases = [
+              "didn't find any major issues",
+              "did not find any major issues",
+              "no major issues",
+              "looks good to me",
+            ];
+            const failPhrases = [
+              "review suggestions",
+              "suggestions for this pull request",
+              "requested changes",
+              "changes requested",
+            ];
+            const hasPhrase = (text, phrases) =>
+              phrases.some((phrase) => text.includes(phrase));
+
+            const headCommit = await github.rest.repos.getCommit({
+              owner,
+              repo,
+              ref: headSha,
+            });
+            const headCommitTime = Date.parse(
+              headCommit.data.commit.committer?.date ||
+                headCommit.data.commit.author?.date ||
+                "1970-01-01T00:00:00Z"
+            );
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100,
+            });
+
+            const freshReviews = reviews
+              .filter((review) => isAcceptedActor(review.user))
+              .filter((review) => !review.commit_id || review.commit_id.toLowerCase() === headSha.toLowerCase())
+              .sort((a, b) => new Date(a.submitted_at || a.created_at) - new Date(b.submitted_at || b.created_at));
+
+            if (freshReviews.length) {
+              const latest = freshReviews[freshReviews.length - 1];
+              const state = (latest.state || "").toUpperCase();
+              const reviewBody = (latest.body || "").toLowerCase();
+              const author = latest.user?.login || "unknown";
+              const submittedAt = latest.submitted_at || latest.created_at;
+
+              if (state === "APPROVED" || (state === "COMMENTED" && hasPhrase(reviewBody, passPhrases))) {
+                core.setOutput("verdict", "YES_TO_MERGE");
+                core.setOutput(
+                  "summary",
+                  `Codex current-head review approved by ${author} on ${submittedAt}.`
+                );
+                return;
+              }
+
+              if (state === "CHANGES_REQUESTED" || hasPhrase(reviewBody, failPhrases)) {
+                core.setOutput("verdict", "FIX_REQUIRED");
+                core.setOutput(
+                  "summary",
+                  `Codex current-head review requested fixes from ${author} on ${submittedAt}.`
+                );
+                core.setFailed("Codex requested changes for current PR head.");
+                return;
+              }
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pull_number,
+              per_page: 100,
+            });
+
+            const freshComments = comments
+              .filter((comment) => isAcceptedActor(comment.user))
+              .filter((comment) => /^codex review:/i.test(comment.body || ""))
+              .filter(
+                (comment) =>
+                  Date.parse(comment.created_at || "1970-01-01T00:00:00Z") >=
+                  headCommitTime
+              )
+              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+            if (freshComments.length) {
+              const latest = freshComments[freshComments.length - 1];
+              const commentBody = (latest.body || "").toLowerCase();
+              const author = latest.user?.login || "unknown";
+              const submittedAt = latest.created_at;
+
+              if (hasPhrase(commentBody, passPhrases)) {
+                core.setOutput("verdict", "YES_TO_MERGE");
+                core.setOutput(
+                  "summary",
+                  `Codex current-head comment approved by ${author} on ${submittedAt}.`
+                );
+                return;
+              }
+
+              if (hasPhrase(commentBody, failPhrases)) {
+                core.setOutput("verdict", "FIX_REQUIRED");
+                core.setOutput(
+                  "summary",
+                  `Codex current-head comment reported required fixes from ${author} on ${submittedAt}.`
+                );
+                core.setFailed("Codex comment reported changes needed for current PR head.");
+                return;
+              }
+            }
+
+            core.setOutput("verdict", "PENDING_REVIEW");
+            core.setOutput(
+              "summary",
+              `No Codex verdict yet for current head ${headSha.slice(0, 7)}. Waiting for review event.`
+            );
+            core.setFailed("Waiting for Codex response on current PR head.");
+
+      - name: Upsert Codex gate status comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CODEX_GATE_VERDICT: ${{ steps.codex.outputs.verdict }}
+          CODEX_GATE_SUMMARY: ${{ steps.codex.outputs.summary }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            let issue_number;
+
+            if (context.eventName === "issue_comment") {
+              if (!context.payload.issue.pull_request) {
+                return;
+              }
+              issue_number = context.payload.issue.number;
+            } else if (context.eventName === "pull_request") {
+              issue_number = context.payload.pull_request.number;
+            } else if (context.payload.pull_request?.number) {
+              issue_number = context.payload.pull_request.number;
+            } else {
+              return;
+            }
+
+            const marker = "<!-- codex-review-gate-status -->";
+            const verdict = process.env.CODEX_GATE_VERDICT || "FIX_REQUIRED";
+            const summary = process.env.CODEX_GATE_SUMMARY || "Codex review gate did not produce a summary.";
+            const body = [
+              marker,
+              "## Codex Review Gate",
+              "",
+              `**${verdict}**`,
+              "",
+              summary,
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(
+              (comment) =>
+                (comment.user?.login || "").toLowerCase() === "github-actions[bot]" &&
+                (comment.body || "").includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+
+      - name: Enforce Codex pass gate
+        if: ${{ steps.codex.outputs.verdict != 'YES_TO_MERGE' }}
+        run: |
+          echo "::error::Codex review verdict is '${{ steps.codex.outputs.verdict }}'. Merge is blocked until YES_TO_MERGE."
+          exit 1

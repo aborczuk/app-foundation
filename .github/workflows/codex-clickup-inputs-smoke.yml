@@ -1,0 +1,43 @@
+name: Codex ClickUp Inputs Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: ClickUp task id
+        required: true
+        type: string
+      workflow_type:
+        description: Routed workflow type
+        required: true
+        type: string
+      event_id:
+        description: Control-plane event id
+        required: false
+        type: string
+      context_ref:
+        description: Task context reference
+        required: false
+        type: string
+      execution_policy:
+        description: Execution policy metadata
+        required: false
+        type: string
+      occurred_at_utc:
+        description: Original event timestamp
+        required: false
+        type: string
+      callback_url:
+        description: Completion callback URL
+        required: false
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print inputs
+        run: |
+          echo "task_id=${{ github.event.inputs.task_id }}"
+          echo "workflow_type=${{ github.event.inputs.workflow_type }}"
+          echo "callback_url=${{ github.event.inputs.callback_url }}"

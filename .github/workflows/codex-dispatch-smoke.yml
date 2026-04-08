@@ -1,0 +1,16 @@
+name: Codex Dispatch Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: Task id
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print input
+        run: echo "task_id=${{ github.event.inputs.task_id }}"

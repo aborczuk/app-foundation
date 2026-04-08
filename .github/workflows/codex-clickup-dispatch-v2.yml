@@ -1,0 +1,181 @@
+name: Codex ClickUp Dispatch V2
+
+'on':
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: ClickUp task id
+        required: true
+        type: string
+      workflow_type:
+        description: Routed workflow type (build_spec or qa_loop)
+        required: true
+        type: string
+      event_id:
+        description: Control-plane event id
+        required: false
+        type: string
+      context_ref:
+        description: Task context reference
+        required: false
+        type: string
+      execution_policy:
+        description: Execution policy metadata
+        required: false
+        type: string
+      occurred_at_utc:
+        description: Original event timestamp
+        required: false
+        type: string
+      callback_url:
+        description: Control-plane completion callback URL
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  codex_clickup_dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Authenticate Codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::Missing secret OPENAI_API_KEY"
+            exit 1
+          fi
+          echo "::add-mask::${OPENAI_API_KEY}"
+          printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Run Codex
+        id: run_codex
+        continue-on-error: true
+        env:
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          WORKFLOW_TYPE: ${{ github.event.inputs.workflow_type }}
+          EVENT_ID: ${{ github.event.inputs.event_id }}
+          CONTEXT_REF: ${{ github.event.inputs.context_ref }}
+          EXECUTION_POLICY: ${{ github.event.inputs.execution_policy }}
+          OCCURRED_AT_UTC: ${{ github.event.inputs.occurred_at_utc }}
+        run: |
+          set +e
+          cat > /tmp/codex_prompt.txt <<EOF
+You are running from a GitHub Actions workflow triggered by ClickUp automation.
+
+Task metadata:
+- task_id: ${TASK_ID}
+- workflow_type: ${WORKFLOW_TYPE}
+- event_id: ${EVENT_ID}
+- context_ref: ${CONTEXT_REF}
+- execution_policy: ${EXECUTION_POLICY}
+- occurred_at_utc: ${OCCURRED_AT_UTC}
+
+Required execution behavior:
+1. Implement required code changes in this repository for this task.
+2. Run relevant validation for changed files.
+3. Commit and push generated changes to a new branch and open a PR to main when changes are required.
+4. Provide a concise final summary with what changed and validation status.
+5. Avoid destructive git commands.
+EOF
+
+          codex exec --cd . --sandbox workspace-write --output-last-message /tmp/codex_last_message.txt - < /tmp/codex_prompt.txt > /tmp/codex_stdout.txt 2> /tmp/codex_stderr.txt
+          EXIT_CODE=$?
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+          python3 - <<'PY'
+from pathlib import Path
+
+last = Path('/tmp/codex_last_message.txt')
+stdout = Path('/tmp/codex_stdout.txt')
+stderr = Path('/tmp/codex_stderr.txt')
+
+def read(path: Path) -> str:
+    if not path.exists():
+        return ''
+    return path.read_text(encoding='utf-8', errors='replace').strip()
+
+message = read(last)
+if not message:
+    parts = [p for p in (read(stdout), read(stderr)) if p]
+    message = '\n\n'.join(parts) if parts else 'No output from codex exec.'
+
+Path('/tmp/codex_details.txt').write_text(message[:20000], encoding='utf-8')
+PY
+
+          exit 0
+
+      - name: Post completion callback
+        if: always()
+        env:
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          WORKFLOW_TYPE: ${{ github.event.inputs.workflow_type }}
+          CALLBACK_URL_INPUT: ${{ github.event.inputs.callback_url }}
+          CALLBACK_URL_SECRET: ${{ secrets.CONTROL_PLANE_COMPLETION_URL }}
+          CONTROL_PLANE_COMPLETION_TOKEN: ${{ secrets.CONTROL_PLANE_COMPLETION_TOKEN }}
+          CODEX_EXIT_CODE: ${{ steps.run_codex.outputs.exit_code }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          STATUS="failed"
+          if [ "${CODEX_EXIT_CODE:-1}" = "0" ]; then
+            STATUS="completed"
+          fi
+
+          SUMMARY="Codex workflow '${WORKFLOW_TYPE}' ${STATUS} for task ${TASK_ID}."
+          DETAILS=$(cat /tmp/codex_details.txt 2>/dev/null || echo "No details captured.")
+          CALLBACK_URL="${CALLBACK_URL_INPUT:-}"
+          if [ -z "${CALLBACK_URL}" ]; then
+            CALLBACK_URL="${CALLBACK_URL_SECRET:-}"
+          fi
+          if [ -z "${CALLBACK_URL}" ]; then
+            CALLBACK_URL="https://67.205.175.182.nip.io/control-plane/workflow/completion"
+          fi
+
+          python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+payload = {
+    'task_id': os.environ['TASK_ID'],
+    'workflow_type': os.environ['WORKFLOW_TYPE'],
+    'status': os.environ['STATUS'],
+    'summary': os.environ['SUMMARY'],
+    'details': os.environ.get('DETAILS', 'No details captured.')[:20000],
+    'artifact_links': [os.environ['RUN_URL']],
+    'run_id': f"gh_run_{os.environ['GITHUB_RUN_ID']}",
+}
+Path('/tmp/completion_payload.json').write_text(json.dumps(payload), encoding='utf-8')
+PY
+
+          if [ -n "${CONTROL_PLANE_COMPLETION_TOKEN:-}" ]; then
+            curl -fsS -X POST \
+              -H "Content-Type: application/json" \
+              -H "X-Completion-Token: ${CONTROL_PLANE_COMPLETION_TOKEN}" \
+              --data-binary @/tmp/completion_payload.json \
+              "${CALLBACK_URL}"
+          else
+            curl -fsS -X POST \
+              -H "Content-Type: application/json" \
+              --data-binary @/tmp/completion_payload.json \
+              "${CALLBACK_URL}"
+          fi
+
+      - name: Mark workflow failed when Codex failed
+        if: always()
+        run: |
+          if [ '${{ steps.run_codex.outputs.exit_code }}' != '0' ]; then
+            echo "::error::Codex execution failed."
+            exit 1
+          fi

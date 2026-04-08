@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Validate system catalog
+        run: uv run python scripts/validate_catalog.py
+
+      - name: Guard CodeGraph force indexing scope
+        run: |
+          set -euo pipefail
+
+          if git grep -nE 'cgc[[:space:]]+index[[:space:]]+--force[[:space:]]+(\.|/)' -- 'scripts/*.sh' '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+            echo "::error::Blocked unsafe CodeGraph usage: full-scope force index detected."
+            echo "::error::Use scripts/cgc_safe_index.sh with a scoped path."
+            exit 1
+          fi
+
+          if git grep -nE 'cgc[[:space:]]+index[[:space:]]+--force[[:space:]]+(\$REPO_ROOT|\$\{REPO_ROOT\}|/Users/andreborczuk/app-foundation)' -- 'scripts/*.sh' '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+            echo "::error::Blocked unsafe CodeGraph usage: force index against repo root detected."
+            echo "::error::Use scripts/cgc_safe_index.sh with a scoped path."
+            exit 1
+          fi
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Run tests
+        run: uv run pytest
+
+  task-ledger-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate task ledger sequence (if present)
+        run: |
+          if [ -f .speckit/task-ledger.jsonl ]; then
+            python3 scripts/task_ledger.py validate --file .speckit/task-ledger.jsonl
+          else
+            echo "No .speckit/task-ledger.jsonl found. Skipping ledger validation."
+          fi
