@@ -1,0 +1,217 @@
+# Command Manifest: Speckit Command Registration and Event Declaration
+# Single source of truth for:
+# - What artifacts each command produces and which templates they use
+# - What events each command emits to the pipeline ledger
+#
+# Used by:
+# - scripts/pipeline_ledger.py (loads valid events + required fields)
+# - scripts/pipeline-scaffold.sh (resolves templates before LLM runs)
+
+commands:
+  speckit.specify:
+    description: "Create or update feature specification from natural language"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/spec.md"
+        template: "spec-template.md"
+        scaffold_script: "create-new-feature.sh"  # already scripted
+      - output_path: "${FEATURE_DIR}/checklists/requirements.md"
+        template: "requirements-checklist-template.md"
+    emits:
+      - event: backlog_registered
+        required_fields: []
+
+  speckit.clarify:
+    description: "Ask targeted clarification questions and encode answers into spec"
+    artifacts: []
+    emits:
+      - event: spec_clarified
+        required_fields: []
+
+  speckit.split:
+    description: "Split an XL or L spec into smaller independently deliverable phase specs"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/spec.md"
+        template: "spec-template.md"
+        scaffold_script: "create-new-feature.sh"  # per phase
+      - output_path: "${FEATURE_DIR}/checklists/requirements.md"
+        template: "requirements-checklist-template.md"  # per phase
+    emits: []
+
+  speckit.checklist:
+    description: "Generate custom checklists for a feature based on user requirements"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/checklists/${DOMAIN}.md"
+        template: "checklist-template.md"
+    emits: []
+
+  speckit.research:
+    description: "Assemble prior art, patterns, and integration options for the feature"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/research.md"
+        template: "research-template.md"
+    emits:
+      - event: research_completed
+        required_fields: []
+
+  speckit.plan:
+    description: "Create architecture, technology selection, data flow, and implementation strategy"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/plan.md"
+        template: "plan-template.md"
+        scaffold_script: "setup-plan.sh"  # already scripted
+      - output_path: "${FEATURE_DIR}/data-model.md"
+        template: "data-model-template.md"
+      - output_path: "${FEATURE_DIR}/quickstart.md"
+        template: "quickstart-template.md"
+    emits:
+      - event: plan_started
+        required_fields: []
+      - event: plan_approved
+        required_fields: [feasibility_required]
+
+  speckit.planreview:
+    description: "Identify underspecified areas in the current plan by asking targeted clarification questions"
+    artifacts: []
+    emits:
+      - event: planreview_completed
+        required_fields: [fq_count, questions_asked]
+
+  speckit.feasibilityspike:
+    description: "Prove all Open Feasibility Questions in plan with targeted probes"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/spike.md"
+        template: "spike-template.md"
+    emits:
+      - event: feasibility_spike_completed
+        required_fields: [spike_artifact, fq_count]
+      - event: feasibility_spike_failed
+        required_fields: [failed_fq]
+
+  speckit.tasks:
+    description: "Generate actionable, dependency-ordered tasks.md for the feature"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/tasks.md"
+        template: "tasks-template.md"
+    emits: []
+
+  speckit.tasking:
+    description: "Generate the initial task breakdown (tasks.md) from a proven plan"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/tasks.md"
+        template: "tasks-template.md"
+    emits:
+      - event: tasking_completed
+        required_fields: [task_count, story_count]
+
+  speckit.sketch:
+    description: "Generate solution sketches, test specifications, and acceptance test code for each task"
+    artifacts:
+      - output_path: ".speckit/tasks/${TASK_ID}.md"
+        template: "hud-code-template.md"
+      - output_path: ".speckit/tasks/${TASK_ID}.md"
+        template: "hud-runbook-template.md"
+      - output_path: "${FEATURE_DIR}/.speckit/acceptance-tests/story-${STORY_NUM}.py"
+        template: ""  # generated as code, not templated
+    emits:
+      - event: sketch_completed
+        required_fields: [tasks_sketched, acceptance_tests_written]
+
+  speckit.estimate:
+    description: "Estimate fibonacci complexity for each task by evaluating codebase"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/estimates.md"
+        template: "estimates-template.md"
+      - output_path: ".speckit/tasks/${TASK_ID}.md"
+        template: "hud-code-template.md"
+    emits:
+      - event: estimation_completed
+        required_fields: [estimate_points]
+
+  speckit.breakdown:
+    description: "Break down 8 or 13-point tasks in estimates.md into smaller pieces (≤5 points each)"
+    artifacts: []
+    emits: []
+
+  speckit.analyze:
+    description: "Perform cross-artifact consistency and quality analysis after task generation"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/analysis.md"
+        template: ""  # generated content, analysis is report-only
+    emits:
+      - event: analysis_completed
+        required_fields: [critical_count]
+
+  speckit.solutionreview:
+    description: "Cross-sketch quality review after tasking/sketch/estimate converge"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/solutionreview.md"
+        template: "solutionreview-template.md"
+    emits:
+      - event: solutionreview_completed
+        required_fields: [critical_count, high_count]
+
+  speckit.solution:
+    description: "LLD solutioning phase — orchestrates tasking → sketch → estimate → solutionreview loop"
+    artifacts: []
+    emits:
+      - event: solution_approved
+        required_fields: [task_count, story_count, estimate_points]
+
+  speckit.e2e:
+    description: "Generate E2E testing pipeline artifacts (e2e.md + executable script)"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/e2e.md"
+        template: "e2e-template.md"
+      - output_path: "scripts/e2e_${FEATURE_SLUG}.sh"
+        template: "e2e-script-template.sh"
+    emits:
+      - event: e2e_generated
+        required_fields: [e2e_artifact]
+
+  speckit.e2e-run:
+    description: "Execute the E2E testing pipeline for the current feature as automation-first acceptance gate"
+    artifacts: []
+    emits: []
+
+  speckit.checkpoint:
+    description: "Validate a phase checkpoint from tasks.md by running the software and verifying observable behavior"
+    artifacts: []
+    emits: []
+
+  speckit.implement:
+    description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md"
+    artifacts: []
+    emits: []
+    # Task-level ledger events are emitted by speckit.implement (task_ledger.py not pipeline_ledger.py)
+
+  speckit.taskstoissues:
+    description: "Convert existing tasks into actionable, dependency-ordered GitHub issues for the feature"
+    artifacts: []
+    emits: []
+
+  speckit.addtobacklog:
+    description: "Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, and auto-sync spec"
+    artifacts: []
+    emits: []
+
+  speckit.constitution:
+    description: "Create or update the project constitution from interactive or provided principle inputs"
+    artifacts: []
+    emits: []
+
+  speckit.trello-sync:
+    description: "Sync the current feature's tasks.md to a Trello board using the MCP Trello Bridge"
+    artifacts: []
+    emits: []
+
+  speckit.clickup-sync:
+    description: "Bootstrap or report ClickUp sync status for the current speckit feature tree"
+    artifacts: []
+    emits: []
+
+# Manual events (no owning command — emitted via CLI)
+# These are valid pipeline events with no documented emit step in any command file.
+# They are emitted manually by operators when the UI or external system triggers them.
+manual_events:
+  feature_closed:
+    required_fields: []

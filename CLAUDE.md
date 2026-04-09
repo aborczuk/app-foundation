@@ -218,4 +218,21 @@ Example: `read_markdown_section specs/020-analytics-platform/plan.md "External I
 
 This is automatic and mandatory — it greps for the section, then reads only the relevant window (token-efficient).
 
+### Code File Read Efficiency
+
+For any code file >200 lines, use `scripts/read-code.sh` to enforce symbol-first, windowed reads:
+```bash
+source scripts/read-code.sh
+read_code_context <file> <symbol_or_pattern> [context_lines]
+```
+Example: `read_code_context src/clickup_control_plane/webhook_auth.py "def verify_signature" 80`
+
+Use this workflow:
+1. Discover target symbols/scope via `codegraph` first (per mandatory workflow order above).
+2. Read only a bounded code window around the symbol/pattern.
+3. Expand to additional windows only when needed to resolve ambiguity.
+
+Full-file reads for large code files are disallowed unless the user explicitly requests full contents.
+In Claude Code, this is enforced by `.claude/settings.json` `PreToolUse` hooks.
+
 <!-- MANUAL ADDITIONS END -->
