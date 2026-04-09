@@ -14,59 +14,25 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-1a. **E2E artifacts gate (MANDATORY — hard block)**:
-   - Check whether `FEATURE_DIR/e2e.md` exists.
-   - Check whether a matching E2E script exists under `scripts/` (e.g. `scripts/e2e_<feature-slug>.sh`).
-   - **If either artifact is missing**: **STOP immediately** with this message:
-
-     > **E2E artifacts are missing. `/speckit.implement` cannot proceed.**
-     > Run `/speckit.e2e` to generate `e2e.md` and the E2E script, then re-run `/speckit.implement`.
-     > This is a non-negotiable pre-implementation gate per the project constitution (Canonical Workflow Pipeline rule: "Never skip `/speckit.e2e` before `/speckit.implement`").
-
-   - Do **not** continue to any subsequent step. Do **not** ask the user if they want to proceed anyway.
-   - **If both artifacts exist**: confirm their presence with a single line (e.g. `✅ E2E artifacts found: FEATURE_DIR/e2e.md`) and continue to step 1b.
-
-1b. **Estimation artifact gate (MANDATORY — hard block)**:
-   - Check whether `FEATURE_DIR/estimates.md` exists.
-   - **If missing**: **STOP immediately** with this message:
-
-     > **Estimation artifacts are missing. `/speckit.implement` cannot proceed.**
-     > Run `/speckit.estimate` (or re-run `/speckit.solution`, which invokes estimation) to generate `estimates.md`, then re-run `/speckit.implement`.
-     > This is a non-negotiable pre-implementation gate.
-
-   - Do **not** continue to any subsequent step. Do **not** ask the user if they want to proceed anyway.
-   - **If present**: confirm its presence with a single line (e.g. `✅ Estimation artifacts found: FEATURE_DIR/estimates.md`) and continue to step 2.
-
-2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
-   - Scan all checklist files in the checklists/ directory
-   - For each checklist, count:
-     - Total items: All lines matching `- [ ]` or `- [X]` or `- [x]`
-     - Completed items: Lines matching `- [X]` or `- [x]`
-     - Incomplete items: Lines matching `- [ ]`
-   - Create a status table:
-
-     ```text
-     | Checklist | Total | Completed | Incomplete | Status |
-     |-----------|-------|-----------|------------|--------|
-     | ux.md     | 12    | 12        | 0          | ✓ PASS |
-     | test.md   | 8     | 5         | 3          | ✗ FAIL |
-     | security.md | 6   | 6         | 0          | ✓ PASS |
+1a. **Deterministic pre-implementation gate (MANDATORY)**:
+   - Run:
+     ```bash
+     python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json
      ```
-
-   - Calculate overall status:
-     - **PASS**: All checklists have 0 incomplete items
-     - **FAIL**: One or more checklists have incomplete items
-
-   - **If any checklist is incomplete**:
-     - Display the table with incomplete item counts
-     - **STOP** and ask: "Some checklists are incomplete. Do you want to proceed with implementation anyway? (yes/no)"
-     - Wait for user response before continuing
-     - If user says "no" or "wait" or "stop", halt execution
-     - If user says "yes" or "proceed" or "continue", proceed to step 3
-
-   - **If all checklists are complete**:
-     - Display the table showing all checklists passed
-     - Automatically proceed to step 3
+   - If the script exits non-zero, inspect `hard_block_reasons`:
+     - If `missing_e2e_md` or `missing_e2e_script`: **STOP** with:
+       > **E2E artifacts are missing. `/speckit.implement` cannot proceed.**
+       > Run `/speckit.e2e` to generate `e2e.md` and the E2E script, then re-run `/speckit.implement`.
+     - If `missing_estimates_md`: **STOP** with:
+       > **Estimation artifacts are missing. `/speckit.implement` cannot proceed.**
+       > Run `/speckit.estimate` (or re-run `/speckit.solution`, which invokes estimation) to generate `estimates.md`, then re-run `/speckit.implement`.
+   - If the script passes, print a one-line confirmation for E2E and estimates artifacts.
+   - Render a checklist status table from `checklists.entries` (`name`, `total`, `completed`, `incomplete`, `status`).
+   - If `checklists.incomplete_total > 0`: **STOP and ask**:
+     > "Some checklists are incomplete. Do you want to proceed with implementation anyway? (yes/no)"
+     - If user says `no`/`wait`/`stop`, halt.
+     - If user says `yes`/`proceed`/`continue`, continue to step 3.
+   - If all checklists are complete, continue directly to step 3.
 
 3. Load and analyze the implementation context:
    - **REQUIRED**: Read tasks.md for the complete task list and execution plan
@@ -128,31 +94,19 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Execution flow**: Order and dependency requirements
 
 5.5 **Task Scaffolding & Discovery Gate (MANDATORY before coding each task)**:
-   1. **Read HUD**: Load `.speckit/tasks/T0XX.md` — pre-computed by `speckit.estimate`. Contains working memory, solution sketch, functional goal, quality guards, and process checklist. If missing: **STOP** — run `/speckit.estimate` to regenerate HUDs.
-
-   2. **Sketch validity check (3+ point tasks only)**: Verify the solution sketch in the HUD is still valid:
-      - Run `mcp__codegraph__find_code` for each symbol named in the sketch.
-      - If a symbol no longer exists or has moved: **STOP** — route to `/speckit.tasking` (re-annotate) or `/speckit.plan` (architecture changed).
-      - If the sketch's approach contradicts what earlier tasks built: **STOP** — route to `/speckit.plan`.
-      - Do NOT adapt the sketch on the fly. `speckit.implement` is an execution engine, not a design engine.
-
-   3. **Scope Containment Guard (MANDATORY — hard block)**: Before writing any code, verify that everything this task is about to introduce is already covered by the current spec artifacts. For each item the task will create or modify, check:
-      - **New HTTP endpoint** → must appear in `contracts/` with method, path, auth, and request/response contract
-      - **New env var or config key** → must be named in a spec FR or data-model.md
-      - **New auth mechanism or token** → must be named in a spec FR or a contracts/ security section
-      - **New inter-service call or callback pattern** → must appear as a labeled edge in the Architecture Flow diagram in plan.md
-      - **New schema or data model entity** → must appear in data-model.md
-      - **New dependency** → must appear in plan.md Technical Context
-
-      If **any** introduced item is not covered:
-      - **STOP immediately** — do not write any code for this task
-      - Report exactly what is unspecified: name the item and which artifact it is missing from
-      - Direct the user to the correct upstream command:
-        - Missing FR or behavioral requirement → `/speckit.clarify` or `/speckit.specify`
-        - Missing Architecture Flow edge or component → `/speckit.plan`
-        - Missing contract or data-model entity → `/speckit.plan`
-
-   4. **Log Discovery**: Append `discovery_completed` to the task ledger. Append `lld_recorded` only for 3+ point tasks where sketch validity passed.
+   1. Run deterministic preflight:
+      ```bash
+      python scripts/speckit_implement_gate.py task-preflight \
+        --feature-dir "$FEATURE_DIR" \
+        --task-id "T0XX" \
+        --json
+      ```
+   2. If preflight exits non-zero, **STOP** and route by reason:
+      - `missing_hud` → run `/speckit.estimate`
+      - `task_not_found_in_tasks_md` or `missing_tasks_md` → run `/speckit.tasking` or `/speckit.solution`
+      - `missing_feature_dir` → re-run prerequisite setup
+   3. Scope containment remains mandatory: do not introduce endpoints/env vars/auth/contracts/entities/dependencies not present in current spec artifacts.
+   4. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
 
 6. Execute implementation following the task plan:
    - **Codebase MCP tools (use when connected)** — see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST use `codegraph` first for discovery/scope (find symbols, callers/callees, imports, and impact scope) before writing. You MUST use `get_type`/`get_diagnostics` (codebase-lsp, if connected) second to verify exact types/diagnostics before edits and after edits in touched files. Do not mark a task `[X]` while known type errors remain in files the task owns.
@@ -188,33 +142,21 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Start gate (MANDATORY before coding each task)**: Run
      `python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file FEATURE_DIR/tasks.md --feature-id NNN --task-id T0XX --actor <agent-id>`
      and do not proceed if it fails.
-   - **Per-task validation by category** — every task MUST be validated before entering offline QA handoff:
-     - **Pure logic tasks** (rules, scoring, filters, CRUD, formulas): Unit tests ARE sufficient. Run the relevant tests; if they pass, the task is done.
-     - **Module/wiring tasks** (imports, assembly, CLI skeleton): Smoke-test the import or entrypoint (e.g., `python -c "from module import Class"`, `uv run <entrypoint> --help`). A task that crashes on import is NOT complete.
-     - **External integration tasks** (anything that calls an external service — IBKR API, database, HTTP, file I/O): Unit tests are NOT sufficient because they mock the external boundary. You MUST actually call the real service and verify a meaningful response. For example:
-       - IBKR connect task → actually connect to Gateway and confirm `ibkr_connected` log
-       - Option chain task → actually call `reqSecDefOptParams` and verify contracts are returned
-       - Database task → actually run migrations and verify tables exist
-       - Logging-path task → actually run the entrypoint and confirm startup exposes `run_id` + active `log_path`, and the latest-run pointer resolves to a real log file
-       - **State safety and reconciliation guard (mandatory when local state mirrors live external state):**
-         - Define the source of truth for each lifecycle field and verify reconcile executes before decision paths.
-         - Do not emit log-only state transitions; persisted lifecycle updates MUST occur in the same flow.
-         - Add or run at least one regression test for stale/orphan state (live missing/closed vs local active).
-         - If source-of-truth drift remains unresolved after reconciliation, task validation FAILS.
-       - **Local DB transaction integrity guard (mandatory when local DB mutations represent lifecycle/risk/financial state):**
-         - Use explicit transaction boundaries for multi-step writes; cross-table updates MUST commit or roll back atomically.
-         - Do not treat intent creation as terminal state completion; lifecycle state changes MUST reflect true execution state.
-         - Add or run at least one regression test proving rollback/no-partial-write behavior on failure.
-         - If impossible/partial local lifecycle states persist after a failed mutation path, task validation FAILS.
-       - **Async process management guard (mandatory when asyncio/event loops are involved):**
-         - Do not invoke sync wrappers that run or block event loops from inside active async code paths (for example sync IBKR request methods).
-         - Use native async APIs with explicit `await`, and ensure spawned tasks/processes have explicit lifecycle handling (start, timeout/cancel, shutdown).
-         - Add or run at least one regression test that executes the integration path while an event loop is already running to catch `"event loop is already running"` failures.
-       - **Observability logging guard (mandatory when runtime logging semantics change):**
-         - Keep runtime logs structured and machine-parseable for operational events (timestamp/level/event stable keys).
-         - Verify run-scoped logging and latest-run pointer behavior with a real process run.
-         - If startup does not emit active `run_id` + `log_path`, task validation FAILS.
-       - If the external service is unavailable, **STOP and ask the human** to set it up. Do NOT mark the task `[X]` without live validation. Do NOT assume it works because the mock-based unit tests pass.
+   - **Per-task validation gate (MANDATORY)** — validate evidence with:
+     ```bash
+     python scripts/speckit_implement_gate.py validate-task-evidence \
+       --task-kind <logic|module|integration> \
+       --tests-passed <pass|fail> \
+       --smoke-exit <int-if-module> \
+       --live-check-exit <int-if-integration> \
+       --state-safety <pass|fail|na> \
+       --transaction-integrity <pass|fail|na> \
+       --async-safety <pass|fail|na> \
+       --observability <pass|fail|na> \
+       --json
+     ```
+   - If this exits non-zero: **STOP**. Integration tasks are never complete on unit tests alone; require live boundary validation (`--live-check-exit 0`) and no failed safety guards.
+   - If external dependencies are unavailable, **STOP and ask the human** before marking any task `[X]`.
 
    **Per-task commit + Offline QA handoff (MANDATORY before marking `[X]`)**:
 
@@ -233,16 +175,13 @@ You **MUST** consider the user input before proceeding (if not empty).
    6. Build a handoff payload JSON at `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.handoff.json` and run:
       `.venv/bin/python scripts/offline_qa.py --payload-file <handoff.json> --result-file .speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.result.json`
       If using `uv run` instead, prefer `UV_NO_CACHE=1 uv run python ...` when startup is slow due cache churn.
-   7. Required handoff payload to QA agent/process:
-      - `feature_id` and `task_id` (non-empty strings)
-      - `hud_path` (Path to .speckit/tasks/T0XX.md containing ACs and Quality Guards)
-      - `acceptance_criteria` (Extracted list from HUD)
-      - `quality_guards` (Extracted list from HUD)
-      - `changed_files` (non-empty string list)
-      - `diff` (non-empty unified diff string)
-      - `test_runs` (non-empty list of objects with `command` string, `exit_code` int, optional `output` string)
-      - `known_risks` (optional string list)
-      - Legacy `test_commands` is accepted for backward compatibility and normalized to `test_runs` with a warning.
+   7. Validate payload schema before invoking offline QA:
+      ```bash
+      python scripts/speckit_implement_gate.py validate-offline-qa-payload \
+        --payload-file <handoff.json> \
+        --json
+      ```
+      - If validation exits non-zero: **STOP** and fix payload shape before running `scripts/offline_qa.py`.
    8. QA agent/process returns explicit verdict from result JSON:
       - `PASS` => append `offline_qa_passed` (with `qa_run_id`), then append `task_closed`, then update tasks.md to `[X]` and create a follow-up closure commit containing only the tasks.md checkmark and ledger event lines.
       - `FIX_REQUIRED` => append `offline_qa_failed` (with `qa_run_id`), append `fix_started`, implement fixes, append `fix_completed`, then re-run offline QA handoff for the same task.
@@ -256,35 +195,23 @@ You **MUST** consider the user input before proceeding (if not empty).
    - After phase completion, push the phase branch, open/update a single phase PR, and run CI + Codex QA gate there.
    - Merge happens at the **phase checkpoint**, not per-task.
 
-   **Phase checkpoint gate (MANDATORY — three layers)**:
+   **Phase checkpoint gate (MANDATORY — deterministic)**:
 
-   After all tasks in a phase are complete, validate the checkpoint described in the `**Checkpoint**:` line at the end of that phase in tasks.md. The checkpoint describes **observable behavior** that MUST be true before the next phase begins. It is a **gate, not documentation**.
-
-   **Layer 1 — inline validation (do this immediately after completing the last task):**
-   1. **Parse the checkpoint text** — it states what the system should do after this phase.
-   2. **Run the software** — execute the application (with `--dry-run` or equivalent safe mode if available) and verify the checkpoint behaviors actually occur. Check logs, terminal output, or database state as evidence.
-   3. **If external dependencies are required** that are not available: **STOP and ask the human** to set them up or confirm they are running. Do not skip the checkpoint.
-   4. **State safety gate** (for live-vs-local state integrations): verify no unresolved source-of-truth drift leaves local records in active states.
-   5. **Local DB transaction integrity gate** (for local persisted-state mutation paths): verify no partial writes or impossible lifecycle transitions remain after failure/retry paths.
-   6. **Observability gate** (for logging/runtime visibility changes): verify startup emits `run_id` + active log path and that the active latest-run pointer resolves to a real log file with expected events after phase start.
-   7. **If the checkpoint fails** — diagnose, fix, and re-run.
-   8. **If the checkpoint passes** — proceed to Layer 2.
-
-   **Layer 2 — `/speckit.checkpoint` (independent second pass):**
-   After Layer 1 passes, invoke `/speckit.checkpoint Phase [N]` as a separate validation step. This catches mistakes that Layer 1 missed (e.g., the implementation agent believing its own work passed when it didn't).
-   - **If checkpoint returns PASS**: Proceed to Layer 3 (if applicable) or the next phase.
-   - **If checkpoint returns FAIL**: The phase is NOT complete. Fix the failures, then re-run both layers.
-   - **If checkpoint requires human intervention**: Wait for the human to confirm before proceeding.
-
-   **Layer 3 — `/speckit.e2e-run` (E2E validation for user story phases):**
-   After Layer 2 passes on a **user story phase** (Phase 3+), invoke `/speckit.e2e-run [USn]` to run the E2E section for that story. This validates the story works end-to-end with real infrastructure, not just in isolation.
-   - **Prerequisite**: `FEATURE_DIR/e2e.md` and a corresponding `scripts/e2e_*.sh` must exist. If they do not, run `/speckit.e2e` first; the phase is blocked until E2E artifacts exist.
-   - **If E2E returns PASS**: Proceed to the next phase.
-   - **If E2E returns FAIL/BLOCKED/SKIPPED**: The phase is NOT complete. Report failures, fix root causes, and re-run until PASS.
-   - **Setup and Foundational phases** (Phases 1-2) do NOT require Layer 3 — they are validated by Layers 1-2 only.
-   - **Preflight shortcut**: `/speckit.e2e-run preflight` is diagnostic only; it does not satisfy the story E2E acceptance gate.
-
-   Unit tests passing is NECESSARY but NOT SUFFICIENT for a phase checkpoint. Unit tests validate components in isolation; checkpoints validate that components are wired together and the system behaves as specified end-to-end.
+   1. Run Layer 1 inline checkpoint verification by executing the software and collecting evidence.
+   2. Run Layer 2 with `/speckit.checkpoint Phase [N]`.
+   3. For story phases, run Layer 3 with `/speckit.e2e-run [USn]` (or `/speckit.e2e-run full` at final closeout).
+   4. Evaluate gate closure with:
+      ```bash
+      python scripts/speckit_implement_gate.py phase-gate \
+        --feature-dir "$FEATURE_DIR" \
+        --phase-name "Phase [N]" \
+        --phase-type <setup|foundational|story|polish> \
+        --layer1 <pass|fail|blocked> \
+        --layer2 <pass|fail|blocked> \
+        --layer3 <pass|fail|blocked|na> \
+        --json
+      ```
+   5. If the command exits non-zero: the phase is NOT complete. Fix and re-run gates.
 
 7. Implementation execution rules:
    - **Setup first**: Initialize project structure, dependencies, configuration

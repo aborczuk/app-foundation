@@ -22,15 +22,17 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 1a. **Specification checklist gate (MANDATORY — hard block)**:
    - Derive `FEATURE_DIR` from `FEATURE_SPEC` (parent directory of `spec.md`).
-   - Check whether `FEATURE_DIR/checklists/requirements.md` exists.
-   - If `FEATURE_DIR/checklists/` exists, scan all checklist files and count incomplete items (`- [ ]`).
-   - **If `requirements.md` is missing OR any checklist item is incomplete**: **STOP immediately** with this message:
+   - Run:
+     ```bash
+     python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json
+     ```
+   - If the command exits non-zero or reports `ok: false`: **STOP immediately** with this message:
 
      > **Specification checklist is incomplete. `/speckit.plan` cannot proceed.**
      > Complete all checklist items in `FEATURE_DIR/checklists/` (including `requirements.md`) before planning, then re-run `/speckit.plan`.
      > This is a non-negotiable pre-planning quality gate.
 
-   - Do **not** continue to any subsequent planning step when this gate fails.
+   - On success, continue.
 
 1b. **External ingress + runtime readiness gate initialization (MANDATORY)**:
    - Populate the `## External Ingress + Runtime Readiness Gate` section in plan.md.
