@@ -30,34 +30,21 @@ Given that feature description, do this:
    - Strip the `--update-current-spec` flag from `$ARGUMENTS` before analysis.
    - If the remaining description is empty: ERROR "No feature description provided"
 
-2. **If in default mode, generate a concise short name** (2-4 words) for the branch:
-   - Analyze the feature description and extract the most meaningful keywords
-   - Create a 2-4 word short name that captures the essence of the feature
-   - Use action-noun format when possible (e.g., "add-user-auth", "fix-payment-bug")
-   - Preserve technical terms and acronyms (OAuth2, API, JWT, etc.)
-   - Keep it concise but descriptive enough to understand the feature at a glance
-   - Examples:
-     - "I want to add user authentication" → "user-auth"
-     - "Implement OAuth2 integration for the API" → "oauth2-api-integration"
-     - "Create a dashboard for analytics" → "analytics-dashboard"
-     - "Fix payment processing timeout bug" → "fix-payment-timeout"
+2. **If in default mode, generate a concise short name** (2-4 words):
+   - Extract the highest-signal keywords from the feature description.
+   - Prefer `action-noun` style and preserve technical acronyms.
+   - Keep it short and unique within existing branch/spec naming.
 
-3. **If in default mode, check for existing branches before creating new one**:
+3. **If in default mode, create the feature branch/spec once using the script**:
 
-   a. Run the script — pass only `--json` and `--short-name`; do NOT pass `--number`. The script auto-detects the globally highest number across all branches and all specs directories and increments it:
+   a. Run (pass only `--json` and `--short-name`; never pass `--number`):
 
       ```bash
       .specify/scripts/bash/create-new-feature.sh --json --short-name "your-short-name" "Feature description"
       ```
 
-      - Bash example: `.specify/scripts/bash/create-new-feature.sh --json --short-name "user-auth" "Add user authentication"`
-
-   **IMPORTANT**:
-   - Never pass `--number` manually — the script computes the correct global sequential number automatically
-   - You must only ever run this script once per feature
-   - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
-   - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
+   b. Parse JSON output and treat it as authoritative for `BRANCH_NAME`, `FEATURE_DIR`, and `SPEC_FILE`.
+   c. Run this script once per feature. For single quotes in args like "I'm Groot", escape as `'\''` or use double quotes.
 
 4. **If in update mode (`--update-current-spec`) resolve existing spec paths**:
    - Run:
@@ -154,38 +141,10 @@ Given that feature description, do this:
         4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
 
       - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. For each clarification needed (max 3), present options to user in this format:
-
-           ```markdown
-           ## Question [N]: [Topic]
-           
-           **Context**: [Quote relevant spec section]
-           
-           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
-           
-           **Suggested Answers**:
-           
-           | Option | Answer | Implications |
-           |--------|--------|--------------|
-           | A      | [First suggested answer] | [What this means for the feature] |
-           | B      | [Second suggested answer] | [What this means for the feature] |
-           | C      | [Third suggested answer] | [What this means for the feature] |
-           | Custom | Provide your own answer | [Explain how to provide custom input] |
-           
-           **Your choice**: _[Wait for user response]_
-           ```
-
-        3. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-           - Use consistent spacing with pipes aligned
-           - Each cell should have spaces around content: `| Content |` not `|Content|`
-           - Header separator must have at least 3 dashes: `|--------|`
-           - Test that the table renders correctly in markdown preview
-        4. Number questions sequentially
-        5. Present all questions together before waiting for responses
-        6. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        7. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        8. Re-run validation after all clarifications are resolved
+        1. Extract markers and group into at most 3 high-impact questions.
+        2. Ask all questions together using a compact table: `Option | Answer | Implications`.
+        3. Include options `A/B/C/Custom` and wait for user selections.
+        4. Replace markers with selected answers and re-run validation.
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
@@ -234,44 +193,11 @@ Every section must earn its tokens. Apply these rules when generating or updatin
 
 ### For AI Generation
 
-When creating this spec from a user prompt:
-
-
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-4. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-5. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
-
-**Examples of reasonable defaults** (don't ask about these):
-
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+- Document assumptions in the Assumptions section.
+- Prioritize clarifications: scope > security/privacy > UX > technical details.
+- Treat vague requirements as checklist failures and resolve them.
+- Use reasonable defaults unless legally/financially risky.
 
 ### Success Criteria Guidelines
 
-Success criteria must be:
-
-1. **Measurable**: Include specific metrics (time, percentage, count, rate)
-2. **Technology-agnostic**: No mention of frameworks, languages, databases, or tools
-3. **User-focused**: Describe outcomes from user/business perspective, not system internals
-4. **Verifiable**: Can be tested/validated without knowing implementation details
-
-**Good examples**:
-
-- "Users can complete checkout in under 3 minutes"
-- "System supports 10,000 concurrent users"
-- "95% of searches return results in under 1 second"
-- "Task completion rate improves by 40%"
-
-**Bad examples** (implementation-focused):
-
-- "API response time is under 200ms" (too technical, use "Users see results instantly")
-- "Database can handle 1000 TPS" (implementation detail, use user-facing metric)
-- "React components render efficiently" (framework-specific)
-- "Redis cache hit rate above 80%" (technology-specific)
+Success criteria must be measurable, technology-agnostic, user-focused, and verifiable.

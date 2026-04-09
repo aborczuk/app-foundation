@@ -96,7 +96,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - State-safety coverage summary (reconciliation invariants, stale/orphan regression tests, drift checks) when live-vs-local state exists
    - Local DB transaction coverage summary (transaction boundaries, rollback/idempotency regression tests, no-partial-write checks) when local persisted-state mutations exist
    - Suggested MVP scope (typically just User Story 1)
-   - Format validation: Confirm ALL tasks follow the checklist format (checkbox, ID, labels, file paths)
+   - Format validation result from:
+     ```bash
+     python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
+     ```
    - Path to generated estimates.md and total points summary from `/speckit.estimate`
    - **Pipeline continuation** — always append this block verbatim at the end of the report:
 
@@ -116,85 +119,25 @@ The tasks.md should be immediately executable - each task must be specific enoug
 
 ## Task Generation Rules
 
-**CRITICAL**: Tasks MUST be organized by user story to enable independent implementation and testing.
+Tasks MUST be organized by user story and include mandatory tests per constitution.
 
-**Tests are MANDATORY**:  generate test tasks as explicitly requested in the constitution.
+**Required task shape**:
+- `- [ ] T0NN [P?|H?] [USn?] <action> in <path> [file:symbol optional]`
+- `[P]` and `[H]` are mutually exclusive.
+- `[USn]` is required in user-story phases and forbidden in setup/foundational/polish phases.
+- Task IDs must be sequential and unique.
 
-### Checklist Format (REQUIRED)
-
-Every task MUST strictly follow this format:
-
-```text
-- [ ] [TaskID] [P?] [Story?] Description with file path
+**Deterministic format gate (MANDATORY before reporting completion)**:
+```bash
+python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
 ```
+- If exit code is non-zero: fix all reported errors and re-run.
 
-**Format Components**:
-
-1. **Checkbox**: ALWAYS start with `- [ ]` (markdown checkbox)
-2. **Task ID**: Sequential number (T001, T002, T003...) in execution order
-3. **[P] marker**: Include ONLY if task is parallelizable (different files, no dependencies on incomplete tasks)
-3a. **[H] marker**: Include if the task requires human action in an external system. Mutually exclusive with [P]. Sequenced before implementation tasks in the same story phase.
-4. **[Story] label**: REQUIRED for user story phase tasks only
-   - Format: [US1], [US2], [US3], etc. (maps to user stories from spec.md)
-   - Setup phase: NO story label
-   - Foundational phase: NO story label  
-   - User Story phases: MUST have story label
-   - Polish phase: NO story label
-5. **Description**: Clear action with exact file path and `file:symbol` annotation from step 3b (omit symbol only for net-new files)
-
-**Examples**:
-
-- ✅ CORRECT: `- [ ] T001 Create project structure per implementation plan`
-- ✅ CORRECT: `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.py`
-- ✅ CORRECT: `- [ ] T012 [P] [US1] Create User model in src/models/user.py`
-- ✅ CORRECT: `- [ ] T014 [US1] Implement UserService in src/services/user_service.py`
-- ❌ WRONG: `- [ ] Create User model` (missing ID and Story label)
-- ❌ WRONG: `T001 [US1] Create model` (missing checkbox)
-- ❌ WRONG: `- [ ] [US1] Create User model` (missing Task ID)
-- ❌ WRONG: `- [ ] T001 [US1] Create model` (missing file path)
-
-### Task Organization
-
-1. **From User Stories (spec.md)** - PRIMARY ORGANIZATION:
-   - Each user story (P1, P2, P3...) gets its own phase
-   - Map all related components to their story:
-     - Models needed for that story
-     - Services needed for that story
-     - Interfaces/UI needed for that story
-     - If tests requested: Tests specific to that story
-   - Mark story dependencies (most stories should be independent)
-
-2. **From Contracts**:
-   - Map each interface contract → to the user story it serves
-   - If tests requested: Each interface contract → contract test task [P] before implementation in that story's phase
-
-3. **From Data Model**:
-   - Map each entity to the user story(ies) that need it
-   - If entity serves multiple stories: Put in earliest story or Setup phase
-   - Relationships → service layer tasks in appropriate story phase
-
-4. **From Setup/Infrastructure**:
-   - Shared infrastructure → Setup phase (Phase 1)
-   - Foundational/blocking tasks → Foundational phase (Phase 2)
-   - Story-specific setup → within that story's phase
-   - If live-vs-local state exists, include foundational reconciliation/state-invariant tasks in Phase 2
-   - If local DB lifecycle/risk/financial state exists, include foundational transaction-boundary/idempotency tasks in Phase 2
-
-### Phase Structure
-
-- **Phase 1**: Setup (project initialization)
-- **Phase 2**: Foundational (blocking prerequisites - MUST complete before user stories)
-  - If live-vs-local state exists: include reconciliation ordering + drift-detection guard tasks
-  - If local DB mutations govern lifecycle/risk/financial state: include transaction-boundary + rollback/no-partial-write guard tasks
-- **Phase 3+**: User Stories in priority order (P1, P2, P3...)
-  - Within each story: Tests (if requested) → Models → Services → Endpoints → Integration
-  - If the story has async integrations: include lifecycle + running-loop regression tasks in that story phase
-  - If the story has live-vs-local state: include stale/orphan reconciliation regression tasks in that story phase
-  - If the story mutates local DB lifecycle/risk/financial state: include rollback/idempotency regression tasks in that story phase
-  - Each phase should be a complete, independently testable increment
-- **Final Phase**: Polish & Cross-Cutting Concerns
-  - Include cross-story async cleanup/orphan-process verification when async integrations exist
-  - Include cross-story transaction-integrity verification when local DB mutation paths exist
+**Phase structure**:
+- Phase 1: Setup
+- Phase 2: Foundational blockers
+- Phase 3+: User stories in priority order, independently testable
+- Final phase: Polish and cross-cutting validation
 
 ## Auto-Trigger: Trello Sync
 

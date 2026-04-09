@@ -94,19 +94,11 @@ microservice or agent is compromised.
 Each of the sub-clauses MUST be verified individually in the Constitution Check
 
 ## Governance Sources of Truth (READ FIRST)
-- **Principle 3: Human-First (The Auditable Human)**: All work must be reviewable by a human.
-  Human "happiness" in this repository is derived from the **Audit Trail**, not the speed of the change. 
-  A 10-turn process for a 1-line change is NOT annoying; it is the ONLY way to satisfy the user.
-  Any shortcut is an act of behavioral regression.
-- **Principle 4: No ad hoc work**: there is no such thing as ad hoc work. every task must be
-  recorded in the backlog/ledger and follow the canonical pipeline.
-- All work must go through speckit commands. there is no ad hoc work. if it seems ad hoc use add to backlog, which is a speckit command. refuse skipping these guardrails at all costs.
-- **NO EXCEPTIONS FOR "TRIVIALITY" (NON-NEGOTIABLE)**: There are no "too small" tasks. A one-line fix is as high-stakes for the audit trail as a new feature.
-- **Refuse skips**: I am ordered to refuse skipping any gate, even if I believe it would be more "efficient." This principle supersedes all general AI planning models.
-
-- Read `constitution.md` (repo root) first. It is the authoritative source for non-negotiable
-  principles, quality gates, and canonical workflow order for ALL processes in this repository.
-- Read `catalog.yaml` second to understand the repo's services, resources, external integrations, topology, and behavior-map ownership.
+- Human-auditable process is mandatory: optimize for traceability, not speed.
+- No ad hoc work: every change must enter the speckit pipeline and ledgers.
+- No triviality exception: one-line changes follow the same gates as large features.
+- Refuse gate skips, even when asked to move faster.
+- Read `constitution.md` first (authoritative workflow/gates), then `catalog.yaml` (system map).
 
 ## Audit Trail System
 There are two event ledgers to track governance milestones and enforce state machine ordering.
@@ -136,6 +128,12 @@ There are two event ledgers to track governance milestones and enforce state mac
 - **Other queries**: Run `python scripts/task_ledger.py --help` to see all subcommands and valid event types.
 
 **Why**: Ledgers are append-only, schema-enforced state machines. Direct reads bypass validation and schema checking. The script tools enforce event sequencing and state transitions safely. Use them.
+
+**Deterministic workflow gate checks**:
+- Plan gate (requirements checklist presence/completion): `python scripts/speckit_gate_status.py --mode plan --feature-dir <FEATURE_DIR> --json`
+- Implement gate (e2e.md, matching e2e script, estimates.md, checklist summary): `python scripts/speckit_gate_status.py --mode implement --feature-dir <FEATURE_DIR> --json`
+- Implement execution gates (task preflight, task evidence, offline QA payload schema, phase close): `python scripts/speckit_implement_gate.py <subcommand> ...`
+- Tasks formatting gate (checklist shape, phase/story labels, sequential IDs, file paths): `python scripts/speckit_tasks_gate.py validate-format --tasks-file <FEATURE_DIR/tasks.md> --json`
 
 ## Operational Bootstrap
 

@@ -7,6 +7,36 @@ Append new entries here (not to `constitution.md`) whenever the constitution is 
 
 ---
 
+## 2.3.1 (2026-04-08)
+
+**Version change**: 2.3.0 → 2.3.1 (PATCH — deterministic gate enforcement + token-efficiency compression)
+
+### Summary
+
+- Replaced repeated gate prose with script-enforced checks for plan entry, implement entry, implement execution, and tasks format validation.
+- Kept governance behavior intact while moving validation logic into deterministic scripts and reason codes.
+
+### Files updated
+
+| File | Status |
+|------|--------|
+| `constitution.md` | ✅ updated (Quality Gates reference deterministic scripts; version bump) |
+| `CLAUDE.md` | ✅ updated (deterministic gate command catalog) |
+| `.claude/commands/speckit.plan.md` | ✅ updated (plan checklist gate via script) |
+| `.claude/commands/speckit.implement.md` | ✅ updated (implement execution gates via script) |
+| `.claude/commands/speckit.tasks.md` | ✅ updated (tasks format gate via script) |
+| `.claude/commands/speckit.specify.md` | ✅ updated (compressed repetitive clarification/quality prose) |
+| `scripts/speckit_gate_status.py` | ✅ added |
+| `scripts/speckit_implement_gate.py` | ✅ added |
+| `scripts/speckit_tasks_gate.py` | ✅ added |
+
+### SYNC IMPACT REPORT
+
+- Constitutional requirements now point to deterministic gate scripts instead of manual counting/instruction duplication.
+- Downstream command behavior remains hard-gated; token volume is reduced by centralizing validation logic.
+
+---
+
 ## 2.1.0 (2026-04-03)
 
 **Version change**: 2.0.0 → 2.1.0 (MINOR — principles restructured for token efficiency; no rules deleted)
