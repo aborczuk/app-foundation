@@ -1,0 +1,94 @@
+# Research: Deterministic Pipeline Driver with LLM Handoff
+
+Investigation of prior art, integration patterns, and existing code/packages that could reduce scope.
+
+---
+
+## Zero-Custom-Server Assessment
+
+What no-server integration options exist? For each, which FRs does it cover?
+
+| Option | FRs covered | How it works | Gap (uncovered FRs) |
+|--------|-------------|--------------|---------------------|
+| Local-first deterministic orchestrator (current repo pattern) | FR-001, FR-002, FR-003, FR-005, FR-006, FR-009, FR-010, FR-012, FR-013, FR-015, FR-016, FR-017, FR-021, FR-024, FR-025, FR-026 | Use local scripts + manifest + append-only ledgers; route by exit code and reason codes; emit minimal human-facing status and sidecar diagnostics. | FR-004 handoff contract standardization, FR-018 timeout policy normalization, FR-019 compensation policy formalization, FR-020 correlation-id propagation, FR-022 explicit approval checkpoints still need unified orchestrator wiring. |
+| GitHub Actions orchestration with `concurrency` + environment protection | FR-014, FR-018, FR-022, FR-024 (partial) | Workflow/job-level concurrency groups enforce single in-flight pipelines; environment required reviewers provide human approval checkpoints without custom server. | Does not natively provide repository-local ledger sequencing semantics (FR-005/FR-010/FR-012/FR-013/FR-019/FR-020) unless custom glue is added. |
+| Hosted workflow engine (Temporal Cloud style, worker still local process) | FR-013, FR-018, FR-019, FR-020 (pattern-level) | Durable execution model can improve retries/recovery/correlation; can be used as control-plane backend without operating own server. | Still requires workflow/worker code and integration complexity; does not replace spec/plan/task artifact governance directly. |
+
+---
+
+## Repo Assembly Map
+
+Assemble pieces from multiple repositories to cover all FRs. Each row = one repo/file that covers one or more FRs.
+
+| Source (owner/repo) | File(s) to copy/adapt | FRs covered | Notes |
+|---------------------|----------------------|-------------|-------|
+| local: app-foundation | `scripts/pipeline_ledger.py` | FR-005, FR-010, FR-012, FR-013, FR-017, FR-019 (partial) | Existing feature-level state/event validation logic; primary base for orchestrator event guarantees. |
+| local: app-foundation | `scripts/task_ledger.py` | FR-005, FR-012, FR-013, FR-015, FR-019 (partial) | Task-scoped sequencing/idempotency behavior and auto-index hooks can be adapted for driver-level flow control. |
+| local: app-foundation | `command-manifest.yaml`, `.specify/command-manifest.yaml` | FR-006, FR-009, FR-015 | Existing allowlist/event declaration model is directly reusable as driver routing source of truth. |
+| local: app-foundation | `scripts/speckit_gate_status.py`, `scripts/speckit_implement_gate.py`, `scripts/speckit_tasks_gate.py` | FR-002, FR-003, FR-010, FR-016, FR-017 | Existing deterministic gate envelope conventions and reason-code style should be normalized into one schema contract. |
+| pytransitions/transitions | `transitions/core.py` | FR-001, FR-007, FR-011, FR-016 | Mature state-machine primitive for explicit phase transitions; useful for orchestrator transition graph. |
+| jd/tenacity | `tenacity/__init__.py` (retry primitives) | FR-013, FR-018, FR-019 | Reusable retry/backoff policy wrapper for deterministic command execution and transient-failure handling. |
+| tox-dev/filelock | `src/filelock/_api.py` | FR-014 | File lock primitive maps directly to clarified `.speckit/locks/<feature_id>.lock` requirement. |
+| python-jsonschema/jsonschema | `jsonschema/validators.py` | FR-016, FR-017 | Deterministic schema validation for script envelopes and sidecar payloads. |
+| pydantic/pydantic | `pydantic` models (package-level) | FR-003, FR-016, FR-017, FR-026 | Strict typed envelope models and backward-compatible schema-version parsing. |
+
+**After assembly**: which FRs remain uncovered and require net-new code?
+- **FR-004**: standardized LLM handoff contract generator tied to pipeline state.
+- **FR-008**: final policy balancing full JSON for code consumers vs stdout-minimal human output needs dedicated envelope rules.
+- **FR-020**: end-to-end correlation-id propagation across all scripts/ledger writes.
+- **FR-023**: deterministic one-time verbose rerun semantics for `exit_code=2`.
+- **FR-024/FR-025/FR-026**: strict human-facing 3-line contract + sidecar drill-down interface.
+
+---
+
+## Package Adoption Options
+
+Installable packages only (verified via `pip index versions`, `npm view`, or `gh api repos/`). Unverified entries belong in Repo Assembly Map.
+
+| Package | Version | FRs covered | Integration effort | Installability check |
+|---------|---------|-------------|-------------------|---------------------|
+| transitions | 0.9.3 | FR-001, FR-007, FR-011, FR-016 | 2 | Verified via `python3 -m pip index versions transitions` |
+| tenacity | 9.1.2 | FR-013, FR-018, FR-019 | 1 | Verified via `python3 -m pip index versions tenacity` |
+| filelock | 3.19.1 | FR-014 | 1 | Verified via `python3 -m pip index versions filelock` |
+| pydantic | 2.12.5 | FR-003, FR-016, FR-017, FR-026 | 2 | Verified via `python3 -m pip index versions pydantic` |
+| jsonschema | 4.25.1 | FR-016, FR-017 | 2 | Verified via `python3 -m pip index versions jsonschema` |
+
+---
+
+## Conceptual Patterns
+
+Non-code synthesis from web research. Standard approaches, common patterns, known mistakes.
+
+- **Pattern**: Concurrency-group single-flight orchestration — Use workflow/job concurrency keys with cancel-in-progress to prevent overlapping runs per feature/branch. — covers: FR-014, FR-018 — requires custom server: no
+  - Source: https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/control-the-concurrency-of-workflows-and-jobs
+
+- **Pattern**: Environment required-reviewer approval gate — Use deployment protection rules to enforce explicit human approval for sensitive irreversible steps. — covers: FR-022 — requires custom server: no
+  - Source: https://docs.github.com/en/enterprise-cloud%40latest/actions/reference/deployments-and-environments
+
+- **Pattern**: Trace/log correlation via stable context IDs — Include trace/span correlation metadata in logs/diagnostics for deterministic drill-down and cross-step debugging. — covers: FR-020, FR-026 — requires custom server: no
+  - Source: https://opentelemetry.io/docs/specs/otel/logs/
+
+- **Pattern**: Idempotent consumer / processed-message identity — Persist processed IDs and reject duplicates to keep retries safe and deterministic. — covers: FR-013, FR-019 — requires custom server: no
+  - Source: https://microservices.io/patterns/communication-style/idempotent-consumer.html
+
+- **Pattern**: Deterministic workflow logic constraints — Keep orchestration logic deterministic (no non-deterministic side effects in decision path) to preserve replay safety and predictable retries. — covers: FR-013, FR-018, FR-019 — requires custom server: optional
+  - Source: https://www.nuget.org/packages/Temporalio/1.1.0
+
+---
+
+## Search Tools Used
+
+Log which tools and queries ran. Used to diagnose shallow results in future debugging.
+
+- Agent A (Code Discovery): local repository inspection (`command-manifest.yaml`, ledger/gate scripts), scoped CodeGraph helper reads (`scripts/read-code.sh`), GitHub repo metadata checks via `gh repo view`.
+- Agent B (Package Discovery): `python3 -m pip index versions` for `transitions`, `tenacity`, `pydantic`, `jsonschema`, `filelock`; PyPI/Web verification fallback.
+- Agent C (Conceptual Patterns): Web research on GitHub Actions concurrency + approvals, OpenTelemetry log-trace correlation, idempotent-consumer pattern, deterministic workflow constraints.
+
+---
+
+## Unanswered Questions
+
+Anything still unknown after all research. These become [NEEDS CLARIFICATION] in plan.md.
+
+- Should the orchestrator standardize on a single schema validator implementation (`pydantic` only vs `pydantic` + `jsonschema`) for compatibility boundaries?
+- For approval checkpoints (FR-022), should approvals be GitHub-native only, or abstracted to a provider-neutral adapter contract?
