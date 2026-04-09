@@ -29,7 +29,7 @@ Execution steps:
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root **once**. Parse FEATURE_DIR and AVAILABLE_DOCS. Derive TASKS path.
    - If tasks.md missing, abort and instruct user to run `/speckit.solution`.
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+   - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 2. Load context:
    - **Required**: tasks.md, plan.md (for project structure and tech context)

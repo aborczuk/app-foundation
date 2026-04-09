@@ -12,7 +12,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 1a. **Deterministic pre-implementation gate (MANDATORY)**:
    - Run:
@@ -26,6 +26,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      - If `missing_estimates_md`: **STOP** with:
        > **Estimation artifacts are missing. `/speckit.implement` cannot proceed.**
        > Run `/speckit.estimate` (or re-run `/speckit.solution`, which invokes estimation) to generate `estimates.md`, then re-run `/speckit.implement`.
+   - For every gate failure, report reason codes directly and map remediation via `docs/governance/gate-reason-codes.yaml` (avoid custom long prose).
    - If the script passes, print a one-line confirmation for E2E and estimates artifacts.
    - Render a checklist status table from `checklists.entries` (`name`, `total`, `completed`, `incomplete`, `status`).
    - If `checklists.incomplete_total > 0`: **STOP and ask**:
@@ -42,49 +43,13 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read research.md for technical decisions and constraints
    - **IF EXISTS**: Read quickstart.md for integration scenarios
 
-4. **Project Setup Verification**:
-   - **REQUIRED**: Create/verify ignore files based on actual project setup:
-
-   **Detection & Creation Logic**:
-   - Check if the following command succeeds to determine if the repository is a git repo (create/verify .gitignore if so):
-
-     ```sh
-     git rev-parse --git-dir 2>/dev/null
+4. **Project setup verification (deterministic)**:
+   - Run:
+     ```bash
+     python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json
      ```
-
-   - Check if Dockerfile* exists or Docker in plan.md → create/verify .dockerignore
-   - Check if .eslintrc* exists → create/verify .eslintignore
-   - Check if eslint.config.* exists → ensure the config's `ignores` entries cover required patterns
-   - Check if .prettierrc* exists → create/verify .prettierignore
-   - Check if .npmrc or package.json exists → create/verify .npmignore (if publishing)
-   - Check if terraform files (*.tf) exist → create/verify .terraformignore
-   - Check if .helmignore needed (helm charts present) → create/verify .helmignore
-
-   **If ignore file already exists**: Verify it contains essential patterns, append missing critical patterns only
-   **If ignore file missing**: Create with full pattern set for detected technology
-
-   **Common Patterns by Technology** (from plan.md tech stack):
-   - **Node.js/JavaScript/TypeScript**: `node_modules/`, `dist/`, `build/`, `*.log`, `.env*`
-   - **Python**: `__pycache__/`, `*.pyc`, `.venv/`, `venv/`, `dist/`, `*.egg-info/`
-   - **Java**: `target/`, `*.class`, `*.jar`, `.gradle/`, `build/`
-   - **C#/.NET**: `bin/`, `obj/`, `*.user`, `*.suo`, `packages/`
-   - **Go**: `*.exe`, `*.test`, `vendor/`, `*.out`
-   - **Ruby**: `.bundle/`, `log/`, `tmp/`, `*.gem`, `vendor/bundle/`
-   - **PHP**: `vendor/`, `*.log`, `*.cache`, `*.env`
-   - **Rust**: `target/`, `debug/`, `release/`, `*.rs.bk`, `*.rlib`, `*.prof*`, `.idea/`, `*.log`, `.env*`
-   - **Kotlin**: `build/`, `out/`, `.gradle/`, `.idea/`, `*.class`, `*.jar`, `*.iml`, `*.log`, `.env*`
-   - **C++**: `build/`, `bin/`, `obj/`, `out/`, `*.o`, `*.so`, `*.a`, `*.exe`, `*.dll`, `.idea/`, `*.log`, `.env*`
-   - **C**: `build/`, `bin/`, `obj/`, `out/`, `*.o`, `*.a`, `*.so`, `*.exe`, `autom4te.cache/`, `config.status`, `config.log`, `.idea/`, `*.log`, `.env*`
-   - **Swift**: `.build/`, `DerivedData/`, `*.swiftpm/`, `Packages/`
-   - **R**: `.Rproj.user/`, `.Rhistory`, `.RData`, `.Ruserdata`, `*.Rproj`, `packrat/`, `renv/`
-   - **Universal**: `.DS_Store`, `Thumbs.db`, `*.tmp`, `*.swp`, `.vscode/`, `.idea/`
-
-   **Tool-Specific Patterns**:
-   - **Docker**: `node_modules/`, `.git/`, `Dockerfile*`, `.dockerignore`, `*.log*`, `.env*`, `coverage/`
-   - **ESLint**: `node_modules/`, `dist/`, `build/`, `coverage/`, `*.min.js`
-   - **Prettier**: `node_modules/`, `dist/`, `build/`, `coverage/`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
-   - **Terraform**: `.terraform/`, `*.tfstate*`, `*.tfvars`, `.terraform.lock.hcl`
-   - **Kubernetes/k8s**: `*.secret.yaml`, `secrets/`, `.kube/`, `kubeconfig*`, `*.key`, `*.crt`
+   - If command exits non-zero: **STOP**.
+   - Treat JSON output as authoritative for created/updated ignore files and warnings (including eslint config ignore coverage warnings).
 
 5. Parse tasks.md structure and extract:
    - **Task phases**: Setup, Tests, Core, Integration, Polish
@@ -160,35 +125,26 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    **Per-task commit + Offline QA handoff (MANDATORY before marking `[X]`)**:
 
-   After a task is validated (while still `[ ]`), **immediately commit locally** and run a separate offline QA process:
-   1. Stage all files changed by this task (review the diff — never stage secrets or unrelated changes).
-   2. Keep tasks.md unchanged in this commit (task remains `[ ]` until closure).
-   3. Commit message format:
-      ```
-      T0XX <short task description>
-
-      <what changed and why, 1-3 lines>
-
-      ```
-   4. Append `commit_created` event to the task ledger.
-   5. Append `offline_qa_started`, then launch a **separate QA agent/process** dedicated to this task.
-   6. Build a handoff payload JSON at `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.handoff.json` and run:
-      `.venv/bin/python scripts/offline_qa.py --payload-file <handoff.json> --result-file .speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.result.json`
-      If using `uv run` instead, prefer `UV_NO_CACHE=1 uv run python ...` when startup is slow due cache churn.
-   7. Validate payload schema before invoking offline QA:
+   After task validation (while still `[ ]`):
+   1. Stage task-owned files only and commit (`T0XX <short task description>`). Keep `tasks.md` unchanged in this commit.
+   2. Append `commit_created` and `offline_qa_started` to the task ledger.
+   3. Run deterministic handoff wrapper:
       ```bash
-      python scripts/speckit_implement_gate.py validate-offline-qa-payload \
-        --payload-file <handoff.json> \
+      python scripts/speckit_offline_qa_handoff.py \
+        --feature-id "<feature_id>" \
+        --task-id "T0XX" \
+        --attempt <n> \
         --json
       ```
-      - If validation exits non-zero: **STOP** and fix payload shape before running `scripts/offline_qa.py`.
-   8. QA agent/process returns explicit verdict from result JSON:
-      - `PASS` => append `offline_qa_passed` (with `qa_run_id`), then append `task_closed`, then update tasks.md to `[X]` and create a follow-up closure commit containing only the tasks.md checkmark and ledger event lines.
-      - `FIX_REQUIRED` => append `offline_qa_failed` (with `qa_run_id`), append `fix_started`, implement fixes, append `fix_completed`, then re-run offline QA handoff for the same task.
-      - Runner exit code is `0` on `PASS` and `1` on `FIX_REQUIRED`; treat non-zero as a blocked gate until fixed.
-   9. **Lifecycle requirement**: QA agent/process MUST be explicitly opened for the task handoff and explicitly closed after verdict (no long-lived shared QA process across tasks).
-   10. **Hard block (per-agent)**: Do NOT start another task for the same agent until its current task has `task_closed` in the ledger. Different agents may start `[P]` tasks in parallel when `assert-can-start` passes.
-   11. **CodeGraph refresh (MANDATORY after task_closed)**: Run `scripts/cgc_safe_index.sh <files changed by this task>` scoped to only the files modified. This keeps symbol resolution current for subsequent tasks' CodeGraph Recon step. Do NOT run a full repo re-index.
+      - Wrapper enforces payload schema validation (`validate-offline-qa-payload`) before running `scripts/offline_qa.py`.
+      - Default artifacts:
+        - payload: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.handoff.json`
+        - result: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.result.json`
+      - Exit code semantics: `0=PASS`, `1=FIX_REQUIRED`, `2=invalid/missing payload`.
+   4. On `PASS`: append `offline_qa_passed` (+ `qa_run_id`), append `task_closed`, then mark `[X]` in `tasks.md` and commit closure-only bookkeeping.
+   5. On `FIX_REQUIRED`: append `offline_qa_failed`, append `fix_started`/`fix_completed`, then re-run the handoff.
+   6. Do not start another task for the same agent until the current task has `task_closed`.
+   7. After `task_closed`, run `scripts/cgc_safe_index.sh <files changed by this task>` scoped to changed files only.
 
    **Per-phase push + CI QA gate (MANDATORY)**:
    - Task commits remain local until the phase is complete and checkpoint layers pass.

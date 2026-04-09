@@ -7,6 +7,68 @@ Append new entries here (not to `constitution.md`) whenever the constitution is 
 
 ---
 
+## 2.3.3 (2026-04-08)
+
+**Version change**: 2.3.2 → 2.3.3 (PATCH — machine-readable pipeline source + reason-code routing + compact-first loading)
+
+### Summary
+
+- Added machine-readable canonical pipeline matrix at `docs/governance/pipeline-matrix.yaml`.
+- Added deterministic gate reason-code catalog at `docs/governance/gate-reason-codes.yaml`.
+- Added governance doc graph file at `docs/governance/doc-graph.yaml`.
+- Updated command docs to prioritize compact contract loading and reason-code routing over repeated stop-message prose.
+
+### Files updated
+
+| File | Status |
+|------|--------|
+| `constitution.md` | ✅ updated (pipeline matrix source reference + compact-first loading + reason-code catalog + version bump) |
+| `constitution-changelog.md` | ✅ updated (this entry) |
+| `docs/governance/pipeline-matrix.yaml` | ✅ added |
+| `docs/governance/gate-reason-codes.yaml` | ✅ added |
+| `docs/governance/doc-graph.yaml` | ✅ added |
+| `.claude/commands/speckit.plan.md` | ✅ updated (compact-first contract + reason-code routing) |
+| `.claude/commands/speckit.specify.md` | ✅ updated (compact-first contract + reason-code routing) |
+| `.claude/commands/speckit.implement.md` | ✅ updated (reason-code routing guidance) |
+| `CLAUDE.md` | ✅ updated (compact-first loading rule) |
+
+### SYNC IMPACT REPORT
+
+- Canonical workflow matrix now has a machine-readable source that can be validated and consumed by scripts.
+- Deterministic gate failures now route through a shared reason-code catalog to avoid repeating large remediation prose.
+- Command consumption is compact-first to reduce recurring token load in routine runs.
+
+---
+
+## 2.3.2 (2026-04-08)
+
+**Version change**: 2.3.1 → 2.3.2 (PATCH — plan/spec deterministic gates + lightweight prompt-size CI guard)
+
+### Summary
+
+- Added deterministic gates for `/speckit.specify` and `/speckit.plan` so checklist/clarification and plan-section checks can be enforced via scripts instead of prose interpretation.
+- Added lightweight prompt word-cap validation script and CI step to prevent prompt-volume regressions in high-frequency governance/command docs.
+
+### Files updated
+
+| File | Status |
+|------|--------|
+| `constitution.md` | ✅ updated (gate catalog + version bump) |
+| `CLAUDE.md` | ✅ updated (new deterministic spec/plan gate references) |
+| `.claude/commands/speckit.specify.md` | ✅ updated (spec gates wired in command flow) |
+| `.claude/commands/speckit.plan.md` | ✅ updated (plan gates wired in command flow) |
+| `.github/workflows/ci.yml` | ✅ updated (prompt word-cap check step) |
+| `scripts/speckit_spec_gate.py` | ✅ added |
+| `scripts/speckit_plan_gate.py` | ✅ added |
+| `scripts/validate_prompt_word_caps.py` | ✅ added |
+
+### SYNC IMPACT REPORT
+
+- Specification and plan command quality gates now have deterministic script entry points with reason-coded failures.
+- CI now blocks oversized prompt-surface docs to preserve token-efficiency baseline.
+
+---
+
 ## 2.3.1 (2026-04-08)
 
 **Version change**: 2.3.0 → 2.3.1 (PATCH — deterministic gate enforcement + token-efficiency compression)

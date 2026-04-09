@@ -65,8 +65,6 @@ Python 3.12: Follow standard conventions
 
 ## Governing Principles
 
-These principles apply to **ALL processes**
-
 ### I. Human-First Decisions (NON-NEGOTIABLE)
 The human owner is always the ultimate decision-maker. The agent MUST treat the human's intent
 and judgment as primary and never override or circumvent it.
@@ -98,7 +96,9 @@ Each of the sub-clauses MUST be verified individually in the Constitution Check
 - No ad hoc work: every change must enter the speckit pipeline and ledgers.
 - No triviality exception: one-line changes follow the same gates as large features.
 - Refuse gate skips, even when asked to move faster.
-- Read `constitution.md` first (authoritative workflow/gates), then `catalog.yaml` (system map).
+- Read `constitution.md` first (workflow/gates), then `catalog.yaml` (system map).
+- Canonical pipeline matrix: `docs/governance/pipeline-matrix.yaml`.
+- Gate remediation codes: `docs/governance/gate-reason-codes.yaml`.
 
 ## Audit Trail System
 There are two event ledgers to track governance milestones and enforce state machine ordering.
@@ -107,7 +107,7 @@ There are two event ledgers to track governance milestones and enforce state mac
   
 - **Task Ledger** (`.speckit/task-ledger.jsonl`): Records task-scoped events
 
-**Instructional source**: Each skill  documents its ledger usage in its own command file (`.claude/commands/speckit.*.md`). 
+Each skill documents ledger usage in its own command file (`.claude/commands/speckit.*.md`).
 
 ### Ledger Access Pattern (All JSONL Audit Trails)
 
@@ -130,10 +130,11 @@ There are two event ledgers to track governance milestones and enforce state mac
 **Why**: Ledgers are append-only, schema-enforced state machines. Direct reads bypass validation and schema checking. The script tools enforce event sequencing and state transitions safely. Use them.
 
 **Deterministic workflow gate checks**:
-- Plan gate (requirements checklist presence/completion): `python scripts/speckit_gate_status.py --mode plan --feature-dir <FEATURE_DIR> --json`
-- Implement gate (e2e.md, matching e2e script, estimates.md, checklist summary): `python scripts/speckit_gate_status.py --mode implement --feature-dir <FEATURE_DIR> --json`
-- Implement execution gates (task preflight, task evidence, offline QA payload schema, phase close): `python scripts/speckit_implement_gate.py <subcommand> ...`
-- Tasks formatting gate (checklist shape, phase/story labels, sequential IDs, file paths): `python scripts/speckit_tasks_gate.py validate-format --tasks-file <FEATURE_DIR/tasks.md> --json`
+- Canonical command catalog lives in `constitution.md` `## Quality Gates`. Keep command docs and scripts aligned there (no duplicated gate catalogs in CLAUDE.md).
+
+**Compact-first command loading (MANDATORY)**:
+- For `.claude/commands/speckit.*.md`, read `## Compact Contract (Load First)` first.
+- Load `## Expanded Guidance (Load On Demand)` only when a deterministic gate fails or the user asks for deeper rationale.
 
 ## Operational Bootstrap
 
@@ -156,12 +157,8 @@ Requires one-time index: `scripts/cgc_index_repo.sh`
 Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app-foundation`
 
 **GitHub** (server name: `github`) — GitHub API bridge for repository and issue management:
-- `search_files` / `get_file_contents` — discover and read code in the repository
-- `list_issues` / `get_issue` / `create_issue` — manage project tasks and tracking
-- `list_pull_requests` / `get_pull_request` — review and manage PR state
-- `search_code` — cross-repository and deep-code discovery
-
-Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` with `cwd: /Users/andreborczuk/app-foundation`
+- Use for repository code/issue/PR discovery when remote context is required.
+- Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` (`cwd: /Users/andreborczuk/app-foundation`)
 
 **Mandatory workflow order**:
 1.  **Discovery**: Use `github` (if remote context needed) and `codegraph` (local context) first to identify all symbols, callers/callees, and existing issues.
@@ -204,6 +201,8 @@ Treat every generated shell script as macOS-first. Apply all three rules uncondi
   PY
   rm -f "$tmp"
   ```
+
+- **Quote args consistently**: Prefer double quotes around arguments containing `'`; otherwise use POSIX escaping (`'\''`).
 
 ### Markdown File Read Efficiency
 

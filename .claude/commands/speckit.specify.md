@@ -18,7 +18,22 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## Outline
+## Compact Contract (Load First)
+
+Run these steps first; only load **Expanded Guidance** when a gate fails or user asks for detail.
+
+1. Parse mode from `$ARGUMENTS` (`default` vs `--update-current-spec`).
+2. Default mode: create branch/spec once with `.specify/scripts/bash/create-new-feature.sh --json --short-name ...`.
+3. Update mode: resolve existing paths via `.specify/scripts/bash/check-prerequisites.sh --json --paths-only`.
+4. Run code discovery (`codegraph` first, fallback grep) before writing any spec text.
+5. Write spec from template, scaffold requirements checklist, then run:
+   - `python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json`
+   - `python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json`
+6. If clarifications exist, validate question-table format before asking:
+   - `python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json`
+7. Branch on reason codes from `docs/governance/gate-reason-codes.yaml`; emit `backlog_registered` only after gates pass.
+
+## Expanded Guidance (Load On Demand)
 
 The text the user typed after `/speckit.specify` in the triggering message **is** the feature description. If the message starts with `--update-current-spec`, treat that as a mode flag and treat the remaining text as the feature description delta. Do not ask the user to repeat it unless the resulting description is empty.
 
@@ -44,7 +59,7 @@ Given that feature description, do this:
       ```
 
    b. Parse JSON output and treat it as authoritative for `BRANCH_NAME`, `FEATURE_DIR`, and `SPEC_FILE`.
-   c. Run this script once per feature. For single quotes in args like "I'm Groot", escape as `'\''` or use double quotes.
+   c. Run this script once per feature. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 4. **If in update mode (`--update-current-spec`) resolve existing spec paths**:
    - Run:
@@ -55,8 +70,7 @@ Given that feature description, do this:
 
    - Parse `FEATURE_DIR` and `FEATURE_SPEC` from JSON output.
    - Set `SPEC_FILE=FEATURE_SPEC`.
-   - If `SPEC_FILE` does not exist, **STOP** and tell the user:
-     > "No existing spec.md was found for this branch. Run `/speckit.specify` without `--update-current-spec` first."
+   - If `SPEC_FILE` does not exist: stop (`missing_spec_file`).
 
 5. **Codebase discovery scan (mandatory before writing any spec)**:
 
@@ -109,44 +123,41 @@ Given that feature description, do this:
 
 9. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
 
-   a. **Create Spec Quality Checklist**: Pre-scaffold the checklist file from the template:
+   a. **Create Spec Quality Checklist**: Pre-scaffold checklist from template:
 
       1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
          - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.specify owns
          - Copies `.specify/templates/requirements-checklist-template.md` to `$FEATURE_DIR/checklists/requirements.md`
          - Performs scalar substitutions: `[FEATURE_NAME]` → the feature name, `[DATE]` → today's date, etc.
 
-      2. The checklist is now pre-structured with validation items covering:
-         - Content Quality: no implementation details, focused on user value, non-technical language
-         - Requirement Completeness: testable FRs, measurable success criteria, edge case coverage, boundary assumptions
-         - Feature Readiness: FR coverage, user scenarios, no implementation leakage, external integration verification
-         - All 32 checklist items are pre-populated; you only fill in the checkbox marks and address findings
+   b. **Run deterministic checklist + clarification extraction**:
+      ```bash
+      python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json
+      python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json
+      ```
 
-   b. **Run Validation Check**: Review the spec against each checklist item:
-      - For each item, determine if it passes or fails
-      - Document specific issues found (quote relevant spec sections)
-      - If scope exclusions reference external tools/packages ("covered by X", "handled by X"), fail validation unless those tools have been verified as installable — run the appropriate registry check (`npm view`, `pip index versions`, `gh api repos/`) and confirm the tool exists. A GitHub repo alone is not sufficient; the package must be installable from its claimed registry.
-      - If live-vs-local state is in scope, fail validation unless requirements explicitly cover source-of-truth ownership, reconcile-before-decision expectation, stale fallback, and fail policy
-      - If local DB mutation paths are in scope, fail validation unless requirements explicitly cover transaction boundaries, rollback/no-partial-write behavior, and retry/idempotency expectations
-      - If venue-constrained entities are in scope, fail validation unless requirements explicitly cover metadata-first valid-object discovery, validated live-data request boundaries, and discovery-failure policy
+   c. **Apply quality invariants, then re-run deterministic checks**:
+      - Verify installable external-package claims (`npm view`, `pip index versions`, `gh api repos/`) when exclusions reference external tools.
+      - If live-vs-local state is in scope, requirements must include ownership, reconciliation order, stale fallback, and fail policy.
+      - If local DB mutation paths are in scope, requirements must include transaction boundaries and rollback/no-partial-write behavior.
+      - If venue-constrained entities are in scope, requirements must include metadata-first discovery + validated live-data request policy.
+      - Re-run `checklist-status` after each edit iteration (max 3).
 
-   c. **Handle Validation Results**:
+   d. **Handle deterministic results**:
 
-      - **If all items pass**: Mark checklist complete and proceed to step 10
+      - If `checklist-status` exits non-zero: fix checklist/spec issues and re-run (max 3 iterations).
+      - If still failing after 3 iterations: document unresolved items in checklist notes and warn user.
 
-      - **If items fail (excluding [NEEDS CLARIFICATION])**:
-        1. List the failing items and specific issues
-        2. Update the spec to address each issue
-        3. Re-run validation until all items pass (max 3 iterations)
-        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+      - If `extract-clarifications` reports markers:
+        1. Group into at most 3 questions and draft one markdown block containing all questions.
+        2. Validate draft format before presenting:
+           ```bash
+           python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json
+           ```
+        3. If format check fails, fix format and re-run.
+        4. Present validated questions, collect responses, replace markers, then re-run `extract-clarifications`.
 
-      - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract markers and group into at most 3 high-impact questions.
-        2. Ask all questions together using a compact table: `Option | Answer | Implications`.
-        3. Include options `A/B/C/Custom` and wait for user selections.
-        4. Replace markers with selected answers and re-run validation.
-
-   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+   e. **Update checklist file** after each iteration with current pass/fail state.
 
 10. **T-shirt size estimate**: After spec validation passes, produce a rough complexity estimate for the feature as a whole. This is NOT task-level — it is an epic-level signal for prioritization across features.
 

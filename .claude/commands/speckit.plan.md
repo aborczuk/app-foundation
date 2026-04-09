@@ -16,9 +16,24 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## Outline
+## Compact Contract (Load First)
 
-1. **Setup**: Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+Run these steps first; only load **Expanded Guidance** when a gate fails or the user asks for detail.
+
+1. Run `.specify/scripts/bash/setup-plan.sh --json`; parse `FEATURE_SPEC`, `IMPL_PLAN`, `SPECS_DIR`, `BRANCH`.
+2. Derive `FEATURE_DIR="$(dirname "$FEATURE_SPEC")"` and run deterministic gates:
+   - `python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
+   - `python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json`
+   - `python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --json`
+3. Generate/update plan artifacts from template flow (`plan.md`, `data-model.md`, `contracts/`, `quickstart.md`), then run:
+   - `python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json`
+   - `python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
+4. Emit `plan_started`; run `/speckit.planreview`; if open FQs remain run `/speckit.feasibilityspike`; emit `plan_approved` only on success.
+5. On any non-zero gate result, route by reason code using `docs/governance/gate-reason-codes.yaml`.
+
+## Expanded Guidance (Load On Demand)
+
+1. **Setup**: Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR, BRANCH. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 1a. **Specification checklist gate (MANDATORY — hard block)**:
    - Derive `FEATURE_DIR` from `FEATURE_SPEC` (parent directory of `spec.md`).
@@ -26,33 +41,24 @@ You **MUST** consider the user input before proceeding (if not empty).
      ```bash
      python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json
      ```
-   - If the command exits non-zero or reports `ok: false`: **STOP immediately** with this message:
-
-     > **Specification checklist is incomplete. `/speckit.plan` cannot proceed.**
-     > Complete all checklist items in `FEATURE_DIR/checklists/` (including `requirements.md`) before planning, then re-run `/speckit.plan`.
-     > This is a non-negotiable pre-planning quality gate.
-
+   - If command exits non-zero: stop and route by reason (`missing_requirements_checklist`, `incomplete_checklist_items`).
    - On success, continue.
 
-1b. **External ingress + runtime readiness gate initialization (MANDATORY)**:
-   - Populate the `## External Ingress + Runtime Readiness Gate` section in plan.md.
-   - Detect whether the feature includes external ingress surface area (examples: webhook receiver, callback endpoint, public event URL, externally triggered route).
-   - If ingress applies, each row in that gate table MUST be assigned one of: `✅ Pass`, `❌ Fail`, or `N/A` with rationale.
-   - If ingress does not apply, mark rows `N/A` with explicit rationale.
-   - **Do not leave any gate row blank.**
-   - If any row is `❌ Fail`, planning may continue, but the plan MUST explicitly state that implementation readiness is blocked until the gate is resolved (and `/speckit.tasking` must emit a `T000` gate task).
+1b. **Core mechanism clarity gate (MANDATORY)**:
+   - Run:
+     ```bash
+     python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json
+     ```
+   - Legacy specs (`specs/000`-`specs/017`) downgrade `missing_named_automated_action` and missing FR section to warnings.
+   - Newer specs still hard-block on non-zero with `missing_named_automated_action`.
+   - Record the matched line; this action must appear as a node with inbound trigger edge in Architecture Flow.
 
-1c. **Core mechanism clarity gate (MANDATORY)**:
-   - Read the spec's Functional Requirements section.
-   - Identify the PRIMARY AUTOMATED ACTION: the specific tool, command, agent, or service call
-     that executes the core work this feature exists to do.
-   - If this action is not named in any FR (i.e., delegated entirely to the internals of an
-     adopted dependency or boundary assumption): **STOP** with this message:
-     > "spec.md does not name the automated action this feature triggers. Add an FR that explicitly
-     > names the command/tool/agent (e.g., 'System MUST invoke Claude Code CLI via `claude` to
-     > execute the agent step'). Then re-run /speckit.plan."
-   - If named: record it. This named action becomes a required node in the Architecture Flow
-     diagram — it MUST appear and MUST have an inbound edge showing how it is triggered.
+1c. **Research prerequisite gate (MANDATORY)**:
+   - Run:
+     ```bash
+     python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --json
+     ```
+   - If command exits non-zero: stop and require `/speckit.research` completion before planning.
 
 2. **Load context**: Read FEATURE_SPEC and `constitution.md` (repo root). Load IMPL_PLAN template (already copied).
 
@@ -68,6 +74,14 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Phase 1: Generate data-model.md, contracts/, quickstart.md
    - Phase 1: Update agent context by running the agent script
    - Re-evaluate Constitution Check post-design
+   - Validate plan section completeness (required headings + ingress gate statuses):
+     ```bash
+     python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json
+     ```
+   - Validate required Phase 1 artifacts:
+     ```bash
+     python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json
+     ```
 
 4. **Emit pipeline event** and **auto-invoke sub-processes**:
 
@@ -91,20 +105,15 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    f. Report: "Plan phase complete. Technology Direction filled, Technology Selection [confirmed / TBD pending spike]. Suggested next: `/speckit.solution`."
 
-   **Hard rule**: If feasibilityspike fails (any FQ FAILED), the plan phase does NOT emit `plan_approved` and does NOT proceed to `/speckit.solution`. Route back to plan with spike evidence.
+   **Hard rule**: If feasibilityspike fails, do not emit `plan_approved`; route back to plan with spike evidence.
 
 ## Phases
 
 ### Phase 0: Research prerequisite
 
-0. **Research prerequisite gate (MANDATORY)**:
-   - Check that `research.md` exists in FEATURE_DIR with ALL required sections:
-     `## Zero-Custom-Server Assessment`, `## Repo Assembly Map`, `## Package Adoption Options`,
-     `## Conceptual Patterns`
-   - If missing or incomplete: **STOP** with this message:
-     > "Run `/speckit.research` first to assemble prior art and architecture options, then re-run `/speckit.plan`."
-   - If present: load research.md as context. The Repo Assembly Map governs which FRs have existing
-     code sources — the architecture MUST use those sources or explicitly justify ignoring them.
+0. **Research gate execution**:
+   - Use `speckit_plan_gate.py research-prereq` result from step 1c as the deterministic source of truth.
+   - Load `research.md` only when gate passes; Repo Assembly Map remains mandatory architecture input.
 
 1. **Codebase research** (if `codebase-lsp` MCP server is connected):
    see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST use `codegraph` first for discovery/scope (find symbols, callers/callees, imports, and impact scope) before writing, then `codebase-lsp`:

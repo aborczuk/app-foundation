@@ -32,7 +32,7 @@ Execution steps:
    - `IMPL_PLAN` (plan.md path)
    - (Optionally capture `FEATURE_SPEC`, `TASKS`.)
    - If JSON parsing fails, abort and instruct user to re-run `/speckit.plan` or verify feature branch environment.
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+   - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 2. Load plan artifacts from FEATURE_DIR:
    - **Required**: plan.md
