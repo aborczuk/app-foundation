@@ -1,13 +1,9 @@
 ---
 description: Create or update the feature specification from a natural language feature description.
 handoffs: 
-  - label: Build Technical Plan
-    agent: speckit.plan
-    prompt: Create a plan for the spec. I am building with...
-  - label: Clarify Spec Requirements
-    agent: speckit.clarify
-    prompt: Clarify specification requirements
-    send: true
+  - label: Research Prior Art & Integration Options
+    agent: speckit.research
+    prompt: Research patterns, prior art, and integration options for the spec...
 ---
 
 ## User Input
@@ -101,7 +97,7 @@ Given that feature description, do this:
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
        Each criterion must be verifiable without implementation details
     7. Identify Key Entities (if data involved)
-    8. Return: SUCCESS (spec ready for planning)
+    8. Return: SUCCESS (spec ready for research)
 
 8. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
    - In **default mode**, this writes the newly created spec file.
@@ -162,7 +158,7 @@ Given that feature description, do this:
    {"event": "backlog_registered", "feature_id": "NNN", "phase": "spec", "actor": "<agent-id>", "timestamp_utc": "..."}
    ```
 
-12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase (`/speckit.research`).
    - In **update mode**, explicitly report that existing spec scope was updated in-place (no new branch created).
 
 **NOTE:** In default mode, the script creates and checks out a new branch and initializes the spec file before writing. In update mode, no new branch is created.
