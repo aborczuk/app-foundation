@@ -1,217 +1,182 @@
-# Feature Specification: [FEATURE NAME]
+# Feature Specification: Deterministic Pipeline Driver with LLM Handoff
 
-**Feature Branch**: `[###-feature-name]`
-**Created**: [DATE]
+**Feature Branch**: `019-token-efficiency-docs`
+**Created**: 2026-04-09
 **Status**: Draft
-**Input**: User description: "$ARGUMENTS"
+**Input**: User description: "Introduce a deterministic pipeline driver that executes scripted gates/steps directly, invokes LLM only for generative phases, and enforces low-token response parsing defaults."
 
 ## One-Line Purpose *(mandatory)*
 
-<!--
-  REQUIRED: Exactly one sentence. Subject = actor. Verb = behavior. Object = outcome.
-  No implementation language. If it requires a second sentence, it is not done yet.
--->
-
-[Single sentence: who does what to achieve what outcome]
+A build operator runs one deterministic pipeline driver command that advances speckit phases automatically and invokes the LLM only when generation work is required.
 
 ## Consumer & Context *(mandatory)*
 
-<!--
-  REQUIRED: Exactly one sentence identifying who or what receives the output and in what
-  environment (browser session, API client, batch job, pipeline stage, etc.).
-  This drives architecture decisions without prescribing them.
--->
-
-[Single sentence: who/what consumes this and in what context]
+Speckit operators and automation jobs consume this capability from local CLI execution in the repository root during normal spec-to-implementation workflows.
 
 ## User Scenarios & Testing *(mandatory)*
 
-<!--
-  IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
-  Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
-  you should still have a viable MVP (Minimum Viable Product) that delivers value.
-  
-  Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
-  Think of each story as a standalone slice of functionality that can be:
-  - Developed independently
-  - Tested independently
-  - Deployed independently
-  - Demonstrated to users independently
--->
+### User Story 1 - Deterministic Step Routing (Priority: P1)
 
-### User Story 1 - [Brief Title] (Priority: P1)
+An operator invokes one pipeline driver command with a feature context, and the driver evaluates current ledger/artifact state, executes deterministic scripts for the current step, and returns the next actionable state without requiring prompt-level interpretation of phase rules.
 
-[Describe this user journey in plain language]
+**Why this priority**: This removes the highest-frequency source of token waste and workflow drift by replacing repeated instruction re-reading with deterministic state transitions.
 
-**Why this priority**: [Explain the value and why it has this priority level]
-
-**Independent Test**: [Describe how this can be tested independently - e.g., "Can be fully tested by [specific action] and delivers [specific value]"]
+**Independent Test**: Can be fully tested by running the driver against a feature fixture where deterministic gates pass/fail in known combinations and verifying that the returned next-step state is correct.
 
 **Acceptance Scenarios**:
 
-1. **Given** [initial state], **When** [action], **Then** [expected outcome]
-2. **Given** [initial state], **When** [action], **Then** [expected outcome]
+1. **Given** a feature state where the next step is deterministic and all gate inputs are present, **When** the operator runs the driver, **Then** the driver executes the mapped script, records the result, and returns the next pipeline state.
+2. **Given** a feature state where a deterministic gate fails, **When** the operator runs the driver, **Then** the driver returns a blocked state with gate identity and reason codes without requiring the LLM to inspect full logs.
+3. **Given** a feature state that requires generative output (for example spec/plan/task synthesis), **When** the operator runs the driver, **Then** the driver returns an explicit LLM handoff contract containing step name and minimal required inputs.
 
 ---
 
-### User Story 2 - [Brief Title] (Priority: P2)
+### User Story 2 - Compact Parsing Contract (Priority: P2)
 
-[Describe this user journey in plain language]
+The pipeline scripts return a compact, uniform response contract so normal success paths do not emit large payloads and orchestration only parses failure-routing fields when needed.
 
-**Why this priority**: [Explain the value and why it has this priority level]
+**Why this priority**: The biggest avoidable token burn is reading full JSON/log output on successful paths where only pass/fail matters.
 
-**Independent Test**: [Describe how this can be tested independently]
+**Independent Test**: Can be fully tested by invoking representative scripts in success, business-failure, and runtime-failure modes and verifying exit-code-first behavior plus compact payload schema.
 
 **Acceptance Scenarios**:
 
-1. **Given** [initial state], **When** [action], **Then** [expected outcome]
+1. **Given** a script invocation that succeeds, **When** the driver executes it, **Then** the driver advances without reading large detail payloads.
+2. **Given** a script invocation that returns business gate failure, **When** the driver executes it, **Then** it parses gate + reason codes and routes remediation deterministically.
+3. **Given** a script invocation that returns runtime/contract failure, **When** the driver executes it, **Then** it returns a tooling error state distinct from business gate failure.
 
 ---
 
-### User Story 3 - [Brief Title] (Priority: P3)
+### User Story 3 - Governance and Migration Safety (Priority: P3)
 
-[Describe this user journey in plain language]
+A maintainer can migrate existing command docs and scripts to the driver model incrementally while preserving ledger integrity, existing artifacts, and branch-safe rollout.
 
-**Why this priority**: [Explain the value and why it has this priority level]
+**Why this priority**: Adoption must be low risk and reversible to avoid disrupting active feature branches.
 
-**Independent Test**: [Describe how this can be tested independently]
+**Independent Test**: Can be fully tested by enabling the driver for a subset of phases and confirming no regression in ledger event sequencing or artifact expectations.
 
 **Acceptance Scenarios**:
 
-1. **Given** [initial state], **When** [action], **Then** [expected outcome]
-
----
-
-[Add more user stories as needed, each with an assigned priority]
+1. **Given** a phase migrated to driver control, **When** the phase completes, **Then** required pipeline/task ledger events remain valid and in allowed order.
+2. **Given** a phase not yet migrated, **When** the driver is used, **Then** it routes to existing command behavior without changing observable outputs.
+3. **Given** a manifest/ledger contract change, **When** governance validation runs, **Then** it fails unless command-manifest version and sync metadata are updated.
 
 ### Edge Cases
 
-<!--
-  ACTION REQUIRED: The content in this section represents placeholders.
-  Fill them out with the right edge cases.
--->
-
-- What happens when [boundary condition]?
-- How does system handle [error scenario]?
+- What happens when the driver receives an unknown phase/state not mapped in the transition matrix?
+- How does the driver handle conflicting ledger state (for example duplicate terminal events)?
+- What happens when a script exits `0` but emits malformed JSON in verbose mode?
+- How does the system behave when a required script path in command-manifest is missing at runtime?
+- What happens when a partial migration enables driver control for one phase while adjacent phases still use legacy command routing?
+- What happens when two orchestrator invocations for the same feature run concurrently?
+- What happens when ledger and filesystem artifacts disagree on phase completion?
+- How does the driver prevent duplicate event emission on retry after partial failure?
 
 ## Flowchart *(mandatory)*
 
-<!--
-  REQUIRED: Generate a Mermaid flowchart covering the happy path and every decision branch.
-  Rules:
-  - Every branch must correspond to at least one acceptance scenario above
-  - Every acceptance scenario must appear as at least one branch
-  - No orphaned branches (branches with no corresponding acceptance scenario)
-  - Use flowchart TD (top-down) direction
--->
-
 ```mermaid
 flowchart TD
-    [START] --> [first step]
-    [first step] --> [decision or outcome]
+    A[Operator runs pipeline driver] --> B[Load manifest, ledger state, and feature context]
+    B --> C{Mapped deterministic step?}
+    C -- Yes --> D[Execute mapped script]
+    D --> E{Exit code}
+    E -- 0 --> F[Advance state and return next step]
+    E -- 1 --> G[Return blocked state with gate and reason codes]
+    E -- 2 --> H[Return tooling error state]
+    C -- No --> I{Generative phase required?}
+    I -- Yes --> J[Return LLM handoff contract with minimal inputs]
+    I -- No --> K[Return unknown-state error for maintainer action]
+    F --> L[Append required ledger events]
+    G --> L
+    J --> L
 ```
 
 ## Data & State Preconditions *(mandatory)*
 
-<!--
-  REQUIRED: What data must exist and in what state before this feature can execute.
-  Cover: required upstream records, session/auth state, consistency constraints.
-  Do NOT describe how data is stored or retrieved — only what must be true.
--->
-
-- [Required upstream record or auth state]
-- [Consistency constraint that must hold]
+- The feature directory exists with canonical artifact paths (`spec.md`, optional phase artifacts, and checklist directory).
+- Pipeline and task ledgers are readable and contain valid JSONL entries up to the current transition point.
+- Command manifest files exist and pass mirror consistency validation.
+- Deterministic scripts referenced by the command manifest are present in the repository.
 
 ## Inputs & Outputs *(mandatory)*
 
-<!--
-  REQUIRED: Two-row table only. Set Format to "Caller-defined" — do not specify
-  field names, types, or transport layer. That is for the technical plan.
--->
-
 | Direction | Description | Format |
 | :-- | :-- | :-- |
-| Input | [what goes in] | Caller-defined |
-| Output | [what comes out] | Caller-defined |
+| Input | Driver invocation context including feature identifier, current phase intent, and repository state | Caller-defined |
+| Output | Compact orchestration result describing next state, blocking reason codes, or LLM handoff payload | Caller-defined |
 
 ## Constraints & Non-Goals *(mandatory)*
 
-<!--
-  REQUIRED: Up to three sub-sections.
-  Must NOT = hard behavioral limits the implementation cannot violate.
-  Adopted dependencies = external tools/packages that deliver part of the feature's capability.
-    These are IN SCOPE — they require integration work (install, configure, verify, test, document).
-    Do NOT list adopted dependencies under "Out of scope" — that erases them from tasks and testing.
-  Out of scope = things this feature genuinely does NOT do, even via external tools.
--->
-
 **Must NOT**:
-- [Hard limit, e.g., "Must NOT expose raw error stack traces to the consumer"]
-- [Hard limit, e.g., "Must NOT block the calling thread during processing"]
+- Must NOT remove LLM-generated deliverables from spec/plan/tasking phases.
+- Must NOT bypass existing ledger transition rules or required event contracts.
+- Must NOT parse or emit verbose script payloads on success paths by default.
+- Must NOT introduce branch-destructive automation (forced resets, implicit rebases, or unapproved merges).
 
-**Adopted dependencies** *(include if feature uses external tools/packages to deliver capability)*:
-- [External tool, e.g., "CodeGraphContext — provides graph-based code intelligence (search, callers, hierarchy). Requires: install, index build, MCP registration, verification."]
+**Adopted dependencies**:
+- Existing speckit deterministic gate scripts (`speckit_gate_status.py`, `speckit_spec_gate.py`, `speckit_plan_gate.py`, `speckit_tasks_gate.py`, `speckit_implement_gate.py`) for phase checks.
+- Existing ledger tooling (`pipeline_ledger.py`, `task_ledger.py`) for authoritative event validation and append operations.
+- Command manifest governance files (`.specify/command-manifest.yaml`, `command-manifest.yaml`) as script/event mapping source of truth.
 
-**Out of scope** *(things this feature genuinely does not do, even via external tools)*:
-- [True exclusion, e.g., "Multi-repository support"]
-- [True exclusion, e.g., "Cloud-hosted deployment"]
+**Out of scope**:
+- Replacing narrative quality of LLM-generated specs/plans with template-only automation.
+- Rewriting all existing command documents in one migration step.
+- Introducing external orchestrators or hosted workflow engines for this driver.
 
 ## Requirements *(mandatory)*
 
-<!--
-  ACTION REQUIRED: The content in this section represents placeholders.
-  Fill them out with the right functional requirements.
--->
-
 ### Functional Requirements
 
-- **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
-- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]
-- **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
-- **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
-- **FR-005**: System MUST [behavior, e.g., "log all security events"]
-
-*Example of marking unclear requirements:*
-
-- **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
-- **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
+- **FR-001**: System MUST invoke a single deterministic driver command that resolves current phase state and dispatches mapped deterministic scripts without requiring prompt-level workflow interpretation.
+- **FR-002**: System MUST treat script exit codes with standardized semantics (`0` success, `1` business/gate failure, `2` runtime/contract failure) for orchestration routing.
+- **FR-003**: System MUST read only minimal payload fields on non-zero exits (`gate`, `reasons`, `error_code`) and avoid full-output parsing on success by default.
+- **FR-004**: System MUST return an explicit LLM handoff contract when the next step requires generative work, including step identifier and minimal required input paths.
+- **FR-005**: System MUST preserve existing ledger invariants by validating and emitting required pipeline/task events through existing ledger tooling.
+- **FR-006**: System MUST source command-to-script routing from command-manifest and fail deterministically when mappings are missing or target scripts do not exist.
+- **FR-007**: System MUST support incremental migration mode where migrated phases use driver routing and non-migrated phases continue legacy command flow.
+- **FR-008**: System MUST provide optional verbose/debug output only when explicitly requested, and keep default response payload compact.
+- **FR-009**: System MUST enforce manifest governance such that ledger contract changes require command-manifest update plus manifest version/timestamp update in the same change set.
+- **FR-010**: System MUST expose deterministic blocked-state reason codes compatible with `docs/governance/gate-reason-codes.yaml` remediation routing.
+- **FR-011**: System MUST define deterministic precedence rules for state reconciliation when ledger events and artifact presence conflict.
+- **FR-012**: System MUST require deterministic post-LLM artifact validation before emitting success events to pipeline/task ledgers.
+- **FR-013**: System MUST make orchestration retries idempotent so repeated invocation does not duplicate terminal events or corrupt phase progression.
+- **FR-014**: System MUST enforce one active orchestrator execution per feature context using a lock or equivalent concurrency guard.
+- **FR-015**: System MUST execute only command-manifest allowlisted scripts for deterministic steps and reject unmapped execution requests.
+- **FR-016**: System MUST support a strict minimal-output mode where success paths return compact envelopes and detailed diagnostics are opt-in.
+- **FR-017**: System MUST version orchestration and gate payload schemas with an explicit `schema_version` field and fail deterministically on unsupported versions.
+- **FR-018**: System MUST enforce per-step timeout and cancellation behavior with deterministic blocked-state routing when execution exceeds configured limits.
+- **FR-019**: System MUST define deterministic compensation/recovery behavior for partial-success states (for example artifact written but success event not emitted).
+- **FR-020**: System MUST propagate a run-scoped correlation identifier across orchestrator outputs and ledger emissions for end-to-end traceability.
+- **FR-021**: System MUST support a dry-run mode that resolves and reports planned step execution without mutating artifacts or ledgers.
+- **FR-022**: System MUST support explicit human-approval breakpoints for configured steps before final success-event emission.
 
 ### Key Entities *(include if feature involves data)*
 
-- **[Entity 1]**: [What it represents, key attributes without implementation]
-- **[Entity 2]**: [What it represents, relationships to other entities]
+- **Pipeline Driver State**: Resolved orchestration state for a feature, including current phase, next action type (deterministic vs LLM), and block status.
+- **Step Mapping**: Manifest-defined relation between pipeline command/phase and executable deterministic scripts.
+- **Handoff Contract**: Compact payload returned to the LLM layer when generation is required (step, required inputs, and constraints).
+- **Gate Outcome**: Structured result of deterministic script execution containing exit classification and reason codes.
 
 ## Success Criteria *(mandatory)*
 
-<!--
-  ACTION REQUIRED: Define measurable success criteria.
-  These must be technology-agnostic and measurable.
--->
-
 ### Measurable Outcomes
 
-- **SC-001**: [Measurable metric, e.g., "Users can complete account creation in under 2 minutes"]
-- **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
-- **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
-- **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
+- **SC-001**: For deterministic-only transitions, median orchestration token usage decreases by at least 50% versus current command-doc-driven execution path.
+- **SC-002**: At least 95% of successful deterministic step executions complete without parsing verbose script output.
+- **SC-003**: Pipeline/task ledger validation passes with zero new ordering/schema regressions across migrated phases.
+- **SC-004**: At least one end-to-end feature flow runs in mixed migration mode (driver + legacy phases) with identical observable artifacts and gate decisions.
 
 ## Definition of Done *(mandatory)*
 
-<!--
-  REQUIRED: Exactly one sentence. Describes the observable product-level state
-  that means this is shipped in production — not just "ACs pass."
-  Must reference production environment. Must reference any latency or quality
-  threshold stated in the acceptance scenarios if one exists.
--->
-
-[Single sentence: observable state in production that means this feature is shipped]
+In production development workflow, operators can run one deterministic pipeline driver that advances deterministic phases automatically, routes failures by reason code, and invokes the LLM only for required generation handoffs while preserving all ledger and governance guarantees.
 
 ## Open Questions *(include if any unresolved decisions exist)*
 
-<!--
-  List unresolved decisions that would materially change the ACs if assumed wrong.
-  Format: OQ-N: [Question] Stakes: [what goes wrong if assumed incorrectly]
-  Do NOT answer OQs here — surface only.
--->
-
-- **OQ-1**: [Question] Stakes: [consequence of wrong assumption]
+- **OQ-1**: Should the driver persist orchestration snapshots to a dedicated state file or derive state solely from ledgers + artifacts each run? Stakes: wrong choice could increase complexity or create stale-state drift.
+- **OQ-2**: Should legacy phase routing be controlled by per-phase flags in manifest or by a single global migration mode? Stakes: incorrect mechanism could make rollout harder to audit.
+- **OQ-3**: What exact reconciliation precedence should apply when ledger says phase complete but required artifact is missing (or the inverse)? Stakes: wrong precedence can cause skipped work or duplicate execution.
+- **OQ-4**: Should feature-level orchestration locking use file locks, ledger locks, or process registry semantics? Stakes: weak locking risks duplicate event writes and race-condition regressions.
+- **OQ-5**: What is the canonical minimal success payload schema for all gate/orchestrator scripts (`ok/mode` only vs `ok/mode/meta-lite`)? Stakes: inconsistent schema causes parser drift and token creep.
+- **OQ-6**: What timeout defaults should apply per phase type, and should timeout thresholds be manifest-driven or hardcoded? Stakes: wrong defaults can either stall pipeline progress or cause premature failure churn.
+- **OQ-7**: What is the required rollback behavior when a deterministic step mutates files but fails before ledger emission? Stakes: undefined rollback semantics can produce non-reproducible state and duplicate work.
+- **OQ-8**: Which steps require mandatory human approval breakpoints before event emission versus auto-advance? Stakes: weak approval boundaries can violate governance intent or slow routine flows unnecessarily.
