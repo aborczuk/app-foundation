@@ -219,7 +219,7 @@ section_preflight() {
   pass "codegraphcontext importable."
 
   info "Checking cgc CLI..."
-  uv run cgc --help >/dev/null 2>&1 || fail "cgc CLI not available — run: uv sync"
+  uv run --no-sync cgc --help >/dev/null 2>&1 || fail "cgc CLI not available — ensure codegraphcontext is installed in .venv"
   pass "cgc CLI available."
 
   info "Running pytest collection smoke test..."
@@ -357,12 +357,12 @@ section_us3() {
 
   # 2. CGC CLI works
   info "Verifying cgc CLI responds to --help..."
-  uv run cgc --help >/dev/null 2>&1 || fail "cgc CLI not available."
+  uv run --no-sync cgc --help >/dev/null 2>&1 || fail "cgc CLI not available."
   pass "cgc CLI available."
 
   # 3. CGC index artifacts exist
   info "Checking for CGC index artifacts..."
-  if [ -d "$REPO_ROOT/.codegraph" ] || find "$REPO_ROOT" -maxdepth 2 -name "*.kuzudb" -o -name "kuzu*" 2>/dev/null | grep -q .; then
+  if [ -d "$REPO_ROOT/.codegraphcontext/db" ] || find "$REPO_ROOT/.codegraphcontext" -maxdepth 3 \( -name "*.kuzudb" -o -name "kuzu*" \) 2>/dev/null | grep -q .; then
     pass "CGC index artifacts found."
   else
     fail "No CGC index artifacts found — run: $REPO_ROOT/scripts/cgc_index_repo.sh"
@@ -512,10 +512,10 @@ PY
 
   # 7. .gitignore excludes CGC index artifacts
   info "Verifying .gitignore excludes CGC index artifacts..."
-  if grep -q "codegraph\|\.codegraph" "$REPO_ROOT/.gitignore" 2>/dev/null; then
+  if grep -q "codegraph\|\.codegraphcontext" "$REPO_ROOT/.gitignore" 2>/dev/null; then
     pass ".gitignore excludes CGC index artifacts."
   else
-    fail ".gitignore does not exclude CGC index artifacts — add .codegraph/ pattern."
+    fail ".gitignore does not exclude CGC index artifacts — add .codegraphcontext/db/ pattern."
   fi
 
   # 8. codebase-lsp independence test

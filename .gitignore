@@ -221,8 +221,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-# CodeGraphContext index artifacts (machine-local, regenerated)
-.codegraph/
+# CodeGraphContext runtime/index artifacts (machine-local, regenerated)
+.codegraphcontext/db/
+.codegraphcontext/.uv-cache/
 *.kuzudb
 *.kuzudb-wal
 *.kuzudb-shm

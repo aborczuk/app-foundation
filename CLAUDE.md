@@ -178,6 +178,12 @@ Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github
 - Repository command wrapper note: `uv run cgc ...` is routed through
   `csp_trader.cgc_guard` (project script) and enforces these index guards.
 
+**CodeGraph directories (canonical)**:
+- `.codegraphcontext/` — single canonical CodeGraph home for this repo.
+  - `config.yaml` and optional `.env`: repo-local configuration
+  - `db/`: generated runtime/index artifacts (Kuzu/Falkor files, sockets)
+  - `.uv-cache/`: CodeGraph uv cache when scripts set `CGC_UV_CACHE_DIR`
+
 ### Shell Script Compatibility (macOS-first)
 
 Treat every generated shell script as macOS-first. Apply all three rules unconditionally — macOS uses BSD core utilities that differ from GNU/Linux.
