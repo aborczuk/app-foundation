@@ -31,6 +31,7 @@ Assemble pieces from multiple repositories to cover all FRs. Each row = one repo
 | tox-dev/filelock | `src/filelock/_api.py` | FR-014 | File lock primitive maps directly to clarified `.speckit/locks/<feature_id>.lock` requirement. |
 | python-jsonschema/jsonschema | `jsonschema/validators.py` | FR-016, FR-017 | Deterministic schema validation for script envelopes and sidecar payloads. |
 | pydantic/pydantic | `pydantic` models (package-level) | FR-003, FR-016, FR-017, FR-026 | Strict typed envelope models and backward-compatible schema-version parsing. |
+| pydantic/pydantic-ai | `pydantic_ai` package modules | FR-004 (partial), FR-026 (partial) | Strong candidate for typed LLM handoff contracts and structured drill-down assistant flows; should be isolated from deterministic orchestration core. |
 
 **After assembly**: which FRs remain uncovered and require net-new code?
 - **FR-004**: standardized LLM handoff contract generator tied to pipeline state.
@@ -52,6 +53,7 @@ Installable packages only (verified via `pip index versions`, `npm view`, or `gh
 | filelock | 3.19.1 | FR-014 | 1 | Verified via `python3 -m pip index versions filelock` |
 | pydantic | 2.12.5 | FR-003, FR-016, FR-017, FR-026 | 2 | Verified via `python3 -m pip index versions pydantic` |
 | jsonschema | 4.25.1 | FR-016, FR-017 | 2 | Verified via `python3 -m pip index versions jsonschema` |
+| pydantic-ai | 0.8.1 | FR-004 (partial), FR-026 (partial) | 4 | Verified via `python3 -m pip index versions pydantic-ai`; repo health: `pydantic/pydantic-ai` (stars 16201, pushed 2026-04-09) |
 
 ---
 
@@ -92,3 +94,4 @@ Anything still unknown after all research. These become [NEEDS CLARIFICATION] in
 
 - Should the orchestrator standardize on a single schema validator implementation (`pydantic` only vs `pydantic` + `jsonschema`) for compatibility boundaries?
 - For approval checkpoints (FR-022), should approvals be GitHub-native only, or abstracted to a provider-neutral adapter contract?
+- Should `pydantic-ai` be scoped only to LLM handoff/drill-down surfaces (FR-004/FR-026) while keeping deterministic orchestration paths dependency-light?
