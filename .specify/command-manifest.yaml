@@ -5,11 +5,24 @@
 #
 # Used by:
 # - scripts/pipeline_ledger.py (loads valid events + required fields)
-# - scripts/pipeline-scaffold.sh (resolves templates before LLM runs)
+# - .specify/scripts/pipeline-scaffold.py (resolves templates before LLM runs)
+
+manifest:
+  version: "1.1.0"
+  updated_utc: "2026-04-09T00:00:00Z"
+  ledger_sync_policy:
+    - "If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any emitted event contract changes, update this manifest in the same PR."
+    - "On every ledger-contract change, bump manifest.version and update updated_utc."
 
 commands:
   speckit.specify:
     description: "Create or update feature specification from natural language"
+    scripts:
+      - ".specify/scripts/bash/create-new-feature.sh"
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/speckit_spec_gate.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/spec.md"
         template: "spec-template.md"
@@ -22,6 +35,9 @@ commands:
 
   speckit.clarify:
     description: "Ask targeted clarification questions and encode answers into spec"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - "scripts/pipeline_ledger.py"
     artifacts: []
     emits:
       - event: spec_clarified
@@ -29,6 +45,9 @@ commands:
 
   speckit.split:
     description: "Split an XL or L spec into smaller independently deliverable phase specs"
+    scripts:
+      - ".specify/scripts/bash/create-new-feature.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/spec.md"
         template: "spec-template.md"
@@ -39,6 +58,9 @@ commands:
 
   speckit.checklist:
     description: "Generate custom checklists for a feature based on user requirements"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/checklists/${DOMAIN}.md"
         template: "checklist-template.md"
@@ -46,6 +68,10 @@ commands:
 
   speckit.research:
     description: "Assemble prior art, patterns, and integration options for the feature"
+    scripts:
+      - ".specify/scripts/bash/setup-plan.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/research.md"
         template: "research-template.md"
@@ -55,6 +81,13 @@ commands:
 
   speckit.plan:
     description: "Create architecture, technology selection, data flow, and implementation strategy"
+    scripts:
+      - ".specify/scripts/bash/setup-plan.sh"
+      - ".specify/scripts/bash/update-agent-context.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/speckit_gate_status.py"
+      - "scripts/speckit_plan_gate.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/plan.md"
         template: "plan-template.md"
@@ -71,6 +104,9 @@ commands:
 
   speckit.planreview:
     description: "Identify underspecified areas in the current plan by asking targeted clarification questions"
+    scripts:
+      - ".specify/scripts/bash/setup-plan.sh"
+      - "scripts/pipeline_ledger.py"
     artifacts: []
     emits:
       - event: planreview_completed
@@ -78,6 +114,10 @@ commands:
 
   speckit.feasibilityspike:
     description: "Prove all Open Feasibility Questions in plan with targeted probes"
+    scripts:
+      - ".specify/scripts/bash/setup-plan.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/spike.md"
         template: "spike-template.md"
@@ -89,6 +129,10 @@ commands:
 
   speckit.tasks:
     description: "Generate actionable, dependency-ordered tasks.md for the feature"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/speckit_tasks_gate.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/tasks.md"
         template: "tasks-template.md"
@@ -96,6 +140,11 @@ commands:
 
   speckit.tasking:
     description: "Generate the initial task breakdown (tasks.md) from a proven plan"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/speckit_tasks_gate.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/tasks.md"
         template: "tasks-template.md"
@@ -105,6 +154,10 @@ commands:
 
   speckit.sketch:
     description: "Generate solution sketches, test specifications, and acceptance test code for each task"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: ".speckit/tasks/${TASK_ID}.md"
         template: "hud-code-template.md"
@@ -118,6 +171,10 @@ commands:
 
   speckit.estimate:
     description: "Estimate fibonacci complexity for each task by evaluating codebase"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/estimates.md"
         template: "estimates-template.md"
@@ -129,11 +186,16 @@ commands:
 
   speckit.breakdown:
     description: "Break down 8 or 13-point tasks in estimates.md into smaller pieces (≤5 points each)"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
     emits: []
 
   speckit.analyze:
     description: "Perform cross-artifact consistency and quality analysis after task generation"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/analysis.md"
         template: ""  # generated content, analysis is report-only
@@ -143,6 +205,10 @@ commands:
 
   speckit.solutionreview:
     description: "Cross-sketch quality review after tasking/sketch/estimate converge"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/solutionreview.md"
         template: "solutionreview-template.md"
@@ -152,6 +218,8 @@ commands:
 
   speckit.solution:
     description: "LLD solutioning phase — orchestrates tasking → sketch → estimate → solutionreview loop"
+    scripts:
+      - "scripts/pipeline_ledger.py"
     artifacts: []
     emits:
       - event: solution_approved
@@ -159,6 +227,10 @@ commands:
 
   speckit.e2e:
     description: "Generate E2E testing pipeline artifacts (e2e.md + executable script)"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - ".specify/scripts/pipeline-scaffold.py"
+      - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/e2e.md"
         template: "e2e-template.md"
@@ -170,42 +242,66 @@ commands:
 
   speckit.e2e-run:
     description: "Execute the E2E testing pipeline for the current feature as automation-first acceptance gate"
+    scripts:
+      - "scripts/e2e_${FEATURE_SLUG}.sh"
     artifacts: []
     emits: []
 
   speckit.checkpoint:
     description: "Validate a phase checkpoint from tasks.md by running the software and verifying observable behavior"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - "scripts/speckit_implement_gate.py"
     artifacts: []
     emits: []
 
   speckit.implement:
     description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
+      - "scripts/speckit_gate_status.py"
+      - "scripts/speckit_implement_gate.py"
+      - "scripts/speckit_prepare_ignores.py"
+      - "scripts/speckit_offline_qa_handoff.py"
+      - "scripts/offline_qa.py"
+      - "scripts/task_ledger.py"
+      - "scripts/cgc_safe_index.sh"
     artifacts: []
     emits: []
     # Task-level ledger events are emitted by speckit.implement (task_ledger.py not pipeline_ledger.py)
 
   speckit.taskstoissues:
     description: "Convert existing tasks into actionable, dependency-ordered GitHub issues for the feature"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
     emits: []
 
   speckit.addtobacklog:
     description: "Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, and auto-sync spec"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
     emits: []
 
   speckit.constitution:
     description: "Create or update the project constitution from interactive or provided principle inputs"
+    scripts:
+      - "scripts/validate_constitution_sync.sh"
     artifacts: []
     emits: []
 
   speckit.trello-sync:
     description: "Sync the current feature's tasks.md to a Trello board using the MCP Trello Bridge"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
     emits: []
 
   speckit.clickup-sync:
     description: "Bootstrap or report ClickUp sync status for the current speckit feature tree"
+    scripts:
+      - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
     emits: []
 
