@@ -13,6 +13,20 @@ A build operator runs one deterministic pipeline driver command that advances sp
 
 Speckit operators and automation jobs consume this capability from local CLI execution in the repository root during normal spec-to-implementation workflows.
 
+## Clarifications
+
+### Session 2026-04-09
+
+- Q: What reconciliation precedence applies if ledger and artifacts disagree? → A: Ledger is authoritative; mismatch returns `state_drift_detected` and blocks until a reconcile step completes.
+- Q: What feature-level lock mechanism should orchestration use? → A: File lock at `.speckit/locks/<feature_id>.lock` with stale-lock timeout and owner metadata.
+- Q: Should default script responses be compact or full JSON? → A: Full structured JSON by default for code consumers; raw heavy debug dumps remain opt-in (`--verbose`) and exit code `2` triggers one mandatory verbose rerun.
+- Q: Should orchestrator state be persisted separately or derived each run? → A: Ledger is the sole authoritative state source for phase progression; artifact reads are validation checks only.
+- Q: How should legacy migration toggles be controlled? → A: Per-phase manifest flags (`driver_managed`) for incremental rollout and rollback.
+- Q: How should timeout policy be configured? → A: Manifest-driven per-phase-type timeouts with repo defaults fallback.
+- Q: How should partial mutation before event emission be handled? → A: Block with deterministic failure (`partial_mutation_detected`) and require explicit reconcile; no automatic rollback.
+- Q: Which steps require mandatory human approval? → A: Only irreversible/security-sensitive operations (schema/auth/destructive/external write side effects).
+- Q: What should the default human-facing step output look like? → A: Exactly three status lines (`Done`, `Next`, `Blocked`) emitted verbatim; deep diagnostics are retrieved only on explicit follow-up.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Deterministic Step Routing (Priority: P1)
@@ -44,6 +58,7 @@ The pipeline scripts return a compact, uniform response contract so normal succe
 1. **Given** a script invocation that succeeds, **When** the driver executes it, **Then** the driver advances without reading large detail payloads.
 2. **Given** a script invocation that returns business gate failure, **When** the driver executes it, **Then** it parses gate + reason codes and routes remediation deterministically.
 3. **Given** a script invocation that returns runtime/contract failure, **When** the driver executes it, **Then** it returns a tooling error state distinct from business gate failure.
+4. **Given** a step completes or blocks, **When** status is surfaced to the human, **Then** the interface emits only `Done`, `Next`, and `Blocked` lines, with no additional summary/paraphrase.
 
 ---
 
@@ -129,12 +144,12 @@ flowchart TD
 
 - **FR-001**: System MUST invoke a single deterministic driver command that resolves current phase state and dispatches mapped deterministic scripts without requiring prompt-level workflow interpretation.
 - **FR-002**: System MUST treat script exit codes with standardized semantics (`0` success, `1` business/gate failure, `2` runtime/contract failure) for orchestration routing.
-- **FR-003**: System MUST read only minimal payload fields on non-zero exits (`gate`, `reasons`, `error_code`) and avoid full-output parsing on success by default.
+- **FR-003**: System MUST parse deterministic top-level routing fields (`ok`, `gate`, `reasons`, `error_code`, `schema_version`) and use exit-code-first control flow for orchestration.
 - **FR-004**: System MUST return an explicit LLM handoff contract when the next step requires generative work, including step identifier and minimal required input paths.
 - **FR-005**: System MUST preserve existing ledger invariants by validating and emitting required pipeline/task events through existing ledger tooling.
 - **FR-006**: System MUST source command-to-script routing from command-manifest and fail deterministically when mappings are missing or target scripts do not exist.
 - **FR-007**: System MUST support incremental migration mode where migrated phases use driver routing and non-migrated phases continue legacy command flow.
-- **FR-008**: System MUST provide optional verbose/debug output only when explicitly requested, and keep default response payload compact.
+- **FR-008**: System MUST return full structured JSON diagnostics by default for machine consumers, while keeping raw heavy debug dumps opt-in via `--verbose`.
 - **FR-009**: System MUST enforce manifest governance such that ledger contract changes require command-manifest update plus manifest version/timestamp update in the same change set.
 - **FR-010**: System MUST expose deterministic blocked-state reason codes compatible with `docs/governance/gate-reason-codes.yaml` remediation routing.
 - **FR-011**: System MUST define deterministic precedence rules for state reconciliation when ledger events and artifact presence conflict.
@@ -142,13 +157,17 @@ flowchart TD
 - **FR-013**: System MUST make orchestration retries idempotent so repeated invocation does not duplicate terminal events or corrupt phase progression.
 - **FR-014**: System MUST enforce one active orchestrator execution per feature context using a lock or equivalent concurrency guard.
 - **FR-015**: System MUST execute only command-manifest allowlisted scripts for deterministic steps and reject unmapped execution requests.
-- **FR-016**: System MUST support a strict minimal-output mode where success paths return compact envelopes and detailed diagnostics are opt-in.
+- **FR-016**: System MUST define one canonical response schema used by all orchestrator/gate scripts, with stable routing fields and backward-compatible schema-version handling.
 - **FR-017**: System MUST version orchestration and gate payload schemas with an explicit `schema_version` field and fail deterministically on unsupported versions.
 - **FR-018**: System MUST enforce per-step timeout and cancellation behavior with deterministic blocked-state routing when execution exceeds configured limits.
 - **FR-019**: System MUST define deterministic compensation/recovery behavior for partial-success states (for example artifact written but success event not emitted).
 - **FR-020**: System MUST propagate a run-scoped correlation identifier across orchestrator outputs and ledger emissions for end-to-end traceability.
 - **FR-021**: System MUST support a dry-run mode that resolves and reports planned step execution without mutating artifacts or ledgers.
 - **FR-022**: System MUST support explicit human-approval breakpoints for configured steps before final success-event emission.
+- **FR-023**: System MUST trigger one deterministic verbose rerun for `exit_code=2` failures before returning final blocked diagnostics.
+- **FR-024**: System MUST emit a strict human-facing status envelope of at most three lines (`Done:`, `Next:`, `Blocked:`) for each orchestrator step result.
+- **FR-025**: System MUST keep default stdout free of large diagnostic payloads and write full structured diagnostics to deterministic sidecar files for follow-up inspection.
+- **FR-026**: System MUST provide a deterministic issue drill-down interface that, on explicit user request, reads sidecar diagnostics and returns standardized root-cause fields (`gate`, `reasons`, `error_code`, `failed_step`, `debug_path`).
 
 ### Key Entities *(include if feature involves data)*
 
@@ -162,9 +181,10 @@ flowchart TD
 ### Measurable Outcomes
 
 - **SC-001**: For deterministic-only transitions, median orchestration token usage decreases by at least 50% versus current command-doc-driven execution path.
-- **SC-002**: At least 95% of successful deterministic step executions complete without parsing verbose script output.
+- **SC-002**: At least 95% of deterministic step executions complete without requiring a verbose rerun.
 - **SC-003**: Pipeline/task ledger validation passes with zero new ordering/schema regressions across migrated phases.
 - **SC-004**: At least one end-to-end feature flow runs in mixed migration mode (driver + legacy phases) with identical observable artifacts and gate decisions.
+- **SC-005**: In normal operation, each orchestrator step response shown to the human uses only the `Done/Next/Blocked` line contract, while full diagnostics remain accessible via explicit drill-down.
 
 ## Definition of Done *(mandatory)*
 
@@ -172,11 +192,4 @@ In production development workflow, operators can run one deterministic pipeline
 
 ## Open Questions *(include if any unresolved decisions exist)*
 
-- **OQ-1**: Should the driver persist orchestration snapshots to a dedicated state file or derive state solely from ledgers + artifacts each run? Stakes: wrong choice could increase complexity or create stale-state drift.
-- **OQ-2**: Should legacy phase routing be controlled by per-phase flags in manifest or by a single global migration mode? Stakes: incorrect mechanism could make rollout harder to audit.
-- **OQ-3**: What exact reconciliation precedence should apply when ledger says phase complete but required artifact is missing (or the inverse)? Stakes: wrong precedence can cause skipped work or duplicate execution.
-- **OQ-4**: Should feature-level orchestration locking use file locks, ledger locks, or process registry semantics? Stakes: weak locking risks duplicate event writes and race-condition regressions.
-- **OQ-5**: What is the canonical minimal success payload schema for all gate/orchestrator scripts (`ok/mode` only vs `ok/mode/meta-lite`)? Stakes: inconsistent schema causes parser drift and token creep.
-- **OQ-6**: What timeout defaults should apply per phase type, and should timeout thresholds be manifest-driven or hardcoded? Stakes: wrong defaults can either stall pipeline progress or cause premature failure churn.
-- **OQ-7**: What is the required rollback behavior when a deterministic step mutates files but fails before ledger emission? Stakes: undefined rollback semantics can produce non-reproducible state and duplicate work.
-- **OQ-8**: Which steps require mandatory human approval breakpoints before event emission versus auto-advance? Stakes: weak approval boundaries can violate governance intent or slow routine flows unnecessarily.
+None at this time.

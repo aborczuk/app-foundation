@@ -166,17 +166,26 @@ Execution steps:
 
 7. Write the updated spec back to `FEATURE_SPEC`.
 
-8. **Emit pipeline event**:
+8. **Final ask-alignment pass (required)**:
+
+   - Run one final pass checking the updated spec against the original ask/context captured at the start of this clarify run:
+     - Prefer explicit `$ARGUMENTS` intent when provided.
+     - Otherwise, use the pre-clarification spec intent (problem statement, goals, and user scenarios) as the baseline ask.
+   - Confirm clarifications preserved intent, did not introduce contradictory scope, and did not drop explicitly requested behavior.
+   - If drift is found, correct the spec and re-run Validation (Step 6) before continuing.
+
+9. **Emit pipeline event**:
    
    Emit `spec_clarified` to `.speckit/pipeline-ledger.jsonl`:
    ```json
    {"event": "spec_clarified", "feature_id": "NNN", "phase": "spec", "actor": "<agent-id>", "timestamp_utc": "..."}
    ```
 
-9. Report completion (after questioning loop ends or early termination):
+10. Report completion (after questioning loop ends or early termination):
    - Number of questions asked & answered.
    - Path to updated spec.
    - Sections touched (list names).
+   - Ask-alignment result (`pass`/`corrected`) and brief drift notes when corrected.
    - Coverage summary table listing each taxonomy category with Status: Resolved (was Partial/Missing and addressed), Deferred (exceeds question quota or better suited for planning), Clear (already sufficient), Outstanding (still Partial/Missing but low impact).
    - If any Outstanding or Deferred remain, recommend whether to proceed to `/speckit.research` or run `/speckit.clarify` again later post-plan.
    - Suggested next command.

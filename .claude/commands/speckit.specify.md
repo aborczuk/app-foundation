@@ -166,14 +166,20 @@ Given that feature description, do this:
    - Output as: `**Estimated Size:** [XS/S/M/L/XL] — [1-sentence rationale]`
    - This estimate is informational only — it does NOT block any workflow step
 
-11. **Emit pipeline event**:
+11. **Final ask-alignment pass (required)**:
+
+   - Run one final pass comparing the completed spec against the original ask text parsed from Step 1 (after stripping `--update-current-spec`).
+   - Confirm all explicit asks are represented in the spec (or explicitly marked out-of-scope/assumption), and no contradictory scope was introduced.
+   - If drift or omission is found, update the spec immediately and re-run deterministic checks from Step 9 before continuing.
+
+12. **Emit pipeline event**:
    
    Emit `backlog_registered` to `.speckit/pipeline-ledger.jsonl`:
    ```json
    {"event": "backlog_registered", "feature_id": "NNN", "phase": "spec", "actor": "<agent-id>", "timestamp_utc": "..."}
    ```
 
-12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+13. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, ask-alignment result (`pass`/`corrected`), and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
    - In **update mode**, explicitly report that existing spec scope was updated in-place (no new branch created).
 
 **NOTE:** In default mode, the script creates and checks out a new branch and initializes the spec file before writing. In update mode, no new branch is created.
