@@ -8,7 +8,6 @@ import re
 import sys
 from pathlib import Path
 
-
 CODE_EXTENSIONS = {
     ".py",
     ".pyi",
@@ -78,6 +77,7 @@ def _is_large_code_file(path_text: str) -> bool:
 
 
 def main() -> int:
+    """Evaluate command payload and deny risky broad reads of large code files."""
     try:
         payload = json.load(sys.stdin)
     except Exception:

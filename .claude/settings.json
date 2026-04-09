@@ -23,6 +23,11 @@
             "type": "command",
             "command": "python3 scripts/hook_enforce_code_reads.py",
             "statusMessage": "Enforcing large code-file read policy..."
+          },
+          {
+            "type": "command",
+            "command": "python3 scripts/hook_enforce_gh_cli.py",
+            "statusMessage": "Enforcing low-payload GitHub CLI policy..."
           }
         ]
       }
