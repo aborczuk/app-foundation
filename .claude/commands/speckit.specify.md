@@ -141,38 +141,10 @@ Given that feature description, do this:
         4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
 
       - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. For each clarification needed (max 3), present options to user in this format:
-
-           ```markdown
-           ## Question [N]: [Topic]
-           
-           **Context**: [Quote relevant spec section]
-           
-           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
-           
-           **Suggested Answers**:
-           
-           | Option | Answer | Implications |
-           |--------|--------|--------------|
-           | A      | [First suggested answer] | [What this means for the feature] |
-           | B      | [Second suggested answer] | [What this means for the feature] |
-           | C      | [Third suggested answer] | [What this means for the feature] |
-           | Custom | Provide your own answer | [Explain how to provide custom input] |
-           
-           **Your choice**: _[Wait for user response]_
-           ```
-
-        3. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-           - Use consistent spacing with pipes aligned
-           - Each cell should have spaces around content: `| Content |` not `|Content|`
-           - Header separator must have at least 3 dashes: `|--------|`
-           - Test that the table renders correctly in markdown preview
-        4. Number questions sequentially
-        5. Present all questions together before waiting for responses
-        6. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        7. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        8. Re-run validation after all clarifications are resolved
+        1. Extract markers and group into at most 3 high-impact questions.
+        2. Ask all questions together using a compact table: `Option | Answer | Implications`.
+        3. Include options `A/B/C/Custom` and wait for user selections.
+        4. Replace markers with selected answers and re-run validation.
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
@@ -221,44 +193,11 @@ Every section must earn its tokens. Apply these rules when generating or updatin
 
 ### For AI Generation
 
-When creating this spec from a user prompt:
-
-
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-4. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-5. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
-
-**Examples of reasonable defaults** (don't ask about these):
-
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+- Document assumptions in the Assumptions section.
+- Prioritize clarifications: scope > security/privacy > UX > technical details.
+- Treat vague requirements as checklist failures and resolve them.
+- Use reasonable defaults unless legally/financially risky.
 
 ### Success Criteria Guidelines
 
-Success criteria must be:
-
-1. **Measurable**: Include specific metrics (time, percentage, count, rate)
-2. **Technology-agnostic**: No mention of frameworks, languages, databases, or tools
-3. **User-focused**: Describe outcomes from user/business perspective, not system internals
-4. **Verifiable**: Can be tested/validated without knowing implementation details
-
-**Good examples**:
-
-- "Users can complete checkout in under 3 minutes"
-- "System supports 10,000 concurrent users"
-- "95% of searches return results in under 1 second"
-- "Task completion rate improves by 40%"
-
-**Bad examples** (implementation-focused):
-
-- "API response time is under 200ms" (too technical, use "Users see results instantly")
-- "Database can handle 1000 TPS" (implementation detail, use user-facing metric)
-- "React components render efficiently" (framework-specific)
-- "Redis cache hit rate above 80%" (technology-specific)
+Success criteria must be measurable, technology-agnostic, user-focused, and verifiable.

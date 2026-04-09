@@ -61,9 +61,11 @@ Example: `read_markdown_section specs/020-analytics-platform/plan.md "External I
 python scripts/speckit_gate_status.py --mode plan --feature-dir <FEATURE_DIR> --json
 python scripts/speckit_gate_status.py --mode implement --feature-dir <FEATURE_DIR> --json
 python scripts/speckit_implement_gate.py <task-preflight|validate-task-evidence|validate-offline-qa-payload|phase-gate> ...
+python scripts/speckit_tasks_gate.py validate-format --tasks-file <FEATURE_DIR/tasks.md> --json
 ```
 `plan` verifies requirements checklist completeness. `implement` verifies `e2e.md`, matching E2E script, `estimates.md`, and checklist status summary.
 `speckit_implement_gate.py` verifies execution-time gates deterministically during `/speckit.implement`.
+`speckit_tasks_gate.py` verifies tasks checklist syntax and phase/story label consistency.
 All other quality checks remain command-specific (`/speckit.*`).
 
 ## Distributed Governance Model
@@ -162,4 +164,4 @@ agent processes must comply with these principles.
 Strategic governance principles (Human-First, Planning Behavior, Security First) are maintained
 in `CLAUDE.md` under **Governing Principles**.
 
-**Version**: 2.3.0 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-06 (Feasibility-First + LLD restructure)
+**Version**: 2.3.1 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-08 (Deterministic gate scripts for token-efficient command enforcement)

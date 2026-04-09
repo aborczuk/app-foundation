@@ -133,6 +133,7 @@ There are two event ledgers to track governance milestones and enforce state mac
 - Plan gate (requirements checklist presence/completion): `python scripts/speckit_gate_status.py --mode plan --feature-dir <FEATURE_DIR> --json`
 - Implement gate (e2e.md, matching e2e script, estimates.md, checklist summary): `python scripts/speckit_gate_status.py --mode implement --feature-dir <FEATURE_DIR> --json`
 - Implement execution gates (task preflight, task evidence, offline QA payload schema, phase close): `python scripts/speckit_implement_gate.py <subcommand> ...`
+- Tasks formatting gate (checklist shape, phase/story labels, sequential IDs, file paths): `python scripts/speckit_tasks_gate.py validate-format --tasks-file <FEATURE_DIR/tasks.md> --json`
 
 ## Operational Bootstrap
 
