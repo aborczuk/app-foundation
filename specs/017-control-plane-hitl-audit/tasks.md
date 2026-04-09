@@ -110,6 +110,7 @@
 - [x] T031 Run cross-story transaction-integrity validation (no partial lifecycle writes persist after failures) in /Users/andreborczuk/ib-trading/tests/unit/clickup_control_plane/test_state_store.py
 - [x] T032 Add multi-run chronological audit integration scenario (`build -> qa fail -> rework -> qa pass`) in /Users/andreborczuk/ib-trading/tests/integration/clickup_control_plane/test_webhook_to_dispatch_flow.py
 - [x] T033 Add full lifecycle phase assertions (`queued`, `running`, `waiting_input`, `passed`, `failed`, `blocked`) in /Users/andreborczuk/ib-trading/tests/contract/test_clickup_control_plane_contract.py
+- [x] T034 Add repo-local Codex `SessionStart` hook that fully reads required governance docs (`CLAUDE.md`, `constitution.md`, `catalog.md` with `catalog.yaml` fallback) via /Users/andreborczuk/app-foundation/.codex/hooks.json and /Users/andreborczuk/app-foundation/.codex/hooks/session_start_context.py
 
 ---
 

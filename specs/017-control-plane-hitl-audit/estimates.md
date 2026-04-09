@@ -1,7 +1,7 @@
 # Effort Estimate: ClickUp + n8n Operational Control Plane — Phase 3 HITL Auditability
 
 **Date**: 2026-04-04  
-**Total Points**: 98  
+**Total Points**: 100  
 **T-shirt Size**: N/A (not specified in spec.md)  
 **Estimated by**: AI (`speckit.estimate`) calibrated to current codebase complexity
 
@@ -43,6 +43,7 @@
 | T031 | 2 | Transaction-integrity cross-story validation | Additive unit/integration assertions for impossible states |
 | T032 | 2 | Multi-run chronological audit integration scenario | Focused integration scenario using existing harness with explicit history assertions |
 | T033 | 2 | Full lifecycle phase contract assertions | Additive contract checks for required lifecycle phase coverage |
+| T034 | 2 | Repo-local Codex `SessionStart` required-doc context hook | Small bounded governance automation: one hook config + one script reading known files |
 
 ## Phase Totals
 
@@ -52,8 +53,8 @@
 | Phase 2: Foundational | 27 | 7 | 3 |
 | Phase 3: US1 (P1) | 29 | 9 | 3 |
 | Phase 4: US2 (P2) | 21 | 7 | 3 |
-| Phase 5: Polish | 16 | 8 | 2 |
-| **Total** | **98** | **34** | **13** |
+| Phase 5: Polish | 18 | 9 | 2 |
+| **Total** | **100** | **35** | **13** |
 
 ## Warnings
 
@@ -62,5 +63,5 @@
 
 ## Risk-Adjusted Range
 
-- Baseline: **98 points**
-- Risk-adjusted range: **86-112 points** based on integration-test variability and state-machine edge-case handling.
+- Baseline: **100 points**
+- Risk-adjusted range: **88-114 points** based on integration-test variability and state-machine edge-case handling.
