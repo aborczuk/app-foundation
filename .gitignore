@@ -4,6 +4,8 @@ trading_state.db-wal
 trading_state.db-shm
 trading.log
 config.yaml
+dump.rdb
+logs/
 
 # Claude Code local settings (machine-specific, personal overrides)
 .claude/settings.local.json
