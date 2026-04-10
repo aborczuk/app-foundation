@@ -103,7 +103,7 @@ def test_run_step_routes_blocked_envelope() -> None:
             "import json, sys; "
             "print(json.dumps({"
             "'schema_version':'1.0.0','ok':False,'exit_code':1,"
-            "'gate':'requirements','reasons':['missing_checklist'],"
+            "'gate':'planreview_questions','reasons':['fq_count_nonzero'],"
             f"'correlation_id':'{correlation_id}'"
             "})); "
             "sys.exit(1)"
@@ -118,7 +118,7 @@ def test_run_step_routes_blocked_envelope() -> None:
     assert result["ok"] is False
     assert result["exit_code"] == 1
     assert result["process_exit_code"] == 1
-    assert result["reasons"] == ["missing_checklist"]
+    assert result["reasons"] == ["fq_count_nonzero"]
 
 
 def test_run_step_timeout_routes_runtime_failure(tmp_path: Path) -> None:
