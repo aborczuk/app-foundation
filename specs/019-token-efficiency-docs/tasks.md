@@ -43,7 +43,7 @@
 - [X] T010 [P] Implement run-scoped correlation ID propagation helper in scripts/pipeline_driver.py:build_correlation_id
 - [X] T011 Implement command coverage validator in scripts/validate_command_script_coverage.py:main
 - [X] T012 Wire coverage validator into governance checks in scripts/validate_doc_graph.sh:run_validators and scripts/validate_constitution_sync.sh:run_checks
-- [ ] T013 [P] Build shared integration flow harness in tests/integration/conftest.py:driver_flow_harness (feature fixture setup, ledger seed, route invocation, teardown) and add drift/idempotency coverage in tests/integration/test_pipeline_driver_feature_flow.py:test_reconcile_and_retry_guards using that harness
+- [X] T013 [P] Build shared integration flow harness in tests/integration/conftest.py:driver_flow_harness (feature fixture setup, ledger seed, route invocation, teardown) and add drift/idempotency coverage in tests/integration/test_pipeline_driver_feature_flow.py:test_reconcile_and_retry_guards using that harness
 
 **Checkpoint**: Deterministic core execution, lock/drift safeguards, and coverage validator are operational.
 
