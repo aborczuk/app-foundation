@@ -1,0 +1,30 @@
+{
+  "feature_id": "019",
+  "task_id": "T018",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T018.md",
+  "acceptance_criteria": [
+    "route_legacy_step returns blocked state (exit_code=1) for unmapped commands",
+    "Reason codes preserve mapping rationale (manifest_not_found, command_not_in_manifest)",
+    "Mixed-mode migration supported: legacy + deterministic routes coexist",
+    "Schema-compliant envelope with gate=command_not_driver_managed"
+  ],
+  "quality_guards": [
+    "Legacy fallback preserves deterministic blocked state semantics",
+    "Reason codes are deterministic and trace mapping decisions",
+    "Exit code 1 prevents silent failures in mixed-mode pipelines",
+    "No mutation of ledger or artifacts for legacy routes"
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "+   route_legacy_step function +   tests for blocked state and reason codes",
+  "test_runs": [
+    {
+      "command": "python -m pytest tests/unit/test_pipeline_driver.py -q",
+      "exit_code": 0,
+      "output": "21 passed"
+    }
+  ],
+  "known_risks": []
+}

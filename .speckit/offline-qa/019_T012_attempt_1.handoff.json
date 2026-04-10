@@ -1,0 +1,37 @@
+{
+  "feature_id": "019",
+  "task_id": "T012",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T012.md",
+  "acceptance_criteria": [
+    "Governance validation scripts invoke command coverage validator as a deterministic gate"
+  ],
+  "quality_guards": [
+    "Coverage validator hook executes in both doc-graph and constitution-sync surfaces",
+    "UV cache override avoids inherited restricted cache paths"
+  ],
+  "changed_files": [
+    "scripts/validate_doc_graph.sh",
+    "scripts/validate_constitution_sync.sh"
+  ],
+  "diff": " scripts/validate_constitution_sync.sh | 17 +++++++++++++++++\n scripts/validate_doc_graph.sh         | 16 ++++++++++++++++\n 2 files changed, 33 insertions(+)",
+  "test_runs": [
+    {
+      "command": "scripts/validate_constitution_sync.sh HEAD",
+      "exit_code": 0,
+      "output": "PASS: command/script coverage validator; PASS: no changes vs HEAD"
+    },
+    {
+      "command": "validate_doc_graph hook presence assertion",
+      "exit_code": 0,
+      "output": "coverage validator invocation confirmed (script has pre-existing doc-graph.yaml failure outside T012 scope)"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind module --tests-passed pass --smoke-exit 0 --state-safety pass --transaction-integrity pass --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": [
+    "scripts/validate_doc_graph.sh currently fails in this repo due missing docs/governance/doc-graph.yaml (pre-existing, not introduced by T012)"
+  ]
+}

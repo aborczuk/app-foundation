@@ -54,6 +54,11 @@ Execution steps:
    - Any remaining `NEEDS CLARIFICATION` markers in plan.md or generated artifacts — these are unresolved Phase 0 items that must be fixed in the plan before review can proceed; instruct user to re-run `/speckit.plan`
    - Any empty cells in the Constitution Check table — these are required gate items
    - Any empty cells in the `Behavior Map Sync Gate` table in plan.md — this gate must be completed before task generation
+   - Missing or empty contract sections in plan.md for:
+     - `Repeated Architectural Unit Recognition`
+     - `Pipeline Architecture Model`
+     - `Artifact / Event Contract Architecture`
+     - `Handoff Contract to Sketch`
 
 4. **Ambiguity scan** — build an internal prioritized queue of candidate questions. Do NOT output the queue. Scan for:
 
@@ -67,6 +72,12 @@ Execution steps:
    - Module boundaries implied but not explicit (e.g., "parser handles edge cases" — which ones?)
    - Data flow edges in Architecture Flow diagram that cross trust boundaries without documented validation strategy
    - Entity state transitions in data-model.md that lack a defined error/rollback path
+
+   **Plan architecture-contract gaps**:
+   - `Repeated Architectural Unit Recognition` does not define stable repeated-unit boundaries or abstraction rules
+   - `Pipeline Architecture Model` does not define deterministic stage boundaries/ownership
+   - `Artifact / Event Contract Architecture` does not define required contracts, producers/consumers, or validation ownership
+   - `Handoff Contract to Sketch` does not clearly constrain what sketch MUST preserve and what it MAY extend
 
    **State safety & reconciliation gaps** (mandatory when local state mirrors live external state):
    - Source-of-truth ownership per lifecycle field is missing or ambiguous
@@ -186,6 +197,10 @@ Execution steps:
 6. **Write answers back to plan artifacts** after each accepted answer (incremental, atomic saves):
    - Version pin resolved → update `**Technology Direction**` in plan.md Technical Context (note: Technology Selection is filled by /speckit.feasibilityspike, not here)
    - Architecture ambiguity resolved → update the relevant module entry in Project Structure or add an annotation to the Architecture Flow section
+   - Repeated-unit ambiguity resolved → update `Repeated Architectural Unit Recognition`
+   - Pipeline-stage ambiguity resolved → update `Pipeline Architecture Model`
+   - Artifact/event contract ambiguity resolved → update `Artifact / Event Contract Architecture`
+   - Plan-to-sketch contract ambiguity resolved → update `Handoff Contract to Sketch`
    - State safety/reconciliation ambiguity resolved → update the `State Ownership/Reconciliation Model` and related invariants in plan.md
    - Local DB transaction ambiguity resolved → update the `Local DB Transaction Model` and related invariants in plan.md
    - Venue-constrained discovery ambiguity resolved → update the `Venue-Constrained Discovery Model` and related live-data request boundaries in plan.md
@@ -211,6 +226,11 @@ Execution steps:
    - Files updated (list paths)
    - Any items deferred (low-impact ambiguities the user chose to skip) — note them explicitly
    - If any deferred items could affect task generation, flag them as risks
+   - **Plan architecture contract status**: report PASS/PASS WITH NOTES/FAIL for:
+     - `Repeated Architectural Unit Recognition`
+     - `Pipeline Architecture Model`
+     - `Artifact / Event Contract Architecture`
+     - `Handoff Contract to Sketch`
    - **Open Feasibility Questions status**: State explicitly whether `plan.md ## Open Feasibility Questions` is empty or non-empty. If non-empty: report the count of FQs written, and which services/capabilities they probe.
    - Emit `planreview_completed` to `.speckit/pipeline-ledger.jsonl`:
      ```json

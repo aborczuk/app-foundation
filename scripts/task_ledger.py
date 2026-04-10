@@ -538,11 +538,10 @@ def index_targets_for_codegraph(changed_paths: list[Path]) -> list[Path]:
 def run_codegraph_index(root: Path, target: Path) -> tuple[int, str]:
     """Run incremental cgc index for one target path and return code/output."""
     env = os.environ.copy()
-    env.setdefault("UV_NO_CACHE", "1")
+    env.setdefault("CGC_UV_CACHE_DIR", str(root / ".codegraphcontext" / ".uv-cache"))
     env.setdefault("DEFAULT_DATABASE", "kuzudb")
-    env.setdefault("KUZUDB_PATH", str(root / ".codegraph" / "kuzudb"))
     result = subprocess.run(
-        ["uv", "run", "cgc", "index", target.as_posix()],
+        ["scripts/cgc_safe_index.sh", target.as_posix()],
         cwd=root,
         check=False,
         capture_output=True,

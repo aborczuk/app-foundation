@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/Users/andreborczuk/app-foundation/.venv/bin/python3",
+    "/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-275/test_deterministic_route_succe0/feature/scripts/plan_step.py"
+  ],
+  "correlation_id": "run-us1-success:speckit.plan",
+  "error_code": "missing_step_result",
+  "initial": {
+    "exit_code": 1,
+    "stderr": "Traceback (most recent call last):\n  File \"/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-275/test_deterministic_route_succe0/feature/scripts/plan_step.py\", line 3, in <module>\n    print(json.dumps({\"correlation_id\": \"run-us1-success:speckit.plan\", \"exit_code\": 0, \"next_phase\": \"plan\", \"ok\": true, \"schema_version\": \"1.0.0\"}))\n                                                                                                                    ^^^^\nNameError: name 'true' is not defined. Did you mean: 'True'?\n",
+    "stdout": "",
+    "timed_out": false
+  },
+  "reason": "missing_step_result",
+  "rerun": {
+    "exit_code": 1,
+    "stderr": "Traceback (most recent call last):\n  File \"/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-275/test_deterministic_route_succe0/feature/scripts/plan_step.py\", line 3, in <module>\n    print(json.dumps({\"correlation_id\": \"run-us1-success:speckit.plan\", \"exit_code\": 0, \"next_phase\": \"plan\", \"ok\": true, \"schema_version\": \"1.0.0\"}))\n                                                                                                                    ^^^^\nNameError: name 'true' is not defined. Did you mean: 'True'?\n",
+    "stdout": "",
+    "timed_out": false
+  },
+  "schema_version": "1.0.0",
+  "timestamp_utc": "2026-04-10T20:19:42.804960Z"
+}

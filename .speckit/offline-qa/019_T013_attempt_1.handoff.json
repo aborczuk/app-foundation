@@ -1,0 +1,35 @@
+{
+  "feature_id": "019",
+  "task_id": "T013",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T013.md",
+  "acceptance_criteria": [
+    "Shared integration harness centralizes feature sandbox, ledger seeding, and route helpers for driver-flow tests"
+  ],
+  "quality_guards": [
+    "Reconcile and retry guard test verifies drift detection resolution and lock idempotency/contension behavior",
+    "Integration tests no longer duplicate bootstrap setup logic"
+  ],
+  "changed_files": [
+    "tests/integration/conftest.py",
+    "tests/integration/test_pipeline_driver_feature_flow.py"
+  ],
+  "diff": " tests/integration/conftest.py                      | 90 ++++++++++++++++++++++\n .../test_pipeline_driver_feature_flow.py           | 75 +++++++++++-------\n 2 files changed, 137 insertions(+), 28 deletions(-)",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pytest tests/integration/test_pipeline_driver_feature_flow.py tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "17 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pyright tests/integration/conftest.py tests/integration/test_pipeline_driver_feature_flow.py",
+      "exit_code": 0,
+      "output": "pyright passed with 0 issues"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind module --tests-passed pass --smoke-exit 0 --state-safety pass --transaction-integrity pass --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

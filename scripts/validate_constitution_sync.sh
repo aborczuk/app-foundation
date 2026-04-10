@@ -5,6 +5,21 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH="" cd "$SCRIPT_DIR/.." && pwd)"
 
+run_checks() {
+  local output
+  if output="$(
+    cd "$REPO_ROOT" && \
+      env UV_CACHE_DIR="${SPECKIT_UV_CACHE_DIR:-/tmp/uv-cache}" \
+      uv run python scripts/validate_command_script_coverage.py --json 2>&1
+  )"; then
+    echo "PASS: command/script coverage validator"
+  else
+    echo "ERROR: command/script coverage validator failed." >&2
+    echo "$output" >&2
+    exit 1
+  fi
+}
+
 # Usage:
 #   scripts/validate_constitution_sync.sh [base_ref]
 #
@@ -29,6 +44,8 @@ if ! git -C "$REPO_ROOT" rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
   echo "Hint: pass an explicit ref, e.g. scripts/validate_constitution_sync.sh main" >&2
   exit 2
 fi
+
+run_checks
 
 changed_files="$(
   git -C "$REPO_ROOT" diff --name-only "$BASE_REF"...HEAD

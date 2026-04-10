@@ -1,10 +1,5 @@
 ---
-description: Generate the initial task breakdown (tasks.md) from a proven plan. Sub-agent of /speckit.solution; callable standalone.
-handoffs:
-  - label: Generate Solution Sketches
-    agent: speckit.sketch
-    prompt: Tasks are ready. Generate solution sketches and HUDs for each task.
-    send: true
+description: Decompose approved `sketch.md` into executable tasks, run estimate/breakdown subprocess loop, then generate HUDs and acceptance tests. Sub-agent of /speckit.solution; callable standalone.
 ---
 
 ## User Input
@@ -17,68 +12,225 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Purpose
 
-Produce the initial tasks.md from plan.md and design artifacts. This is a sub-agent of `/speckit.solution` — it runs after feasibilityspike has cleared all Open Feasibility Questions. It does NOT generate solution sketches or estimates — those are `/speckit.sketch` and `/speckit.estimate`.
+Generate `tasks.md` from an approved sketch blueprint and finalize downstream execution artifacts in this order:
+
+1. task decomposition,
+2. estimate/breakdown subprocess loop,
+3. deterministic format gate,
+4. HUD generation,
+5. acceptance-test generation.
+
+This phase must consume `sketch.md` as an **authoritative design-to-tasking contract**, not as loose inspiration.
 
 ## Outline
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse `FEATURE_DIR` and `AVAILABLE_DOCS`. Read plan.md.
+### 1. Setup
 
-2. **Hard-block gate**: Read `## Open Feasibility Questions` in plan.md. If any `- [ ]` items remain: **STOP** — "plan.md has unresolved feasibility questions. Run /speckit.feasibilityspike first."
+Run:
 
-3. **Load design artifacts** from FEATURE_DIR:
-   - **Required**: plan.md (architecture, Technology Selection, data flows)
-   - **Load if present**: data-model.md, contracts/\*, research.md, quickstart.md, spike.md
-   - Read catalog.yaml (repo root) for known service constraints
+```bash
+.specify/scripts/bash/check-prerequisites.sh --json
+```
 
-4. **Extract user stories** from spec.md (via AVAILABLE_DOCS). For each story: note priority (P1, P2…), acceptance criteria, and dependent entities.
+Parse:
 
-5. **Detect integration patterns** from plan.md:
-   - Async integrations → require lifecycle guard tasks (start/ready/timeout-cancel/shutdown) + regression test tasks
-   - Live-vs-local state → require reconciliation invariant tasks + stale/orphan regression tasks
-   - Local DB lifecycle/financial state → require transaction-boundary tasks + rollback regression tasks
-   - External ingress → require T000 gate task if External Ingress gate has unresolved rows
+- `FEATURE_DIR`
+- `AVAILABLE_DOCS`
 
-6. **Detect `[H]` human tasks**: For each user story, identify work requiring action in an external system (configure a webhook URL, create an API key, provision infrastructure, set up a third-party workflow). Each `[H]` task must name the external system and the action. Sequence `[H]` tasks before the first implementation task in the same story phase — they run in parallel with code tasks but the story cannot close until all `[H]` tasks are verified.
+### 2. Hard-block gate
 
-7. **Symbol annotation (MANDATORY before writing tasks.md)**: For each task identified, run `mcp__codegraph__find_code` for the primary symbol or file it will touch. Record as `file:symbol` pairs. If codegraph returns no match (new file/symbol), record the intended file path only. These annotations attach to the task description and become the input to `/speckit.sketch`'s reuse-first evaluation.
+Require:
 
-8. **Generate tasks.md** by pre-scaffolding from template:
+- `FEATURE_DIR/sketch.md`
+- a passing sketch review (`solutionreview_completed` with `critical_count == 0`)
 
-   1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.tasking --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
-      - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.tasking owns
-      - Copies `.specify/templates/tasks-template.md` to `$FEATURE_DIR/tasks.md`
-      - Pre-structures the file with Phase sections, Dependencies section, Parallel Opportunities section, etc.
+If either condition fails, stop.
 
-   2. Fill in the scaffolded structure:
-      - Phase 1: Setup tasks
-      - Phase 2: Foundational tasks (blocking prerequisites; reconciliation/transaction guards if applicable)
-      - Phase 3+: One phase per user story in priority order, each with:
-        - Story goal + Independent Test Criteria
-        - `[H]` tasks first (if any)
-        - Implementation tasks with `file:symbol` annotations
-        - Guard tasks (async lifecycle, state-safety, transaction-boundary) if applicable
-      - Final phase: Polish and cross-cutting concerns
-      - Dependencies section + parallel execution examples per story
+### 3. Load context
 
-9. **Emit pipeline event**:
-   ```json
-   {"event": "tasking_completed", "feature_id": "NNN", "phase": "solution", "task_count": N, "story_count": N, "actor": "<agent-id>", "timestamp_utc": "..."}
-   ```
-   Append to `.speckit/pipeline-ledger.jsonl`.
+Required:
 
-10. **Report**: Path to tasks.md, task count per story, parallel opportunities, `[H]` task count, integration guard coverage. Suggested next: `/speckit.sketch`.
+- `sketch.md`
+- `spec.md`
+- `plan.md`
 
-## Task format rules
+Optional:
 
-Every task MUST follow: `- [ ] TNNN [P?] [H?] [USN?] Description — file:symbol`
+- `research.md`
+- `catalog.yaml`
+- `command-manifest.yaml`
 
-- `[P]` only if parallelizable with no incomplete-task dependencies
-- `[H]` only if requires human action in external system — mutually exclusive with `[P]`
-- `[USN]` required for all user story phase tasks
-- `file:symbol` from codegraph annotation — omit symbol only for net-new files
+When reading `sketch.md`, treat the following sections as authoritative inputs:
+
+- `Solution Narrative`
+- `Construction Strategy`
+- `Acceptance Traceability`
+- `Command / Script Surface Map`
+- `Manifest Alignment Check`
+- `CodeGraphContext Findings`
+- `Blast Radius`
+- `Interface, Symbol, and Contract Notes`
+- `Human-Task and Operator Boundaries`
+- `Verification Strategy`
+- `Design-to-Tasking Contract`
+- `Decomposition-Ready Design Slices`
+
+### 4. Task derivation rules (mandatory)
+
+Derive tasks from sketch using these rules:
+
+#### A. Primary source of tasks
+`Decomposition-Ready Design Slices` are the primary source of executable tasks.
+
+Every design slice must produce at least one task unless an explicit omission rationale is recorded.
+
+#### B. Ordering source
+Task ordering must derive primarily from:
+
+- `Construction Strategy`
+- slice dependency relationships
+- safety/validation sequencing implied by the sketch
+
+Do not invent task order solely from convenience.
+
+#### C. `[H]` task placement
+`[H]` tasks must derive from:
+
+- `Human-Task and Operator Boundaries`
+- explicit external dependency constraints
+
+Do not invent `[H]` tasks from vague prose.
+
+#### D. `file:symbol` annotations
+Task `file:symbol` annotations must derive from:
+
+- touched files and touched symbols in design slices,
+- symbol/interface notes in sketch,
+- net-new file/symbol creation notes when applicable.
+
+Do not invent unstable or line-number-based references.
+
+#### E. Command/script/template/manifest work
+If the sketch identifies necessary work against:
+
+- commands,
+- scripts,
+- templates,
+- manifest-owned artifacts,
+- event flows,
+
+those must become explicit tasks when they are part of the approved design.
+
+Additionally, any command/script/template/manifest/event **deltas** listed in `Manifest Alignment Check` MUST map to one or more concrete tasks, or an explicit rationale for omission.
+
+#### F. Scope control
+No task may introduce:
+
+- a new seam,
+- a new interface,
+- a new artifact,
+- a new symbol family,
+- a new runtime surface,
+
+unless the sketch explicitly allows it or an explicit rationale is recorded.
+
+### 5. Generate `tasks.md`
+
+Pre-scaffold:
+
+```bash
+uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"
+```
+
+Then fill tasks from the sketch contract with:
+
+- phase/story grouping,
+- dependency ordering,
+- `[H]` task placement,
+- `[P]` only where true parallelism exists,
+- `file:symbol` annotations,
+- command/script/template/manifest tasks where required,
+- verification-oriented tasks where the sketch requires them.
+
+### 6. Task format rules
+
+Every task MUST follow:
+
+`- [ ] TNNN [P?] [H?] [USN?] Description — file:symbol`
+
+Rules:
+
+- `[P]` only if parallelizable with no incomplete dependencies
+- `[H]` only if external human action is required; mutually exclusive with `[P]`
+- `[USN]` required in user-story phases
+- `file:symbol` required unless net-new file has no symbol yet
+
+### 7. Estimate/breakdown subprocess loop (mandatory)
+
+- Invoke `/speckit.estimate` against current `tasks.md`
+- If any task scores 8/13, invoke `/speckit.breakdown`, then re-run estimate
+- Repeat until no 8/13 tasks remain
+- Emit **one aggregated** `estimation_completed` event for the final settled task set
+
+### 8. Deterministic tasks format gate (mandatory)
+
+Run:
+
+```bash
+python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
+```
+
+If non-zero exit, fix and re-run before continuing.
+
+### 9. Generate HUDs only after tasks are stable
+
+**Code task HUD**
+```bash
+uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-code \
+  TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
+```
+
+**Human task HUD**
+```bash
+uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-runbook \
+  TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
+```
+
+### 10. Generate acceptance tests
+
+For each story, write `.speckit/acceptance-tests/story-N.py` from:
+
+- Independent Test Criteria in `tasks.md`
+- verification intent preserved from sketch
+- acceptance traceability preserved from sketch
+
+Tests must be deterministic PASS/FAIL oracles.
+
+### 11. Emit pipeline event
+
+Append:
+
+```json
+{"event": "tasking_completed", "feature_id": "NNN", "phase": "solution", "task_count": N, "story_count": N, "actor": "<agent-id>", "timestamp_utc": "..."}
+```
+
+to `.speckit/pipeline-ledger.jsonl`.
+
+### 12. Report
+
+Report:
+
+- path to `tasks.md`
+- settled estimate summary
+- HUD count and acceptance-test count
+- whether command/script/template/manifest work was included as tasks
+- whether `[H]` tasks were derived from explicit sketch boundaries
+- suggested next: `/speckit.analyze`
 
 ## Behavior rules
 
-- Read-only on plan.md and design artifacts — do NOT modify them
-- Do NOT generate solution sketches or estimates — those are downstream sub-agents
-- If tasks.md already exists: present a diff of what would change and ask for confirmation before overwriting
+- Do not create HUDs before estimate/breakdown stabilization.
+- Do not skip deterministic format validation.
+- Do not mutate `sketch.md`; treat it as input contract.
+- Do not let tasking invent major architecture absent from sketch.
+- Preserve the construction strategy and safety invariants of the sketch when decomposing.

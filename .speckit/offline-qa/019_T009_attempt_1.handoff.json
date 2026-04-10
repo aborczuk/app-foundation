@@ -1,0 +1,35 @@
+{
+  "feature_id": "019",
+  "task_id": "T009",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T009.md",
+  "acceptance_criteria": [
+    "Shared status contract constants and renderer enforce strict Done/Next/Blocked output ordering"
+  ],
+  "quality_guards": [
+    "Status line prefixes come from canonical constants only",
+    "Renderer normalizes empty/missing values deterministically"
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver_contracts.py",
+    "tests/contract/test_pipeline_driver_contract.py"
+  ],
+  "diff": " scripts/pipeline_driver_contracts.py            | 29 +++++++++++++++++++++++++\n tests/contract/test_pipeline_driver_contract.py | 23 ++++++++++++++++++++\n 2 files changed, 52 insertions(+)\n\ndiff --git a/scripts/pipeline_driver_contracts.py b/scripts/pipeline_driver_contracts.py\nindex fb14c29..8412082 100755\n--- a/scripts/pipeline_driver_contracts.py\n+++ b/scripts/pipeline_driver_contracts.py\n@@ -21,6 +21,12 @@ DRIVER_MODE_ALIASES: dict[str, str] = {\n     \"passthrough\": \"legacy\",\n     \"unmanaged\": \"legacy\",\n }\n+STATUS_KEYS: tuple[str, str, str] = (\"done\", \"next\", \"blocked\")\n+STATUS_PREFIXES: dict[str, str] = {\n+    \"done\": \"Done:\",\n+    \"next\": \"Next:\",\n+    \"blocked\": \"Blocked:\",\n+}\n \n \n def _require_mapping(value: Any) -> Mapping[str, Any]:\n@@ -173,3 +179,26 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic\n         }\n \n     return routes\n+\n+\n+def _normalize_status_value(raw_value: Any) -> str:\n+    if not isinstance(raw_value, str):\n+        return \"none\"\n+    normalized = raw_value.strip()\n+    return normalized if normalized else \"none\"\n+\n+\n+def render_status_lines(\n+    *,\n+    done: str | None,\n+    next_step: str | None,\n+    blocked: str | None = None,\n+) -> list[str]:\n+    \"\"\"Render the strict three-line human status contract in canonical order.\"\"\"\n+\n+    status_values = {\n+        \"done\": _normalize_status_value(done),\n+        \"next\": _normalize_status_value(next_step),\n+        \"blocked\": _normalize_status_value(blocked),\n+    }\n+    return [f\"{STATUS_PREFIXES[key]} {status_values[key]}\" for key in STATUS_KEYS]\ndiff --git a/tests/contract/test_pipeline_driver_contract.py b/tests/contract/test_pipeline_driver_contract.py\nindex 818c15a..ba7db1d 100644\n--- a/tests/contract/test_pipeline_driver_contract.py\n+++ b/tests/contract/test_pipeline_driver_contract.py\n@@ -49,3 +49,26 @@ def test_parse_step_result_rejects_missing_schema_version() -> None:\n                 \"correlation_id\": \"019:setup:test\",\n             }\n         )\n+\n+\n+def test_render_status_lines_strict_three_line_contract() -> None:\n+    lines = contracts.render_status_lines(\n+        done=\"plan gate passed\",\n+        next_step=\"run speckit.solution\",\n+        blocked=\"none\",\n+    )\n+    assert lines == [\n+        \"Done: plan gate passed\",\n+        \"Next: run speckit.solution\",\n+        \"Blocked: none\",\n+    ]\n+    assert tuple(contracts.STATUS_KEYS) == (\"done\", \"next\", \"blocked\")\n+\n+\n+def test_render_status_lines_normalizes_empty_values() -> None:\n+    lines = contracts.render_status_lines(done=\"\", next_step=None, blocked=\"   \")\n+    assert lines == [\n+        \"Done: none\",\n+        \"Next: none\",\n+        \"Blocked: none\",\n+    ]",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pytest tests/contract/test_pipeline_driver_contract.py",
+      "exit_code": 0,
+      "output": "4 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pyright scripts/pipeline_driver_contracts.py tests/contract/test_pipeline_driver_contract.py",
+      "exit_code": 0,
+      "output": "pyright passed with 0 issues"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind module --tests-passed pass --smoke-exit 0 --state-safety pass --transaction-integrity pass --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

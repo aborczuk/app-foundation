@@ -185,6 +185,65 @@ def _implement_report(feature_dir: Path, repo_root: Path) -> tuple[dict[str, Any
     return (report, exit_code)
 
 
+def validate_command_coverage(feature_dir: Path) -> dict[str, Any]:
+    """Check for uncovered command mappings in the feature's manifest.
+
+    Called as a solution/tasking gate check to ensure all commanded commands
+    have explicit driver mode or legacy-fallback definition.
+
+    Returns dict with:
+        ok (bool): True if no uncovered commands
+        uncovered_count (int): Number of uncovered commands
+        uncovered (list): List of command IDs that are uncovered
+        reasons (list): Details on coverage gaps
+    """
+
+    manifest_path = Path(__file__).resolve().parent.parent / ".specify" / "command-manifest.yaml"
+
+    if not manifest_path.exists():
+        return {
+            "ok": False,
+            "uncovered_count": 0,
+            "uncovered": [],
+            "reasons": [f"manifest not found: {manifest_path}"],
+        }
+
+    try:
+        from pipeline_driver_contracts import load_driver_routes
+        routes = load_driver_routes(manifest_path)
+    except Exception as e:
+        return {
+            "ok": False,
+            "uncovered_count": 0,
+            "uncovered": [],
+            "reasons": [f"failed to load manifest routes: {e}"],
+        }
+
+    # Check for uncovered commands (not in driver manifest with no explicit legacy mode)
+    uncovered = []
+    for cmd_id, route_meta in routes.items():
+        driver_managed = route_meta.get("driver_managed", False)
+        mode = route_meta.get("mode", "legacy")
+
+        # Commands that are truly uncovered: no driver metadata AND not explicitly legacy
+        if not driver_managed and mode == "legacy":
+            # This is acceptable (explicitly legacy)
+            continue
+        elif driver_managed:
+            # This is acceptable (driver-managed)
+            continue
+        else:
+            # Ambiguous state - uncovered
+            uncovered.append(cmd_id)
+
+    return {
+        "ok": len(uncovered) == 0,
+        "uncovered_count": len(uncovered),
+        "uncovered": sorted(uncovered),
+        "reasons": ["uncovered_command_mappings"] if uncovered else [],
+    }
+
+
 def _print_human(report: dict[str, Any]) -> None:
     """Emit a concise human-readable report."""
     mode = str(report.get("mode", "unknown"))

@@ -1,0 +1,24 @@
+{
+  "feature_id": "019",
+  "task_id": "T001",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T001.md",
+  "acceptance_criteria": [
+    "Command-to-script coverage inventory exists and references canonical + mirror manifests with scaffold/template mapping"
+  ],
+  "quality_guards": [
+    "Coverage matrix entries map commands to deterministic scaffold paths",
+    "Manifest mirror parity requirement documented"
+  ],
+  "changed_files": [
+    "docs/governance/command-script-coverage.md"
+  ],
+  "diff": " docs/governance/command-script-coverage.md | 19 +++++++++++++++++++\n 1 file changed, 19 insertions(+)\n\ndiff --git a/docs/governance/command-script-coverage.md b/docs/governance/command-script-coverage.md\nindex f2844d2..b4bd7f8 100644\n--- a/docs/governance/command-script-coverage.md\n+++ b/docs/governance/command-script-coverage.md\n@@ -19,6 +19,25 @@\n | Post-solution drift gate (`spec -> plan -> sketch -> tasks`) | `speckit.analyze` | `.claude/commands/speckit.analyze.md` + `analysis_completed` event |\n | Legacy tasks command | `speckit.tasks` | Deprecated, no artifact generation |\n \n+## Command-to-Scaffold Coverage Matrix\n+\n+| Command | Canonical Manifest Entry | Mirror Parity (`command-manifest.yaml`) | Scaffold Path | Template/Artifact Target |\n+|---|---|---|---|---|\n+| `speckit.specify` | `.specify/command-manifest.yaml:commands.speckit.specify` | required (`cmp -s` must pass) | `.specify/scripts/bash/create-new-feature.sh` + `pipeline-scaffold.py speckit.specify` | `spec-template.md` + `requirements-checklist-template.md` |\n+| `speckit.plan` | `.specify/command-manifest.yaml:commands.speckit.plan` | required (`cmp -s` must pass) | `.specify/scripts/bash/setup-plan.sh` + `pipeline-scaffold.py speckit.plan` | `plan-template.md`, `data-model-template.md`, `quickstart-template.md` |\n+| `speckit.sketch` | `.specify/command-manifest.yaml:commands.speckit.sketch` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.sketch` | `sketch-template.md` |\n+| `speckit.solutionreview` | `.specify/command-manifest.yaml:commands.speckit.solutionreview` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.solutionreview` | `solutionreview-template.md` |\n+| `speckit.tasking` | `.specify/command-manifest.yaml:commands.speckit.tasking` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking` | `tasks-template.md` |\n+| `speckit.tasking.hud-code` | `.specify/command-manifest.yaml:commands.speckit.tasking.hud-code` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-code` | `hud-code-template.md` |\n+| `speckit.tasking.hud-runbook` | `.specify/command-manifest.yaml:commands.speckit.tasking.hud-runbook` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-runbook` | `hud-runbook-template.md` |\n+| `speckit.e2e` | `.specify/command-manifest.yaml:commands.speckit.e2e` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.e2e` | `e2e-template.md` + `e2e-script-template.sh` |\n+\n+Coverage notes:\n+\n+- `pipeline-scaffold.py` is the canonical template copier/resolver for manifest-declared artifact scaffolding.\n+- `speckit.analyze` intentionally has no template scaffold (`template: \"\"`) and is report-only.\n+- Commands with `artifacts: []` remain command-contract or runtime-only and are covered by command docs plus ledger validation, not template scaffolding.\n+\n ## Manifest and Ledger Alignment\n \n - Canonical registry: `.specify/command-manifest.yaml`\n",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/speckit_implement_gate.py validate-task-evidence --task-kind logic --tests-passed pass --state-safety na --transaction-integrity na --async-safety na --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

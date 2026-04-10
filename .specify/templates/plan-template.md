@@ -1,209 +1,305 @@
-# Implementation Plan: [FEATURE]
+# Implementation Plan — [FEATURE_NAME]
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
-
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
+_Date: [DATE]_  
+_Feature: `[FEATURE_ID]`_  
+_Source Spec: `spec.md`_  
+_Artifact: `plan.md`_
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+### Feature Goal
+
+[Describe the feature in one paragraph from an architecture/planning perspective.]
+
+### Architecture Direction
+
+[State the chosen architecture direction in plain language.]
+
+### Why This Direction
+
+[Explain why this architecture is the preferred fit for the feature, given requirements, research, and repo constraints.]
+
+---
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
+| Area | Decision / Direction | Notes |
+|------|-----------------------|-------|
+| Language / Runtime | [value] | [notes] |
+| Technology Direction | [category + constraints] | [notes] |
+| Technology Selection | [chosen tools/libraries/platforms] | [notes / evidence] |
+| Storage | [value] | [notes] |
+| Testing | [value] | [notes] |
+| Target Platform | [value] | [notes] |
+| Project Type | [value] | [notes] |
+| Performance Goals | [value] | [notes] |
+| Constraints | [value] | [notes] |
+| Scale / Scope | [value] | [notes] |
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
-**Technology Direction**: [What category of solution is needed — describe the requirement, NOT a library name. e.g., "async broker connectivity library (Python asyncio, IBKR API)", "relational storage with ACID guarantees". Specific library selection belongs in Technology Selection below, after /speckit.feasibilityspike confirms choices.]
-**Technology Selection**: TBD — filled by `/speckit.feasibilityspike` after probes confirm each choice. Format: "[category]: [library] [version] — confirmed by [FQ-NNN]"
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
-**Async Process Model**: [event loops/background tasks/processes, ownership, timeout/cancel/shutdown policy, and forbidden sync-in-async boundaries or N/A]
-**State Ownership/Reconciliation Model**: [for live-vs-local state: source-of-truth per lifecycle field, reconcile checkpoints, drift handling policy, or N/A]
-**Local DB Transaction Model**: [for local persisted state: transaction boundaries, rollback policy, idempotent retries, and no-partial-write guarantees, or N/A]
-**Venue-Constrained Discovery Model**: [for venue-constrained integrations: metadata source, valid-object discovery flow, validated live-data request boundary, and discovery-failure policy, or N/A]
-**Implementation Skills**: [Identify any registered workflow skills to invoke before implementing dependent tasks — e.g., SDK-specific scaffolders, code generators, or N/A (Constitution V: Reuse, VIII: Reuse Over Invention)]
+### Async Process Model
 
-## External Ingress + Runtime Readiness Gate *(mandatory)*
+[Describe async/background/task-worker expectations, or state N/A.]
 
-*GATE: Must pass before implementation. Re-validate in `/speckit.analyze`.*
+### State Ownership / Reconciliation Model
 
-Use this section for features that receive external callbacks/webhooks/events (or can become externally reachable in test/prod). If not applicable, mark all rows `N/A` with rationale.
+[Describe authoritative state, mirrored state, reconciliation checkpoints, and fail policy, or state N/A.]
 
-| Check | Status | Notes |
-|-------|--------|-------|
-| Ingress strategy selected (`local tunnel`, `staging`, or `production`) and owner documented | | |
-| Endpoint contract path defined (example: `/control-plane/clickup/webhook`) and expected method/auth documented | | |
-| Runtime entrypoint readiness evidence captured (boot command + local probe command + observed result) | | |
-| Secret lifecycle defined for ingress auth (source, storage, rotation owner) | | |
-| External dependency readiness captured (upstream webhook registration path + downstream route readiness) | | |
-| Evidence links recorded (commands/log snippets/screenshots/URLs) | | |
+### Local DB Transaction Model
 
-**Hard rule**: Any `❌ Fail` here blocks implementation readiness. `/speckit.tasks` MUST emit a `T000` gate task when any row is unresolved or when readiness must be proven in execution.
+[Describe transaction boundaries, rollback/no-partial-write behavior, idempotency expectations, or state N/A.]
 
-## Constitution Check
+### Venue-Constrained Discovery Model
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design (after security review step).*
+[Describe metadata-first discovery / validation model where applicable, or state N/A.]
 
-<!--
-  FORMAT RULES:
-  - One row per principle that applies to this feature.
-  - For principles with labeled sub-clauses in the constitution (e.g., III-a through III-f),
-    use one sub-row per sub-clause. A single consolidated row for a multi-clause principle
-    is NOT acceptable — each labeled clause must be verified independently.
-  - Status: ✅ Pass | ❌ Fail | ⚠️ Conditional (mitigation required) | N/A
-  - Any ❌ Fail blocks the plan. Any ⚠️ Conditional requires a mitigation note in Complexity Tracking.
-  - Sub-clause labels come from the constitution. If the constitution adds or changes sub-clauses,
-    update this table accordingly — do not invent sub-clauses not present in the constitution.
--->
+### Implementation Skills
 
-| Principle | Status | Notes |
-|-----------|--------|-------|
-| I. Human-First | | |
-| II. AI Planning | | |
-| III-a. Security: no secrets in code/logs/committed files | | |
-| III-b. Security: secrets from env vars at runtime | | |
-| III-c. Security: least privilege | | |
-| III-d. Security: zero-trust boundaries identified | | |
-| III-e. Security: external inputs validated | | |
-| III-f. Security: errors don't expose internals | | |
-| IV. Parsimony | | |
-| V. Reuse | | |
-| VI. Spec-First | | |
-| VIII. Reuse Over Invention | | |
-| IX. Composability | | |
-| X. SoC | | |
-| XIV. Observability | | |
-| XV. TDD | | |
-| XVIII. Async Process Management | | |
-| XIX. State Safety and Reconciliation | | |
-| XX. Local DB ACID and Transactional Integrity | | |
-| XXI. Venue-Constrained Discovery | | |
+- [Skill / concern 1]
+- [Skill / concern 2]
+- [Skill / concern 3]
 
-## Behavior Map Sync Gate *(mandatory)*
+---
 
-*GATE: Must be filled before `/speckit.tasks` generation.*
+## Repeated Architectural Unit Recognition
 
-| Check | Status | Notes |
-|-------|--------|-------|
-| Runtime/config/operator-flow impact assessed (`src/csp_trader/`, `config*.yaml`, runbooks/scripts) | | |
-| If impacted, update target identified: `specs/001-auto-options-trader/behavior-map.md` | | |
+### Does a repeated architectural unit exist?
 
-## Architecture Flow *(mandatory)*
+[Yes / No]
 
-<!--
-  REQUIRED: Generate a Mermaid flowchart after data-model.md is complete (Phase 1).
-  Must cover all three layers in a single diagram:
-  - Components: every module/service/agent listed in Project Structure
-  - Data flow: edges labeled with the data or event being passed between components
-  - States: key entity states and transitions from data-model.md
+### Chosen Abstraction
 
-  Rules:
-  - Every component in Project Structure MUST appear in this diagram
-  - Every entity state defined in data-model.md MUST appear as a node or annotation
-  - For async/background components, include lifecycle edges (start/ready/timeout-cancel/shutdown)
-  - Use flowchart TD (top-down) direction
-  - Label every edge with the data/event being passed
-  - This diagram is a Constitution quality gate — plan cannot move to tasks without it
-  - ASYNC RETURN PATH RULE: Every external service node MUST have both an outbound edge AND a labeled return path edge. A node with only an outbound edge is automatically flagged as a Feasibility Question by /speckit.planreview.
--->
+[Name the repeated unit, e.g. Phase Contract / Artifact Contract / Pipeline Node, or explain why no explicit abstraction is needed.]
+
+### Why It Matters
+
+[Explain why this abstraction should be treated as first-class in the architecture.]
+
+### Defining Properties
+
+- [Property 1]
+- [Property 2]
+- [Property 3]
+- [Property 4]
+
+---
+
+## Reuse-First Architecture Decision
+
+### Existing Sources Considered
+
+| Source Type | Candidate | Covers Which FRs / Needs | Use Decision | Notes |
+|-------------|-----------|---------------------------|--------------|------|
+| [Repo / package / script / template / command / pattern] | [name] | [coverage] | [Reuse / Extend / Reject] | [notes] |
+
+### Preferred Reuse Strategy
+
+[Describe what is reused as-is, what is extended, and what is net-new.]
+
+### Net-New Architecture Justification
+
+[Explain why any net-new pieces are necessary.]
+
+---
+
+## Pipeline Architecture Model
+
+### Recurring Unit Model
+
+[Describe how the recurring unit appears in the system architecture.]
+
+### Unit Properties
+
+| Property | Description |
+|----------|-------------|
+| Name | [value] |
+| Owned Artifacts | [value] |
+| Template / Scaffold Relationship | [value] |
+| Events | [value] |
+| Handoffs | [value] |
+| Completion Invariants | [value] |
+
+### Downstream Reliance
+
+[Explain what later phases may rely on if this unit completes successfully.]
+
+---
+
+## Artifact / Event Contract Architecture
+
+| Architectural Unit / Phase | Owned Artifacts | Template / Scaffold | Emitted Events | Downstream Consumers | Notes |
+|----------------------------|----------------|---------------------|----------------|----------------------|------|
+| [unit / phase] | [artifacts] | [template/script] | [events] | [consumers] | [notes] |
+
+### Manifest Impact
+
+[State whether manifest updates are expected, not needed, or unknown pending later grounding.]
+
+---
+
+## Architecture Flow
+
+### Major Components
+
+- [Component 1]
+- [Component 2]
+- [Component 3]
+
+### Trust Boundaries
+
+- [Boundary 1]
+- [Boundary 2]
+
+### Primary Automated Action
+
+[Name the primary automated action and where it appears in the flow.]
+
+### Architecture Flow Notes
+
+[Describe the main architecture/data/event flow in prose, or reference the diagram block below.]
 
 ```mermaid
 flowchart TD
-    [ComponentA] -->|[data/event]| [ComponentB]
-    [ComponentB] -->|[entity: state → state]| [ComponentC]
+    A[Trigger] --> B[Primary Automated Action]
+    B --> C[Internal Component]
+    C --> D[External Service / Store]
+    D --> E[Return Path / Result]
 ```
 
-## Project Structure
+---
 
-### Documentation (this feature)
+## External Ingress + Runtime Readiness Gate
 
-```text
-specs/[###-feature]/
-├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
-```
+| Gate Item | Status | Rationale |
+|-----------|--------|-----------|
+| [Gate row] | [✅ Pass / ❌ Fail / N/A] | [rationale] |
+| [Gate row] | [✅ Pass / ❌ Fail / N/A] | [rationale] |
 
-### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
+### Readiness Blocking Summary
 
-```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+[If any row is `❌ Fail`, state what blocks implementation readiness.]
 
-tests/
-├── contract/
-├── integration/
-└── unit/
+---
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
+## State / Storage / Reliability Model
 
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
+### State Authority
 
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
+[Describe what system is authoritative for major state categories.]
 
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
-```
+### Persistence Model
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+[Describe storage approach and persistence boundaries.]
+
+### Retry / Timeout / Failure Posture
+
+[Describe architecture-level failure handling expectations.]
+
+### Recovery / Degraded Mode Expectations
+
+[Describe recovery and degraded-mode expectations.]
+
+---
+
+## Contracts and Planning Artifacts
+
+### Data Model
+
+[Summarize expected `data-model.md` scope.]
+
+### Contracts
+
+[Summarize expected `contracts/` scope.]
+
+### Quickstart
+
+[Summarize expected `quickstart.md` scope.]
+
+---
+
+## Constitution Check
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| [Constitution rule] | [✅ Pass / ❌ Fail / N/A] | [notes] |
+| [Constitution rule] | [✅ Pass / ❌ Fail / N/A] | [notes] |
+
+---
+
+## Behavior Map Sync Gate
+
+| Runtime / Config / Operator Surface | Impact? | Update Target | Notes |
+|------------------------------------|---------|---------------|-------|
+| [surface] | [Yes / No] | [target path or N/A] | [notes] |
+
+---
 
 ## Open Feasibility Questions
 
-<!--
-  Populated by /speckit.planreview domain coverage scan.
-  Cleared by /speckit.feasibilityspike after all probes pass.
-  /speckit.solution hard-blocks if any item below is unchecked.
+- [ ] **FQ-001**: [question]  
+  **Probe:** [minimal proof needed]  
+  **Blocking:** [what architecture element depends on it]
 
-  Format per question:
-  - [ ] **FQ-NNN**: [question text]
-        Probe: [specific test to run to answer this]
-        Blocking: [which architecture component or Technology Selection depends on this]
--->
+- [ ] **FQ-002**: [question]  
+  **Probe:** [minimal proof needed]  
+  **Blocking:** [what architecture element depends on it]
 
-*None — /speckit.planreview has not yet run, or all questions were confirmed by /speckit.feasibilityspike.*
+---
 
-## Complexity Tracking
+## Handoff Contract to Sketch
 
-> **Fill ONLY if Constitution Check has violations that must be justified**
+### Settled by Plan
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+- [Decision 1]
+- [Decision 2]
+- [Decision 3]
+
+### Sketch Must Preserve
+
+- [Architecture Flow assumption]
+- [Trust boundary assumption]
+- [Artifact/event contract assumption]
+- [Reuse-first decision]
+
+### Sketch May Refine
+
+- [Repo-grounded surfaces]
+- [Touched files/symbols]
+- [Implementation seams]
+- [Design slices]
+
+### Sketch Must Not Re-Decide
+
+- [Settled architecture choice]
+- [Settled trust boundary]
+- [Settled primary automated action]
+- [Feasibility-proven technology decision]
+
+---
+
+## Phase 1 Planning Artifacts Summary
+
+| Artifact | Status | Notes |
+|----------|--------|-------|
+| `plan.md` | [created/updated] | [notes] |
+| `data-model.md` | [created/updated/N/A] | [notes] |
+| `contracts/` | [created/updated/N/A] | [notes] |
+| `quickstart.md` | [created/updated/N/A] | [notes] |
+
+---
+
+## Plan Completion Summary
+
+### Ready for Plan Review?
+
+- [ ] Architecture direction is explicit
+- [ ] Repeated architectural unit is modeled or explicitly unnecessary
+- [ ] Reuse-first decision is explicit
+- [ ] Architecture Flow is complete
+- [ ] Trust boundaries are explicit
+- [ ] Artifact/event contract architecture is explicit
+- [ ] Open feasibility questions are isolated
+- [ ] Sketch handoff contract is explicit
+
+### Suggested Next Step
+
+`/speckit.planreview`

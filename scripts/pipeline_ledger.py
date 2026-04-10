@@ -64,6 +64,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
             "feasibility_spike_completed": {"spike_artifact", "fq_count"},
             "feasibility_spike_failed": {"failed_fq"},
             "plan_approved": {"feasibility_required"},
+            "estimation_completed": {"estimate_points"},
             "solution_approved": {"task_count", "story_count", "estimate_points"},
             "analysis_completed": {"critical_count"},
             "e2e_generated": {"e2e_artifact"},
@@ -96,13 +97,43 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
         return valid, required
     except Exception as e:
         print(f"WARNING: Failed to load manifest: {e}. Using fallback.", file=sys.stderr)
-        return _load_manifest_events.__wrapped__() if hasattr(_load_manifest_events, '__wrapped__') else ({}, {})
+        # Return hardcoded fallback values
+        valid = {
+            "backlog_registered",
+            "spec_clarified",
+            "research_completed",
+            "plan_started",
+            "planreview_completed",
+            "feasibility_spike_completed",
+            "feasibility_spike_failed",
+            "plan_approved",
+            "tasking_completed",
+            "sketch_completed",
+            "estimation_completed",
+            "solutionreview_completed",
+            "solution_approved",
+            "analysis_completed",
+            "e2e_generated",
+            "feature_closed",
+        }
+        required = {
+            "feasibility_spike_completed": {"spike_artifact", "fq_count"},
+            "feasibility_spike_failed": {"failed_fq"},
+            "plan_approved": {"feasibility_required"},
+            "estimation_completed": {"estimate_points"},
+            "solution_approved": {"task_count", "story_count", "estimate_points"},
+            "analysis_completed": {"critical_count"},
+            "e2e_generated": {"e2e_artifact"},
+            "planreview_completed": {"fq_count", "questions_asked"},
+            "solutionreview_completed": {"critical_count", "high_count"},
+        }
+        return valid, required
 
 
 VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT = _load_manifest_events()
 
 # Ordered pipeline phases — each event is a valid "next" from one or more predecessors.
-# The pipeline is not strictly linear (feasibility is conditional; clarify is optional).
+# Solution-phase sequence is sketch -> solutionreview -> estimation -> tasking -> solution_approved.
 ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "backlog_registered": {None},
     "spec_clarified": {"backlog_registered", "spec_clarified"},
@@ -112,14 +143,25 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "feasibility_spike_completed": {"planreview_completed"},
     "feasibility_spike_failed": {"planreview_completed", "feasibility_spike_failed"},
     "plan_approved": {"planreview_completed", "feasibility_spike_completed"},
-    "tasking_completed": {"plan_approved", "tasking_completed"},
-    "sketch_completed": {"tasking_completed", "sketch_completed"},
-    "estimation_completed": {"sketch_completed", "estimation_completed"},
-    "solutionreview_completed": {"estimation_completed", "solutionreview_completed"},
-    "solution_approved": {"solutionreview_completed"},
+    "sketch_completed": {"plan_approved", "sketch_completed", "solutionreview_completed"},
+    "solutionreview_completed": {"sketch_completed", "solutionreview_completed"},
+    "estimation_completed": {"solutionreview_completed", "estimation_completed", "tasking_completed"},
+    "tasking_completed": {"estimation_completed", "tasking_completed"},
+    "solution_approved": {"tasking_completed"},
     "analysis_completed": {"solution_approved"},
     "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
     "feature_closed": {"e2e_generated"},
+}
+
+# Temporary compatibility for pre-cutover solution-sequence events recorded before
+# sketch-first ordering was enforced in this validator.
+LEGACY_SOLUTION_SEQUENCE_CUTOFF_UTC = datetime(2026, 4, 10, tzinfo=timezone.utc)
+LEGACY_SOLUTION_TRANSITIONS: dict[str, set[str]] = {
+    "tasking_completed": {"plan_approved"},
+    "sketch_completed": {"tasking_completed"},
+    "estimation_completed": {"sketch_completed"},
+    "solutionreview_completed": {"estimation_completed"},
+    "solution_approved": {"solutionreview_completed"},
 }
 
 
@@ -222,6 +264,40 @@ def validate_event_shape(event: dict[str, Any], *, line_hint: str) -> list[str]:
     return errors
 
 
+def _parse_event_timestamp_utc(event: dict[str, Any]) -> datetime | None:
+    """Parse an event UTC timestamp into a timezone-aware datetime."""
+    raw_timestamp = str(event.get("timestamp_utc", "")).strip()
+    if not raw_timestamp:
+        return None
+    try:
+        if raw_timestamp.endswith("Z"):
+            raw_timestamp = raw_timestamp[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw_timestamp)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_legacy_solution_transition(
+    event_name: str, previous_event: str | None, event: dict[str, Any]
+) -> bool:
+    """Allow only pre-cutover legacy solution transitions."""
+    if previous_event is None:
+        return False
+
+    legacy_prev = LEGACY_SOLUTION_TRANSITIONS.get(event_name, set())
+    if previous_event not in legacy_prev:
+        return False
+
+    timestamp = _parse_event_timestamp_utc(event)
+    if timestamp is None:
+        return False
+    return timestamp < LEGACY_SOLUTION_SEQUENCE_CUTOFF_UTC
+
+
 def validate_sequence(
     events: list[dict[str, Any]],
 ) -> tuple[list[str], dict[str, PipelineState]]:
@@ -245,10 +321,11 @@ def validate_sequence(
 
         allowed_prev = ALLOWED_PIPELINE_TRANSITIONS.get(event_name, set())
         if state.last_event not in allowed_prev:
-            errors.append(
-                f"{line_hint}: invalid pipeline transition for feature {feature_id}: "
-                f"{state.last_event!r} -> {event_name!r}"
-            )
+            if not _is_legacy_solution_transition(event_name, state.last_event, event):
+                errors.append(
+                    f"{line_hint}: invalid pipeline transition for feature {feature_id}: "
+                    f"{state.last_event!r} -> {event_name!r}"
+                )
 
         if event_name == "plan_approved":
             state.approved_plan = True
@@ -396,6 +473,31 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
                 f"Manual event '{event}' not in ALLOWED_PIPELINE_TRANSITIONS"
             )
 
+    # Check 4: Coverage enforcement for mixed migration mode (T037)
+    # Verify all commands have explicit driver mode or are explicitly legacy
+    has_version = "version" in manifest
+    has_timestamp = "last_updated" in manifest
+
+    if not has_version:
+        errors.append("Missing required field: version (needed for migration tracking)")
+    if not has_timestamp:
+        errors.append("Missing required field: last_updated (needed for governance coupling)")
+
+    # Verify commands have explicit mode metadata for coverage enforcement
+    for cmd_name, cmd_def in manifest.get("commands", {}).items():
+        driver_block = cmd_def.get("driver")
+        mode = cmd_def.get("mode")
+
+        # In mixed migration, all commands should have explicit mode or driver metadata
+        if driver_block is None and mode is None:
+            # Command has no driver or mode metadata - could be uncovered
+            # Only warn if it's not a legacy-only command
+            if not cmd_def.get("description", "").lower().startswith("legacy"):
+                errors.append(
+                    f"Command '{cmd_name}': no driver mode or legacy designation "
+                    "(required for coverage enforcement in mixed migration)"
+                )
+
     if errors:
         print("Manifest validation FAILED:", file=sys.stderr)
         for err in errors:
@@ -406,6 +508,8 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
     print(f"- Commands: {len(manifest.get('commands', {}))}")
     print(f"- Events declared: {len(declared_events)}")
     print(f"- Templates: {len(list(template_dir.glob('*.md'))) + len(list(template_dir.glob('*.sh')))}")
+    print(f"- Version: {manifest.get('version', 'N/A')}")
+    print(f"- Last updated: {manifest.get('last_updated', 'N/A')}")
 
 
 def cmd_assert_phase_complete(args: argparse.Namespace) -> None:

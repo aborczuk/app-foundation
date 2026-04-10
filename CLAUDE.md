@@ -8,6 +8,7 @@ Template-extracted from ib-trading. Last updated: 2026-04-08
 - Python 3.12 + `httpx>=0.27.0` (async HTTP client), `pydantic>=2.0` (schema validation), `pyyaml>=6.0.3`, `rich>=13.7` (terminal output)
 - SQLite with WAL mode (aiosqlite); `control-plane.db` file for webhook dedup state
 - Python 3.12 + `pytest>=8.4.2` (dev) for contract and unit tests
+- append-only `.speckit/pipeline-ledger.jsonl`, artifact files under `specs/<feature>/`, and per-feature lock files under `.speckit/locks/` (019-token-efficiency-docs)
 
 ## Project Structure
 
@@ -59,6 +60,7 @@ ruff check . && ruff format . --check
 Python 3.12: Follow standard conventions
 
 ## Recent Changes
+- 019-token-efficiency-docs: Added Python 3.12
 - 020-analytics-platform: Template extraction from ib-trading; removed trading-specific dependencies (ib-async, gspread, google-auth); focused on control plane + MCP servers + speckit governance
 
 <!-- MANUAL ADDITIONS START -->
@@ -99,6 +101,24 @@ Each of the sub-clauses MUST be verified individually in the Constitution Check
 - Read `constitution.md` first (workflow/gates), then `catalog.yaml` (system map).
 - Canonical pipeline matrix: `docs/governance/pipeline-matrix.yaml`.
 - Gate remediation codes: `docs/governance/gate-reason-codes.yaml`.
+
+## Directory Structure: `.specify/` vs `.speckit/`
+
+**Critical distinction**:
+
+- **`.specify/`**: Committed source code for speckit infrastructure (templates, helpers, manifest definitions)
+  - `command-manifest.yaml` — routing/governance source of truth
+  - `scripts/bash/check-prerequisites.sh` — feature validation helper
+  - `templates/` — markdown/script templates for artifact generation
+  - **Read/committed**: Part of codebase versioning
+
+- **`.speckit/`**: Generated artifacts and runtime state (append-only ledgers, locks, feature artifacts)
+  - `pipeline-ledger.jsonl` — authoritative phase transition events
+  - `task-ledger.jsonl` — task execution events
+  - `locks/` — feature-scoped single-flight concurrency guards
+  - `.codegraphcontext/` — CodeGraph index state
+  - **DO NOT commit**: Generated at runtime, not versioned
+  - **DO NOT read directly**: Access via script subcommands only (e.g., `scripts/pipeline_ledger.py`)
 
 ## Audit Trail System
 There are two event ledgers to track governance milestones and enforce state machine ordering.
@@ -174,6 +194,12 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 - Any force re-index requires explicit human approval and must be scoped (never full repo).
 - Repository command wrapper note: `uv run cgc ...` is routed through
   `csp_trader.cgc_guard` (project script) and enforces these index guards.
+
+**CodeGraph directories (canonical)**:
+- `.codegraphcontext/` — single canonical CodeGraph home for this repo.
+  - `config.yaml` and optional `.env`: repo-local configuration
+  - `db/`: generated runtime/index artifacts (Kuzu/Falkor files, sockets)
+  - `.uv-cache/`: CodeGraph uv cache when scripts set `CGC_UV_CACHE_DIR`
 
 ### Shell Script Compatibility (macOS-first)
 
