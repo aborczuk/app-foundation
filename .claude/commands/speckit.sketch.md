@@ -72,7 +72,7 @@ Produce the LLD layer for each task: what to modify/create, how the pieces compo
 
    **For implementation tasks (code HUD)**:
    ```bash
-   python .specify/scripts/pipeline-scaffold.py speckit.sketch.hud-code \
+   uv run python .specify/scripts/pipeline-scaffold.py speckit.sketch \
      TASK_ID=T0XX DESCRIPTION="[Task description]" \
      FEATURE_ID="[feature-id]"
    ```
@@ -88,7 +88,7 @@ Produce the LLD layer for each task: what to modify/create, how the pieces compo
 
    **For `[H]` human tasks (runbook HUD)**:
    ```bash
-   python .specify/scripts/pipeline-scaffold.py speckit.sketch.hud-runbook \
+   uv run python .specify/scripts/pipeline-scaffold.py speckit.sketch \
      TASK_ID=T0XX DESCRIPTION="[Task description]" \
      FEATURE_ID="[feature-id]"
    ```

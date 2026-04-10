@@ -78,6 +78,31 @@ Non-code synthesis from web research. Standard approaches, common patterns, know
 
 ---
 
+## Architecture Candidates
+
+| Candidate | Constraint | FR coverage summary | Net-new code required | Maintenance surface |
+|-----------|------------|---------------------|-----------------------|---------------------|
+| A: No custom server (recommended) | Local deterministic CLI only; no hosted control plane additions | Covers FR-001..FR-026 via existing scripts/ledgers + new local orchestrator modules | Orchestrator command, envelope validator, lock handling, status-line renderer, handoff template bridge | Low; contained to repo scripts/docs/tests |
+| B: Minimal service | Add thin HTTP service for approvals/callback coordination only | Covers FRs but adds network ingress/secret/runtime lifecycle requirements not required by current scope | Candidate A work plus service bootstrap, auth boundaries, deployment runbooks | Medium; ongoing service operations |
+| C: Full service orchestration backend | Dedicated orchestration service with remote workers/state | Technically covers FRs with additional execution abstraction | Significant net-new state machine service, persistence and deployment stack | High; persistent infra + security burden |
+
+**Decision**: Candidate A selected. FR coverage is complete without adding a network service, and it best satisfies token-efficiency and low-maintenance goals.
+
+---
+
+## Dependency Security
+
+| Dependency | Target version floor | CVE posture | Rationale |
+|------------|----------------------|-------------|-----------|
+| `pydantic` | `>=2.0,<3.0` (repo baseline) | No blocker identified during research pass | Typed contract validation already in repo stack; avoids introducing new parser surface |
+| `jsonschema` | `>=4.25.1` (optional) | No blocker identified during research pass | Optional secondary validator only; not required for MVP |
+| `transitions` | `>=0.9.3` (optional) | No blocker identified during research pass | Useful for explicit state graphs, but MVP can use deterministic table routing |
+| `tenacity` | `>=9.1.2` (optional) | No blocker identified during research pass | Retry helper for non-deterministic subprocess failure edges; optional in first increment |
+| `filelock` | `>=3.19.1` (optional) | No blocker identified during research pass | Clarified lock semantics can be implemented with this package or equivalent file-lock primitive |
+| `pydantic-ai` | `>=0.8.1` (future scope) | No blocker identified during research pass | Keep isolated to LLM handoff/drill-down surfaces; do not couple deterministic routing core |
+
+---
+
 ## Search Tools Used
 
 Log which tools and queries ran. Used to diagnose shallow results in future debugging.
@@ -90,8 +115,9 @@ Log which tools and queries ran. Used to diagnose shallow results in future debu
 
 ## Unanswered Questions
 
-Anything still unknown after all research. These become [NEEDS CLARIFICATION] in plan.md.
+Anything still unknown after all research.
 
-- Should the orchestrator standardize on a single schema validator implementation (`pydantic` only vs `pydantic` + `jsonschema`) for compatibility boundaries?
-- For approval checkpoints (FR-022), should approvals be GitHub-native only, or abstracted to a provider-neutral adapter contract?
-- Should `pydantic-ai` be scoped only to LLM handoff/drill-down surfaces (FR-004/FR-026) while keeping deterministic orchestration paths dependency-light?
+None for plan stage. Deferred enhancements are tracked as non-blocking follow-ups:
+- Evaluate whether dual-validator mode (`pydantic` + `jsonschema`) adds material value over `pydantic`-only MVP.
+- Evaluate provider-neutral approval adapters after GitHub-native/manual approval flow lands.
+- Evaluate `pydantic-ai` only for non-routing LLM assist surfaces after deterministic core is stable.

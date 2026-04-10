@@ -167,7 +167,7 @@ flowchart TD
 - **FR-023**: System MUST trigger one deterministic verbose rerun for `exit_code=2` failures before returning final blocked diagnostics.
 - **FR-024**: System MUST emit a strict human-facing status envelope of at most three lines (`Done:`, `Next:`, `Blocked:`) for each orchestrator step result.
 - **FR-025**: System MUST keep default stdout free of large diagnostic payloads and write full structured diagnostics to deterministic sidecar files for follow-up inspection.
-- **FR-026**: System MUST provide a deterministic issue drill-down interface that, on explicit user request, reads sidecar diagnostics and returns standardized root-cause fields (`gate`, `reasons`, `error_code`, `failed_step`, `debug_path`).
+- **FR-026**: System MUST provide a deterministic issue drill-down interface that, on explicit user request, reads sidecar diagnostics and returns standardized root-cause fields in a token efficient manner (`gate`, `reasons`, `error_code`, `failed_step`, `debug_path`).
 
 ### Key Entities *(include if feature involves data)*
 

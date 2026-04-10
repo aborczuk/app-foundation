@@ -96,7 +96,36 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
         return valid, required
     except Exception as e:
         print(f"WARNING: Failed to load manifest: {e}. Using fallback.", file=sys.stderr)
-        return _load_manifest_events.__wrapped__() if hasattr(_load_manifest_events, '__wrapped__') else ({}, {})
+        # Return hardcoded fallback values
+        valid = {
+            "backlog_registered",
+            "spec_clarified",
+            "research_completed",
+            "plan_started",
+            "planreview_completed",
+            "feasibility_spike_completed",
+            "feasibility_spike_failed",
+            "plan_approved",
+            "tasking_completed",
+            "sketch_completed",
+            "estimation_completed",
+            "solutionreview_completed",
+            "solution_approved",
+            "analysis_completed",
+            "e2e_generated",
+            "feature_closed",
+        }
+        required = {
+            "feasibility_spike_completed": {"spike_artifact", "fq_count"},
+            "feasibility_spike_failed": {"failed_fq"},
+            "plan_approved": {"feasibility_required"},
+            "solution_approved": {"task_count", "story_count", "estimate_points"},
+            "analysis_completed": {"critical_count"},
+            "e2e_generated": {"e2e_artifact"},
+            "planreview_completed": {"fq_count", "questions_asked"},
+            "solutionreview_completed": {"critical_count", "high_count"},
+        }
+        return valid, required
 
 
 VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT = _load_manifest_events()
