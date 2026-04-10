@@ -473,6 +473,31 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
                 f"Manual event '{event}' not in ALLOWED_PIPELINE_TRANSITIONS"
             )
 
+    # Check 4: Coverage enforcement for mixed migration mode (T037)
+    # Verify all commands have explicit driver mode or are explicitly legacy
+    has_version = "version" in manifest
+    has_timestamp = "last_updated" in manifest
+
+    if not has_version:
+        errors.append("Missing required field: version (needed for migration tracking)")
+    if not has_timestamp:
+        errors.append("Missing required field: last_updated (needed for governance coupling)")
+
+    # Verify commands have explicit mode metadata for coverage enforcement
+    for cmd_name, cmd_def in manifest.get("commands", {}).items():
+        driver_block = cmd_def.get("driver")
+        mode = cmd_def.get("mode")
+
+        # In mixed migration, all commands should have explicit mode or driver metadata
+        if driver_block is None and mode is None:
+            # Command has no driver or mode metadata - could be uncovered
+            # Only warn if it's not a legacy-only command
+            if not cmd_def.get("description", "").lower().startswith("legacy"):
+                errors.append(
+                    f"Command '{cmd_name}': no driver mode or legacy designation "
+                    "(required for coverage enforcement in mixed migration)"
+                )
+
     if errors:
         print("Manifest validation FAILED:", file=sys.stderr)
         for err in errors:
@@ -483,6 +508,8 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
     print(f"- Commands: {len(manifest.get('commands', {}))}")
     print(f"- Events declared: {len(declared_events)}")
     print(f"- Templates: {len(list(template_dir.glob('*.md'))) + len(list(template_dir.glob('*.sh')))}")
+    print(f"- Version: {manifest.get('version', 'N/A')}")
+    print(f"- Last updated: {manifest.get('last_updated', 'N/A')}")
 
 
 def cmd_assert_phase_complete(args: argparse.Namespace) -> None:
