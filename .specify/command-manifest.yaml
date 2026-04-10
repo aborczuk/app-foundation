@@ -92,6 +92,7 @@ commands:
       - output_path: "${FEATURE_DIR}/plan.md"
         template: "plan-template.md"
         scaffold_script: "setup-plan.sh"  # already scripted
+        consumed_by: [speckit.planreview, speckit.feasibilityspike, speckit.sketch]
       - output_path: "${FEATURE_DIR}/data-model.md"
         template: "data-model-template.md"
       - output_path: "${FEATURE_DIR}/quickstart.md"
@@ -139,7 +140,7 @@ commands:
     emits: []
 
   speckit.tasking:
-    description: "Generate the initial task breakdown (tasks.md) from a proven plan"
+    description: "Decompose an approved sketch.md into tasks.md, then perform estimate/breakdown stabilization and generate HUDs + acceptance tests"
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -148,6 +149,7 @@ commands:
     artifacts:
       - output_path: "${FEATURE_DIR}/tasks.md"
         template: "tasks-template.md"
+        consumed_by: [speckit.estimate, speckit.breakdown, speckit.implement, speckit.checkpoint]
     emits:
       - event: tasking_completed
         required_fields: [task_count, story_count]
@@ -161,7 +163,7 @@ commands:
     artifacts:
       - output_path: "${FEATURE_DIR}/sketch.md"
         template: "sketch-template.md"
-        scaffold_script: "check-prerequisites.sh"
+        consumed_by: [speckit.solutionreview, speckit.tasking, speckit.analyze]
     emits:
       - event: sketch_completed
         required_fields: []
@@ -201,7 +203,7 @@ commands:
         required_fields: [critical_count]
 
   speckit.solutionreview:
-    description: "Cross-sketch quality review after tasking/sketch/estimate converge"
+    description: "Quality gate over sketch.md before tasking: validate sketch is complete, repo-grounded, and decomposition-ready"
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -209,12 +211,13 @@ commands:
     artifacts:
       - output_path: "${FEATURE_DIR}/solutionreview.md"
         template: "solutionreview-template.md"
+        consumed_by: [speckit.tasking]
     emits:
       - event: solutionreview_completed
         required_fields: [critical_count, high_count]
 
   speckit.solution:
-    description: "LLD solutioning phase — orchestrates tasking → sketch → estimate → solutionreview loop"
+    description: "LLD solutioning phase — orchestrates sketch → solutionreview → tasking → analyze loop"
     scripts:
       - "scripts/pipeline_ledger.py"
     artifacts: []
