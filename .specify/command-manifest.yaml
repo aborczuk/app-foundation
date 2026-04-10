@@ -17,6 +17,9 @@ manifest:
 commands:
   speckit.specify:
     description: "Create or update feature specification from natural language"
+    driver:
+      mode: generative
+      timeout_seconds: 300
     scripts:
       - ".specify/scripts/bash/create-new-feature.sh"
       - ".specify/scripts/bash/check-prerequisites.sh"
@@ -35,6 +38,7 @@ commands:
 
   speckit.clarify:
     description: "Ask targeted clarification questions and encode answers into spec"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - "scripts/pipeline_ledger.py"
@@ -45,6 +49,7 @@ commands:
 
   speckit.split:
     description: "Split an XL or L spec into smaller independently deliverable phase specs"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/create-new-feature.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -58,6 +63,7 @@ commands:
 
   speckit.checklist:
     description: "Generate custom checklists for a feature based on user requirements"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -68,6 +74,9 @@ commands:
 
   speckit.research:
     description: "Assemble prior art, patterns, and integration options for the feature"
+    driver:
+      mode: generative
+      timeout_seconds: 240
     scripts:
       - ".specify/scripts/bash/setup-plan.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -81,6 +90,9 @@ commands:
 
   speckit.plan:
     description: "Create architecture, technology selection, data flow, and implementation strategy"
+    driver:
+      mode: generative
+      timeout_seconds: 300
     scripts:
       - ".specify/scripts/bash/setup-plan.sh"
       - ".specify/scripts/bash/update-agent-context.sh"
@@ -105,6 +117,9 @@ commands:
 
   speckit.planreview:
     description: "Identify underspecified areas in the current plan by asking targeted clarification questions"
+    driver:
+      mode: generative
+      timeout_seconds: 180
     scripts:
       - ".specify/scripts/bash/setup-plan.sh"
       - "scripts/pipeline_ledger.py"
@@ -115,6 +130,7 @@ commands:
 
   speckit.feasibilityspike:
     description: "Prove all Open Feasibility Questions in plan with targeted probes"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/setup-plan.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -130,6 +146,7 @@ commands:
 
   speckit.tasks:
     description: "Generate actionable, dependency-ordered tasks.md for the feature"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -141,6 +158,7 @@ commands:
 
   speckit.tasking:
     description: "Decompose an approved sketch.md into tasks.md, then perform estimate/breakdown stabilization and generate HUDs + acceptance tests"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -156,6 +174,9 @@ commands:
 
   speckit.sketch:
     description: "Generate a pre-task low-level design blueprint (sketch.md) from plan/spec/codebase context"
+    driver:
+      mode: generative
+      timeout_seconds: 180
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -170,6 +191,7 @@ commands:
 
   speckit.estimate:
     description: "Estimate fibonacci complexity for each task by evaluating codebase"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -185,6 +207,7 @@ commands:
 
   speckit.breakdown:
     description: "Break down 8 or 13-point tasks in estimates.md into smaller pieces (≤5 points each)"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
@@ -192,6 +215,7 @@ commands:
 
   speckit.analyze:
     description: "Perform cross-artifact consistency and quality analysis after task generation"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - "scripts/pipeline_ledger.py"
@@ -204,6 +228,7 @@ commands:
 
   speckit.solutionreview:
     description: "Quality gate over sketch.md before tasking: validate sketch is complete, repo-grounded, and decomposition-ready"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -218,6 +243,7 @@ commands:
 
   speckit.solution:
     description: "LLD solutioning phase — orchestrates sketch → solutionreview → tasking → analyze loop"
+    mode: legacy
     scripts:
       - "scripts/pipeline_ledger.py"
     artifacts: []
@@ -227,6 +253,7 @@ commands:
 
   speckit.e2e:
     description: "Generate E2E testing pipeline artifacts (e2e.md + executable script)"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
@@ -242,6 +269,7 @@ commands:
 
   speckit.e2e-run:
     description: "Execute the E2E testing pipeline for the current feature as automation-first acceptance gate"
+    mode: legacy
     scripts:
       - "scripts/e2e_${FEATURE_SLUG}.sh"
     artifacts: []
@@ -249,6 +277,7 @@ commands:
 
   speckit.checkpoint:
     description: "Validate a phase checkpoint from tasks.md by running the software and verifying observable behavior"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - "scripts/speckit_implement_gate.py"
@@ -257,6 +286,7 @@ commands:
 
   speckit.implement:
     description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - "scripts/speckit_gate_status.py"
@@ -272,6 +302,7 @@ commands:
 
   speckit.taskstoissues:
     description: "Convert existing tasks into actionable, dependency-ordered GitHub issues for the feature"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
@@ -279,6 +310,7 @@ commands:
 
   speckit.addtobacklog:
     description: "Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, and auto-sync spec"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
@@ -286,6 +318,7 @@ commands:
 
   speckit.constitution:
     description: "Create or update the project constitution from interactive or provided principle inputs"
+    mode: legacy
     scripts:
       - "scripts/validate_constitution_sync.sh"
     artifacts: []
@@ -293,6 +326,7 @@ commands:
 
   speckit.trello-sync:
     description: "Sync the current feature's tasks.md to a Trello board using the MCP Trello Bridge"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
@@ -300,6 +334,7 @@ commands:
 
   speckit.clickup-sync:
     description: "Bootstrap or report ClickUp sync status for the current speckit feature tree"
+    mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
     artifacts: []
