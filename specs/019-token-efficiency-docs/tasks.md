@@ -109,20 +109,21 @@
 
 ### Tests for User Story 3
 
-- [ ] T033 [P] [US3] Add mixed-migration integration regression in tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode using shared harness fixture to avoid duplicate route/bootstrap logic
-- [ ] T034 [P] [US3] Add manifest-governance regression for version/timestamp coupling in tests/unit/test_pipeline_driver.py:test_manifest_governance_guard
+- [X] T033 [P] [US3] Add mixed-migration integration regression in tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode using shared harness fixture to avoid duplicate route/bootstrap logic
+- [X] T034 [P] [US3] Add manifest-governance regression for version/timestamp coupling in tests/unit/test_pipeline_driver.py:test_manifest_governance_guard
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Implement deterministic command coverage report (missing scripts/modes) in scripts/validate_command_script_coverage.py:build_coverage_report
-- [ ] T036 [US3] Add solution/tasking gate check for uncovered command mappings in scripts/speckit_gate_status.py:validate_command_coverage
-- [ ] T037 [US3] Extend manifest validation invariants for coverage enforcement in scripts/pipeline_ledger.py:cmd_validate_manifest
-- [ ] T038 [US3] Document migration/rollback and coverage ownership policy in docs/governance/command-script-coverage.md and specs/019-token-efficiency-docs/research.md
-- [ ] T039 [US3] Add explicit scaffold invocation for solution review in .claude/commands/speckit.solutionreview.md (`pipeline-scaffold.py speckit.solutionreview`) and update docs/governance/command-script-coverage.md
-- [ ] T040 [US3] Remove root mirror manifest command-manifest.yaml and repoint all repository references to .specify/command-manifest.yaml as canonical
-- [ ] T041 [P] [US3] Add anti-regression guard in scripts/validate_doc_graph.sh:run_validators (or dedicated script) to fail when command-manifest.yaml mirror is reintroduced or referenced
+- [X] T035 [US3] Implement deterministic command coverage report (missing scripts/modes) in scripts/validate_command_script_coverage.py:build_coverage_report
+- [X] T036 [US3] Add solution/tasking gate check for uncovered command mappings in scripts/speckit_gate_status.py:validate_command_coverage
+- [X] T037 [US3] Extend manifest validation invariants for coverage enforcement in scripts/pipeline_ledger.py:cmd_validate_manifest
+- [X] T038 [US3] Document migration/rollback and coverage ownership policy in docs/governance/command-script-coverage.md and specs/019-token-efficiency-docs/research.md
+- [X] T039 [US3] Add explicit scaffold invocation for solution review in .claude/commands/speckit.solutionreview.md (`pipeline-scaffold.py speckit.solutionreview`) and update docs/governance/command-script-coverage.md
+- [X] T040 [US3] Remove root mirror manifest command-manifest.yaml and repoint all repository references to .specify/command-manifest.yaml as canonical
+- [X] T041 [P] [US3] Add anti-regression guard in scripts/validate_doc_graph.sh:run_validators (or dedicated script) to fail when command-manifest.yaml mirror is reintroduced or referenced
 
 **Checkpoint**: Mixed-mode migration is supported and uncovered command mappings cannot pass gates silently.
+<!-- Checkpoint validated: PASS | 2026-04-10 | All acceptance tests pass (T033, T034); coverage validation, governance guards, and anti-regression checks functional -->
 
 ---
 
