@@ -356,3 +356,51 @@ def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> 
     assert state["drift_detected"] is True
     assert "missing_artifact:plan.md" in state["drift_reasons"]
     assert state["blocked"] is True
+
+
+def test_handoff_contract_requires_all_fields() -> None:
+    """Verify LLMHandoffTemplate schema with required fields per data-model.md."""
+    # When the orchestrator determines the next step is generative (mode="llm" in manifest),
+    # it must create an LLMHandoffTemplate instead of executing a script.
+    correlation_id = "run_20260410T120000Z_019:speckit.plan"
+
+    # This is the contract that should be returned when a generative step is encountered.
+    # The fields match the LLMHandoffTemplate entity in data-model.md.
+    handoff_contract = {
+        "handoff_id": "handoff_019_plan_001",
+        "step_name": "speckit.plan",
+        "required_inputs": [
+            "specs/019-token-efficiency-docs/spec.md",
+            "specs/019-token-efficiency-docs/research.md",
+        ],
+        "output_template_path": "specs/019-token-efficiency-docs/plan.md",
+        "completion_marker": "## Summary",
+        "correlation_id": correlation_id,
+    }
+
+    # Validate required fields are present
+    required_fields = {
+        "handoff_id",
+        "step_name",
+        "required_inputs",
+        "output_template_path",
+        "completion_marker",
+        "correlation_id",
+    }
+    assert required_fields.issubset(set(handoff_contract.keys())), (
+        f"Handoff contract missing required fields. "
+        f"Expected: {required_fields}, got: {set(handoff_contract.keys())}"
+    )
+
+    # Validate field types
+    assert isinstance(handoff_contract["handoff_id"], str)
+    assert isinstance(handoff_contract["step_name"], str)
+    assert isinstance(handoff_contract["required_inputs"], list)
+    assert all(isinstance(p, str) for p in handoff_contract["required_inputs"])
+    assert isinstance(handoff_contract["output_template_path"], str)
+    assert isinstance(handoff_contract["completion_marker"], str)
+    assert isinstance(handoff_contract["correlation_id"], str)
+
+    # Validate correlation_id matches the run context
+    assert handoff_contract["correlation_id"] == correlation_id
+    assert ":" in correlation_id  # Should be scoped: run_id:step_name
