@@ -38,7 +38,7 @@
 - [X] T005 [P] Implement feature lock acquire/release/stale-owner handling in scripts/pipeline_driver_state.py:acquire_feature_lock
 - [X] T006 [P] Implement ledger-authoritative phase resolver and drift detection in scripts/pipeline_driver_state.py:resolve_phase_state
 - [X] T007 Implement deterministic step executor with timeout/cancel and exit-code routing in scripts/pipeline_driver.py:run_step
-- [ ] T008 Implement mandatory `exit_code=2` verbose rerun + sidecar persistence in scripts/pipeline_driver.py:handle_runtime_failure
+- [X] T008 Implement mandatory `exit_code=2` verbose rerun + sidecar persistence in scripts/pipeline_driver.py:handle_runtime_failure
 - [ ] T009 [P] Create shared status contract constants + renderer in scripts/pipeline_driver_contracts.py (`STATUS_KEYS`, `STATUS_PREFIXES`, `render_status_lines`) and make them the only allowed source for human step status output
 - [ ] T010 [P] Implement run-scoped correlation ID propagation helper in scripts/pipeline_driver.py:build_correlation_id
 - [ ] T011 Implement command coverage validator in scripts/validate_command_script_coverage.py:main
