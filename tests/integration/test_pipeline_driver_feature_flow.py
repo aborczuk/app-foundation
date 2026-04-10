@@ -47,6 +47,35 @@ def _write_step_script(path: Path, *, payload: dict[str, object], exit_code: int
     )
 
 
+def _write_manifest_route(
+    manifest_path: Path,
+    *,
+    command_id: str,
+    script_path: str,
+    timeout_seconds: int = 5,
+    emit_event: str,
+) -> None:
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                f"  {command_id}:",
+                "    description: \"driver route\"",
+                "    driver:",
+                "      mode: deterministic",
+                f"      script_path: {script_path}",
+                f"      timeout_seconds: {timeout_seconds}",
+                "    emits:",
+                f"      - event: {emit_event}",
+                "        required_fields: []",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_deterministic_route_success(driver_flow_harness) -> None:
     manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "plan_step.py"
@@ -65,24 +94,11 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
             "next_phase": "plan",
         },
     )
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(
-        "\n".join(
-            [
-                "commands:",
-                "  speckit.plan:",
-                "    description: \"plan\"",
-                "    driver:",
-                "      mode: deterministic",
-                "      script_path: scripts/plan_step.py",
-                "      timeout_seconds: 5",
-                "    emits:",
-                "      - event: plan_started",
-                "        required_fields: []",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_manifest_route(
+        manifest_path,
+        command_id="speckit.plan",
+        script_path="scripts/plan_step.py",
+        emit_event="plan_started",
     )
 
     routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
@@ -101,6 +117,54 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
     assert result["exit_code"] == 0
     assert result["next_phase"] == "plan"
     assert result["process_exit_code"] == 0
+    assert result["timed_out"] is False
+
+
+def test_deterministic_route_blocked(driver_flow_harness) -> None:
+    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    script_path = driver_flow_harness.feature_dir / "scripts" / "planreview_gate.py"
+    correlation_id = pipeline_driver.build_correlation_id(
+        "019",
+        "speckit.planreview",
+        run_id="run-us1-blocked",
+    )
+    _write_step_script(
+        script_path,
+        payload={
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "planreview_questions",
+            "reasons": ["fq_count_nonzero"],
+            "next_phase": None,
+        },
+        exit_code=1,
+    )
+    _write_manifest_route(
+        manifest_path,
+        command_id="speckit.planreview",
+        script_path="scripts/planreview_gate.py",
+        emit_event="planreview_completed",
+    )
+
+    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
+    route = routes["speckit.planreview"]
+    assert route["mode"] == "deterministic"
+    assert route["driver_managed"] is True
+
+    result = pipeline_driver.run_step(
+        [sys.executable, str(route["script_path"])],
+        timeout_seconds=route["timeout_seconds"],
+        correlation_id=correlation_id,
+        cwd=driver_flow_harness.feature_dir,
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert result["gate"] == "planreview_questions"
+    assert result["reasons"] == ["fq_count_nonzero"]
+    assert result["process_exit_code"] == 1
     assert result["timed_out"] is False
 
 
