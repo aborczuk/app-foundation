@@ -80,7 +80,7 @@
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Add contract tests for canonical result envelope (`exit_code` 0/1/2) in tests/contract/test_pipeline_driver_contract.py:test_step_result_schema
+- [X] T021 [P] [US2] Add contract tests for canonical result envelope (`exit_code` 0/1/2) in tests/contract/test_pipeline_driver_contract.py:test_step_result_schema
 - [ ] T022 [P] [US2] Add runtime-failure verbose-rerun integration test in tests/integration/test_pipeline_driver_feature_flow.py:test_runtime_failure_verbose_rerun using shared harness fixture and sidecar assertions
 - [ ] T023 [P] [US2] Add dry-run no-mutation integration test in tests/integration/test_pipeline_driver_feature_flow.py:test_dry_run_does_not_mutate_ledgers_or_artifacts
 - [ ] T024 [P] [US2] Add human-approval-breakpoint routing test in tests/unit/test_pipeline_driver.py:test_approval_breakpoint_blocks_without_token and tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_resume_flow
