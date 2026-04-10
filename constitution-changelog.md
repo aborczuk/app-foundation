@@ -7,6 +7,43 @@ Append new entries here (not to `constitution.md`) whenever the constitution is 
 
 ---
 
+## 2.3.2 (2026-04-09)
+
+**Version change**: 2.3.1 → 2.3.2 (PATCH — sketch-first solution orchestration and event-order realignment)
+
+### Summary
+
+- Reordered solution-phase flow to sketch-first:
+  `sketch -> solutionreview -> estimate/tasking stabilization -> solution_approved -> analyze`.
+- Clarified that `solution_approved` closes the solution phase and `analysis_completed` remains a separate post-solution gate event.
+- Updated constitutional pipeline matrix and state-machine diagram to match the new orchestration contract.
+
+### Files updated
+
+| File | Status |
+|------|--------|
+| `constitution.md` | ✅ updated (pipeline matrix + custom command roles + version bump) |
+| `.claude/constitution-workflow.md` | ✅ updated (state machine) |
+| `constitution-workflow.md` | ✅ updated (mirrored state machine) |
+| `.claude/commands/speckit.solution.md` | ✅ updated (new orchestration order) |
+| `.claude/commands/speckit.sketch.md` | ✅ updated (pre-task blueprint ownership) |
+| `.claude/commands/speckit.solutionreview.md` | ✅ updated (sketch-focused review gate) |
+| `.claude/commands/speckit.tasking.md` | ✅ updated (post-sketch decomposition + HUD/test ownership) |
+| `.claude/commands/speckit.estimate.md` | ✅ updated (points-only responsibility) |
+| `.claude/commands/speckit.tasks.md` | ✅ updated (deprecated command path) |
+| `.claude/commands/speckit.analyze.md` | ✅ updated (drift contract includes sketch artifact) |
+| `.specify/command-manifest.yaml` | ✅ updated (artifact/event ownership realignment) |
+| `command-manifest.yaml` | ✅ updated (mirrored manifest) |
+| `.specify/templates/sketch-template.md` | ✅ added (sketch blueprint scaffold) |
+| `scripts/pipeline_ledger.py` | ✅ updated (transition order and fallback required fields) |
+
+### SYNC IMPACT REPORT
+
+- Command docs, manifest ownership, ledger transitions, and constitutional workflow now align on sketch-first sequencing.
+- Old solution ordering (`tasking -> sketch -> estimate -> solutionreview`) is no longer valid under ledger transition rules.
+
+---
+
 ## 2.3.1 (2026-04-08)
 
 **Version change**: 2.3.0 → 2.3.1 (PATCH — deterministic gate enforcement + token-efficiency compression)

@@ -94,14 +94,14 @@ is physically blocked by the existence of specific artifacts at each gate.
 | **05** | `/speckit.planreview` | `plan.md` | Updated `plan.md` (Open FQs section populated) | `planreview_completed` |
 | **05a** | `/speckit.feasibilityspike` | `plan.md` (FQs section) | Updated `plan.md` (Technology Selection filled) + `spike.md` | `feasibility_spike_completed` |
 | **05b** | *(plan phase complete)* | — | — | `plan_approved` |
-| **06** | `/speckit.solution` | **`plan.md`** (FQs must be empty) | `tasks.md`, `estimates.md`, HUDs, acceptance tests | `solution_approved` |
-| **06a** | `/speckit.tasking` *(sub-agent)* | `plan.md` + design artifacts | `tasks.md` | `tasking_completed` |
-| **06b** | `/speckit.sketch` *(sub-agent)* | `tasks.md` + codebase | `estimates.md` (sketches), HUDs, `.speckit/acceptance-tests/` | `sketch_completed` |
-| **06c** | `/speckit.estimate` *(sub-agent)* | `tasks.md` | `estimates.md` (scores) | `estimation_completed` |
-| **06d** | `/speckit.solutionreview` *(sub-agent)* | all solution artifacts | `solutionreview.md` | `solutionreview_completed` |
+| **06** | `/speckit.solution` | **`plan.md`** (FQs must be empty) | Orchestrated solution artifacts + `solution_approved` gate | `solution_approved` |
+| **06a** | `/speckit.sketch` *(sub-agent)* | `plan.md`, `spec.md`, codebase context | `sketch.md` blueprint | `sketch_completed` |
+| **06b** | `/speckit.solutionreview` *(sub-agent)* | `sketch.md` | `solutionreview.md` | `solutionreview_completed` |
+| **06c** | `/speckit.estimate` *(subprocess in tasking loop)* | `tasks.md` (current iteration) | `estimates.md` (scores) | `estimation_completed` |
+| **06d** | `/speckit.tasking` *(sub-agent)* | approved `sketch.md` + plan/spec artifacts | `tasks.md`, HUDs, `.speckit/acceptance-tests/` | `tasking_completed` |
 | **07** | `/speckit.breakdown` | `tasks.md` (Size > 5) | Split `tasks.md` | `discovery_completed` |
-| **09** | `/speckit.analyze` | `research`, `plan`, `tasks` | Consistency Report | `quality_guards_passed` |
-| **10** | `/speckit.e2e` | `plan`, `tasks` | **`e2e.md`**, `scripts/e2e_*.sh` | `quality_guards_passed` |
+| **09** | `/speckit.analyze` | `spec`, `plan`, `sketch`, `tasks` | Consistency Report | `analysis_completed` |
+| **10** | `/speckit.e2e` | `plan`, `tasks`, `analysis_completed` | **`e2e.md`**, `scripts/e2e_*.sh` | `e2e_generated` |
 | **11** | `/speckit.implement` | **`e2e.md`**, `tasks.md` | Code, `task-ledger.jsonl` | `task_started` |
 | **12** | `/speckit.checkpoint` | Task in-progress | Test Output | `tests_passed` |
 | **13** | `/speckit.e2e-run` | `scripts/e2e_*.sh` | Validation Verdict | `tests_passed` |
@@ -143,10 +143,10 @@ See [constitution-workflow.md](./.claude/constitution-workflow.md) for the Merma
 | `/speckit.e2e` | Generate E2E pipeline script and tests | Pre-flight gate |
 | `/speckit.e2e-run` | Execute E2E validation suite | Verification phase |
 | `/speckit.feasibilityspike` | Prove Open FQs before LLD | Blocks /speckit.solution |
-| `/speckit.solution` | Orchestrate LLD (tasking → sketch → estimate → review) | Top-level LLD command |
-| `/speckit.tasking` | Produce tasks.md from plan + artifacts | Sub-agent of solution |
-| `/speckit.sketch` | Generate sketches, HUDs, acceptance tests | Sub-agent of solution |
-| `/speckit.solutionreview` | DRY, compliance, test review, optimization | Sub-agent of solution |
+| `/speckit.solution` | Orchestrate LLD (sketch → review → tasking → analyze) | Top-level LLD command |
+| `/speckit.sketch` | Generate pre-task `sketch.md` blueprint | Sub-agent of solution |
+| `/speckit.solutionreview` | Review sketch quality, domain fit, and reuse strategy | Sub-agent of solution |
+| `/speckit.tasking` | Decompose approved sketch into tasks + HUDs + acceptance tests | Sub-agent of solution |
 | `/speckit.checklist` | Domain-specific task checklist | Task planning |
 | `/speckit.addtobacklog` | Add ad-hoc task with fit check | Backlog management |
 | `/speckit.split` | Split XL/L specs into independent phases | Feature scoping |
@@ -164,4 +164,4 @@ agent processes must comply with these principles.
 Strategic governance principles (Human-First, Planning Behavior, Security First) are maintained
 in `CLAUDE.md` under **Governing Principles**.
 
-**Version**: 2.3.1 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-08 (Deterministic gate scripts for token-efficient command enforcement)
+**Version**: 2.3.2 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-09 (Sketch-first solution pipeline order + post-solution drift gate alignment)

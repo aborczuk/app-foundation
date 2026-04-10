@@ -64,6 +64,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
             "feasibility_spike_completed": {"spike_artifact", "fq_count"},
             "feasibility_spike_failed": {"failed_fq"},
             "plan_approved": {"feasibility_required"},
+            "estimation_completed": {"estimate_points"},
             "solution_approved": {"task_count", "story_count", "estimate_points"},
             "analysis_completed": {"critical_count"},
             "e2e_generated": {"e2e_artifact"},
@@ -119,6 +120,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
             "feasibility_spike_completed": {"spike_artifact", "fq_count"},
             "feasibility_spike_failed": {"failed_fq"},
             "plan_approved": {"feasibility_required"},
+            "estimation_completed": {"estimate_points"},
             "solution_approved": {"task_count", "story_count", "estimate_points"},
             "analysis_completed": {"critical_count"},
             "e2e_generated": {"e2e_artifact"},
@@ -131,7 +133,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
 VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT = _load_manifest_events()
 
 # Ordered pipeline phases — each event is a valid "next" from one or more predecessors.
-# The pipeline is not strictly linear (feasibility is conditional; clarify is optional).
+# Solution-phase sequence is sketch -> solutionreview -> estimation -> tasking -> solution_approved.
 ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "backlog_registered": {None},
     "spec_clarified": {"backlog_registered", "spec_clarified"},
@@ -141,11 +143,11 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "feasibility_spike_completed": {"planreview_completed"},
     "feasibility_spike_failed": {"planreview_completed", "feasibility_spike_failed"},
     "plan_approved": {"planreview_completed", "feasibility_spike_completed"},
-    "tasking_completed": {"plan_approved", "tasking_completed"},
-    "sketch_completed": {"tasking_completed", "sketch_completed"},
-    "estimation_completed": {"sketch_completed", "estimation_completed"},
-    "solutionreview_completed": {"estimation_completed", "solutionreview_completed"},
-    "solution_approved": {"solutionreview_completed"},
+    "sketch_completed": {"plan_approved", "sketch_completed", "solutionreview_completed"},
+    "solutionreview_completed": {"sketch_completed", "solutionreview_completed"},
+    "estimation_completed": {"solutionreview_completed", "estimation_completed", "tasking_completed"},
+    "tasking_completed": {"estimation_completed", "tasking_completed"},
+    "solution_approved": {"tasking_completed"},
     "analysis_completed": {"solution_approved"},
     "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
     "feature_closed": {"e2e_generated"},

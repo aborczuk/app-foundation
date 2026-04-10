@@ -88,41 +88,49 @@ commands:
         required_fields: [failed_fq]
 
   speckit.tasks:
-    description: "Generate actionable, dependency-ordered tasks.md for the feature"
-    artifacts:
-      - output_path: "${FEATURE_DIR}/tasks.md"
-        template: "tasks-template.md"
+    description: "DEPRECATED: use speckit.solution (full flow) or speckit.tasking (post-sketch decomposition)"
+    artifacts: []
     emits: []
 
   speckit.tasking:
-    description: "Generate the initial task breakdown (tasks.md) from a proven plan"
+    description: "Decompose approved sketch.md into tasks.md, run estimate/breakdown stabilization, then generate HUDs + acceptance tests"
     artifacts:
       - output_path: "${FEATURE_DIR}/tasks.md"
         template: "tasks-template.md"
     emits:
+      - event: estimation_completed
+        required_fields: [estimate_points]
       - event: tasking_completed
         required_fields: [task_count, story_count]
 
   speckit.sketch:
-    description: "Generate solution sketches, test specifications, and acceptance test code for each task"
+    description: "Generate pre-task sketch blueprint from spec/plan/codebase context"
+    artifacts:
+      - output_path: "${FEATURE_DIR}/sketch.md"
+        template: "sketch-template.md"
+    emits:
+      - event: sketch_completed
+        required_fields: []
+
+  speckit.tasking.hud-code:
+    description: "Scaffold code-task HUD for one task ID (used by speckit.tasking)"
     artifacts:
       - output_path: ".speckit/tasks/${TASK_ID}.md"
         template: "hud-code-template.md"
+    emits: []
+
+  speckit.tasking.hud-runbook:
+    description: "Scaffold human-task runbook HUD for one task ID (used by speckit.tasking)"
+    artifacts:
       - output_path: ".speckit/tasks/${TASK_ID}.md"
         template: "hud-runbook-template.md"
-      - output_path: "${FEATURE_DIR}/.speckit/acceptance-tests/story-${STORY_NUM}.py"
-        template: ""  # generated as code, not templated
-    emits:
-      - event: sketch_completed
-        required_fields: [tasks_sketched, acceptance_tests_written]
+    emits: []
 
   speckit.estimate:
-    description: "Estimate fibonacci complexity for each task by evaluating codebase"
+    description: "Estimate fibonacci complexity for each task by evaluating codebase (points-only)"
     artifacts:
       - output_path: "${FEATURE_DIR}/estimates.md"
         template: "estimates-template.md"
-      - output_path: ".speckit/tasks/${TASK_ID}.md"
-        template: "hud-code-template.md"
     emits:
       - event: estimation_completed
         required_fields: [estimate_points]
@@ -133,7 +141,7 @@ commands:
     emits: []
 
   speckit.analyze:
-    description: "Perform cross-artifact consistency and quality analysis after task generation"
+    description: "Perform cross-artifact drift analysis across spec -> plan -> sketch -> tasks"
     artifacts:
       - output_path: "${FEATURE_DIR}/analysis.md"
         template: ""  # generated content, analysis is report-only
@@ -142,7 +150,7 @@ commands:
         required_fields: [critical_count]
 
   speckit.solutionreview:
-    description: "Cross-sketch quality review after tasking/sketch/estimate converge"
+    description: "Quality review of sketch.md before task decomposition"
     artifacts:
       - output_path: "${FEATURE_DIR}/solutionreview.md"
         template: "solutionreview-template.md"
@@ -151,7 +159,7 @@ commands:
         required_fields: [critical_count, high_count]
 
   speckit.solution:
-    description: "LLD solutioning phase — orchestrates tasking → sketch → estimate → solutionreview loop"
+    description: "LLD solutioning phase — orchestrates sketch -> solutionreview -> tasking -> analyze"
     artifacts: []
     emits:
       - event: solution_approved
