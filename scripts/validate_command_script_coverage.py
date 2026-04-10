@@ -36,6 +36,7 @@ def build_coverage_report(
     scaffold_script_path: Path,
     bash_scripts_dir: Path,
 ) -> dict[str, Any]:
+    """Build coverage report from manifest: identify covered and uncovered commands."""
     commands = manifest.get("commands", {})
     if not isinstance(commands, Mapping):
         raise ValueError("manifest.commands must be a mapping")
@@ -178,6 +179,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Validate deterministic command-to-script coverage from manifest contracts."""
     args = _build_parser().parse_args(argv)
     payload = validate_command_script_coverage(
         canonical_manifest_path=Path(args.canonical_manifest).resolve(),

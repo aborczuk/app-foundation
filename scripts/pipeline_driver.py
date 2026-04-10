@@ -810,6 +810,7 @@ def validate_coverage_for_migration(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Orchestrate deterministic pipeline driver for feature phase execution."""
     args = _build_parser().parse_args(argv)
 
     phase_state = resolve_phase_state(
