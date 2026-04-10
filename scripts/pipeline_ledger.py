@@ -153,6 +153,17 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "feature_closed": {"e2e_generated"},
 }
 
+# Temporary compatibility for pre-cutover solution-sequence events recorded before
+# sketch-first ordering was enforced in this validator.
+LEGACY_SOLUTION_SEQUENCE_CUTOFF_UTC = datetime(2026, 4, 10, tzinfo=timezone.utc)
+LEGACY_SOLUTION_TRANSITIONS: dict[str, set[str]] = {
+    "tasking_completed": {"plan_approved"},
+    "sketch_completed": {"tasking_completed"},
+    "estimation_completed": {"sketch_completed"},
+    "solutionreview_completed": {"estimation_completed"},
+    "solution_approved": {"solutionreview_completed"},
+}
+
 
 @dataclass
 class PipelineState:
@@ -253,6 +264,40 @@ def validate_event_shape(event: dict[str, Any], *, line_hint: str) -> list[str]:
     return errors
 
 
+def _parse_event_timestamp_utc(event: dict[str, Any]) -> datetime | None:
+    """Parse an event UTC timestamp into a timezone-aware datetime."""
+    raw_timestamp = str(event.get("timestamp_utc", "")).strip()
+    if not raw_timestamp:
+        return None
+    try:
+        if raw_timestamp.endswith("Z"):
+            raw_timestamp = raw_timestamp[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw_timestamp)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_legacy_solution_transition(
+    event_name: str, previous_event: str | None, event: dict[str, Any]
+) -> bool:
+    """Allow only pre-cutover legacy solution transitions."""
+    if previous_event is None:
+        return False
+
+    legacy_prev = LEGACY_SOLUTION_TRANSITIONS.get(event_name, set())
+    if previous_event not in legacy_prev:
+        return False
+
+    timestamp = _parse_event_timestamp_utc(event)
+    if timestamp is None:
+        return False
+    return timestamp < LEGACY_SOLUTION_SEQUENCE_CUTOFF_UTC
+
+
 def validate_sequence(
     events: list[dict[str, Any]],
 ) -> tuple[list[str], dict[str, PipelineState]]:
@@ -276,10 +321,11 @@ def validate_sequence(
 
         allowed_prev = ALLOWED_PIPELINE_TRANSITIONS.get(event_name, set())
         if state.last_event not in allowed_prev:
-            errors.append(
-                f"{line_hint}: invalid pipeline transition for feature {feature_id}: "
-                f"{state.last_event!r} -> {event_name!r}"
-            )
+            if not _is_legacy_solution_transition(event_name, state.last_event, event):
+                errors.append(
+                    f"{line_hint}: invalid pipeline transition for feature {feature_id}: "
+                    f"{state.last_event!r} -> {event_name!r}"
+                )
 
         if event_name == "plan_approved":
             state.approved_plan = True

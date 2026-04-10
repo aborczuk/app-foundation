@@ -81,13 +81,19 @@
 
 - [ ] T021 [P] [US2] Add contract tests for canonical result envelope (`exit_code` 0/1/2) in tests/contract/test_pipeline_driver_contract.py:test_step_result_schema
 - [ ] T022 [P] [US2] Add runtime-failure verbose-rerun integration test in tests/integration/test_pipeline_driver_feature_flow.py:test_runtime_failure_verbose_rerun using shared harness fixture and sidecar assertions
+- [ ] T023 [P] [US2] Add dry-run no-mutation integration test in tests/integration/test_pipeline_driver_feature_flow.py:test_dry_run_does_not_mutate_ledgers_or_artifacts
+- [ ] T024 [P] [US2] Add human-approval-breakpoint routing test in tests/unit/test_pipeline_driver.py:test_approval_breakpoint_blocks_without_token and tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_resume_flow
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Implement canonical envelope parsing + schema-version compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and define shared route/error contract constants consumed by all deterministic route handlers
-- [ ] T024 [US2] Implement default stdout suppression and three-line status emission in scripts/pipeline_driver.py:emit_human_status by consuming shared status contract constants from scripts/pipeline_driver_contracts.py (no inline status strings)
-- [ ] T025 [US2] Implement explicit diagnostics drill-down command in scripts/pipeline_driver.py:drill_down_failure
-- [ ] T026 [US2] Align contract docs and operator runbook in specs/019-token-efficiency-docs/contracts/orchestrator-step-result.schema.json and specs/019-token-efficiency-docs/quickstart.md
+- [ ] T025 [US2] Implement canonical envelope parsing + schema-version compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and define shared route/error contract constants consumed by all deterministic route handlers
+- [ ] T026 [US2] Implement default stdout suppression and three-line status emission in scripts/pipeline_driver.py:emit_human_status by consuming shared status contract constants from scripts/pipeline_driver_contracts.py (no inline status strings)
+- [ ] T027 [US2] Implement explicit diagnostics drill-down command in scripts/pipeline_driver.py:drill_down_failure
+- [ ] T028 [US2] Align contract docs and operator runbook in specs/019-token-efficiency-docs/contracts/orchestrator-step-result.schema.json and specs/019-token-efficiency-docs/quickstart.md
+- [ ] T029 [US2] Implement `--dry-run` planning path in scripts/pipeline_driver.py:main and scripts/pipeline_driver_state.py:resolve_phase_state so no artifacts or ledgers are mutated
+- [ ] T030 [US2] Implement configurable approval breakpoints in scripts/pipeline_driver.py:enforce_approval_breakpoint with deterministic block/resume semantics for irreversible/security-sensitive steps
+- [ ] T031 [US2] Create deterministic reason-code registry in docs/governance/gate-reason-codes.yaml and wire loader/validator in scripts/pipeline_driver_contracts.py:validate_reason_codes
+- [ ] T032 [US2] Enforce reason-code compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and scripts/pipeline_driver.py:drill_down_failure (invalid/unknown reason codes fail contract)
 
 **Checkpoint**: Compact parsing contract is deterministic and diagnostics are available only on explicit drill-down.
 
@@ -101,15 +107,18 @@
 
 ### Tests for User Story 3
 
-- [ ] T027 [P] [US3] Add mixed-migration integration regression in tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode using shared harness fixture to avoid duplicate route/bootstrap logic
-- [ ] T028 [P] [US3] Add manifest-governance regression for version/timestamp coupling in tests/unit/test_pipeline_driver.py:test_manifest_governance_guard
+- [ ] T033 [P] [US3] Add mixed-migration integration regression in tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode using shared harness fixture to avoid duplicate route/bootstrap logic
+- [ ] T034 [P] [US3] Add manifest-governance regression for version/timestamp coupling in tests/unit/test_pipeline_driver.py:test_manifest_governance_guard
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Implement deterministic command coverage report (missing scripts/modes) in scripts/validate_command_script_coverage.py:build_coverage_report
-- [ ] T030 [US3] Add solution/tasking gate check for uncovered command mappings in scripts/speckit_gate_status.py:validate_command_coverage
-- [ ] T031 [US3] Extend manifest validation invariants for coverage enforcement in scripts/pipeline_ledger.py:cmd_validate_manifest
-- [ ] T032 [US3] Document migration/rollback and coverage ownership policy in docs/governance/command-script-coverage.md and specs/019-token-efficiency-docs/research.md
+- [ ] T035 [US3] Implement deterministic command coverage report (missing scripts/modes) in scripts/validate_command_script_coverage.py:build_coverage_report
+- [ ] T036 [US3] Add solution/tasking gate check for uncovered command mappings in scripts/speckit_gate_status.py:validate_command_coverage
+- [ ] T037 [US3] Extend manifest validation invariants for coverage enforcement in scripts/pipeline_ledger.py:cmd_validate_manifest
+- [ ] T038 [US3] Document migration/rollback and coverage ownership policy in docs/governance/command-script-coverage.md and specs/019-token-efficiency-docs/research.md
+- [ ] T039 [US3] Add explicit scaffold invocation for solution review in .claude/commands/speckit.solutionreview.md (`pipeline-scaffold.py speckit.solutionreview`) and update docs/governance/command-script-coverage.md
+- [ ] T040 [US3] Remove root mirror manifest command-manifest.yaml and repoint all repository references to .specify/command-manifest.yaml as canonical
+- [ ] T041 [P] [US3] Add anti-regression guard in scripts/validate_doc_graph.sh:run_validators (or dedicated script) to fail when command-manifest.yaml mirror is reintroduced or referenced
 
 **Checkpoint**: Mixed-mode migration is supported and uncovered command mappings cannot pass gates silently.
 
@@ -119,9 +128,9 @@
 
 **Purpose**: Validate format, run static checks, and confirm quickstart flow.
 
-- [ ] T033 [P] Run task-format and plan gates on finalized artifacts via scripts/speckit_tasks_gate.py and scripts/speckit_gate_status.py
-- [ ] T034 Run dry-run orchestration scenario and capture evidence in scripts/e2e_020.sh and specs/019-token-efficiency-docs/quickstart.md
-- [ ] T035 [P] Run lint/type checks for touched workflow files in scripts/pipeline_driver.py, scripts/pipeline_driver_contracts.py, scripts/validate_command_script_coverage.py
+- [ ] T042 [P] Run task-format and plan gates on finalized artifacts via scripts/speckit_tasks_gate.py and scripts/speckit_gate_status.py
+- [ ] T043 Run dry-run orchestration scenario and capture evidence in scripts/e2e_020.sh and specs/019-token-efficiency-docs/quickstart.md
+- [ ] T044 [P] Run lint/type checks for touched workflow files in scripts/pipeline_driver.py, scripts/pipeline_driver_contracts.py, scripts/validate_command_script_coverage.py
 
 ---
 

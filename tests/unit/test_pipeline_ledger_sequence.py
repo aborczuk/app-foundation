@@ -22,11 +22,11 @@ def _load_pipeline_ledger_module():
 pipeline_ledger = _load_pipeline_ledger_module()
 
 
-def _event(name: str, **fields: Any) -> dict[str, Any]:
+def _event(name: str, *, timestamp: str = "2026-04-10T00:00:00Z", **fields: Any) -> dict[str, Any]:
     event: dict[str, Any] = {
         "event": name,
         "feature_id": "019",
-        "timestamp_utc": "2026-04-09T00:00:00Z",
+        "timestamp_utc": timestamp,
         "phase": "solution",
     }
     event.update(fields)
@@ -78,6 +78,38 @@ def test_old_tasking_before_sketch_sequence_fails() -> None:
     ]
     errors, _ = pipeline_ledger.validate_sequence(events)
     assert any("invalid pipeline transition" in err for err in errors)
+
+
+def test_pre_cutover_old_tasking_before_sketch_sequence_passes() -> None:
+    events = _base_prefix() + [
+        _event(
+            "tasking_completed",
+            timestamp="2026-04-09T23:59:59Z",
+            task_count=12,
+            story_count=3,
+        ),
+        _event("sketch_completed", timestamp="2026-04-09T23:59:59Z"),
+        _event(
+            "estimation_completed",
+            timestamp="2026-04-09T23:59:59Z",
+            estimate_points=21,
+        ),
+        _event(
+            "solutionreview_completed",
+            timestamp="2026-04-09T23:59:59Z",
+            critical_count=0,
+            high_count=0,
+        ),
+        _event(
+            "solution_approved",
+            timestamp="2026-04-09T23:59:59Z",
+            task_count=12,
+            story_count=3,
+            estimate_points=21,
+        ),
+    ]
+    errors, _ = pipeline_ledger.validate_sequence(events)
+    assert errors == []
 
 
 def test_solution_approved_before_analyze_is_allowed() -> None:
