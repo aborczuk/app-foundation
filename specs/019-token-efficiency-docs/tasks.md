@@ -59,7 +59,7 @@
 
 - [X] T014 [P] [US1] Add mapped-success routing integration test in tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_success using shared harness fixture (no duplicated setup)
 - [X] T015 [P] [US1] Add mapped-blocked routing integration test with gate/reasons assertions in tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked using shared harness fixture (no duplicated setup)
-- [ ] T016 [P] [US1] Add generative-step handoff contract unit test in tests/unit/test_pipeline_driver.py:test_handoff_contract
+- [X] T016 [P] [US1] Add generative-step handoff contract unit test in tests/unit/test_pipeline_driver.py:test_handoff_contract
 
 ### Implementation for User Story 1
 
