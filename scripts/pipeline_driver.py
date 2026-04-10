@@ -131,11 +131,15 @@ def emit_human_status(
     *,
     file=None,
 ) -> None:
-    """Emit compact three-line human status output from step result.
+    """Emit compact three-line human status output to stderr.
 
     Suppresses verbose output and emits only the canonical Done/Next/Blocked status contract.
     Uses render_status_lines from pipeline_driver_contracts for canonical formatting.
+    Defaults to stderr so stdout remains clean for JSON consumers (--json flag).
     """
+    import sys
+    if file is None:
+        file = sys.stderr
     exit_code = step_result.get("exit_code")
 
     if exit_code == 0:
@@ -738,12 +742,23 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--phase",
         default="setup",
-        help="Requested phase label (placeholder; validated in later tasks)",
+        help="Phase to execute, e.g. 'plan', 'sketch', 'implement'",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Plan mode: resolve phase state without mutating ledgers or artifacts",
+        help="Plan mode: resolve phase state without executing steps or mutating ledgers",
+    )
+    parser.add_argument(
+        "--approval-token",
+        default=None,
+        help="Approval token for breakpointed steps (format: scope:secret)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Emit full JSON step result in addition to compact three-line status",
     )
     return parser
 
@@ -813,34 +828,120 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Orchestrate deterministic pipeline driver for feature phase execution."""
     args = _build_parser().parse_args(argv)
 
+    # 1. Resolve ledger-authoritative phase state
     phase_state = resolve_phase_state(
         args.feature_id,
         pipeline_state={"phase": args.phase, "dry_run": args.dry_run},
     )
-
     correlation_id = build_correlation_id(args.feature_id, args.phase)
-    step_result = parse_step_result(
-        {
+
+    # 2. Blocked by drift — surface immediately, no execution
+    if phase_state.get("blocked") and not args.dry_run:
+        drift_reasons = phase_state.get("drift_reasons") or ["phase_hint_conflicts_with_ledger"]
+        step_result: dict[str, Any] = {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "phase_drift",
+            "reasons": drift_reasons,
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+        emit_human_status(step_result)
+        if args.output_json:
+            print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
+        return 1
+
+    # 3. Dry-run: resolve and report state, no execution
+    if args.dry_run:
+        step_result = {
             "schema_version": "1.0.0",
             "ok": True,
             "exit_code": 0,
             "correlation_id": correlation_id,
             "next_phase": phase_state["phase"],
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
         }
+        emit_human_status(step_result)
+        if args.output_json:
+            print(json.dumps({
+                "feature_id": args.feature_id,
+                "phase_state": phase_state,
+                "step_result": step_result,
+                "dry_run_mode": True,
+                "note": "No ledger events or artifacts were persisted (dry-run mode)",
+            }, sort_keys=True))
+        return 0
+
+    # 4. Resolve step mapping from manifest
+    mapping = resolve_step_mapping(args.phase, correlation_id=correlation_id)
+
+    # 5. Check approval breakpoint before execution
+    approval_result = enforce_approval_breakpoint(
+        args.phase,
+        approval_token=args.approval_token,
+        correlation_id=correlation_id,
     )
+    if not approval_result.get("ok"):
+        step_result = approval_result
+        emit_human_status(step_result)
+        if args.output_json:
+            print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
+        return 1
 
-    output = {
-        "feature_id": args.feature_id,
-        "phase_state": phase_state,
-        "step_result": step_result,
-    }
+    # 6. Dispatch based on mapping type
+    mapping_type = mapping.get("type")
 
-    if args.dry_run:
-        output["dry_run_mode"] = True
-        output["note"] = "No ledger events or artifacts were persisted (dry-run mode)"
+    if mapping_type == "deterministic":
+        route = mapping["route"]
+        script_path = route.get("script_path")
+        timeout = int(route.get("timeout_seconds") or 300)
+        if not script_path:
+            step_result = route_legacy_step(mapping, correlation_id=correlation_id)
+        else:
+            step_result = run_step(
+                [script_path],
+                timeout_seconds=timeout,
+                correlation_id=correlation_id,
+            )
 
-    print(json.dumps(output, sort_keys=True))
-    return 0
+    elif mapping_type == "generative":
+        # Signal LLM handoff — driver does not execute generative steps
+        handoff = mapping["handoff"]
+        step_result = {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": args.phase,
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff": handoff,
+        }
+
+    else:
+        # legacy or unknown — route_legacy_step returns a blocked result
+        step_result = route_legacy_step(mapping, correlation_id=correlation_id)
+
+    # 7. Emit compact three-line human status
+    emit_human_status(step_result)
+
+    # 8. Optionally emit full JSON for programmatic consumers
+    if args.output_json:
+        print(json.dumps({
+            "feature_id": args.feature_id,
+            "phase_state": phase_state,
+            "step_result": step_result,
+        }, sort_keys=True))
+
+    return int(step_result.get("exit_code", 1))
 
 
 if __name__ == "__main__":

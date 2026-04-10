@@ -44,7 +44,8 @@ def _ledger_event(event: str, *, timestamp_utc: str, **fields: object) -> dict[s
 
 
 def test_main_outputs_minimal_step_result(capsys) -> None:
-    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "setup"])
+    # dry-run + json: introspection mode, no execution, always returns 0 with structured output
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "implement", "--dry-run", "--json"])
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out.strip())
     assert payload["feature_id"] == "019"
