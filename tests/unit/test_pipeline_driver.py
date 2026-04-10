@@ -530,3 +530,62 @@ def test_route_legacy_step_uses_mapping_reason() -> None:
     assert result["exit_code"] == 1
     assert result["gate"] == "command_not_driver_managed"
     assert any("manifest_not_found" in reason for reason in result["reasons"])
+
+
+def test_validate_generated_artifact_succeeds_with_valid_content(tmp_path: Path) -> None:
+    artifact = tmp_path / "plan.md"
+    artifact.write_text("# Plan\n\nThis is a valid plan.\n", encoding="utf-8")
+
+    result = pipeline_driver.validate_generated_artifact(
+        artifact,
+        correlation_id="run-001:speckit.plan",
+    )
+    assert result["ok"] is True
+
+
+def test_validate_generated_artifact_fails_when_missing(tmp_path: Path) -> None:
+    artifact = tmp_path / "missing.md"
+
+    result = pipeline_driver.validate_generated_artifact(
+        artifact,
+        correlation_id="run-001:speckit.plan",
+    )
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert result["gate"] == "artifact_validation"
+    assert "artifact_not_created" in result["reasons"]
+
+
+def test_validate_generated_artifact_fails_when_empty(tmp_path: Path) -> None:
+    artifact = tmp_path / "empty.md"
+    artifact.write_text("", encoding="utf-8")
+
+    result = pipeline_driver.validate_generated_artifact(
+        artifact,
+        correlation_id="run-001:speckit.plan",
+    )
+    assert result["ok"] is False
+    assert "artifact_empty_or_minimal" in result["reasons"]
+
+
+def test_validate_generated_artifact_checks_completion_marker(tmp_path: Path) -> None:
+    artifact = tmp_path / "plan.md"
+    artifact.write_text("# Plan\nSome content", encoding="utf-8")
+
+    # Should fail when marker not found
+    result = pipeline_driver.validate_generated_artifact(
+        artifact,
+        correlation_id="run-001:speckit.plan",
+        completion_marker="## Summary",
+    )
+    assert result["ok"] is False
+    assert "completion_marker_not_found" in result["reasons"]
+
+    # Should pass when marker is present
+    artifact.write_text("# Plan\n## Summary\nContent here", encoding="utf-8")
+    result = pipeline_driver.validate_generated_artifact(
+        artifact,
+        correlation_id="run-001:speckit.plan",
+        completion_marker="## Summary",
+    )
+    assert result["ok"] is True

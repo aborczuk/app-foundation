@@ -47,6 +47,87 @@ def build_correlation_id(
     return f"{safe_run}:{safe_step}"
 
 
+def validate_generated_artifact(
+    artifact_path: str | Path,
+    *,
+    correlation_id: str,
+    completion_marker: str | None = None,
+) -> dict[str, Any]:
+    """Validate LLM-generated artifacts before success event append.
+
+    Returns {"ok": True} or a blocked step result if validation fails.
+    """
+
+    if not artifact_path:
+        raise ValueError("artifact_path is required")
+    if not correlation_id or not isinstance(correlation_id, str):
+        raise ValueError("correlation_id is required")
+
+    artifact = Path(artifact_path)
+
+    # Check artifact exists
+    if not artifact.exists():
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "artifact_validation",
+            "reasons": ["artifact_not_created"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    # Check artifact has content
+    try:
+        content = artifact.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "artifact_validation",
+            "reasons": ["artifact_unreadable"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    # Check minimum content length
+    if not content or len(content.strip()) < 10:
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "artifact_validation",
+            "reasons": ["artifact_empty_or_minimal"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    # If completion marker specified, verify it's present
+    if completion_marker and isinstance(completion_marker, str):
+        if completion_marker not in content:
+            return {
+                "schema_version": "1.0.0",
+                "ok": False,
+                "exit_code": 1,
+                "correlation_id": correlation_id,
+                "gate": "artifact_validation",
+                "reasons": ["completion_marker_not_found"],
+                "error_code": None,
+                "next_phase": None,
+                "debug_path": None,
+            }
+
+    # Validation passed
+    return {"ok": True}
+
+
 def route_legacy_step(
     mapping_result: dict[str, Any],
     *,
