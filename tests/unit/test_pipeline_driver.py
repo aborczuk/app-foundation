@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import sys
 
+import pytest
+
 
 def _load_script_module(module_name: str, script_name: str):
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
@@ -24,6 +26,9 @@ def _load_script_module(module_name: str, script_name: str):
 
 
 pipeline_driver = _load_script_module("pipeline_driver", "pipeline_driver.py")
+pipeline_driver_contracts = _load_script_module(
+    "pipeline_driver_contracts", "pipeline_driver_contracts.py"
+)
 
 
 def test_main_outputs_minimal_step_result(capsys) -> None:
@@ -32,3 +37,52 @@ def test_main_outputs_minimal_step_result(capsys) -> None:
     payload = json.loads(capsys.readouterr().out.strip())
     assert payload["feature_id"] == "019"
     assert payload["step_result"]["exit_code"] == 0
+
+
+def test_normalize_driver_mode_aliases() -> None:
+    assert pipeline_driver_contracts.normalize_driver_mode(None) == "legacy"
+    assert pipeline_driver_contracts.normalize_driver_mode("script") == "deterministic"
+    assert pipeline_driver_contracts.normalize_driver_mode("llm") == "generative"
+    assert pipeline_driver_contracts.normalize_driver_mode("LEGACY") == "legacy"
+
+
+def test_normalize_driver_mode_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError):
+        pipeline_driver_contracts.normalize_driver_mode("unsupported-mode")
+
+
+def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> None:
+    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    driver:",
+                "      mode: script",
+                "      script_path: scripts/example.sh",
+                "      timeout_seconds: 30",
+                "    emits:",
+                "      - event: example_event",
+                "        required_fields: []",
+                "  speckit.fallback:",
+                "    description: \"fallback\"",
+                "    emits: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
+    assert routes["speckit.example"]["mode"] == "deterministic"
+    assert routes["speckit.example"]["driver_managed"] is True
+    assert routes["speckit.example"]["timeout_seconds"] == 30
+    assert routes["speckit.example"]["emits"] == ["example_event"]
+    assert routes["speckit.example"]["script_path"] == str(
+        (tmp_path / "scripts" / "example.sh").resolve()
+    )
+
+    assert routes["speckit.fallback"]["mode"] == "legacy"
+    assert routes["speckit.fallback"]["driver_managed"] is False

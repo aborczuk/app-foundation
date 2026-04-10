@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-"""Contracts for deterministic pipeline-driver step envelopes.
-
-This module intentionally starts minimal. Later tasks expand validation,
-reason-code enforcement, and schema compatibility.
-"""
+"""Contracts and manifest routing helpers for the deterministic pipeline driver."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping
 
+import yaml
+
 SUPPORTED_SCHEMA_VERSIONS: set[str] = {"1.0.0"}
+CANONICAL_DRIVER_MODES: set[str] = {"deterministic", "generative", "legacy"}
+DRIVER_MODE_ALIASES: dict[str, str] = {
+    "deterministic": "deterministic",
+    "script": "deterministic",
+    "mapped": "deterministic",
+    "generative": "generative",
+    "llm": "generative",
+    "template": "generative",
+    "legacy": "legacy",
+    "passthrough": "legacy",
+    "unmanaged": "legacy",
+}
 
 
 def _require_mapping(value: Any) -> Mapping[str, Any]:
@@ -58,3 +69,107 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
         "debug_path": payload.get("debug_path"),
     }
 
+
+def normalize_driver_mode(raw_mode: Any) -> str:
+    """Normalize manifest-provided driver mode to canonical routing labels."""
+
+    if raw_mode is None:
+        return "legacy"
+    if not isinstance(raw_mode, str):
+        raise ValueError(f"driver mode must be a string, got: {type(raw_mode).__name__}")
+
+    normalized = raw_mode.strip().lower()
+    if not normalized:
+        return "legacy"
+    if normalized not in DRIVER_MODE_ALIASES:
+        allowed = ", ".join(sorted(set(DRIVER_MODE_ALIASES)))
+        raise ValueError(f"unsupported driver mode '{raw_mode}'; expected one of: {allowed}")
+    return DRIVER_MODE_ALIASES[normalized]
+
+
+def _normalize_script_path(manifest_path: Path, raw_path: Any) -> str | None:
+    if raw_path is None:
+        return None
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("driver script path must be a non-empty string when provided")
+
+    script_path = Path(raw_path.strip())
+    if script_path.is_absolute():
+        return str(script_path)
+
+    manifest_dir = manifest_path.parent
+    if manifest_dir.name == ".specify":
+        base_dir = manifest_dir.parent
+    else:
+        base_dir = manifest_dir
+    return str((base_dir / script_path).resolve())
+
+
+def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dict[str, Any]]:
+    """Load command routing metadata and normalize modes for driver routing.
+
+    Route schema (per command):
+    - mode: canonical driver mode (`deterministic`, `generative`, `legacy`)
+    - script_path: normalized absolute script path if declared
+    - timeout_seconds: optional positive integer
+    - emits: declared pipeline events for the command
+    """
+
+    resolved_manifest_path = (
+        Path(manifest_path).resolve()
+        if manifest_path is not None
+        else (Path(__file__).resolve().parent.parent / ".specify" / "command-manifest.yaml")
+    )
+    if not resolved_manifest_path.exists():
+        raise FileNotFoundError(f"manifest not found: {resolved_manifest_path}")
+
+    data = yaml.safe_load(resolved_manifest_path.read_text(encoding="utf-8")) or {}
+    commands = data.get("commands", {})
+    if not isinstance(commands, Mapping):
+        raise ValueError("manifest.commands must be a mapping")
+
+    routes: dict[str, dict[str, Any]] = {}
+    for command_id, command_def in commands.items():
+        if not isinstance(command_id, str) or not command_id:
+            raise ValueError("manifest command id must be a non-empty string")
+        if not isinstance(command_def, Mapping):
+            raise ValueError(f"manifest command definition must be a mapping: {command_id}")
+
+        driver_block = command_def.get("driver")
+        if driver_block is None:
+            driver_block = {}
+        if not isinstance(driver_block, Mapping):
+            raise ValueError(f"manifest driver block must be a mapping: {command_id}")
+
+        raw_mode = driver_block.get("mode", command_def.get("mode"))
+        mode = normalize_driver_mode(raw_mode)
+
+        raw_script_path = driver_block.get("script_path", driver_block.get("script"))
+        script_path = _normalize_script_path(resolved_manifest_path, raw_script_path)
+
+        timeout_seconds = driver_block.get("timeout_seconds")
+        if timeout_seconds is not None:
+            if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
+                raise ValueError(f"timeout_seconds must be a positive integer: {command_id}")
+
+        emits = command_def.get("emits", [])
+        if not isinstance(emits, list):
+            raise ValueError(f"manifest emits must be a list: {command_id}")
+        emit_events: list[str] = []
+        for emit in emits:
+            if not isinstance(emit, Mapping):
+                raise ValueError(f"emit entry must be a mapping: {command_id}")
+            event_name = emit.get("event")
+            if not isinstance(event_name, str) or not event_name:
+                raise ValueError(f"emit.event must be a non-empty string: {command_id}")
+            emit_events.append(event_name)
+
+        routes[command_id] = {
+            "mode": mode,
+            "script_path": script_path,
+            "timeout_seconds": timeout_seconds,
+            "driver_managed": mode != "legacy",
+            "emits": emit_events,
+        }
+
+    return routes
