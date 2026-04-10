@@ -17,6 +17,7 @@
 ## Phase 1: Setup (Shared Infrastructure)
 
 **Purpose**: Initialize deterministic command coverage and baseline files.
+**External Ingress + Runtime Readiness Gate**: N/A (CLI-only feature; no inbound webhook or HTTP endpoint introduced).
 
 - [ ] T000 Record External Ingress + Runtime Readiness Gate as N/A (CLI-only feature) in specs/019-token-efficiency-docs/tasks.md
 - [ ] T001 Build initial command-to-script coverage inventory from command-manifest.yaml and .specify/command-manifest.yaml into docs/governance/command-script-coverage.md:coverage_matrix
