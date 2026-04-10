@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
@@ -29,6 +30,7 @@ pipeline_driver = _load_script_module("pipeline_driver", "pipeline_driver.py")
 pipeline_driver_contracts = _load_script_module(
     "pipeline_driver_contracts", "pipeline_driver_contracts.py"
 )
+pipeline_driver_state = _load_script_module("pipeline_driver_state", "pipeline_driver_state.py")
 
 
 def test_main_outputs_minimal_step_result(capsys) -> None:
@@ -86,3 +88,84 @@ def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> N
 
     assert routes["speckit.fallback"]["mode"] == "legacy"
     assert routes["speckit.fallback"]["driver_managed"] is False
+
+
+def test_acquire_feature_lock_blocks_active_other_owner(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    now = datetime(2026, 4, 10, tzinfo=timezone.utc)
+
+    first = pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=60,
+        now_utc=now,
+    )
+    assert first["acquired"] is True
+
+    second = pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-b",
+        locks_dir=lock_dir,
+        lease_seconds=60,
+        now_utc=now + timedelta(seconds=10),
+    )
+    assert second["acquired"] is False
+    assert second["reason"] == "feature_lock_held"
+    assert second["existing_owner"] == "worker-a"
+
+
+def test_acquire_feature_lock_replaces_stale_owner(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    now = datetime(2026, 4, 10, tzinfo=timezone.utc)
+
+    pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=30,
+        now_utc=now,
+    )
+
+    takeover = pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-b",
+        locks_dir=lock_dir,
+        lease_seconds=30,
+        now_utc=now + timedelta(seconds=60),
+    )
+    assert takeover["acquired"] is True
+    assert takeover["stale_replaced"] is True
+    assert takeover["reason"] == "stale_lock_replaced"
+    assert takeover["previous_owner"] == "worker-a"
+
+
+def test_release_feature_lock_requires_owner_unless_stale(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    now = datetime(2026, 4, 10, tzinfo=timezone.utc)
+
+    pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=120,
+        now_utc=now,
+    )
+
+    blocked_release = pipeline_driver_state.release_feature_lock(
+        "019",
+        owner="worker-b",
+        locks_dir=lock_dir,
+        now_utc=now + timedelta(seconds=10),
+    )
+    assert blocked_release["released"] is False
+    assert blocked_release["reason"] == "lock_owned_by_other"
+
+    owner_release = pipeline_driver_state.release_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        now_utc=now + timedelta(seconds=20),
+    )
+    assert owner_release["released"] is True
+    assert owner_release["reason"] == "released_by_owner"
