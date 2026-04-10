@@ -51,6 +51,24 @@ def test_main_outputs_minimal_step_result(capsys) -> None:
     assert payload["step_result"]["exit_code"] == 0
 
 
+def test_build_correlation_id_uses_explicit_run_scope() -> None:
+    correlation_id = pipeline_driver.build_correlation_id(
+        "019",
+        "speckit.plan",
+        run_id="run-xyz",
+    )
+    assert correlation_id == "run-xyz:speckit.plan"
+
+
+def test_build_correlation_id_uses_timestamp_when_run_scope_missing() -> None:
+    correlation_id = pipeline_driver.build_correlation_id(
+        "019",
+        "speckit.plan",
+        timestamp_utc=datetime(2026, 4, 10, 12, 34, 56, tzinfo=timezone.utc),
+    )
+    assert correlation_id == "run_20260410T123456Z_019:speckit.plan"
+
+
 def test_run_step_routes_success_envelope() -> None:
     correlation_id = "run-019-success"
     command = [

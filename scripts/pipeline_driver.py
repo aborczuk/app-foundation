@@ -16,6 +16,37 @@ from pipeline_driver_contracts import parse_step_result
 from pipeline_driver_state import resolve_phase_state
 
 
+def build_correlation_id(
+    feature_id: str,
+    step_name: str,
+    *,
+    run_id: str | None = None,
+    timestamp_utc: datetime | None = None,
+) -> str:
+    """Build a run-scoped correlation ID for step execution and diagnostics."""
+
+    if not feature_id:
+        raise ValueError("feature_id is required")
+    if not step_name:
+        raise ValueError("step_name is required")
+
+    safe_step = re.sub(r"[^A-Za-z0-9_.-]+", "_", step_name).strip("_")
+    if not safe_step:
+        raise ValueError("step_name must contain at least one valid token character")
+
+    if run_id and run_id.strip():
+        safe_run = re.sub(r"[^A-Za-z0-9_.-]+", "_", run_id.strip()).strip("_")
+    else:
+        effective_time = timestamp_utc or datetime.now(timezone.utc)
+        safe_run = (
+            "run_"
+            + effective_time.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            + f"_{feature_id}"
+        )
+
+    return f"{safe_run}:{safe_step}"
+
+
 def _runtime_failure_result(
     *,
     correlation_id: str,
@@ -337,12 +368,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         pipeline_state={"phase": args.phase},
     )
 
+    correlation_id = build_correlation_id(args.feature_id, args.phase)
     step_result = parse_step_result(
         {
             "schema_version": "1.0.0",
             "ok": True,
             "exit_code": 0,
-            "correlation_id": f"{args.feature_id}:{args.phase}:skeleton",
+            "correlation_id": correlation_id,
             "next_phase": phase_state["phase"],
         }
     )
