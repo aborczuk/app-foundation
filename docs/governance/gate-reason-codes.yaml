@@ -1,0 +1,83 @@
+# Deterministic Reason-Code Registry
+# Single source of truth for gate reason codes used in pipeline driver
+# Used by: scripts/pipeline_driver_contracts.py:validate_reason_codes
+#
+# All reason codes must be:
+# - Snake_case (lowercase with underscores)
+# - Documented with purpose and routing implications
+# - Version-controlled alongside contract schema changes
+# - Enforced by parse_step_result and drill_down_failure functions
+
+version: "1.0.0"
+last_updated: "2026-04-10"
+
+gates:
+  artifact_validation:
+    description: "LLM-generated artifact failed validation before success event append"
+    reasons:
+      - artifact_not_created
+      - artifact_unreadable
+      - artifact_empty_or_minimal
+      - completion_marker_not_found
+
+  command_not_driver_managed:
+    description: "Command is not yet migrated to deterministic driver control"
+    reasons:
+      - command_not_in_migration_scope
+      - legacy_fallback:manifest_not_found
+      - legacy_fallback:command_not_in_manifest
+      - legacy_fallback:unsupported_mode
+
+  approval_required:
+    description: "Step requires explicit human approval before proceeding (security-sensitive)"
+    reasons:
+      - breakpoint_scope:security_sensitive_migration
+      - approval_token_scope_mismatch
+
+  planreview_questions:
+    description: "Open feasibility questions remain in plan (not ready for sketch)"
+    reasons:
+      - fq_count_nonzero
+      - feasibility_risk_unresolved
+      - scope_exceeds_bounds
+
+standard_error_codes:
+  description: "Non-gate errors that indicate runtime failures requiring verbose rerun"
+  codes:
+    step_timeout:
+      description: "Step execution exceeded configured timeout_seconds"
+      action: "Check logs, increase timeout or optimize script"
+
+    invalid_exit_code:
+      description: "Step process exited with code other than 0, 1, or 2"
+      action: "Script must use canonical exit codes only"
+
+    missing_step_result:
+      description: "Step produced no output (empty stdout)"
+      action: "Script must emit JSON envelope to stdout"
+
+    invalid_json_result:
+      description: "Step output is not valid JSON"
+      action: "Ensure envelope is pure JSON, no extra text"
+
+    invalid_step_result:
+      description: "JSON is valid but does not match contract schema"
+      action: "Add required fields based on exit_code (0→next_phase, 1→gate+reasons, 2→error_code+debug_path)"
+
+    exit_code_mismatch:
+      description: "Envelope exit_code does not match process exit code"
+      action: "Script must emit exit_code matching the actual process exit"
+
+    correlation_id_mismatch:
+      description: "Envelope correlation_id does not match request"
+      action: "Script must echo the correlation_id provided by driver"
+
+    script_timeout:
+      description: "Script timeout during execution"
+      action: "May retry with increased timeout or optimize script"
+
+validation_rules:
+  - "All reason codes used in step_result must be declared in this registry"
+  - "New gates must be declared with description and reason list"
+  - "Breaking changes (removed reasons) require feature version bump"
+  - "Reason codes are case-sensitive and immutable once published"

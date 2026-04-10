@@ -257,3 +257,75 @@ def render_status_lines(
         "blocked": _normalize_status_value(blocked),
     }
     return [f"{STATUS_PREFIXES[key]} {status_values[key]}" for key in STATUS_KEYS]
+
+
+def load_reason_code_registry(
+    registry_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Load the deterministic reason-code registry.
+
+    Returns mapping of {gate_name -> {reasons: [...]}, ...}
+    """
+
+    resolved_path = (
+        Path(registry_path).resolve()
+        if registry_path is not None
+        else (Path(__file__).resolve().parent.parent / "docs" / "governance" / "gate-reason-codes.yaml")
+    )
+
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"reason code registry not found: {resolved_path}")
+
+    data = yaml.safe_load(resolved_path.read_text(encoding="utf-8")) or {}
+    gates = data.get("gates", {})
+    if not isinstance(gates, Mapping):
+        raise ValueError("registry.gates must be a mapping")
+
+    registry: dict[str, Any] = {}
+    for gate_name, gate_entry in gates.items():
+        if not isinstance(gate_entry, Mapping):
+            raise ValueError(f"registry gate entry must be a mapping: {gate_name}")
+        reasons = gate_entry.get("reasons", [])
+        if not isinstance(reasons, list):
+            raise ValueError(f"registry gate reasons must be a list: {gate_name}")
+        registry[gate_name] = {
+            "description": gate_entry.get("description", ""),
+            "reasons": reasons,
+        }
+
+    return registry
+
+
+def validate_reason_codes(
+    step_result: dict[str, Any],
+    *,
+    registry_path: str | Path | None = None,
+) -> list[str]:
+    """Validate that reason codes in step_result match the registry.
+
+    Returns list of validation errors (empty if valid).
+    """
+
+    try:
+        registry = load_reason_code_registry(registry_path)
+    except (FileNotFoundError, ValueError) as e:
+        # Registry loading failed - cannot validate
+        return [f"reason code registry load failed: {e}"]
+
+    errors: list[str] = []
+
+    exit_code = step_result.get("exit_code")
+    if exit_code == 1:
+        # Blocked state: validate gate and reasons
+        gate = step_result.get("gate")
+        reasons = step_result.get("reasons", [])
+
+        if gate not in registry:
+            errors.append(f"unknown gate: {gate}")
+        else:
+            valid_reasons = set(registry[gate].get("reasons", []))
+            for reason in reasons:
+                if reason not in valid_reasons:
+                    errors.append(f"invalid reason for gate '{gate}': {reason}")
+
+    return errors
