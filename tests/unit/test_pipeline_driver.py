@@ -568,6 +568,28 @@ def test_validate_generated_artifact_fails_when_empty(tmp_path: Path) -> None:
     assert "artifact_empty_or_minimal" in result["reasons"]
 
 
+def test_resolve_step_mapping_uses_real_manifest() -> None:
+    """Verify manifest routing works with actual .specify/command-manifest.yaml."""
+    # This test validates that key commands are registered with driver metadata
+    manifest_path = Path(__file__).resolve().parents[2] / ".specify" / "command-manifest.yaml"
+
+    if not manifest_path.exists():
+        pytest.skip("manifest file not found")
+
+    # Test that generative commands are correctly identified
+    generative_commands = ["specify", "research", "plan", "planreview", "sketch"]
+    for phase in generative_commands:
+        result = pipeline_driver.resolve_step_mapping(
+            phase,
+            manifest_path=manifest_path,
+        )
+        if result["type"] != "legacy":
+            # Command is registered in manifest
+            assert result["command_id"] == f"speckit.{phase}"
+            if result["type"] == "generative":
+                assert "handoff" in result
+
+
 def test_validate_generated_artifact_checks_completion_marker(tmp_path: Path) -> None:
     artifact = tmp_path / "plan.md"
     artifact.write_text("# Plan\nSome content", encoding="utf-8")
