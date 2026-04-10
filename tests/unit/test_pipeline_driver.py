@@ -404,3 +404,87 @@ def test_handoff_contract_requires_all_fields() -> None:
     # Validate correlation_id matches the run context
     assert handoff_contract["correlation_id"] == correlation_id
     assert ":" in correlation_id  # Should be scoped: run_id:step_name
+
+
+def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None:
+    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.plan:",
+                "    description: \"planning phase\"",
+                "    driver:",
+                "      mode: deterministic",
+                "      script_path: scripts/plan.sh",
+                "      timeout_seconds: 60",
+                "    emits:",
+                "      - event: plan_started",
+                "        required_fields: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = pipeline_driver.resolve_step_mapping(
+        "plan",
+        manifest_path=manifest_path,
+        correlation_id="run-001:speckit.plan",
+    )
+    assert result["type"] == "deterministic"
+    assert result["command_id"] == "speckit.plan"
+    assert result["route"]["mode"] == "deterministic"
+    assert result["route"]["driver_managed"] is True
+    assert result["route"]["timeout_seconds"] == 60
+
+
+def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None:
+    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.specify:",
+                "    description: \"specification generation\"",
+                "    driver:",
+                "      mode: generative",
+                "    emits:",
+                "      - event: backlog_registered",
+                "        required_fields: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    correlation_id = "run_20260410T120000Z_019:speckit.specify"
+    result = pipeline_driver.resolve_step_mapping(
+        "specify",
+        manifest_path=manifest_path,
+        correlation_id=correlation_id,
+    )
+    assert result["type"] == "generative"
+    assert result["command_id"] == "speckit.specify"
+    assert "handoff" in result
+    handoff = result["handoff"]
+    assert handoff["handoff_id"] == "handoff_run_20260410T120000Z_019"
+    assert handoff["step_name"] == "speckit.specify"
+    assert handoff["correlation_id"] == correlation_id
+    assert isinstance(handoff["required_inputs"], list)
+    assert isinstance(handoff["output_template_path"], str)
+    assert isinstance(handoff["completion_marker"], str)
+
+
+def test_resolve_step_mapping_fallback_legacy_when_missing(tmp_path: Path) -> None:
+    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text("commands: {}\n", encoding="utf-8")
+
+    result = pipeline_driver.resolve_step_mapping(
+        "unknown_phase",
+        manifest_path=manifest_path,
+    )
+    assert result["type"] == "legacy"
+    assert result["command_id"] == "speckit.unknown_phase"
+    assert result["reason"] == "command_not_in_manifest"

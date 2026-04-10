@@ -47,6 +47,84 @@ def build_correlation_id(
     return f"{safe_run}:{safe_step}"
 
 
+def resolve_step_mapping(
+    phase: str,
+    *,
+    manifest_path: str | Path | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    """Resolve command routing for the given phase.
+
+    Returns either:
+    - Deterministic: {"type": "deterministic", "route": {...}, "command_id": "..."}
+    - Generative: {"type": "generative", "handoff": {...}}
+    - Legacy: {"type": "legacy", "command_id": "..."}
+    """
+    from pipeline_driver_contracts import load_driver_routes
+
+    if not phase or not isinstance(phase, str):
+        raise ValueError("phase must be a non-empty string")
+
+    # Determine command_id from phase: "plan" -> "speckit.plan"
+    command_id = f"speckit.{phase}"
+
+    # Load driver routes from manifest
+    try:
+        routes = load_driver_routes(manifest_path)
+    except FileNotFoundError:
+        # No manifest found, use legacy routing
+        return {
+            "type": "legacy",
+            "command_id": command_id,
+            "reason": "manifest_not_found",
+        }
+
+    # Look up the command in routes
+    route = routes.get(command_id)
+    if route is None:
+        # Command not in manifest, use legacy routing
+        return {
+            "type": "legacy",
+            "command_id": command_id,
+            "reason": "command_not_in_manifest",
+        }
+
+    # Determine routing based on mode
+    mode = route.get("mode")
+    if mode == "deterministic":
+        return {
+            "type": "deterministic",
+            "command_id": command_id,
+            "route": route,
+        }
+    elif mode == "generative":
+        # Create handoff template for generative steps
+        handoff_id = (
+            f"handoff_{command_id.replace('.', '_')}"
+            if correlation_id is None
+            else f"handoff_{correlation_id.split(':')[0]}"
+        )
+        return {
+            "type": "generative",
+            "command_id": command_id,
+            "handoff": {
+                "handoff_id": handoff_id,
+                "step_name": command_id,
+                "required_inputs": [],  # Will be populated by caller based on phase
+                "output_template_path": "",  # Will be populated by caller
+                "completion_marker": "",  # Will be populated by caller
+                "correlation_id": correlation_id or "",
+            },
+        }
+    else:
+        # Legacy or unknown mode
+        return {
+            "type": "legacy",
+            "command_id": command_id,
+            "reason": f"unsupported_mode_{mode}",
+        }
+
+
 def _runtime_failure_result(
     *,
     correlation_id: str,
