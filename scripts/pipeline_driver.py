@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from pipeline_driver_contracts import parse_step_result, render_status_lines
@@ -24,7 +24,6 @@ def build_correlation_id(
     timestamp_utc: datetime | None = None,
 ) -> str:
     """Build a run-scoped correlation ID for step execution and diagnostics."""
-
     if not feature_id:
         raise ValueError("feature_id is required")
     if not step_name:
@@ -57,7 +56,6 @@ def validate_generated_artifact(
 
     Returns {"ok": True} or a blocked step result if validation fails.
     """
-
     if not artifact_path:
         raise ValueError("artifact_path is required")
     if not correlation_id or not isinstance(correlation_id, str):
@@ -138,12 +136,11 @@ def emit_human_status(
     Suppresses verbose output and emits only the canonical Done/Next/Blocked status contract.
     Uses render_status_lines from pipeline_driver_contracts for canonical formatting.
     """
-
     exit_code = step_result.get("exit_code")
 
     if exit_code == 0:
         # Success path: emit done status and next phase
-        done_msg = f"Step completed successfully"
+        done_msg = "Step completed successfully"
         next_msg = f"Next phase: {step_result.get('next_phase', 'unknown')}"
         blocked_msg = "none"
     elif exit_code == 1:
@@ -259,7 +256,6 @@ def enforce_approval_breakpoint(
     Returns a blocked result if approval is required but token not present/valid.
     Returns {"ok": True} if step is approved or not breakpointed.
     """
-
     if not step_name:
         raise ValueError("step_name is required")
 
@@ -329,7 +325,6 @@ def route_legacy_step(
     Returns a blocked step result for phases not yet migrated to driver control,
     supporting incremental migration mode (FR-007, SC-004).
     """
-
     if not isinstance(mapping_result, dict):
         raise ValueError("mapping_result must be a dict")
     if not correlation_id or not isinstance(correlation_id, str):
@@ -339,7 +334,6 @@ def route_legacy_step(
     if mapping_type != "legacy":
         raise ValueError(f"route_legacy_step only handles legacy type, got: {mapping_type}")
 
-    command_id = mapping_result.get("command_id", "unknown")
     reason = mapping_result.get("reason", "unmapped_command")
 
     # Return a blocked state for non-migrated phases
@@ -351,7 +345,7 @@ def route_legacy_step(
         "correlation_id": correlation_id,
         "gate": "command_not_driver_managed",
         "reasons": [
-            f"command_not_in_migration_scope",
+            "command_not_in_migration_scope",
             f"legacy_fallback:{reason}",
         ],
         "error_code": None,
@@ -529,7 +523,6 @@ def handle_runtime_failure(
     sidecar_dir: str | Path = ".speckit/runtime-failures",
 ) -> dict[str, Any]:
     """Run one verbose rerun and persist deterministic runtime diagnostics."""
-
     rerun_env = os.environ.copy()
     if env_overrides:
         rerun_env.update({str(key): str(value) for key, value in env_overrides.items()})
@@ -584,7 +577,6 @@ def run_step(
     sidecar_dir: str | Path = ".speckit/runtime-failures",
 ) -> dict[str, Any]:
     """Execute a deterministic step script and route by canonical exit semantics."""
-
     if not command:
         raise ValueError("command must include at least one token")
     if timeout_seconds <= 0:
@@ -776,7 +768,6 @@ def validate_coverage_for_migration(
         "migration_status": {...},  # Per-command status
     }
     """
-
     if isinstance(feature_dir, str):
         feature_dir = Path(feature_dir)
 

@@ -75,7 +75,6 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
     - exit_code=1 (blocked): requires gate and reasons (validated against registry)
     - exit_code=2 (error): requires error_code and debug_path
     """
-
     payload = _require_mapping(step_result)
 
     schema_version = payload.get("schema_version")
@@ -141,7 +140,6 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
 
 def normalize_driver_mode(raw_mode: Any) -> str:
     """Normalize manifest-provided driver mode to canonical routing labels."""
-
     if raw_mode is None:
         return "legacy"
     if not isinstance(raw_mode, str):
@@ -183,7 +181,6 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
     - timeout_seconds: optional positive integer
     - emits: declared pipeline events for the command
     """
-
     resolved_manifest_path = (
         Path(manifest_path).resolve()
         if manifest_path is not None
@@ -258,7 +255,6 @@ def render_status_lines(
     blocked: str | None = None,
 ) -> list[str]:
     """Render the strict three-line human status contract in canonical order."""
-
     status_values = {
         "done": _normalize_status_value(done),
         "next": _normalize_status_value(next_step),
@@ -274,7 +270,6 @@ def load_reason_code_registry(
 
     Returns mapping of {gate_name -> {reasons: [...]}, ...}
     """
-
     resolved_path = (
         Path(registry_path).resolve()
         if registry_path is not None
@@ -313,7 +308,6 @@ def validate_reason_codes(
 
     Returns list of validation errors (empty if valid).
     """
-
     try:
         registry = load_reason_code_registry(registry_path)
     except (FileNotFoundError, ValueError) as e:
@@ -354,7 +348,6 @@ def validate_manifest_governance(
 
     Returns list of validation errors (empty if manifest is compliant).
     """
-
     resolved_manifest = Path(manifest_path).resolve()
     errors: list[str] = []
 
