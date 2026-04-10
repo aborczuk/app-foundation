@@ -16,10 +16,35 @@
 
 set -e
 
+SOURCE_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE_PATH")" && pwd)"
+# When sourced from zsh, BASH_SOURCE can be empty and $0 is the shell name.
+# In that case, SCRIPT_DIR becomes CWD; normalize to ./scripts if present.
+if [[ ! -f "$SCRIPT_DIR/read-code.sh" && -f "$SCRIPT_DIR/scripts/read-code.sh" ]]; then
+    SCRIPT_DIR="$SCRIPT_DIR/scripts"
+fi
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CODEGRAPH_CONTEXT_DIR="$REPO_ROOT/.codegraphcontext"
+CODEGRAPH_DB_DIR="$CODEGRAPH_CONTEXT_DIR/db"
+
 CODE_FILE_LINE_THRESHOLD=200
+IGNORE_DIRS_DEFAULT="node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs"
+
+init_codegraph_env() {
+    local repo_uv_cache="${CGC_UV_CACHE_DIR:-$CODEGRAPH_CONTEXT_DIR/.uv-cache}"
+    mkdir -p "$CODEGRAPH_DB_DIR" "$repo_uv_cache"
+
+    export UV_CACHE_DIR="$repo_uv_cache"
+    export DEFAULT_DATABASE="${DEFAULT_DATABASE:-kuzudb}"
+    export FALKORDB_PATH="${FALKORDB_PATH:-$CODEGRAPH_DB_DIR/falkordb}"
+    export FALKORDB_SOCKET_PATH="${FALKORDB_SOCKET_PATH:-$CODEGRAPH_DB_DIR/falkordb.sock}"
+    export KUZUDB_PATH="${KUZUDB_PATH:-$CODEGRAPH_DB_DIR/kuzudb}"
+    export IGNORE_DIRS="${IGNORE_DIRS:-$IGNORE_DIRS_DEFAULT}"
+}
 
 codegraph_discover_or_fail() {
     local pattern="$1"
+    local scope_path="${2:-$REPO_ROOT}"
 
     if [[ -z "$pattern" ]]; then
         echo "ERROR: codegraph discovery requires a non-empty symbol_or_pattern" >&2
@@ -31,12 +56,34 @@ codegraph_discover_or_fail() {
         return 1
     fi
 
+    init_codegraph_env
+
     local output
-    if ! output="$(uv run cgc find pattern "$pattern" 2>&1)"; then
-        echo "ERROR: codegraph discovery failed for pattern: $pattern" >&2
-        echo "Hint: run scripts/cgc_safe_index.sh <scoped-path> and retry." >&2
-        echo "$output" | tail -20 >&2
-        return 1
+    if ! output="$(uv run --no-sync cgc find pattern -- "$pattern" 2>&1)"; then
+        # Self-heal common index fragility by rebuilding a scoped index once.
+        if [[ "$output" == *"Database Connection Error"* || "$output" == *"No index metadata"* ]]; then
+            if [[ -x "$SCRIPT_DIR/cgc_safe_index.sh" ]]; then
+                "$SCRIPT_DIR/cgc_safe_index.sh" "$scope_path" >/dev/null 2>&1 || true
+                if output="$(uv run --no-sync cgc find pattern -- "$pattern" 2>&1)"; then
+                    :
+                else
+                    echo "ERROR: codegraph discovery failed for pattern: $pattern" >&2
+                    echo "Hint: run scripts/cgc_safe_index.sh <scoped-path> and retry." >&2
+                    echo "$output" | tail -20 >&2
+                    return 1
+                fi
+            else
+                echo "ERROR: codegraph discovery failed for pattern: $pattern" >&2
+                echo "Hint: run scripts/cgc_safe_index.sh <scoped-path> and retry." >&2
+                echo "$output" | tail -20 >&2
+                return 1
+            fi
+        else
+            echo "ERROR: codegraph discovery failed for pattern: $pattern" >&2
+            echo "Hint: run scripts/cgc_safe_index.sh <scoped-path> and retry." >&2
+            echo "$output" | tail -20 >&2
+            return 1
+        fi
     fi
 
     if [[ "$output" == *"No matches found for pattern"* ]]; then
@@ -73,7 +120,7 @@ read_code_context() {
         return 1
     fi
 
-    codegraph_discover_or_fail "$pattern"
+    codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
 
     local line_num
     if command -v rg >/dev/null 2>&1; then
@@ -129,7 +176,7 @@ read_code_window() {
             echo "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>" >&2
             return 1
         fi
-        codegraph_discover_or_fail "$pattern"
+        codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
     fi
 
     local end_line=$((start_line + line_count - 1))
