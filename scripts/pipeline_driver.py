@@ -176,6 +176,67 @@ def emit_human_status(
         print(line, file=file)
 
 
+def drill_down_failure(
+    step_result: dict[str, Any],
+    *,
+    feature_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Provide detailed diagnostics for a failed step.
+
+    For error paths (exit_code=2), reads the sidecar debug file and returns full diagnostic context.
+    For blocked paths (exit_code=1), returns gate and reasons for user action.
+    """
+
+    exit_code = step_result.get("exit_code")
+    debug_path = step_result.get("debug_path")
+
+    if exit_code == 2 and debug_path:
+        # Error path: try to load sidecar diagnostics
+        debug_file = Path(debug_path)
+        if debug_file.exists():
+            try:
+                sidecar_data = json.loads(debug_file.read_text(encoding="utf-8"))
+                return {
+                    "success": True,
+                    "exit_code": exit_code,
+                    "error_code": step_result.get("error_code"),
+                    "debug_path": debug_path,
+                    "sidecar_data": sidecar_data,
+                    "message": f"Full diagnostics available at {debug_path}",
+                }
+            except (OSError, json.JSONDecodeError):
+                return {
+                    "success": False,
+                    "exit_code": exit_code,
+                    "error_code": step_result.get("error_code"),
+                    "debug_path": debug_path,
+                    "message": f"Could not read sidecar diagnostics at {debug_path}",
+                }
+        else:
+            return {
+                "success": False,
+                "exit_code": exit_code,
+                "error_code": step_result.get("error_code"),
+                "debug_path": debug_path,
+                "message": f"Sidecar diagnostics file not found: {debug_path}",
+            }
+    elif exit_code == 1:
+        # Blocked path: return gate and reasons
+        return {
+            "success": True,
+            "exit_code": exit_code,
+            "gate": step_result.get("gate"),
+            "reasons": step_result.get("reasons", []),
+            "message": "Step blocked - review gate and reasons above",
+        }
+    else:
+        return {
+            "success": False,
+            "exit_code": exit_code,
+            "message": "No diagnostics available for this step result",
+        }
+
+
 def route_legacy_step(
     mapping_result: dict[str, Any],
     *,
