@@ -72,3 +72,84 @@ def test_render_status_lines_normalizes_empty_values() -> None:
         "Next: none",
         "Blocked: none",
     ]
+
+
+def test_step_result_schema_success_requires_next_phase() -> None:
+    """Exit code 0 (success) requires next_phase field."""
+    parsed = contracts.parse_step_result(
+        {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "019:plan:T001",
+            "next_phase": "sketch",
+        }
+    )
+    assert parsed["exit_code"] == 0
+    assert parsed["ok"] is True
+    assert parsed["next_phase"] == "sketch"
+
+
+def test_step_result_schema_blocked_requires_gate_and_reasons() -> None:
+    """Exit code 1 (blocked) requires gate and reasons fields."""
+    parsed = contracts.parse_step_result(
+        {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": "019:plan:T001",
+            "gate": "plan_not_approved",
+            "reasons": ["feasibility_risk_high", "scope_exceeds_3_points"],
+        }
+    )
+    assert parsed["exit_code"] == 1
+    assert parsed["ok"] is False
+    assert parsed["gate"] == "plan_not_approved"
+    assert parsed["reasons"] == ["feasibility_risk_high", "scope_exceeds_3_points"]
+
+
+def test_step_result_schema_error_requires_error_code_and_debug_path() -> None:
+    """Exit code 2 (error) requires error_code and debug_path fields."""
+    parsed = contracts.parse_step_result(
+        {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 2,
+            "correlation_id": "019:sketch:T005",
+            "error_code": "script_timeout",
+            "debug_path": ".speckit/failures/019_T005_attempt_1.json",
+        }
+    )
+    assert parsed["exit_code"] == 2
+    assert parsed["ok"] is False
+    assert parsed["error_code"] == "script_timeout"
+    assert parsed["debug_path"] == ".speckit/failures/019_T005_attempt_1.json"
+
+
+def test_step_result_schema_version_routing() -> None:
+    """Schema version must match a supported version."""
+    with pytest.raises(ValueError) as exc_info:
+        contracts.parse_step_result(
+            {
+                "schema_version": "2.0.0",
+                "ok": True,
+                "exit_code": 0,
+                "correlation_id": "019:plan:T001",
+            }
+        )
+    assert "unsupported schema_version" in str(exc_info.value)
+
+
+def test_step_result_exit_code_only_accepts_0_1_2() -> None:
+    """Exit code must be exactly 0, 1, or 2."""
+    for invalid_code in [-1, 3, 127, "0", None]:
+        with pytest.raises(ValueError) as exc_info:
+            contracts.parse_step_result(
+                {
+                    "schema_version": "1.0.0",
+                    "ok": True,
+                    "exit_code": invalid_code,
+                    "correlation_id": "019:plan:T001",
+                }
+            )
+        assert "exit_code must be one of: 0, 1, 2" in str(exc_info.value)
