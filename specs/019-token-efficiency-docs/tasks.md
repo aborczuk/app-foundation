@@ -97,6 +97,7 @@
 - [X] T032 [US2] Enforce reason-code compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and scripts/pipeline_driver.py:drill_down_failure (invalid/unknown reason codes fail contract)
 
 **Checkpoint**: Compact parsing contract is deterministic and diagnostics are available only on explicit drill-down.
+<!-- Checkpoint validated: PASS | 2026-04-10 | Canonical envelope enforced by exit_code; verbose diagnostics via drill-down only -->
 
 ---
 
