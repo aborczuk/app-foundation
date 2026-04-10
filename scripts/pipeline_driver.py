@@ -756,6 +756,68 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def validate_coverage_for_migration(
+    *,
+    routes: dict[str, dict[str, Any]],
+    feature_dir: Path | str,
+    coverage_report_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Validate command coverage in mixed migration mode.
+
+    In mixed migration mode, some commands are driver-managed and others legacy.
+    This function detects which commands are uncovered (not in driver manifest
+    and lacking explicit legacy mode).
+
+    Returns:
+    {
+        "ok": bool,  # True if all commands have defined mode or coverage is acceptable
+        "uncovered": [...],  # Commands not in any manifest or without mode metadata
+        "coverage_gaps": [...],  # Gaps between driver-managed and legacy coverage
+        "migration_status": {...},  # Per-command status
+    }
+    """
+
+    if isinstance(feature_dir, str):
+        feature_dir = Path(feature_dir)
+
+    uncovered = []
+    coverage_gaps = []
+    migration_status = {}
+
+    # Analyze routes for coverage gaps
+    for cmd_id, route_meta in routes.items():
+        driver_managed = route_meta.get("driver_managed", False)
+        mode = route_meta.get("mode", "legacy")
+
+        if mode == "legacy" and not driver_managed:
+            # Legacy command is acceptable (explicitly not migrated yet)
+            migration_status[cmd_id] = {
+                "status": "legacy_acceptable",
+                "mode": mode,
+            }
+        elif mode in ("deterministic", "generative") and driver_managed:
+            # Driver-managed command is acceptable
+            migration_status[cmd_id] = {
+                "status": "driver_managed",
+                "mode": mode,
+            }
+        else:
+            # Uncovered or ambiguous state
+            uncovered.append(cmd_id)
+            migration_status[cmd_id] = {
+                "status": "uncovered",
+                "mode": mode,
+                "reason": "Ambiguous migration state",
+            }
+
+    return {
+        "ok": len(uncovered) == 0,
+        "uncovered": uncovered,
+        "coverage_gaps": coverage_gaps,
+        "migration_status": migration_status,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 

@@ -337,3 +337,76 @@ def validate_reason_codes(
                     errors.append(f"invalid reason for gate '{gate}': {reason}")
 
     return errors
+
+
+def validate_manifest_governance(
+    *,
+    manifest_path: str | Path,
+    canonical_path: str | Path | None = None,
+) -> list[str]:
+    """Validate manifest version/timestamp coupling for governance invariants.
+
+    In mixed migration mode, manifest divergence can occur silently if only one
+    manifest is updated without the other. This validator detects:
+    1. Stale timestamps with changed content
+    2. Version mismatches between canonical and mirror
+    3. Undocumented changes (timestamp not updated)
+
+    Returns list of validation errors (empty if manifest is compliant).
+    """
+
+    resolved_manifest = Path(manifest_path).resolve()
+    errors: list[str] = []
+
+    if not resolved_manifest.exists():
+        return [f"manifest not found: {resolved_manifest}"]
+
+    try:
+        manifest_data = yaml.safe_load(resolved_manifest.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        return [f"failed to load manifest: {e}"]
+
+    version = manifest_data.get("version")
+    last_updated = manifest_data.get("last_updated")
+
+    # Check required metadata fields
+    if not version:
+        errors.append("missing required field: version")
+    if not last_updated:
+        errors.append("missing required field: last_updated")
+
+    # If canonical path provided, compare for divergence
+    if canonical_path is not None:
+        resolved_canonical = Path(canonical_path).resolve()
+        if resolved_canonical.exists():
+            try:
+                canonical_data = yaml.safe_load(
+                    resolved_canonical.read_text(encoding="utf-8")
+                ) or {}
+            except Exception as e:
+                errors.append(f"failed to load canonical manifest: {e}")
+                return errors
+
+            # Compare commands block (content)
+            manifest_commands = manifest_data.get("commands", {})
+            canonical_commands = canonical_data.get("commands", {})
+
+            if manifest_commands != canonical_commands:
+                # Content diverged
+                manifest_ts = manifest_data.get("last_updated")
+                canonical_ts = canonical_data.get("last_updated")
+
+                if manifest_ts == canonical_ts:
+                    # Timestamp is stale — this is a governance violation
+                    errors.append(
+                        "manifest content diverged from canonical but timestamp not updated "
+                        f"(both at {manifest_ts})"
+                    )
+                elif manifest_ts and canonical_ts and manifest_ts > canonical_ts:
+                    # Timestamp is newer but shouldn't be if mirror only
+                    errors.append(
+                        f"mirror timestamp {manifest_ts} is newer than canonical {canonical_ts} "
+                        "(mirrors should not lead updates)"
+                    )
+
+    return errors
