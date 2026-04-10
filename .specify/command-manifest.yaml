@@ -153,21 +153,18 @@ commands:
         required_fields: [task_count, story_count]
 
   speckit.sketch:
-    description: "Generate solution sketches, test specifications, and acceptance test code for each task"
+    description: "Generate a pre-task low-level design blueprint (sketch.md) from plan/spec/codebase context"
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
       - "scripts/pipeline_ledger.py"
     artifacts:
-      - output_path: ".speckit/tasks/${TASK_ID}.md"
-        template: "hud-code-template.md"
-      - output_path: ".speckit/tasks/${TASK_ID}.md"
-        template: "hud-runbook-template.md"
-      - output_path: "${FEATURE_DIR}/.speckit/acceptance-tests/story-${STORY_NUM}.py"
-        template: ""  # generated as code, not templated
+      - output_path: "${FEATURE_DIR}/sketch.md"
+        template: "sketch-template.md"
+        scaffold_script: "check-prerequisites.sh"
     emits:
       - event: sketch_completed
-        required_fields: [tasks_sketched, acceptance_tests_written]
+        required_fields: []
 
   speckit.estimate:
     description: "Estimate fibonacci complexity for each task by evaluating codebase"
