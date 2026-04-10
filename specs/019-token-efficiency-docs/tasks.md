@@ -63,7 +63,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] Implement command-to-script allowlist dispatch from command-manifest.yaml in scripts/pipeline_driver.py:resolve_step_mapping
+- [X] T017 [US1] Implement command-to-script allowlist dispatch from command-manifest.yaml in scripts/pipeline_driver.py:resolve_step_mapping
 - [ ] T018 [US1] Implement legacy fallback for non-driver-managed phases in scripts/pipeline_driver.py:route_legacy_step
 - [ ] T019 [US1] Implement post-LLM artifact validation before success event append in scripts/pipeline_driver.py:validate_generated_artifact
 - [ ] T020 [US1] Update routing metadata and driver-managed flags in command-manifest.yaml:commands and .specify/command-manifest.yaml:commands
