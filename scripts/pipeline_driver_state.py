@@ -4,10 +4,40 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Any, Mapping
+
+EVENT_TO_PHASE: dict[str, str] = {
+    "backlog_registered": "specify",
+    "spec_clarified": "specify",
+    "research_completed": "research",
+    "plan_started": "plan",
+    "planreview_completed": "plan",
+    "feasibility_spike_completed": "plan",
+    "feasibility_spike_failed": "plan",
+    "plan_approved": "plan",
+    "sketch_completed": "solution",
+    "solutionreview_completed": "solution",
+    "estimation_completed": "solution",
+    "tasking_completed": "solution",
+    "solution_approved": "solution",
+    "analysis_completed": "analyze",
+    "e2e_generated": "implement",
+    "feature_closed": "closed",
+}
+
+REQUIRED_ARTIFACTS_BY_EVENT: dict[str, tuple[str, ...]] = {
+    "plan_approved": ("plan.md",),
+    "solution_approved": ("tasks.md", "estimates.md"),
+    "analysis_completed": ("analysis.md",),
+    "e2e_generated": ("e2e.md",),
+}
+
+_PIPELINE_LEDGER_MODULE: Any | None = None
 
 
 def _utc_now() -> datetime:
@@ -59,6 +89,22 @@ def _is_stale_lock(record: Mapping[str, Any], now_utc: datetime) -> bool:
 def _write_lock_record(lock_path: Path, record: Mapping[str, Any]) -> None:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path.write_text(json.dumps(record, sort_keys=True), encoding="utf-8")
+
+
+def _load_pipeline_ledger_module() -> Any:
+    global _PIPELINE_LEDGER_MODULE
+    if _PIPELINE_LEDGER_MODULE is not None:
+        return _PIPELINE_LEDGER_MODULE
+
+    script_path = Path(__file__).resolve().parent / "pipeline_ledger.py"
+    spec = importlib.util.spec_from_file_location("pipeline_ledger_for_driver_state", script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load pipeline_ledger module from {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    _PIPELINE_LEDGER_MODULE = module
+    return module
 
 
 def acquire_feature_lock(
@@ -193,20 +239,81 @@ def resolve_phase_state(
     feature_id: str,
     *,
     pipeline_state: Mapping[str, Any] | None = None,
+    ledger_path: Path | str = ".speckit/pipeline-ledger.jsonl",
+    feature_dir: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Return a normalized phase-state shape for the given feature.
-
-    This is intentionally lightweight for T002. Later tasks add ledger-backed
-    state resolution and drift detection.
-    """
+    """Resolve feature phase from ledger state and detect drift conditions."""
 
     if not feature_id:
         raise ValueError("feature_id is required")
 
     state = dict(pipeline_state or {})
+    drift_reasons: list[str] = []
+    last_event: str | None = None
+    event_count = 0
+    approved_plan = False
+    approved_solution = False
+
+    resolved_feature_dir: Path | None = None
+    if feature_dir is not None:
+        resolved_feature_dir = Path(feature_dir).resolve()
+    elif isinstance(state.get("feature_dir"), str) and state["feature_dir"]:
+        resolved_feature_dir = Path(str(state["feature_dir"])).resolve()
+
+    try:
+        pipeline_ledger = _load_pipeline_ledger_module()
+        all_events = pipeline_ledger.read_events(Path(ledger_path))
+        feature_events = [
+            event for event in all_events if str(event.get("feature_id", "")).strip() == feature_id
+        ]
+        event_count = len(feature_events)
+
+        if feature_events:
+            sequence_errors, feature_states = pipeline_ledger.validate_sequence(feature_events)
+            if sequence_errors:
+                drift_reasons.append("ledger_sequence_invalid")
+            feature_state = feature_states.get(feature_id)
+            if feature_state is not None:
+                approved_plan = bool(getattr(feature_state, "approved_plan", False))
+                approved_solution = bool(getattr(feature_state, "approved_solution", False))
+
+            raw_last_event = feature_events[-1].get("event")
+            if isinstance(raw_last_event, str) and raw_last_event:
+                last_event = raw_last_event
+    except SystemExit:
+        drift_reasons.append("ledger_read_failed")
+    except Exception:
+        drift_reasons.append("ledger_read_failed")
+
+    derived_phase = EVENT_TO_PHASE.get(last_event or "", "unknown")
+    hinted_phase = state.get("phase")
+    if derived_phase == "unknown" and isinstance(hinted_phase, str) and hinted_phase:
+        phase = hinted_phase
+    else:
+        phase = derived_phase
+        if (
+            isinstance(hinted_phase, str)
+            and hinted_phase
+            and hinted_phase != derived_phase
+            and last_event is not None
+        ):
+            drift_reasons.append("phase_hint_conflicts_with_ledger")
+
+    if resolved_feature_dir is not None and last_event in REQUIRED_ARTIFACTS_BY_EVENT:
+        for artifact_name in REQUIRED_ARTIFACTS_BY_EVENT[last_event]:
+            artifact_path = resolved_feature_dir / artifact_name
+            if not artifact_path.exists():
+                drift_reasons.append(f"missing_artifact:{artifact_name}")
+
+    drift_detected = bool(drift_reasons) or bool(state.get("drift_detected", False))
     return {
         "feature_id": feature_id,
-        "phase": state.get("phase", "unknown"),
-        "blocked": bool(state.get("blocked", False)),
-        "drift_detected": bool(state.get("drift_detected", False)),
+        "phase": phase,
+        "last_event": last_event,
+        "ledger_event_count": event_count,
+        "approved_plan": approved_plan,
+        "approved_solution": approved_solution,
+        "blocked": bool(state.get("blocked", False)) or drift_detected,
+        "drift_detected": drift_detected,
+        "drift_reasons": sorted(set(drift_reasons)),
     }

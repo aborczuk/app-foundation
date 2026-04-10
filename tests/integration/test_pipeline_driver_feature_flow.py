@@ -27,9 +27,9 @@ pipeline_driver_state = _load_script_module("pipeline_driver_state", "pipeline_d
 
 def test_resolve_phase_state_skeleton() -> None:
     state = pipeline_driver_state.resolve_phase_state(
-        "019",
+        "999",
         pipeline_state={"phase": "setup", "blocked": False, "drift_detected": False},
     )
-    assert state["feature_id"] == "019"
+    assert state["feature_id"] == "999"
     assert state["phase"] == "setup"
     assert state["blocked"] is False

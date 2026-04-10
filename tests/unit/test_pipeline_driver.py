@@ -33,6 +33,16 @@ pipeline_driver_contracts = _load_script_module(
 pipeline_driver_state = _load_script_module("pipeline_driver_state", "pipeline_driver_state.py")
 
 
+def _ledger_event(event: str, *, timestamp_utc: str, **fields: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "event": event,
+        "feature_id": "019",
+        "timestamp_utc": timestamp_utc,
+    }
+    payload.update(fields)
+    return payload
+
+
 def test_main_outputs_minimal_step_result(capsys) -> None:
     exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "setup"])
     assert exit_code == 0
@@ -169,3 +179,69 @@ def test_release_feature_lock_requires_owner_unless_stale(tmp_path: Path) -> Non
     )
     assert owner_release["released"] is True
     assert owner_release["reason"] == "released_by_owner"
+
+
+def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
+        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
+        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "setup", "blocked": False},
+        ledger_path=ledger_path,
+    )
+    assert state["phase"] == "plan"
+    assert state["last_event"] == "plan_started"
+    assert state["drift_detected"] is True
+    assert "phase_hint_conflicts_with_ledger" in state["drift_reasons"]
+
+
+def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
+        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
+        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+        _ledger_event(
+            "planreview_completed",
+            timestamp_utc="2026-04-10T00:03:00Z",
+            fq_count=0,
+            questions_asked=0,
+        ),
+        _ledger_event(
+            "feasibility_spike_completed",
+            timestamp_utc="2026-04-10T00:04:00Z",
+            spike_artifact="specs/019-token-efficiency-docs/spike.md",
+            fq_count=0,
+        ),
+        _ledger_event(
+            "plan_approved",
+            timestamp_utc="2026-04-10T00:05:00Z",
+            feasibility_required="false",
+        ),
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    feature_dir = tmp_path / "feature"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        ledger_path=ledger_path,
+        feature_dir=feature_dir,
+    )
+    assert state["phase"] == "plan"
+    assert state["drift_detected"] is True
+    assert "missing_artifact:plan.md" in state["drift_reasons"]
+    assert state["blocked"] is True
