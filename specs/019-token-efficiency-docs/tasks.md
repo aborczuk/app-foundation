@@ -35,7 +35,7 @@
 **CRITICAL**: No user story tasks begin until this phase is complete.
 
 - [X] T004 Implement manifest route loader and mode normalization in scripts/pipeline_driver_contracts.py:load_driver_routes
-- [ ] T005 [P] Implement feature lock acquire/release/stale-owner handling in scripts/pipeline_driver_state.py:acquire_feature_lock
+- [X] T005 [P] Implement feature lock acquire/release/stale-owner handling in scripts/pipeline_driver_state.py:acquire_feature_lock
 - [ ] T006 [P] Implement ledger-authoritative phase resolver and drift detection in scripts/pipeline_driver_state.py:resolve_phase_state
 - [ ] T007 Implement deterministic step executor with timeout/cancel and exit-code routing in scripts/pipeline_driver.py:run_step
 - [ ] T008 Implement mandatory `exit_code=2` verbose rerun + sidecar persistence in scripts/pipeline_driver.py:handle_runtime_failure
