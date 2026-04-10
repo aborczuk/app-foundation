@@ -92,6 +92,64 @@ Expected:
 
 ---
 
+## Step Result Contract & Operator Runbook
+
+All orchestrator steps emit a canonical result envelope with deterministic routing semantics:
+
+### Result Envelope Structure
+
+```json
+{
+  "schema_version": "1.0.0",
+  "ok": true|false,
+  "exit_code": 0|1|2,
+  "correlation_id": "run_ID:step_name",
+  
+  // Exit code 0 (success): next phase specified
+  "next_phase": "phase_name",
+  
+  // Exit code 1 (blocked): gate + reasons specified
+  "gate": "gate_name",
+  "reasons": ["reason1", "reason2"],
+  
+  // Exit code 2 (error): error details specified
+  "error_code": "error_type",
+  "debug_path": ".speckit/failures/diagnostic.json"
+}
+```
+
+### Exit Code Semantics
+
+| Code | Meaning | Action | Example |
+|------|---------|--------|---------|
+| **0** | Success | Proceed to next phase | Spec approved, move to planning |
+| **1** | Blocked | Review gate/reasons, human action needed | Plan rejected (high risk), needs rework |
+| **2** | Error | Check debug_path for diagnostics, may retry | LLM timeout, check logs in sidecar |
+
+### Reading Step Results
+
+1. **Check exit_code first** — determines the routing path
+2. **For exit_code=0**: Read `next_phase` to determine next step
+3. **For exit_code=1**: Read `gate` and `reasons` to understand what's blocking
+4. **For exit_code=2**: Read `error_code` and load the sidecar file at `debug_path` for full diagnostics
+
+### Debugging Failed Steps (exit_code=2)
+
+Use the drill-down command to get detailed diagnostics:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/pipeline_driver.py \
+  --feature-id 019 \
+  --drill-down <correlation_id>
+```
+
+This loads the sidecar diagnostics file and returns:
+- Initial failure output (stdout/stderr)
+- Rerun output with `SPECKIT_VERBOSE=1`
+- Full command context for reproduction
+
+---
+
 ## Next Steps
 
 - Read the feature specification: [spec.md](./spec.md)
