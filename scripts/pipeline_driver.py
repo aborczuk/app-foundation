@@ -237,6 +237,78 @@ def drill_down_failure(
         }
 
 
+def enforce_approval_breakpoint(
+    step_name: str,
+    *,
+    approval_token: str | None = None,
+    breakpoint_config: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    """Enforce configurable approval breakpoints for security-sensitive steps.
+
+    Returns a blocked result if approval is required but token not present/valid.
+    Returns {"ok": True} if step is approved or not breakpointed.
+    """
+
+    if not step_name:
+        raise ValueError("step_name is required")
+
+    if not breakpoint_config:
+        # No breakpoint configured for this step
+        return {"ok": True, "breakpoint_enforced": False}
+
+    if not isinstance(breakpoint_config, dict):
+        return {"ok": True, "breakpoint_enforced": False}
+
+    step_breakpoints = breakpoint_config.get("steps", {})
+    if step_name not in step_breakpoints:
+        # Step not in breakpoint config
+        return {"ok": True, "breakpoint_enforced": False}
+
+    breakpoint_entry = step_breakpoints[step_name]
+    if not isinstance(breakpoint_entry, dict):
+        return {"ok": True, "breakpoint_enforced": False}
+
+    if not bool(breakpoint_entry.get("enabled", False)):
+        # Breakpoint disabled for this step
+        return {"ok": True, "breakpoint_enforced": False}
+
+    # Breakpoint is enabled for this step
+    required_scope = breakpoint_entry.get("required_scope")
+    if not approval_token:
+        # No approval token provided - block
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id or "unknown",
+            "gate": "approval_required",
+            "reasons": [f"breakpoint_scope:{required_scope}"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    # Token provided - validate it (simple scope check)
+    token_scope = approval_token.split(":")[0] if approval_token else None
+    if token_scope != required_scope:
+        # Token scope mismatch - block
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id or "unknown",
+            "gate": "approval_required",
+            "reasons": ["approval_token_scope_mismatch"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    # Token valid - approve
+    return {"ok": True, "breakpoint_enforced": True, "approval_granted": True}
+
+
 def route_legacy_step(
     mapping_result: dict[str, Any],
     *,
