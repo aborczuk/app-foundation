@@ -87,14 +87,14 @@
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Implement canonical envelope parsing + schema-version compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and define shared route/error contract constants consumed by all deterministic route handlers
-- [ ] T026 [US2] Implement default stdout suppression and three-line status emission in scripts/pipeline_driver.py:emit_human_status by consuming shared status contract constants from scripts/pipeline_driver_contracts.py (no inline status strings)
-- [ ] T027 [US2] Implement explicit diagnostics drill-down command in scripts/pipeline_driver.py:drill_down_failure
-- [ ] T028 [US2] Align contract docs and operator runbook in specs/019-token-efficiency-docs/contracts/orchestrator-step-result.schema.json and specs/019-token-efficiency-docs/quickstart.md
-- [ ] T029 [US2] Implement `--dry-run` planning path in scripts/pipeline_driver.py:main and scripts/pipeline_driver_state.py:resolve_phase_state so no artifacts or ledgers are mutated
-- [ ] T030 [US2] Implement configurable approval breakpoints in scripts/pipeline_driver.py:enforce_approval_breakpoint with deterministic block/resume semantics for irreversible/security-sensitive steps
-- [ ] T031 [US2] Create deterministic reason-code registry in docs/governance/gate-reason-codes.yaml and wire loader/validator in scripts/pipeline_driver_contracts.py:validate_reason_codes
-- [ ] T032 [US2] Enforce reason-code compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and scripts/pipeline_driver.py:drill_down_failure (invalid/unknown reason codes fail contract)
+- [X] T025 [US2] Implement canonical envelope parsing + schema-version compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and define shared route/error contract constants consumed by all deterministic route handlers
+- [X] T026 [US2] Implement default stdout suppression and three-line status emission in scripts/pipeline_driver.py:emit_human_status by consuming shared status contract constants from scripts/pipeline_driver_contracts.py (no inline status strings)
+- [X] T027 [US2] Implement explicit diagnostics drill-down command in scripts/pipeline_driver.py:drill_down_failure
+- [X] T028 [US2] Align contract docs and operator runbook in specs/019-token-efficiency-docs/contracts/orchestrator-step-result.schema.json and specs/019-token-efficiency-docs/quickstart.md
+- [X] T029 [US2] Implement `--dry-run` planning path in scripts/pipeline_driver.py:main and scripts/pipeline_driver_state.py:resolve_phase_state so no artifacts or ledgers are mutated
+- [X] T030 [US2] Implement configurable approval breakpoints in scripts/pipeline_driver.py:enforce_approval_breakpoint with deterministic block/resume semantics for irreversible/security-sensitive steps
+- [X] T031 [US2] Create deterministic reason-code registry in docs/governance/gate-reason-codes.yaml and wire loader/validator in scripts/pipeline_driver_contracts.py:validate_reason_codes
+- [X] T032 [US2] Enforce reason-code compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and scripts/pipeline_driver.py:drill_down_failure (invalid/unknown reason codes fail contract)
 
 **Checkpoint**: Compact parsing contract is deterministic and diagnostics are available only on explicit drill-down.
 
