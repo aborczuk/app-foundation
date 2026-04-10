@@ -17,6 +17,21 @@ pass() {
   echo "PASS: $1"
 }
 
+run_command_coverage_validator() {
+  local output
+  checks_run=$((checks_run + 1))
+  if output="$(
+    cd "$REPO_ROOT" && \
+      env UV_CACHE_DIR="${SPECKIT_UV_CACHE_DIR:-/tmp/uv-cache}" \
+      uv run python scripts/validate_command_script_coverage.py --json 2>&1
+  )"; then
+    pass "command/script coverage validator"
+  else
+    fail "command/script coverage validator failed"
+    echo "$output"
+  fi
+}
+
 run_forbidden_literal_check() {
   local label="$1"
   local literal="$2"
@@ -49,6 +64,7 @@ main() {
   assert_exists "constitution.md"
   assert_exists "CLAUDE.md"
   assert_exists "catalog.yaml"
+  run_command_coverage_validator
 
   # NOTE: Trading-specific check removed for app-foundation template
   # (no hardcoded behavior-map target for feature 001 in commands/templates)
