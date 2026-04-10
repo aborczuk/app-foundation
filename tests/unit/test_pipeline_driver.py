@@ -488,3 +488,45 @@ def test_resolve_step_mapping_fallback_legacy_when_missing(tmp_path: Path) -> No
     assert result["type"] == "legacy"
     assert result["command_id"] == "speckit.unknown_phase"
     assert result["reason"] == "command_not_in_manifest"
+
+
+def test_route_legacy_step_returns_blocked_state() -> None:
+    mapping_result = {
+        "type": "legacy",
+        "command_id": "speckit.plan",
+        "reason": "command_not_in_manifest",
+    }
+    correlation_id = "run_20260410T120000Z_019:speckit.plan"
+
+    result = pipeline_driver.route_legacy_step(
+        mapping_result,
+        correlation_id=correlation_id,
+    )
+
+    assert result["schema_version"] == "1.0.0"
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert result["correlation_id"] == correlation_id
+    assert result["gate"] == "command_not_driver_managed"
+    assert "command_not_in_migration_scope" in result["reasons"]
+    assert "legacy_fallback:" in str(result["reasons"])
+    assert result["error_code"] is None
+    assert result["next_phase"] is None
+
+
+def test_route_legacy_step_uses_mapping_reason() -> None:
+    mapping_result = {
+        "type": "legacy",
+        "command_id": "speckit.research",
+        "reason": "manifest_not_found",
+    }
+    correlation_id = "run-mixed-mode"
+
+    result = pipeline_driver.route_legacy_step(
+        mapping_result,
+        correlation_id=correlation_id,
+    )
+
+    assert result["exit_code"] == 1
+    assert result["gate"] == "command_not_driver_managed"
+    assert any("manifest_not_found" in reason for reason in result["reasons"])

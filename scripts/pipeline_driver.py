@@ -47,6 +47,47 @@ def build_correlation_id(
     return f"{safe_run}:{safe_step}"
 
 
+def route_legacy_step(
+    mapping_result: dict[str, Any],
+    *,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Handle legacy routing for non-driver-managed phases.
+
+    Returns a blocked step result for phases not yet migrated to driver control,
+    supporting incremental migration mode (FR-007, SC-004).
+    """
+
+    if not isinstance(mapping_result, dict):
+        raise ValueError("mapping_result must be a dict")
+    if not correlation_id or not isinstance(correlation_id, str):
+        raise ValueError("correlation_id is required")
+
+    mapping_type = mapping_result.get("type")
+    if mapping_type != "legacy":
+        raise ValueError(f"route_legacy_step only handles legacy type, got: {mapping_type}")
+
+    command_id = mapping_result.get("command_id", "unknown")
+    reason = mapping_result.get("reason", "unmapped_command")
+
+    # Return a blocked state for non-migrated phases
+    # This allows mixed-mode migration where some phases use driver and others don't
+    return {
+        "schema_version": "1.0.0",
+        "ok": False,
+        "exit_code": 1,
+        "correlation_id": correlation_id,
+        "gate": "command_not_driver_managed",
+        "reasons": [
+            f"command_not_in_migration_scope",
+            f"legacy_fallback:{reason}",
+        ],
+        "error_code": None,
+        "next_phase": None,
+        "debug_path": None,
+    }
+
+
 def resolve_step_mapping(
     phase: str,
     *,
