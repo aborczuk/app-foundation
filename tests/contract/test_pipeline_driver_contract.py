@@ -100,14 +100,14 @@ def test_step_result_schema_blocked_requires_gate_and_reasons() -> None:
             "ok": False,
             "exit_code": 1,
             "correlation_id": "019:plan:T001",
-            "gate": "plan_not_approved",
-            "reasons": ["feasibility_risk_high", "scope_exceeds_3_points"],
+            "gate": "artifact_validation",
+            "reasons": ["artifact_empty_or_minimal"],
         }
     )
     assert parsed["exit_code"] == 1
     assert parsed["ok"] is False
-    assert parsed["gate"] == "plan_not_approved"
-    assert parsed["reasons"] == ["feasibility_risk_high", "scope_exceeds_3_points"]
+    assert parsed["gate"] == "artifact_validation"
+    assert parsed["reasons"] == ["artifact_empty_or_minimal"]
 
 
 def test_step_result_schema_error_requires_error_code_and_debug_path() -> None:

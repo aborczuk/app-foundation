@@ -72,7 +72,7 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
 
     Conditional required fields (based on exit_code):
     - exit_code=0 (success): requires next_phase
-    - exit_code=1 (blocked): requires gate and reasons
+    - exit_code=1 (blocked): requires gate and reasons (validated against registry)
     - exit_code=2 (error): requires error_code and debug_path
     """
 
@@ -111,6 +111,14 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
             raise ValueError("exit_code=1 (blocked) requires gate field (non-empty string)")
         if not isinstance(reasons, list) or not reasons:
             raise ValueError("exit_code=1 (blocked) requires reasons field (non-empty list)")
+
+        # Validate reason codes against registry
+        validation_errors = validate_reason_codes(
+            {"exit_code": exit_code, "gate": gate, "reasons": reasons}
+        )
+        if validation_errors:
+            raise ValueError(f"reason code validation failed: {'; '.join(validation_errors)}")
+
     elif exit_code == 2:
         # Error: requires error_code and debug_path
         if not isinstance(error_code, str) or not error_code:

@@ -184,8 +184,9 @@ def drill_down_failure(
     """Provide detailed diagnostics for a failed step.
 
     For error paths (exit_code=2), reads the sidecar debug file and returns full diagnostic context.
-    For blocked paths (exit_code=1), returns gate and reasons for user action.
+    For blocked paths (exit_code=1), returns gate and reasons with contract validation.
     """
+    from pipeline_driver_contracts import validate_reason_codes
 
     exit_code = step_result.get("exit_code")
     debug_path = step_result.get("debug_path")
@@ -221,14 +222,23 @@ def drill_down_failure(
                 "message": f"Sidecar diagnostics file not found: {debug_path}",
             }
     elif exit_code == 1:
-        # Blocked path: return gate and reasons
-        return {
+        # Blocked path: return gate and reasons with validation
+        gate = step_result.get("gate")
+        reasons = step_result.get("reasons", [])
+
+        # Validate reason codes
+        validation_errors = validate_reason_codes(step_result)
+        diagnostic = {
             "success": True,
             "exit_code": exit_code,
-            "gate": step_result.get("gate"),
-            "reasons": step_result.get("reasons", []),
+            "gate": gate,
+            "reasons": reasons,
             "message": "Step blocked - review gate and reasons above",
         }
+        if validation_errors:
+            diagnostic["reason_code_errors"] = validation_errors
+
+        return diagnostic
     else:
         return {
             "success": False,
