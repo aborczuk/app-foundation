@@ -51,6 +51,70 @@ def test_main_outputs_minimal_step_result(capsys) -> None:
     assert payload["step_result"]["exit_code"] == 0
 
 
+def test_run_step_routes_success_envelope() -> None:
+    correlation_id = "run-019-success"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json; "
+            "print(json.dumps({"
+            "'schema_version':'1.0.0','ok':True,'exit_code':0,"
+            f"'correlation_id':'{correlation_id}','next_phase':'plan'"
+            "}))"
+        ),
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+    )
+    assert result["ok"] is True
+    assert result["exit_code"] == 0
+    assert result["process_exit_code"] == 0
+    assert result["timed_out"] is False
+
+
+def test_run_step_routes_blocked_envelope() -> None:
+    correlation_id = "run-019-blocked"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json, sys; "
+            "print(json.dumps({"
+            "'schema_version':'1.0.0','ok':False,'exit_code':1,"
+            "'gate':'requirements','reasons':['missing_checklist'],"
+            f"'correlation_id':'{correlation_id}'"
+            "})); "
+            "sys.exit(1)"
+        ),
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+    )
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert result["process_exit_code"] == 1
+    assert result["reasons"] == ["missing_checklist"]
+
+
+def test_run_step_timeout_routes_runtime_failure() -> None:
+    result = pipeline_driver.run_step(
+        [sys.executable, "-c", "import time; time.sleep(2)"],
+        timeout_seconds=1,
+        correlation_id="run-019-timeout",
+    )
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["error_code"] == "step_timeout"
+    assert result["timed_out"] is True
+
+
 def test_normalize_driver_mode_aliases() -> None:
     assert pipeline_driver_contracts.normalize_driver_mode(None) == "legacy"
     assert pipeline_driver_contracts.normalize_driver_mode("script") == "deterministic"
