@@ -28,6 +28,32 @@ STATUS_PREFIXES: dict[str, str] = {
     "blocked": "Blocked:",
 }
 
+# Shared route/error contract constants for deterministic routing
+ROUTE_GATES: set[str] = {
+    "command_not_driver_managed",
+    "artifact_validation",
+    "approval_required",
+    "planreview_questions",
+}
+
+ERROR_CODES: set[str] = {
+    "step_timeout",
+    "invalid_exit_code",
+    "missing_step_result",
+    "invalid_json_result",
+    "invalid_step_result",
+    "exit_code_mismatch",
+    "correlation_id_mismatch",
+    "script_timeout",
+}
+
+ARTIFACT_VALIDATION_REASONS: set[str] = {
+    "artifact_not_created",
+    "artifact_unreadable",
+    "artifact_empty_or_minimal",
+    "completion_marker_not_found",
+}
+
 
 def _require_mapping(value: Any) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
@@ -36,13 +62,18 @@ def _require_mapping(value: Any) -> Mapping[str, Any]:
 
 
 def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
-    """Parse and minimally validate a step-result envelope.
+    """Parse and validate a step-result envelope with canonical schema.
 
     Required top-level routing fields:
     - schema_version
     - ok
     - exit_code
     - correlation_id
+
+    Conditional required fields (based on exit_code):
+    - exit_code=0 (success): requires next_phase
+    - exit_code=1 (blocked): requires gate and reasons
+    - exit_code=2 (error): requires error_code and debug_path
     """
 
     payload = _require_mapping(step_result)
@@ -63,16 +94,40 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
     if not isinstance(correlation_id, str) or not correlation_id:
         raise ValueError("missing required field: correlation_id")
 
+    # Validate conditional required fields based on exit_code
+    gate = payload.get("gate")
+    reasons = payload.get("reasons", [])
+    error_code = payload.get("error_code")
+    next_phase = payload.get("next_phase")
+    debug_path = payload.get("debug_path")
+
+    if exit_code == 0:
+        # Success: requires next_phase
+        if next_phase is None:
+            raise ValueError("exit_code=0 (success) requires next_phase field")
+    elif exit_code == 1:
+        # Blocked: requires gate and reasons
+        if not isinstance(gate, str) or not gate:
+            raise ValueError("exit_code=1 (blocked) requires gate field (non-empty string)")
+        if not isinstance(reasons, list) or not reasons:
+            raise ValueError("exit_code=1 (blocked) requires reasons field (non-empty list)")
+    elif exit_code == 2:
+        # Error: requires error_code and debug_path
+        if not isinstance(error_code, str) or not error_code:
+            raise ValueError("exit_code=2 (error) requires error_code field (non-empty string)")
+        if not isinstance(debug_path, str) or not debug_path:
+            raise ValueError("exit_code=2 (error) requires debug_path field (non-empty string)")
+
     return {
         "schema_version": schema_version,
         "ok": ok,
         "exit_code": exit_code,
         "correlation_id": correlation_id,
-        "gate": payload.get("gate"),
-        "reasons": payload.get("reasons", []),
-        "error_code": payload.get("error_code"),
-        "next_phase": payload.get("next_phase"),
-        "debug_path": payload.get("debug_path"),
+        "gate": gate,
+        "reasons": reasons,
+        "error_code": error_code,
+        "next_phase": next_phase,
+        "debug_path": debug_path,
     }
 
 

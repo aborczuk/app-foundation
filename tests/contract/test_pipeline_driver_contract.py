@@ -34,10 +34,12 @@ def test_parse_step_result_accepts_minimal_envelope() -> None:
             "ok": True,
             "exit_code": 0,
             "correlation_id": "019:setup:test",
+            "next_phase": "plan",
         }
     )
     assert parsed["schema_version"] == "1.0.0"
     assert parsed["exit_code"] == 0
+    assert parsed["next_phase"] == "plan"
 
 
 def test_parse_step_result_rejects_missing_schema_version() -> None:
