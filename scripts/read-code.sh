@@ -16,7 +16,13 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE_PATH")" && pwd)"
+# When sourced from zsh, BASH_SOURCE can be empty and $0 is the shell name.
+# In that case, SCRIPT_DIR becomes CWD; normalize to ./scripts if present.
+if [[ ! -f "$SCRIPT_DIR/read-code.sh" && -f "$SCRIPT_DIR/scripts/read-code.sh" ]]; then
+    SCRIPT_DIR="$SCRIPT_DIR/scripts"
+fi
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CODEGRAPH_CONTEXT_DIR="$REPO_ROOT/.codegraphcontext"
 CODEGRAPH_DB_DIR="$CODEGRAPH_CONTEXT_DIR/db"
@@ -53,12 +59,12 @@ codegraph_discover_or_fail() {
     init_codegraph_env
 
     local output
-    if ! output="$(uv run --no-sync cgc find pattern "$pattern" 2>&1)"; then
+    if ! output="$(uv run --no-sync cgc find pattern -- "$pattern" 2>&1)"; then
         # Self-heal common index fragility by rebuilding a scoped index once.
         if [[ "$output" == *"Database Connection Error"* || "$output" == *"No index metadata"* ]]; then
             if [[ -x "$SCRIPT_DIR/cgc_safe_index.sh" ]]; then
                 "$SCRIPT_DIR/cgc_safe_index.sh" "$scope_path" >/dev/null 2>&1 || true
-                if output="$(uv run --no-sync cgc find pattern "$pattern" 2>&1)"; then
+                if output="$(uv run --no-sync cgc find pattern -- "$pattern" 2>&1)"; then
                     :
                 else
                     echo "ERROR: codegraph discovery failed for pattern: $pattern" >&2
