@@ -12,7 +12,7 @@ import re
 import subprocess
 from typing import Any, Mapping, Sequence
 
-from pipeline_driver_contracts import parse_step_result
+from pipeline_driver_contracts import parse_step_result, render_status_lines
 from pipeline_driver_state import resolve_phase_state
 
 
@@ -126,6 +126,54 @@ def validate_generated_artifact(
 
     # Validation passed
     return {"ok": True}
+
+
+def emit_human_status(
+    step_result: dict[str, Any],
+    *,
+    file=None,
+) -> None:
+    """Emit compact three-line human status output from step result.
+
+    Suppresses verbose output and emits only the canonical Done/Next/Blocked status contract.
+    Uses render_status_lines from pipeline_driver_contracts for canonical formatting.
+    """
+
+    exit_code = step_result.get("exit_code")
+
+    if exit_code == 0:
+        # Success path: emit done status and next phase
+        done_msg = f"Step completed successfully"
+        next_msg = f"Next phase: {step_result.get('next_phase', 'unknown')}"
+        blocked_msg = "none"
+    elif exit_code == 1:
+        # Blocked path: emit gate and reasons
+        gate = step_result.get("gate", "unknown")
+        reasons = step_result.get("reasons", [])
+        reason_str = ", ".join(reasons) if reasons else "unknown"
+        done_msg = "none"
+        next_msg = "none"
+        blocked_msg = f"{gate}: {reason_str}"
+    elif exit_code == 2:
+        # Error path: emit error code
+        error_code = step_result.get("error_code", "unknown")
+        debug_path = step_result.get("debug_path")
+        done_msg = "none"
+        next_msg = "none"
+        blocked_msg = f"Error: {error_code}" + (f" (debug: {debug_path})" if debug_path else "")
+    else:
+        done_msg = "none"
+        next_msg = "none"
+        blocked_msg = "none"
+
+    status_lines = render_status_lines(
+        done=done_msg,
+        next_step=next_msg,
+        blocked=blocked_msg,
+    )
+
+    for line in status_lines:
+        print(line, file=file)
 
 
 def route_legacy_step(
