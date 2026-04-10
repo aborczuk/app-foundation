@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 from typing import Any, Mapping, Sequence
 
@@ -23,6 +25,7 @@ def _runtime_failure_result(
     stderr: str,
     process_exit_code: int | None,
     timed_out: bool,
+    debug_path: str | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": "1.0.0",
@@ -33,12 +36,119 @@ def _runtime_failure_result(
         "reasons": [reason],
         "error_code": error_code,
         "next_phase": None,
-        "debug_path": None,
+        "debug_path": debug_path,
         "stdout": stdout,
         "stderr": stderr,
         "process_exit_code": process_exit_code,
         "timed_out": timed_out,
     }
+
+
+def _execute_command(
+    command: Sequence[str],
+    *,
+    timeout_seconds: int,
+    cwd: str | Path | None,
+    env: Mapping[str, str],
+    input_payload: str | None,
+) -> dict[str, Any]:
+    process = subprocess.Popen(
+        list(command),
+        cwd=str(cwd) if cwd is not None else None,
+        env=dict(env),
+        stdin=subprocess.PIPE if input_payload is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    try:
+        stdout, stderr = process.communicate(input=input_payload, timeout=timeout_seconds)
+        return {
+            "exit_code": process.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "timed_out": False,
+        }
+    except subprocess.TimeoutExpired:
+        process.kill()
+        stdout, stderr = process.communicate()
+        return {
+            "exit_code": process.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "timed_out": True,
+        }
+
+
+def _runtime_sidecar_path(correlation_id: str, sidecar_dir: str | Path) -> Path:
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", correlation_id).strip("_")
+    if not safe_name:
+        safe_name = "runtime_failure"
+    directory = Path(sidecar_dir).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{safe_name}.runtime.json"
+
+
+def handle_runtime_failure(
+    command: Sequence[str],
+    *,
+    correlation_id: str,
+    timeout_seconds: int,
+    cwd: str | Path | None = None,
+    env_overrides: Mapping[str, str] | None = None,
+    input_payload: str | None = None,
+    error_code: str,
+    reason: str,
+    initial_stdout: str,
+    initial_stderr: str,
+    initial_exit_code: int | None,
+    initial_timed_out: bool,
+    sidecar_dir: str | Path = ".speckit/runtime-failures",
+) -> dict[str, Any]:
+    """Run one verbose rerun and persist deterministic runtime diagnostics."""
+
+    rerun_env = os.environ.copy()
+    if env_overrides:
+        rerun_env.update({str(key): str(value) for key, value in env_overrides.items()})
+    rerun_env["SPECKIT_VERBOSE"] = "1"
+
+    rerun_result = _execute_command(
+        command,
+        timeout_seconds=timeout_seconds,
+        cwd=cwd,
+        env=rerun_env,
+        input_payload=input_payload,
+    )
+
+    sidecar_payload = {
+        "schema_version": "1.0.0",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "correlation_id": correlation_id,
+        "error_code": error_code,
+        "reason": reason,
+        "command": list(command),
+        "initial": {
+            "exit_code": initial_exit_code,
+            "timed_out": initial_timed_out,
+            "stdout": initial_stdout,
+            "stderr": initial_stderr,
+        },
+        "rerun": rerun_result,
+    }
+    sidecar_path = _runtime_sidecar_path(correlation_id, sidecar_dir)
+    sidecar_path.write_text(json.dumps(sidecar_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    return _runtime_failure_result(
+        correlation_id=correlation_id,
+        error_code=error_code,
+        reason=reason,
+        stdout=initial_stdout,
+        stderr=initial_stderr,
+        process_exit_code=initial_exit_code,
+        timed_out=initial_timed_out,
+        debug_path=str(sidecar_path),
+    )
 
 
 def run_step(
@@ -49,6 +159,7 @@ def run_step(
     cwd: str | Path | None = None,
     env_overrides: Mapping[str, str] | None = None,
     input_payload: str | None = None,
+    sidecar_dir: str | Path = ".speckit/runtime-failures",
 ) -> dict[str, Any]:
     """Execute a deterministic step script and route by canonical exit semantics."""
 
@@ -63,101 +174,140 @@ def run_step(
     if env_overrides:
         process_env.update({str(key): str(value) for key, value in env_overrides.items()})
 
-    process = subprocess.Popen(
-        list(command),
-        cwd=str(cwd) if cwd is not None else None,
+    execution = _execute_command(
+        command,
+        timeout_seconds=timeout_seconds,
+        cwd=cwd,
         env=process_env,
-        stdin=subprocess.PIPE if input_payload is not None else None,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        input_payload=input_payload,
     )
+    stdout = str(execution["stdout"])
+    stderr = str(execution["stderr"])
+    exit_code = execution["exit_code"]
+    timed_out = bool(execution["timed_out"])
 
-    try:
-        stdout, stderr = process.communicate(input=input_payload, timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        stdout, stderr = process.communicate()
-        return _runtime_failure_result(
+    if timed_out:
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="step_timeout",
             reason="step_timeout",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=process.returncode,
-            timed_out=True,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=True,
+            sidecar_dir=sidecar_dir,
         )
 
-    exit_code = process.returncode
     if exit_code not in (0, 1, 2):
-        return _runtime_failure_result(
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="invalid_exit_code",
             reason="invalid_exit_code",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=exit_code,
-            timed_out=False,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
         )
 
     payload_text = stdout.strip()
     if not payload_text:
-        return _runtime_failure_result(
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="missing_step_result",
             reason="missing_step_result",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=exit_code,
-            timed_out=False,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
         )
 
     try:
         envelope = json.loads(payload_text)
     except json.JSONDecodeError:
-        return _runtime_failure_result(
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="invalid_json_result",
             reason="invalid_json_result",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=exit_code,
-            timed_out=False,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
         )
 
     try:
         parsed = parse_step_result(envelope)
     except ValueError:
-        return _runtime_failure_result(
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="invalid_step_result",
             reason="invalid_step_result",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=exit_code,
-            timed_out=False,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
         )
 
     if parsed["exit_code"] != exit_code:
-        return _runtime_failure_result(
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="exit_code_mismatch",
             reason="exit_code_mismatch",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=exit_code,
-            timed_out=False,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
         )
 
     if parsed["correlation_id"] != correlation_id:
-        return _runtime_failure_result(
+        return handle_runtime_failure(
+            command,
             correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            input_payload=input_payload,
             error_code="correlation_id_mismatch",
             reason="correlation_id_mismatch",
-            stdout=stdout,
-            stderr=stderr,
-            process_exit_code=exit_code,
-            timed_out=False,
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
         )
 
     result = dict(parsed)

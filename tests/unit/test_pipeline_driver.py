@@ -103,16 +103,45 @@ def test_run_step_routes_blocked_envelope() -> None:
     assert result["reasons"] == ["missing_checklist"]
 
 
-def test_run_step_timeout_routes_runtime_failure() -> None:
+def test_run_step_timeout_routes_runtime_failure(tmp_path: Path) -> None:
+    sidecar_dir = tmp_path / "runtime-failures"
     result = pipeline_driver.run_step(
         [sys.executable, "-c", "import time; time.sleep(2)"],
         timeout_seconds=1,
         correlation_id="run-019-timeout",
+        sidecar_dir=sidecar_dir,
     )
     assert result["ok"] is False
     assert result["exit_code"] == 2
     assert result["error_code"] == "step_timeout"
     assert result["timed_out"] is True
+    assert result["debug_path"] is not None
+    assert Path(result["debug_path"]).exists()
+
+
+def test_run_step_invalid_json_persists_runtime_sidecar(tmp_path: Path) -> None:
+    sidecar_dir = tmp_path / "runtime-failures"
+    command = [
+        sys.executable,
+        "-c",
+        "import sys; print('not-json'); sys.exit(2)",
+    ]
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id="run-019-invalid-json",
+        sidecar_dir=sidecar_dir,
+    )
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["error_code"] == "invalid_json_result"
+    assert result["debug_path"] is not None
+
+    sidecar_path = Path(result["debug_path"])
+    assert sidecar_path.exists()
+    sidecar_payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar_payload["correlation_id"] == "run-019-invalid-json"
+    assert sidecar_payload["rerun"]["exit_code"] in (0, 1, 2, None)
 
 
 def test_normalize_driver_mode_aliases() -> None:
