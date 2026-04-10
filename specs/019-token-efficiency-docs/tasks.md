@@ -21,7 +21,7 @@
 
 - [X] T000 Record External Ingress + Runtime Readiness Gate as N/A (CLI-only feature) in specs/019-token-efficiency-docs/tasks.md
 - [X] T001 Build initial command-to-script coverage inventory from command-manifest.yaml and .specify/command-manifest.yaml into docs/governance/command-script-coverage.md:coverage_matrix
-- [ ] T002 Create orchestrator module skeletons in scripts/pipeline_driver.py:main, scripts/pipeline_driver_state.py:resolve_phase_state, scripts/pipeline_driver_contracts.py:parse_step_result
+- [X] T002 Create orchestrator module skeletons in scripts/pipeline_driver.py:main, scripts/pipeline_driver_state.py:resolve_phase_state, scripts/pipeline_driver_contracts.py:parse_step_result
 - [ ] T003 [P] Create test module skeletons in tests/unit/test_pipeline_driver.py, tests/integration/test_pipeline_driver_feature_flow.py, tests/contract/test_pipeline_driver_contract.py
 
 **Checkpoint**: Coverage inventory exists and orchestrator/test skeleton files are in place.
