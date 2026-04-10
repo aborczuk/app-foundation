@@ -1,0 +1,53 @@
+---
+# Document Graph: Governance and Architecture Authority
+# Maps authoritative sources for governance domains and architectural decisions
+
+version: "1.0.0"
+last_updated: "2026-04-10"
+
+graph:
+  constitution:
+    path: constitution.md
+    role: "Principal governance authority"
+    owned_domains:
+      - 12 # Testing & quality gates
+      - 13 # Identity & access control
+      - 14 # Security controls
+      - 15 # Data privacy & compliance
+      - 16 # Ops & governance
+      - 17 # Code patterns
+
+  claude_md:
+    path: CLAUDE.md
+    role: "Project-specific guidelines and tooling configuration"
+    describes:
+      - Active technologies
+      - Project structure
+      - Codebase MCP toolkit
+      - Development workflow
+
+  catalog_yaml:
+    path: catalog.yaml
+    role: "System component inventory and cross-references"
+    describes:
+      - Services and modules
+      - Dependencies and integrations
+      - System topology
+
+  governance_gate_reason_codes:
+    path: docs/governance/gate-reason-codes.yaml
+    role: "Registry of valid gate/reason combinations"
+    owned_by: "Phase 5 (US3)"
+
+  governance_command_script_coverage:
+    path: docs/governance/command-script-coverage.md
+    role: "Command routing and coverage enforcement policy"
+    owned_by: "Phase 5 (US3)"
+
+features:
+  "019-token-efficiency-docs":
+    spec_path: specs/019-token-efficiency-docs/spec.md
+    plan_path: specs/019-token-efficiency-docs/plan.md
+    sketch_path: specs/019-token-efficiency-docs/sketch.md
+    tasks_path: specs/019-token-efficiency-docs/tasks.md
+    e2e_path: specs/019-token-efficiency-docs/e2e.md

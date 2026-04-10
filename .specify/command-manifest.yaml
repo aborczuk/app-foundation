@@ -1,240 +1,242 @@
-# Command Manifest: Speckit Command Registration and Event Declaration
-# Single source of truth for:
-# - What artifacts each command produces and which templates they use
-# - What events each command emits to the pipeline ledger
-#
-# Used by:
-# - scripts/pipeline_ledger.py (loads valid events + required fields)
-# - scripts/pipeline-scaffold.sh (resolves templates before LLM runs)
-
 commands:
   speckit.specify:
-    description: "Create or update feature specification from natural language"
+    description: Create or update feature specification from natural language
     driver:
       mode: generative
       timeout_seconds: 300
     artifacts:
-      - output_path: "${FEATURE_DIR}/spec.md"
-        template: "spec-template.md"
-        scaffold_script: "create-new-feature.sh"  # already scripted
-      - output_path: "${FEATURE_DIR}/checklists/requirements.md"
-        template: "requirements-checklist-template.md"
+    - output_path: ${FEATURE_DIR}/spec.md
+      template: spec-template.md
+      scaffold_script: create-new-feature.sh
+    - output_path: ${FEATURE_DIR}/checklists/requirements.md
+      template: requirements-checklist-template.md
     emits:
-      - event: backlog_registered
-        required_fields: []
-
+    - event: backlog_registered
+      required_fields: []
   speckit.clarify:
-    description: "Ask targeted clarification questions and encode answers into spec"
+    description: Ask targeted clarification questions and encode answers into spec
     artifacts: []
     emits:
-      - event: spec_clarified
-        required_fields: []
-
+    - event: spec_clarified
+      required_fields: []
+    mode: legacy
   speckit.split:
-    description: "Split an XL or L spec into smaller independently deliverable phase specs"
+    description: Split an XL or L spec into smaller independently deliverable phase specs
     artifacts:
-      - output_path: "${FEATURE_DIR}/spec.md"
-        template: "spec-template.md"
-        scaffold_script: "create-new-feature.sh"  # per phase
-      - output_path: "${FEATURE_DIR}/checklists/requirements.md"
-        template: "requirements-checklist-template.md"  # per phase
+    - output_path: ${FEATURE_DIR}/spec.md
+      template: spec-template.md
+      scaffold_script: create-new-feature.sh
+    - output_path: ${FEATURE_DIR}/checklists/requirements.md
+      template: requirements-checklist-template.md
     emits: []
-
+    mode: legacy
   speckit.checklist:
-    description: "Generate custom checklists for a feature based on user requirements"
+    description: Generate custom checklists for a feature based on user requirements
     artifacts:
-      - output_path: "${FEATURE_DIR}/checklists/${DOMAIN}.md"
-        template: "checklist-template.md"
+    - output_path: ${FEATURE_DIR}/checklists/${DOMAIN}.md
+      template: checklist-template.md
     emits: []
-
+    mode: legacy
   speckit.research:
-    description: "Assemble prior art, patterns, and integration options for the feature"
+    description: Assemble prior art, patterns, and integration options for the feature
     driver:
       mode: generative
       timeout_seconds: 240
     artifacts:
-      - output_path: "${FEATURE_DIR}/research.md"
-        template: "research-template.md"
+    - output_path: ${FEATURE_DIR}/research.md
+      template: research-template.md
     emits:
-      - event: research_completed
-        required_fields: []
-
+    - event: research_completed
+      required_fields: []
   speckit.plan:
-    description: "Create architecture, technology selection, data flow, and implementation strategy"
+    description: Create architecture, technology selection, data flow, and implementation strategy
     driver:
       mode: generative
       timeout_seconds: 300
     artifacts:
-      - output_path: "${FEATURE_DIR}/plan.md"
-        template: "plan-template.md"
-        scaffold_script: "setup-plan.sh"  # already scripted
-      - output_path: "${FEATURE_DIR}/data-model.md"
-        template: "data-model-template.md"
-      - output_path: "${FEATURE_DIR}/quickstart.md"
-        template: "quickstart-template.md"
+    - output_path: ${FEATURE_DIR}/plan.md
+      template: plan-template.md
+      scaffold_script: setup-plan.sh
+    - output_path: ${FEATURE_DIR}/data-model.md
+      template: data-model-template.md
+    - output_path: ${FEATURE_DIR}/quickstart.md
+      template: quickstart-template.md
     emits:
-      - event: plan_started
-        required_fields: []
-      - event: plan_approved
-        required_fields: [feasibility_required]
-
+    - event: plan_started
+      required_fields: []
+    - event: plan_approved
+      required_fields:
+      - feasibility_required
   speckit.planreview:
-    description: "Identify underspecified areas in the current plan by asking targeted clarification questions"
+    description: Identify underspecified areas in the current plan by asking targeted clarification questions
     driver:
       mode: generative
       timeout_seconds: 180
     artifacts: []
     emits:
-      - event: planreview_completed
-        required_fields: [fq_count, questions_asked]
-
+    - event: planreview_completed
+      required_fields:
+      - fq_count
+      - questions_asked
   speckit.feasibilityspike:
-    description: "Prove all Open Feasibility Questions in plan with targeted probes"
+    description: Prove all Open Feasibility Questions in plan with targeted probes
     artifacts:
-      - output_path: "${FEATURE_DIR}/spike.md"
-        template: "spike-template.md"
+    - output_path: ${FEATURE_DIR}/spike.md
+      template: spike-template.md
     emits:
-      - event: feasibility_spike_completed
-        required_fields: [spike_artifact, fq_count]
-      - event: feasibility_spike_failed
-        required_fields: [failed_fq]
-
+    - event: feasibility_spike_completed
+      required_fields:
+      - spike_artifact
+      - fq_count
+    - event: feasibility_spike_failed
+      required_fields:
+      - failed_fq
+    mode: legacy
   speckit.tasks:
-    description: "DEPRECATED: use speckit.solution (full flow) or speckit.tasking (post-sketch decomposition)"
+    description: 'DEPRECATED: use speckit.solution (full flow) or speckit.tasking (post-sketch decomposition)'
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.tasking:
-    description: "Decompose approved sketch.md into tasks.md, run estimate/breakdown stabilization, then generate HUDs + acceptance tests"
+    description: Decompose approved sketch.md into tasks.md, run estimate/breakdown stabilization, then generate HUDs + acceptance
+      tests
     artifacts:
-      - output_path: "${FEATURE_DIR}/tasks.md"
-        template: "tasks-template.md"
+    - output_path: ${FEATURE_DIR}/tasks.md
+      template: tasks-template.md
     emits:
-      - event: estimation_completed
-        required_fields: [estimate_points]
-      - event: tasking_completed
-        required_fields: [task_count, story_count]
-
+    - event: estimation_completed
+      required_fields:
+      - estimate_points
+    - event: tasking_completed
+      required_fields:
+      - task_count
+      - story_count
+    mode: legacy
   speckit.sketch:
-    description: "Generate pre-task sketch blueprint from spec/plan/codebase context"
+    description: Generate pre-task sketch blueprint from spec/plan/codebase context
     driver:
       mode: generative
       timeout_seconds: 180
     artifacts:
-      - output_path: "${FEATURE_DIR}/sketch.md"
-        template: "sketch-template.md"
+    - output_path: ${FEATURE_DIR}/sketch.md
+      template: sketch-template.md
     emits:
-      - event: sketch_completed
-        required_fields: []
-
+    - event: sketch_completed
+      required_fields: []
   speckit.tasking.hud-code:
-    description: "Scaffold code-task HUD for one task ID (used by speckit.tasking)"
+    description: Scaffold code-task HUD for one task ID (used by speckit.tasking)
     artifacts:
-      - output_path: ".speckit/tasks/${TASK_ID}.md"
-        template: "hud-code-template.md"
+    - output_path: .speckit/tasks/${TASK_ID}.md
+      template: hud-code-template.md
     emits: []
-
+    mode: legacy
   speckit.tasking.hud-runbook:
-    description: "Scaffold human-task runbook HUD for one task ID (used by speckit.tasking)"
+    description: Scaffold human-task runbook HUD for one task ID (used by speckit.tasking)
     artifacts:
-      - output_path: ".speckit/tasks/${TASK_ID}.md"
-        template: "hud-runbook-template.md"
+    - output_path: .speckit/tasks/${TASK_ID}.md
+      template: hud-runbook-template.md
     emits: []
-
+    mode: legacy
   speckit.estimate:
-    description: "Estimate fibonacci complexity for each task by evaluating codebase (points-only)"
+    description: Estimate fibonacci complexity for each task by evaluating codebase (points-only)
     artifacts:
-      - output_path: "${FEATURE_DIR}/estimates.md"
-        template: "estimates-template.md"
+    - output_path: ${FEATURE_DIR}/estimates.md
+      template: estimates-template.md
     emits:
-      - event: estimation_completed
-        required_fields: [estimate_points]
-
+    - event: estimation_completed
+      required_fields:
+      - estimate_points
+    mode: legacy
   speckit.breakdown:
-    description: "Break down 8 or 13-point tasks in estimates.md into smaller pieces (≤5 points each)"
+    description: Break down 8 or 13-point tasks in estimates.md into smaller pieces (≤5 points each)
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.analyze:
-    description: "Perform cross-artifact drift analysis across spec -> plan -> sketch -> tasks"
+    description: Perform cross-artifact drift analysis across spec -> plan -> sketch -> tasks
     artifacts:
-      - output_path: "${FEATURE_DIR}/analysis.md"
-        template: ""  # generated content, analysis is report-only
+    - output_path: ${FEATURE_DIR}/analysis.md
+      template: ''
     emits:
-      - event: analysis_completed
-        required_fields: [critical_count]
-
+    - event: analysis_completed
+      required_fields:
+      - critical_count
+    mode: legacy
   speckit.solutionreview:
-    description: "Quality review of sketch.md before task decomposition"
+    description: Quality review of sketch.md before task decomposition
     artifacts:
-      - output_path: "${FEATURE_DIR}/solutionreview.md"
-        template: "solutionreview-template.md"
+    - output_path: ${FEATURE_DIR}/solutionreview.md
+      template: solutionreview-template.md
     emits:
-      - event: solutionreview_completed
-        required_fields: [critical_count, high_count]
-
+    - event: solutionreview_completed
+      required_fields:
+      - critical_count
+      - high_count
+    mode: legacy
   speckit.solution:
-    description: "LLD solutioning phase — orchestrates sketch -> solutionreview -> tasking -> analyze"
+    description: LLD solutioning phase — orchestrates sketch -> solutionreview -> tasking -> analyze
     artifacts: []
     emits:
-      - event: solution_approved
-        required_fields: [task_count, story_count, estimate_points]
-
+    - event: solution_approved
+      required_fields:
+      - task_count
+      - story_count
+      - estimate_points
+    mode: legacy
   speckit.e2e:
-    description: "Generate E2E testing pipeline artifacts (e2e.md + executable script)"
+    description: Generate E2E testing pipeline artifacts (e2e.md + executable script)
     artifacts:
-      - output_path: "${FEATURE_DIR}/e2e.md"
-        template: "e2e-template.md"
-      - output_path: "scripts/e2e_${FEATURE_SLUG}.sh"
-        template: "e2e-script-template.sh"
+    - output_path: ${FEATURE_DIR}/e2e.md
+      template: e2e-template.md
+    - output_path: scripts/e2e_${FEATURE_SLUG}.sh
+      template: e2e-script-template.sh
     emits:
-      - event: e2e_generated
-        required_fields: [e2e_artifact]
-
+    - event: e2e_generated
+      required_fields:
+      - e2e_artifact
+    mode: legacy
   speckit.e2e-run:
-    description: "Execute the E2E testing pipeline for the current feature as automation-first acceptance gate"
+    description: Execute the E2E testing pipeline for the current feature as automation-first acceptance gate
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.checkpoint:
-    description: "Validate a phase checkpoint from tasks.md by running the software and verifying observable behavior"
+    description: Validate a phase checkpoint from tasks.md by running the software and verifying observable behavior
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.implement:
-    description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md"
+    description: Execute the implementation plan by processing and executing all tasks defined in tasks.md
     artifacts: []
     emits: []
-    # Task-level ledger events are emitted by speckit.implement (task_ledger.py not pipeline_ledger.py)
-
+    mode: legacy
   speckit.taskstoissues:
-    description: "Convert existing tasks into actionable, dependency-ordered GitHub issues for the feature"
+    description: Convert existing tasks into actionable, dependency-ordered GitHub issues for the feature
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.addtobacklog:
-    description: "Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, and auto-sync spec"
+    description: Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, and auto-sync spec
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.constitution:
-    description: "Create or update the project constitution from interactive or provided principle inputs"
+    description: Create or update the project constitution from interactive or provided principle inputs
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.trello-sync:
-    description: "Sync the current feature's tasks.md to a Trello board using the MCP Trello Bridge"
+    description: Sync the current feature's tasks.md to a Trello board using the MCP Trello Bridge
     artifacts: []
     emits: []
-
+    mode: legacy
   speckit.clickup-sync:
-    description: "Bootstrap or report ClickUp sync status for the current speckit feature tree"
+    description: Bootstrap or report ClickUp sync status for the current speckit feature tree
     artifacts: []
     emits: []
-
-# Manual events (no owning command — emitted via CLI)
-# These are valid pipeline events with no documented emit step in any command file.
-# They are emitted manually by operators when the UI or external system triggers them.
+    mode: legacy
 manual_events:
   feature_closed:
     required_fields: []
+version: 1.0.0
+last_updated: '2026-04-10T17:39:40.638529'

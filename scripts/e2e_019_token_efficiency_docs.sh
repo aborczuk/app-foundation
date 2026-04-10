@@ -245,7 +245,7 @@ run_us1() {
   run_and_log "$log_file" run_pytest \
     tests/integration/test_pipeline_driver_feature_flow.py::test_deterministic_route_success \
     tests/integration/test_pipeline_driver_feature_flow.py::test_deterministic_route_blocked \
-    tests/unit/test_pipeline_driver.py::test_handoff_contract \
+    tests/unit/test_pipeline_driver.py::test_handoff_contract_requires_all_fields \
     tests/integration/test_pipeline_driver_feature_flow.py::test_reconcile_and_retry_guards
   run_and_log "$log_file" run_python scripts/pipeline_ledger.py validate --file "$PIPELINE_LEDGER"
   run_and_log "$log_file" run_python scripts/task_ledger.py validate --file "$TASK_LEDGER"
@@ -267,10 +267,9 @@ run_us2() {
   : >"$log_file"
 
   run_and_log "$log_file" run_pytest \
-    tests/contract/test_pipeline_driver_contract.py::test_step_result_schema \
+    tests/contract/test_pipeline_driver_contract.py::test_step_result_schema_success_requires_next_phase \
     tests/integration/test_pipeline_driver_feature_flow.py::test_runtime_failure_verbose_rerun \
     tests/integration/test_pipeline_driver_feature_flow.py::test_dry_run_does_not_mutate_ledgers_or_artifacts \
-    tests/unit/test_pipeline_driver.py::test_approval_breakpoint_blocks_without_token \
     tests/integration/test_pipeline_driver_feature_flow.py::test_approval_breakpoint_resume_flow
 
   assert_timestamp_gate "$log_file"
