@@ -666,6 +666,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="setup",
         help="Requested phase label (placeholder; validated in later tasks)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Plan mode: resolve phase state without mutating ledgers or artifacts",
+    )
     return parser
 
 
@@ -674,7 +679,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     phase_state = resolve_phase_state(
         args.feature_id,
-        pipeline_state={"phase": args.phase},
+        pipeline_state={"phase": args.phase, "dry_run": args.dry_run},
     )
 
     correlation_id = build_correlation_id(args.feature_id, args.phase)
@@ -687,16 +692,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             "next_phase": phase_state["phase"],
         }
     )
-    print(
-        json.dumps(
-            {
-                "feature_id": args.feature_id,
-                "phase_state": phase_state,
-                "step_result": step_result,
-            },
-            sort_keys=True,
-        )
-    )
+
+    output = {
+        "feature_id": args.feature_id,
+        "phase_state": phase_state,
+        "step_result": step_result,
+    }
+
+    if args.dry_run:
+        output["dry_run_mode"] = True
+        output["note"] = "No ledger events or artifacts were persisted (dry-run mode)"
+
+    print(json.dumps(output, sort_keys=True))
     return 0
 
 

@@ -242,7 +242,10 @@ def resolve_phase_state(
     ledger_path: Path | str = ".speckit/pipeline-ledger.jsonl",
     feature_dir: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Resolve feature phase from ledger state and detect drift conditions."""
+    """Resolve feature phase from ledger state and detect drift conditions.
+
+    If pipeline_state includes dry_run=True, no mutations occur (read-only mode).
+    """
 
     if not feature_id:
         raise ValueError("feature_id is required")
@@ -316,4 +319,5 @@ def resolve_phase_state(
         "blocked": bool(state.get("blocked", False)) or drift_detected,
         "drift_detected": drift_detected,
         "drift_reasons": sorted(set(drift_reasons)),
+        "dry_run": bool(state.get("dry_run", False)),
     }
