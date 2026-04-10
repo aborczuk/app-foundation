@@ -21,6 +21,12 @@ DRIVER_MODE_ALIASES: dict[str, str] = {
     "passthrough": "legacy",
     "unmanaged": "legacy",
 }
+STATUS_KEYS: tuple[str, str, str] = ("done", "next", "blocked")
+STATUS_PREFIXES: dict[str, str] = {
+    "done": "Done:",
+    "next": "Next:",
+    "blocked": "Blocked:",
+}
 
 
 def _require_mapping(value: Any) -> Mapping[str, Any]:
@@ -173,3 +179,26 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
         }
 
     return routes
+
+
+def _normalize_status_value(raw_value: Any) -> str:
+    if not isinstance(raw_value, str):
+        return "none"
+    normalized = raw_value.strip()
+    return normalized if normalized else "none"
+
+
+def render_status_lines(
+    *,
+    done: str | None,
+    next_step: str | None,
+    blocked: str | None = None,
+) -> list[str]:
+    """Render the strict three-line human status contract in canonical order."""
+
+    status_values = {
+        "done": _normalize_status_value(done),
+        "next": _normalize_status_value(next_step),
+        "blocked": _normalize_status_value(blocked),
+    }
+    return [f"{STATUS_PREFIXES[key]} {status_values[key]}" for key in STATUS_KEYS]

@@ -49,3 +49,26 @@ def test_parse_step_result_rejects_missing_schema_version() -> None:
                 "correlation_id": "019:setup:test",
             }
         )
+
+
+def test_render_status_lines_strict_three_line_contract() -> None:
+    lines = contracts.render_status_lines(
+        done="plan gate passed",
+        next_step="run speckit.solution",
+        blocked="none",
+    )
+    assert lines == [
+        "Done: plan gate passed",
+        "Next: run speckit.solution",
+        "Blocked: none",
+    ]
+    assert tuple(contracts.STATUS_KEYS) == ("done", "next", "blocked")
+
+
+def test_render_status_lines_normalizes_empty_values() -> None:
+    lines = contracts.render_status_lines(done="", next_step=None, blocked="   ")
+    assert lines == [
+        "Done: none",
+        "Next: none",
+        "Blocked: none",
+    ]
