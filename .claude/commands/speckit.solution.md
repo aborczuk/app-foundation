@@ -40,7 +40,13 @@ Top-level LLD phase for sketch-first planning. `/speckit.solution` now enforces:
 
 3. **Auto-invoke `/speckit.sketch`**:
    - Produce `FEATURE_DIR/sketch.md`.
-   - Sketch must include symbol recon, strategy options, and domain constraints by work type.
+   - Sketch must include the contract sections required by the current sketch template, especially:
+     - `Solution Narrative`
+     - `Construction Strategy`
+     - `Command / Script Surface Map`
+     - `Manifest Alignment Check`
+     - `Design-to-Tasking Contract`
+     - `Decomposition-Ready Design Slices`
 
 4. **Auto-invoke `/speckit.solutionreview`**:
    - Review `sketch.md`.

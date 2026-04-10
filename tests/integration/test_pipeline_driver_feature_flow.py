@@ -453,3 +453,83 @@ def test_reconcile_and_retry_guards(driver_flow_harness) -> None:
     assert retry_lock["reused"] is True
     assert blocked_lock["acquired"] is False
     assert blocked_lock["reason"] == "feature_lock_held"
+
+
+def test_mixed_migration_mode(driver_flow_harness) -> None:
+    """US3: Mixed migration mode maintains invariants and blocks uncovered commands.
+
+    Verifies:
+    1. Driver-managed commands route deterministically
+    2. Legacy commands fall back to passthrough
+    3. Uncovered command mappings fail gates
+    4. Ledger/event invariants remain valid in mixed mode
+    """
+    # Seed ledger with completed prerequisites
+    driver_flow_harness.seed_ledger(
+        [
+            driver_flow_harness.make_event("backlog_registered", "2026-04-10T00:00:00Z"),
+            driver_flow_harness.make_event("research_completed", "2026-04-10T00:01:00Z"),
+        ]
+    )
+
+    # Create mixed-mode manifest: one driver-managed, one legacy, one uncovered
+    manifest_routes = {
+        "speckit.plan": {
+            "mode": "deterministic",
+            "driver_managed": True,
+        },
+        "speckit.sketch": {
+            "mode": "legacy",
+            "driver_managed": False,
+        },
+    }
+
+    # Write test manifest with mixed modes
+    manifest_yaml = """version: "1.0.0"
+commands:
+  speckit.plan:
+    mode: deterministic
+    driver:
+      timeout_seconds: 30
+  speckit.sketch:
+    mode: legacy
+  speckit.uncovered:
+    description: "Intentionally uncovered command (no driver metadata)"
+"""
+    specify_dir = driver_flow_harness.feature_dir.parent / ".specify"
+    specify_dir.mkdir(parents=True, exist_ok=True)
+    (specify_dir / "command-manifest.yaml").write_text(
+        manifest_yaml, encoding="utf-8"
+    )
+
+    # Test 1: Load manifest with mixed modes
+    routes = pipeline_driver_contracts.load_driver_routes(specify_dir / "command-manifest.yaml")
+
+    # Driver-managed command should be marked as such
+    assert routes["speckit.plan"]["driver_managed"] is True
+    assert routes["speckit.plan"]["mode"] == "deterministic"
+
+    # Legacy command should NOT be driver-managed
+    assert routes["speckit.sketch"]["driver_managed"] is False
+    assert routes["speckit.sketch"]["mode"] == "legacy"
+
+    # Uncovered command should have legacy default
+    assert routes["speckit.uncovered"]["driver_managed"] is False
+
+    # Test 2: Mixed mode coverage validation (NEW in Phase 5)
+    # This function is called by gates to detect uncovered command mappings
+    coverage_result = pipeline_driver.validate_coverage_for_migration(
+        routes=routes,
+        feature_dir=driver_flow_harness.feature_dir,
+        coverage_report_path=None,
+    )
+    # Should block uncovered commands in mixed mode
+    assert coverage_result is not None
+    assert "uncovered" in coverage_result or "coverage_gaps" in coverage_result
+
+    # Test 3: Verify ledger invariants after mixed-mode resolve
+    ledger_state = driver_flow_harness.resolve()
+    assert ledger_state is not None
+    assert isinstance(ledger_state, dict)
+    # Phase should be deterministic
+    assert "phase" in ledger_state

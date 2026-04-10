@@ -74,7 +74,7 @@ All findings in this review must use one of the following `Category` values:
 |------------|----------|----------|----------------|---------|----------------|----------------------|-----------|
 | SR-001 | [CRITICAL/HIGH/MEDIUM/LOW] | [category] | [section name] | [short finding summary] | [why downstream phases are affected] | [specific required fix] | [yes/no] |
 
-_Add one row per finding. Keep IDs stable and sequential._
+_Add one row per finding._
 
 ---
 

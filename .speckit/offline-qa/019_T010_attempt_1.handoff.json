@@ -1,0 +1,35 @@
+{
+  "feature_id": "019",
+  "task_id": "T010",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T010.md",
+  "acceptance_criteria": [
+    "Run-scoped correlation IDs are generated deterministically and propagated into orchestrator outputs"
+  ],
+  "quality_guards": [
+    "Explicit run scope is preserved while step names are safely tokenized",
+    "Timestamp fallback IDs are stable and UTC-normalized"
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": " scripts/pipeline_driver.py         | 34 +++++++++++++++++++++++++++++++++-\n tests/unit/test_pipeline_driver.py | 18 ++++++++++++++++++\n 2 files changed, 51 insertions(+), 1 deletion(-)\n\ndiff --git a/scripts/pipeline_driver.py b/scripts/pipeline_driver.py\nindex bc861ac..487e7c8 100755\n--- a/scripts/pipeline_driver.py\n+++ b/scripts/pipeline_driver.py\n@@ -16,6 +16,37 @@ from pipeline_driver_contracts import parse_step_result\n from pipeline_driver_state import resolve_phase_state\n \n \n+def build_correlation_id(\n+    feature_id: str,\n+    step_name: str,\n+    *,\n+    run_id: str | None = None,\n+    timestamp_utc: datetime | None = None,\n+) -> str:\n+    \"\"\"Build a run-scoped correlation ID for step execution and diagnostics.\"\"\"\n+\n+    if not feature_id:\n+        raise ValueError(\"feature_id is required\")\n+    if not step_name:\n+        raise ValueError(\"step_name is required\")\n+\n+    safe_step = re.sub(r\"[^A-Za-z0-9_.-]+\", \"_\", step_name).strip(\"_\")\n+    if not safe_step:\n+        raise ValueError(\"step_name must contain at least one valid token character\")\n+\n+    if run_id and run_id.strip():\n+        safe_run = re.sub(r\"[^A-Za-z0-9_.-]+\", \"_\", run_id.strip()).strip(\"_\")\n+    else:\n+        effective_time = timestamp_utc or datetime.now(timezone.utc)\n+        safe_run = (\n+            \"run_\"\n+            + effective_time.astimezone(timezone.utc).strftime(\"%Y%m%dT%H%M%SZ\")\n+            + f\"_{feature_id}\"\n+        )\n+\n+    return f\"{safe_run}:{safe_step}\"\n+\n+\n def _runtime_failure_result(\n     *,\n     correlation_id: str,\n@@ -337,12 +368,13 @@ def main(argv: Sequence[str] | None = None) -> int:\n         pipeline_state={\"phase\": args.phase},\n     )\n \n+    correlation_id = build_correlation_id(args.feature_id, args.phase)\n     step_result = parse_step_result(\n         {\n             \"schema_version\": \"1.0.0\",\n             \"ok\": True,\n             \"exit_code\": 0,\n-            \"correlation_id\": f\"{args.feature_id}:{args.phase}:skeleton\",\n+            \"correlation_id\": correlation_id,\n             \"next_phase\": phase_state[\"phase\"],\n         }\n     )\ndiff --git a/tests/unit/test_pipeline_driver.py b/tests/unit/test_pipeline_driver.py\nindex 2275f95..2babf54 100644\n--- a/tests/unit/test_pipeline_driver.py\n+++ b/tests/unit/test_pipeline_driver.py\n@@ -51,6 +51,24 @@ def test_main_outputs_minimal_step_result(capsys) -> None:\n     assert payload[\"step_result\"][\"exit_code\"] == 0\n \n \n+def test_build_correlation_id_uses_explicit_run_scope() -> None:\n+    correlation_id = pipeline_driver.build_correlation_id(\n+        \"019\",\n+        \"speckit.plan\",\n+        run_id=\"run-xyz\",\n+    )\n+    assert correlation_id == \"run-xyz:speckit.plan\"\n+\n+\n+def test_build_correlation_id_uses_timestamp_when_run_scope_missing() -> None:\n+    correlation_id = pipeline_driver.build_correlation_id(\n+        \"019\",\n+        \"speckit.plan\",\n+        timestamp_utc=datetime(2026, 4, 10, 12, 34, 56, tzinfo=timezone.utc),\n+    )\n+    assert correlation_id == \"run_20260410T123456Z_019:speckit.plan\"\n+\n+\n def test_run_step_routes_success_envelope() -> None:\n     correlation_id = \"run-019-success\"\n     command = [",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pytest tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "15 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pyright scripts/pipeline_driver.py tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "pyright passed with 0 issues"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind module --tests-passed pass --smoke-exit 0 --state-safety pass --transaction-integrity pass --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

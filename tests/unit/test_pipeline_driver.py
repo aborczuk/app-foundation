@@ -611,3 +611,61 @@ def test_validate_generated_artifact_checks_completion_marker(tmp_path: Path) ->
         completion_marker="## Summary",
     )
     assert result["ok"] is True
+
+
+def test_manifest_governance_guard(tmp_path: Path) -> None:
+    """US3: Manifest version/timestamp coupling enforces deterministic governance.
+
+    Verifies:
+    1. Manifest version changes are tracked with timestamps
+    2. Version/timestamp coupling detects governance drift
+    3. Mirror manifests cannot diverge from canonical without detected invariant violation
+    """
+    # Create canonical manifest with version and timestamp
+    canonical_manifest = tmp_path / ".specify" / "command-manifest.yaml"
+    canonical_manifest.parent.mkdir(parents=True, exist_ok=True)
+    canonical_manifest.write_text(
+        """version: "1.0.0"
+last_updated: "2026-04-10T12:00:00Z"
+commands:
+  speckit.plan:
+    mode: deterministic
+""",
+        encoding="utf-8",
+    )
+
+    # Create mirror manifest (simulating split control plane scenario)
+    mirror_manifest = tmp_path / "command-manifest.yaml"
+    mirror_manifest.write_text(
+        """version: "1.0.0"
+last_updated: "2026-04-10T12:00:00Z"
+commands:
+  speckit.plan:
+    mode: deterministic
+""",
+        encoding="utf-8",
+    )
+
+    mirror_routes = pipeline_driver_contracts.load_driver_routes(mirror_manifest)
+    assert mirror_routes is not None
+
+    # Test 1: Divergence detection (update mirror without updating timestamp)
+    mirror_manifest.write_text(
+        """version: "1.0.0"
+last_updated: "2026-04-10T12:00:00Z"
+commands:
+  speckit.plan:
+    mode: legacy
+""",
+        encoding="utf-8",
+    )
+
+    # Test 2: Governance validation detects stale timestamp with changed content
+    # NEW in Phase 5: validate_manifest_governance function
+    governance_errors = pipeline_driver_contracts.validate_manifest_governance(
+        manifest_path=mirror_manifest,
+        canonical_path=canonical_manifest,
+    )
+    # Should detect divergence: routes changed but timestamp not updated
+    assert governance_errors is not None
+    assert len(governance_errors) > 0

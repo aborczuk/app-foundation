@@ -1,0 +1,34 @@
+{
+  "feature_id": "019",
+  "task_id": "T015",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T015.md",
+  "acceptance_criteria": [
+    "Mapped blocked route returns deterministic gate and reason list for stable fixture inputs"
+  ],
+  "quality_guards": [
+    "Integration test reuses shared driver_flow_harness and manifest route helpers",
+    "Blocked envelope assertions verify gate/reason/process exit fields with no hidden side effects"
+  ],
+  "changed_files": [
+    "tests/integration/test_pipeline_driver_feature_flow.py"
+  ],
+  "diff": " .../test_pipeline_driver_feature_flow.py           | 100 ++++++++++++++++++---\\n 1 file changed, 82 insertions(+), 18 deletions(-)",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/test_pipeline_driver_feature_flow.py -q",
+      "exit_code": 0,
+      "output": "4 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run pyright tests/integration/test_pipeline_driver_feature_flow.py",
+      "exit_code": 0,
+      "output": "0 errors, 0 warnings, 0 informations"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind integration --tests-passed pass --live-check-exit 0 --state-safety pass --transaction-integrity na --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

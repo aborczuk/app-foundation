@@ -1,0 +1,37 @@
+{
+  "feature_id": "019",
+  "task_id": "T003",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T003.md",
+  "acceptance_criteria": [
+    "Setup phase contains skeleton test modules for unit, integration, and contract coverage of pipeline driver work"
+  ],
+  "quality_guards": [
+    "Test modules import script targets deterministically",
+    "Skeleton tests execute and pass without external dependencies"
+  ],
+  "changed_files": [
+    "tests/unit/test_pipeline_driver.py",
+    "tests/integration/__init__.py",
+    "tests/integration/test_pipeline_driver_feature_flow.py",
+    "tests/contract/test_pipeline_driver_contract.py"
+  ],
+  "diff": " tests/contract/test_pipeline_driver_contract.py    | 51 ++++++++++++++++++++++\n tests/integration/__init__.py                      |  2 +\n .../test_pipeline_driver_feature_flow.py           | 35 +++++++++++++++\n tests/unit/test_pipeline_driver.py                 | 34 +++++++++++++++\n 4 files changed, 122 insertions(+)\n\ndiff --git a/tests/contract/test_pipeline_driver_contract.py b/tests/contract/test_pipeline_driver_contract.py\nnew file mode 100644\nindex 0000000..818c15a\n--- /dev/null\n+++ b/tests/contract/test_pipeline_driver_contract.py\n@@ -0,0 +1,51 @@\n+\"\"\"Contract-level skeleton tests for step-result envelope parsing.\"\"\"\n+\n+from __future__ import annotations\n+\n+import importlib.util\n+from pathlib import Path\n+import sys\n+\n+import pytest\n+\n+\n+def _load_script_module(module_name: str, script_name: str):\n+    scripts_dir = Path(__file__).resolve().parents[2] / \"scripts\"\n+    script_path = scripts_dir / script_name\n+    scripts_dir_str = str(scripts_dir)\n+    if scripts_dir_str not in sys.path:\n+        sys.path.insert(0, scripts_dir_str)\n+    spec = importlib.util.spec_from_file_location(module_name, script_path)\n+    assert spec is not None\n+    assert spec.loader is not None\n+    module = importlib.util.module_from_spec(spec)\n+    sys.modules[spec.name] = module\n+    spec.loader.exec_module(module)\n+    return module\n+\n+\n+contracts = _load_script_module(\"pipeline_driver_contracts\", \"pipeline_driver_contracts.py\")\n+\n+\n+def test_parse_step_result_accepts_minimal_envelope() -> None:\n+    parsed = contracts.parse_step_result(\n+        {\n+            \"schema_version\": \"1.0.0\",\n+            \"ok\": True,\n+            \"exit_code\": 0,\n+            \"correlation_id\": \"019:setup:test\",\n+        }\n+    )\n+    assert parsed[\"schema_version\"] == \"1.0.0\"\n+    assert parsed[\"exit_code\"] == 0\n+\n+\n+def test_parse_step_result_rejects_missing_schema_version() -> None:\n+    with pytest.raises(ValueError):\n+        contracts.parse_step_result(\n+            {\n+                \"ok\": True,\n+                \"exit_code\": 0,\n+                \"correlation_id\": \"019:setup:test\",\n+            }\n+        )\ndiff --git a/tests/integration/__init__.py b/tests/integration/__init__.py\nnew file mode 100644\nindex 0000000..7ef69a8\n--- /dev/null\n+++ b/tests/integration/__init__.py\n@@ -0,0 +1,2 @@\n+\"\"\"Integration tests package.\"\"\"\n+\ndiff --git a/tests/integration/test_pipeline_driver_feature_flow.py b/tests/integration/test_pipeline_driver_feature_flow.py\nnew file mode 100644\nindex 0000000..35d95ec\n--- /dev/null\n+++ b/tests/integration/test_pipeline_driver_feature_flow.py\n@@ -0,0 +1,35 @@\n+\"\"\"Integration-level skeleton tests for deterministic pipeline driver flow.\"\"\"\n+\n+from __future__ import annotations\n+\n+import importlib.util\n+from pathlib import Path\n+import sys\n+\n+\n+def _load_script_module(module_name: str, script_name: str):\n+    scripts_dir = Path(__file__).resolve().parents[2] / \"scripts\"\n+    script_path = scripts_dir / script_name\n+    scripts_dir_str = str(scripts_dir)\n+    if scripts_dir_str not in sys.path:\n+        sys.path.insert(0, scripts_dir_str)\n+    spec = importlib.util.spec_from_file_location(module_name, script_path)\n+    assert spec is not None\n+    assert spec.loader is not None\n+    module = importlib.util.module_from_spec(spec)\n+    sys.modules[spec.name] = module\n+    spec.loader.exec_module(module)\n+    return module\n+\n+\n+pipeline_driver_state = _load_script_module(\"pipeline_driver_state\", \"pipeline_driver_state.py\")\n+\n+\n+def test_resolve_phase_state_skeleton() -> None:\n+    state = pipeline_driver_state.resolve_phase_state(\n+        \"019\",\n+        pipeline_state={\"phase\": \"setup\", \"blocked\": False, \"drift_detected\": False},\n+    )\n+    assert state[\"feature_id\"] == \"019\"\n+    assert state[\"phase\"] == \"setup\"\n+    assert state[\"blocked\"] is False\ndiff --git a/tests/unit/test_pipeline_driver.py b/tests/unit/test_pipeline_driver.py\nnew file mode 100644\nindex 0000000..a699bd0\n--- /dev/null\n+++ b/tests/unit/test_pipeline_driver.py\n@@ -0,0 +1,34 @@\n+\"\"\"Unit-level skeleton tests for scripts/pipeline_driver.py.\"\"\"\n+\n+from __future__ import annotations\n+\n+import importlib.util\n+import json\n+from pathlib import Path\n+import sys\n+\n+\n+def _load_script_module(module_name: str, script_name: str):\n+    scripts_dir = Path(__file__).resolve().parents[2] / \"scripts\"\n+    script_path = scripts_dir / script_name\n+    scripts_dir_str = str(scripts_dir)\n+    if scripts_dir_str not in sys.path:\n+        sys.path.insert(0, scripts_dir_str)\n+    spec = importlib.util.spec_from_file_location(module_name, script_path)\n+    assert spec is not None\n+    assert spec.loader is not None\n+    module = importlib.util.module_from_spec(spec)\n+    sys.modules[spec.name] = module\n+    spec.loader.exec_module(module)\n+    return module\n+\n+\n+pipeline_driver = _load_script_module(\"pipeline_driver\", \"pipeline_driver.py\")\n+\n+\n+def test_main_outputs_minimal_step_result(capsys) -> None:\n+    exit_code = pipeline_driver.main([\"--feature-id\", \"019\", \"--phase\", \"setup\"])\n+    assert exit_code == 0\n+    payload = json.loads(capsys.readouterr().out.strip())\n+    assert payload[\"feature_id\"] == \"019\"\n+    assert payload[\"step_result\"][\"exit_code\"] == 0",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pytest tests/unit/test_pipeline_driver.py tests/integration/test_pipeline_driver_feature_flow.py tests/contract/test_pipeline_driver_contract.py",
+      "exit_code": 0,
+      "output": "4 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/Users/andreborczuk/app-foundation/.speckit/.uv-cache uv run pyright tests/unit/test_pipeline_driver.py tests/integration/test_pipeline_driver_feature_flow.py tests/contract/test_pipeline_driver_contract.py",
+      "exit_code": 0,
+      "output": "pyright passed with 0 issues"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind module --tests-passed pass --smoke-exit 0 --state-safety pass --transaction-integrity pass --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

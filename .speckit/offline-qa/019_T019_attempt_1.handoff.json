@@ -1,0 +1,30 @@
+{
+  "feature_id": "019",
+  "task_id": "T019",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T019.md",
+  "acceptance_criteria": [
+    "validate_generated_artifact returns {ok: True} for valid artifacts",
+    "Returns blocked state (exit_code=1) when artifact missing or empty",
+    "Validates completion_marker presence when specified",
+    "Gates LLM output before success event append to ledger"
+  ],
+  "quality_guards": [
+    "Deterministic validation gates prevent invalid artifacts in ledger",
+    "Blocked state reasons are stable and deterministic",
+    "No mutation of files or ledger on validation failure",
+    "Marker validation is optional (None = skip)"
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "+   validate_generated_artifact function +   4 integration tests for artifact validation",
+  "test_runs": [
+    {
+      "command": "python -m pytest tests/unit/test_pipeline_driver.py -q",
+      "exit_code": 0,
+      "output": "25 passed"
+    }
+  ],
+  "known_risks": []
+}

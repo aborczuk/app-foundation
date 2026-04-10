@@ -1,0 +1,36 @@
+{
+  "feature_id": "019",
+  "task_id": "T017",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T017.md",
+  "acceptance_criteria": [
+    "resolve_step_mapping dispatches from phase->command->route mapping",
+    "Deterministic mode returns route with script_path and timeout",
+    "Generative mode creates LLMHandoffTemplate with required fields",
+    "Legacy mode routes commands not in manifest or with unknown modes",
+    "Manifest allowlist enforcement prevents unmapped commands"
+  ],
+  "quality_guards": [
+    "Phase-to-command conversion follows speckit.<phase> pattern",
+    "Deterministic routes preserve driver_managed flag and exit code semantics",
+    "Generative handoff_id is deterministic from run context",
+    "Legacy fallback prevents undefined behavior for unmapped commands"
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "commit 3a9cfafbac666c59bae7723429e1dbe7aa89e179\nAuthor: Andre <aborczuk@gmail.com>\nDate:   Fri Apr 10 16:37:00 2026 -0400\n\n    T017 implement command-to-script allowlist dispatch\n    \n    Adds resolve_step_mapping to determine routing from phase->command mapping.\n    Validates manifest allowlist wit",
+  "test_runs": [
+    {
+      "command": "python -m pytest tests/unit/test_pipeline_driver.py -q",
+      "exit_code": 0,
+      "output": "19 passed"
+    },
+    {
+      "command": "python -m pyright tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "No errors"
+    }
+  ],
+  "known_risks": []
+}

@@ -384,6 +384,35 @@ Severity guidance:
 - **HIGH**: contract exists but is missing an important safeguard
 - **MEDIUM**: mostly sound, smaller ambiguity remains
 
+### 17b. Narrative and reuse gate rubric (mandatory)
+
+Before finalizing the review, explicitly score the sketch against the following gate checklist.
+
+For each row, mark one of:
+
+- `PASS`
+- `PASS WITH NOTES`
+- `FAIL`
+
+Any `FAIL` on a tasking-critical row must produce at least one `CRITICAL` or `HIGH` finding.
+
+| Gate | What must be true | Status | Notes |
+|------|-------------------|--------|-------|
+| Narrative clarity | The sketch clearly explains what is being built, why this is the chosen realization, and how the feature comes together as a coherent solution. | PASS / PASS WITH NOTES / FAIL | |
+| Construction clarity | The construction strategy gives a sensible build order that tasking can preserve without inventing sequencing. | PASS / PASS WITH NOTES / FAIL | |
+| Reuse strategy | The sketch explicitly demonstrates reuse-first reasoning across code, scripts, templates, commands, and manifest-owned artifacts. Net-new choices are justified. | PASS / PASS WITH NOTES / FAIL | |
+| Spec traceability | Major requirements and constraints from `spec.md` map to concrete design elements. | PASS / PASS WITH NOTES / FAIL | |
+| Plan fidelity | The sketch refines the approved plan without silently re-planning or diverging from it. | PASS / PASS WITH NOTES / FAIL | |
+| Repo grounding | Touched files, symbols, seams, and blast radius are concrete enough for decomposition. | PASS / PASS WITH NOTES / FAIL | |
+| Interface/symbol clarity | Public symbols, interfaces, contracts, and typed boundaries are explicit enough for tasking. | PASS / PASS WITH NOTES / FAIL | |
+| Manifest / pipeline alignment | Command/script/manifest implications are explicit where relevant. | PASS / PASS WITH NOTES / FAIL | |
+| Human/operator boundaries | Required human steps or operator boundaries are explicit and taskable. | PASS / PASS WITH NOTES / FAIL | |
+| Verification intent | The sketch defines enough verification intent for downstream acceptance/test generation. | PASS / PASS WITH NOTES / FAIL | |
+| Domain guardrails | Touched domain MUST rules are preserved in the design. | PASS / PASS WITH NOTES / FAIL | |
+| Tasking contract | `/speckit.tasking` can derive tasks without inventing architecture or scope. | PASS / PASS WITH NOTES / FAIL | |
+
+Narrative clarity and reuse strategy are non-optional gates. A sketch that is technically detailed but lacks a clear build narrative, or that chooses net-new work without explicit reuse-first reasoning, must not receive a clean pass.
+
 ### 18. Cross-slice DRY and coherence review (mandatory)
 
 Review the design slices as a set.
@@ -427,9 +456,11 @@ Required findings table columns:
 - Required Remediation
 - Blocking? (`yes/no`)
 
-Suggested categories:
+Valid `Category` values:
 
 - completeness
+- narrative-clarity
+- construction-strategy
 - traceability
 - plan-fidelity
 - repo-grounding

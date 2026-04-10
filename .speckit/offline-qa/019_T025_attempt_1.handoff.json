@@ -1,0 +1,19 @@
+{
+  "feature_id": "019",
+  "task_id": "T025",
+  "attempt": 1,
+  "task_kind": "module",
+  "description": "Implement canonical envelope parsing + schema-version compatibility + route/error contract constants",
+  "files_modified": [
+    "scripts/pipeline_driver_contracts.py",
+    "tests/contract/test_pipeline_driver_contract.py"
+  ],
+  "acceptance_criteria": [
+    "parse_step_result validates exit_code 0 requires next_phase",
+    "parse_step_result validates exit_code 1 requires gate and reasons",
+    "parse_step_result validates exit_code 2 requires error_code and debug_path",
+    "Route/error contract constants defined and exported",
+    "All contract tests pass"
+  ],
+  "validation_command": "python -m pytest tests/contract/test_pipeline_driver_contract.py -v"
+}

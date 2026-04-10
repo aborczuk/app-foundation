@@ -1,0 +1,39 @@
+{
+  "feature_id": "019",
+  "task_id": "T016",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T016.md",
+  "acceptance_criteria": [
+    "LLMHandoffTemplate schema validated with all required fields",
+    "Field types verified: handoff_id, step_name, required_inputs, output_template_path, completion_marker, correlation_id",
+    "Correlation ID includes run context (run_id:step_name format)",
+    "Test follows TDD contract validation pattern"
+  ],
+  "quality_guards": [
+    "Unit test validates deterministic handoff contract schema per data-model.md",
+    "No inline test data - uses proper fixture/parameterization approach",
+    "Test isolation: no external dependencies or side effects",
+    "Type validation ensures schema compliance before implementation"
+  ],
+  "changed_files": [
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "diff --git a/tests/unit/test_pipeline_driver.py b/tests/unit/test_pipeline_driver.py\nindex 2babf54..cb6df95 100644\n--- a/tests/unit/test_pipeline_driver.py\n+++ b/tests/unit/test_pipeline_driver.py\n@@ ",
+  "test_runs": [
+    {
+      "command": "python -m pytest tests/unit/test_pipeline_driver.py::test_handoff_contract_requires_all_fields -v",
+      "exit_code": 0,
+      "output": "PASSED"
+    },
+    {
+      "command": "python -m pytest tests/unit/test_pipeline_driver.py -q",
+      "exit_code": 0,
+      "output": "16 passed"
+    },
+    {
+      "command": "python -m pyright tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "No errors"
+    }
+  ],
+  "known_risks": []
+}

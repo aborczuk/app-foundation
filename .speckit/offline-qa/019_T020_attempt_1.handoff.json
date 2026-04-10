@@ -1,0 +1,30 @@
+{
+  "feature_id": "019",
+  "task_id": "T020",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T020.md",
+  "acceptance_criteria": [
+    "Manifest routing metadata added for key generative commands",
+    "Driver blocks declare mode=generative with timeout_seconds",
+    "Command structure and event declarations preserved",
+    "Real manifest integration verified via routing tests"
+  ],
+  "quality_guards": [
+    "Manifest format valid YAML and preserves existing structure",
+    "Driver metadata declares only needed fields (mode, timeout)",
+    "Timeout values are deterministic (180-300 seconds)",
+    "No breaking changes to existing artifact or event declarations"
+  ],
+  "changed_files": [
+    ".specify/command-manifest.yaml",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "+   driver blocks for 5 commands +   integration test for real manifest",
+  "test_runs": [
+    {
+      "command": "python -m pytest tests/unit/test_pipeline_driver.py -q",
+      "exit_code": 0,
+      "output": "26 passed"
+    }
+  ],
+  "known_risks": []
+}

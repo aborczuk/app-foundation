@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/Users/andreborczuk/app-foundation/.venv/bin/python",
+    "/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-295/test_approval_breakpoint_block0/feature/scripts/migration_step.py"
+  ],
+  "correlation_id": "run-us2-breakpoint:speckit.implement",
+  "error_code": "invalid_step_result",
+  "initial": {
+    "exit_code": 1,
+    "stderr": "",
+    "stdout": "{\"correlation_id\": \"run-us2-breakpoint:speckit.implement\", \"exit_code\": 1, \"gate\": \"approval_required\", \"ok\": false, \"reasons\": [\"security_sensitive_migration\"], \"schema_version\": \"1.0.0\"}\n",
+    "timed_out": false
+  },
+  "reason": "invalid_step_result",
+  "rerun": {
+    "exit_code": 1,
+    "stderr": "",
+    "stdout": "{\"correlation_id\": \"run-us2-breakpoint:speckit.implement\", \"exit_code\": 1, \"gate\": \"approval_required\", \"ok\": false, \"reasons\": [\"security_sensitive_migration\"], \"schema_version\": \"1.0.0\"}\n",
+    "timed_out": false
+  },
+  "schema_version": "1.0.0",
+  "timestamp_utc": "2026-04-10T21:06:59.124147Z"
+}

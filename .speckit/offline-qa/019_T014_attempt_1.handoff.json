@@ -1,0 +1,34 @@
+{
+  "feature_id": "019",
+  "task_id": "T014",
+  "hud_path": "/Users/andreborczuk/app-foundation/.speckit/tasks/T014.md",
+  "acceptance_criteria": [
+    "Mapped deterministic route executes allowlisted step and returns canonical success envelope for stable fixture inputs"
+  ],
+  "quality_guards": [
+    "Integration test uses shared driver_flow_harness without duplicate bootstrap setup",
+    "Route mapping is loaded from manifest metadata and executed through deterministic run_step semantics"
+  ],
+  "changed_files": [
+    "tests/integration/test_pipeline_driver_feature_flow.py"
+  ],
+  "diff": " .../test_pipeline_driver_feature_flow.py           | 104 ++++++++++++++++++++-\\n 1 file changed, 103 insertions(+), 1 deletion(-)",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/test_pipeline_driver_feature_flow.py -q",
+      "exit_code": 0,
+      "output": "3 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run pyright tests/integration/test_pipeline_driver_feature_flow.py",
+      "exit_code": 0,
+      "output": "0 errors, 0 warnings, 0 informations"
+    },
+    {
+      "command": ".venv/bin/python scripts/speckit_implement_gate.py validate-task-evidence --task-kind integration --tests-passed pass --live-check-exit 0 --state-safety pass --transaction-integrity na --async-safety pass --observability pass --json",
+      "exit_code": 0,
+      "output": "validate-task-evidence ok=true"
+    }
+  ],
+  "known_risks": []
+}

@@ -17,7 +17,7 @@ _Artifact: `sketch.md`_
 
 ### Dominant Execution Model
 
-[Describe the main control model: request/response, orchestration flow, event-driven, background job, human-in-the-loop, etc.]
+[Describe the main control model.]
 
 ### Main Design Pressures
 
@@ -29,13 +29,11 @@ _Artifact: `sketch.md`_
 
 ## Solution Narrative
 
-[Explain in plain language what is being built, what is being reused, what is being introduced, and how the solution comes together as a coherent whole.]
+[Explain what is being built, what is being reused, what is being introduced, and how the solution comes together.]
 
 ---
 
 ## Construction Strategy
-
-Describe the major implementation moves in the order they should be realized.
 
 1. [First major construction move]
 2. [Second major construction move]
@@ -44,9 +42,9 @@ Describe the major implementation moves in the order they should be realized.
 
 ### Construction Notes
 
-- [Important sequencing note]
-- [Important dependency note]
-- [Important risk note]
+- [Sequencing note]
+- [Dependency note]
+- [Risk note]
 
 ---
 
@@ -55,8 +53,6 @@ Describe the major implementation moves in the order they should be realized.
 | Story / Requirement / Constraint | Design Element(s) That Satisfy It | Reuse / Modify / Create | Verification / Migration Note |
 |----------------------------------|-----------------------------------|-------------------------|-------------------------------|
 | [FR / Story / Constraint] | [Design anchor] | [Reuse / Modify / Create] | [Note] |
-
-_Add one row per major story, FR cluster, or explicit constraint._
 
 ---
 
@@ -73,8 +69,6 @@ _Add one row per major story, FR cluster, or explicit constraint._
 | Surface | Type | Role Today | Relationship to Feature | Condition | Primary Seam or Blast Radius Only |
 |---------|------|------------|--------------------------|-----------|-----------------------------------|
 | [Name / file / module / artifact] | [module/script/template/config/etc.] | [What it does] | [How feature uses or affects it] | [Reusable / Extension-friendly / Brittle / Mismatched] | [Primary / Blast radius] |
-
-_This section should inventory real repo surfaces, not just list filenames._
 
 ---
 
@@ -107,7 +101,6 @@ _This section should inventory real repo surfaces, not just list filenames._
 
 ### Caller / Callee / Dependency Notes
 
-- [Important relationship]
 - [Important relationship]
 - [Important relationship]
 
@@ -152,21 +145,17 @@ _This section should inventory real repo surfaces, not just list filenames._
 ### Reuse Unchanged
 
 - [Component / file / script / artifact]
-- [Component / file / script / artifact]
 
 ### Modify / Extend Existing
 
-- [Component / file / script / artifact]
 - [Component / file / script / artifact]
 
 ### Compose from Existing Pieces
 
 - [Composed solution element]
-- [Composed solution element]
 
 ### Create Net-New
 
-- [New seam / module / interface / artifact]
 - [New seam / module / interface / artifact]
 
 ### Reuse Rationale
@@ -184,7 +173,6 @@ _This section should inventory real repo surfaces, not just list filenames._
 ### Manifest Alignment Notes
 
 - [Important note]
-- [Important note]
 
 ---
 
@@ -192,13 +180,12 @@ _This section should inventory real repo surfaces, not just list filenames._
 
 Choose one:
 
-- **No Architecture Flow delta**  
+- **No Architecture Flow delta**
 - **Architecture Flow refined**
 
 ### Delta Summary
 
-[If no delta, state that the plan-level Architecture Flow remains correct.  
-If refined, describe only what changed.]
+[If no delta, state that the plan-level Architecture Flow remains correct. If refined, describe only what changed.]
 
 ### Added / Refined Nodes, Edges, or Boundaries
 
@@ -217,11 +204,9 @@ If refined, describe only what changed.]
 ### Control Flow Notes
 
 - [Important control-flow detail]
-- [Important control-flow detail]
 
 ### Data Flow Notes
 
-- [Important data-flow detail]
 - [Important data-flow detail]
 
 ---
@@ -278,8 +263,6 @@ If refined, describe only what changed.]
 
 ## Non-Functional Design Implications
 
-Only include non-functional requirements that materially shape the design.
-
 | Concern | Design Implication | Affected Surface(s) | Notes |
 |---------|--------------------|---------------------|-------|
 | [Latency / throughput / concurrency / observability / security / rollout / config] | [implication] | [surfaces] | [notes] |
@@ -299,38 +282,30 @@ Only include non-functional requirements that materially shape the design.
 ### Unit-Testable Seams
 
 - [Seam 1]
-- [Seam 2]
 
 ### Contract Verification Needs
 
 - [Need 1]
-- [Need 2]
 
 ### Integration / Reality-Check Paths
 
 - [Path 1]
-- [Path 2]
 
 ### Lifecycle / Retry / Duplicate Coverage Needs
 
 - [Need 1]
-- [Need 2]
 
 ### Deterministic Oracles (if known)
 
 - [Oracle 1]
-- [Oracle 2]
 
 ### Regression-Sensitive Areas
 
 - [Area 1]
-- [Area 2]
 
 ---
 
 ## Domain Guardrails
-
-Always include Domains 12, 13, 14, 16, and 17. Add additional touched domains as needed.
 
 | Domain | Why Touched | MUST Constraints | Forbidden Shortcuts | Invariants to Preserve |
 |--------|-------------|------------------|---------------------|------------------------|
@@ -351,22 +326,18 @@ Always include Domains 12, 13, 14, 16, and 17. Add additional touched domains as
 ### Missing Seams
 
 - [Gap 1]
-- [Gap 2]
 
 ### Unsupported Assumptions
 
 - [Assumption 1]
-- [Assumption 2]
 
 ### Plan vs Repo Contradictions
 
 - [Contradiction 1]
-- [Contradiction 2]
 
 ### Blocking Design Issues
 
 - [Blocking issue 1]
-- [Blocking issue 2]
 
 ---
 
@@ -384,7 +355,6 @@ Tasking must follow these rules:
 ### Additional Tasking Notes
 
 - [Additional rule or note]
-- [Additional rule or note]
 
 ---
 
@@ -395,23 +365,19 @@ Tasking must follow these rules:
 **Objective**  
 [What this slice accomplishes.]
 
-**Primary Seam**  
-[Primary seam]
-
 **Touched Files**  
-- `[path/to/file.ext]`
 - `[path/to/file.ext]`
 
 **Touched Symbols**  
 - `[file.py:symbol_name]`
-- `[file.py:symbol_name]`
 
 **Likely Net-New Files**  
 - `[path/to/new_file.ext]`
-- `[path/to/new_file.ext]`
+
+**Primary Seam**  
+[Primary seam]
 
 **Blast-Radius Neighbors**  
-- `[neighbor surface]`
 - `[neighbor surface]`
 
 **Reuse / Modify / Create Classification**  
@@ -419,59 +385,12 @@ Tasking must follow these rules:
 
 **Required Public Symbols / Interfaces**  
 - `[symbol or interface]`
-- `[symbol or interface]`
 
 **Major Constraints**  
 - [Constraint 1]
-- [Constraint 2]
 
 **Dependencies on Other Slices**  
 - [Dependency 1]
-- [Dependency 2]
-
-**Likely Verification / Regression Concern**  
-[What downstream verification must pay special attention to.]
-
----
-
-### Slice [N+1]: [Slice Name]
-
-**Objective**  
-[What this slice accomplishes.]
-
-**Primary Seam**  
-[Primary seam]
-
-**Touched Files**  
-- `[path/to/file.ext]`
-- `[path/to/file.ext]`
-
-**Touched Symbols**  
-- `[file.py:symbol_name]`
-- `[file.py:symbol_name]`
-
-**Likely Net-New Files**  
-- `[path/to/new_file.ext]`
-- `[path/to/new_file.ext]`
-
-**Blast-Radius Neighbors**  
-- `[neighbor surface]`
-- `[neighbor surface]`
-
-**Reuse / Modify / Create Classification**  
-[Reuse / Modify / Create]
-
-**Required Public Symbols / Interfaces**  
-- `[symbol or interface]`
-- `[symbol or interface]`
-
-**Major Constraints**  
-- [Constraint 1]
-- [Constraint 2]
-
-**Dependencies on Other Slices**  
-- [Dependency 1]
-- [Dependency 2]
 
 **Likely Verification / Regression Concern**  
 [What downstream verification must pay special attention to.]
