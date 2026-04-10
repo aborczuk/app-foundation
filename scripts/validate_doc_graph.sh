@@ -59,12 +59,27 @@ assert_exists() {
   fi
 }
 
+assert_not_exists() {
+  local path="$1"
+  local reason="$2"
+  checks_run=$((checks_run + 1))
+  if [[ ! -f "$REPO_ROOT/$path" ]]; then
+    pass "anti-regression: $reason"
+  else
+    fail "anti-regression VIOLATION: $reason (file exists at $path)"
+  fi
+}
+
 main() {
   assert_exists "docs/governance/doc-graph.yaml"
   assert_exists "constitution.md"
   assert_exists "CLAUDE.md"
   assert_exists "catalog.yaml"
   run_command_coverage_validator
+
+  # Phase 5 (T041): Anti-regression guard for mirror manifest removal
+  assert_not_exists "command-manifest.yaml" \
+    "root mirror manifest removed and not reintroduced (.specify/command-manifest.yaml is canonical)"
 
   # NOTE: Trading-specific check removed for app-foundation template
   # (no hardcoded behavior-map target for feature 001 in commands/templates)

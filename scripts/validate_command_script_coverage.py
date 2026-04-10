@@ -114,10 +114,16 @@ def build_coverage_report(
 def validate_command_script_coverage(
     *,
     canonical_manifest_path: Path,
-    mirror_manifest_path: Path,
+    mirror_manifest_path: Path | None = None,
     scaffold_script_path: Path,
     bash_scripts_dir: Path,
 ) -> dict[str, Any]:
+    """Validate command coverage from canonical manifest.
+
+    NOTE (Phase 5): mirror_manifest_path parameter is deprecated.
+    All validation uses canonical manifest only (.specify/command-manifest.yaml).
+    Mirror manifest (root command-manifest.yaml) is no longer maintained.
+    """
     manifest = _load_manifest(canonical_manifest_path)
     report = build_coverage_report(
         manifest,
@@ -126,13 +132,11 @@ def validate_command_script_coverage(
     )
 
     reasons = list(report["reasons"])
-    if not mirror_manifest_path.exists():
-        reasons.append(f"missing_mirror_manifest:{mirror_manifest_path}")
-    else:
-        canonical_text = canonical_manifest_path.read_text(encoding="utf-8")
-        mirror_text = mirror_manifest_path.read_text(encoding="utf-8")
-        if canonical_text != mirror_text:
-            reasons.append("manifest_mirror_mismatch")
+
+    # Mirror manifest check is deprecated (Phase 5)
+    # Log deprecation warning if mirror is still present
+    if mirror_manifest_path is not None and mirror_manifest_path.exists():
+        reasons.append("deprecated_mirror_manifest_present")
 
     payload = {
         "canonical_manifest": str(canonical_manifest_path),

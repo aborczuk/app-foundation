@@ -503,6 +503,21 @@ Report:
   - `/speckit.sketch` if blocked
   - `/speckit.tasking` if passed
 
+## Artifact Scaffolding (Phase 5)
+
+To ensure deterministic template consistency, `/speckit.solutionreview` invokes the pipeline scaffold helper:
+
+```bash
+python .specify/scripts/pipeline-scaffold.py speckit.solutionreview
+```
+
+This scaffold:
+- Populates `FEATURE_DIR/solutionreview-template.md` if missing (from `.specify/templates/solutionreview-template.md`)
+- Ensures the review artifact has the correct structure for downstream parsing
+- Enforces deterministic naming and section headers
+
+The scaffold is **idempotent**: re-running it updates only sections marked for auto-fill, preserving your review content.
+
 ## Behavior rules
 
 - Read-only on `sketch.md` and supporting artifacts; write only `solutionreview.md`
