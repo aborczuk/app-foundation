@@ -313,8 +313,11 @@ commands:
     mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"
+      - "scripts/pipeline_ledger.py"
     artifacts: []
-    emits: []
+    emits:
+      - event: backlog_registered
+        required_fields: []
 
   speckit.constitution:
     description: "Create or update the project constitution from interactive or provided principle inputs"

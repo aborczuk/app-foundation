@@ -75,7 +75,18 @@ Use this when you need a change done **now** without running the full specify â†
      <what the task covers and why it fits the existing architecture>
      ```
 
-8. **Prompt for next steps**:
+8. **Emit pipeline event**:
+   - Append `backlog_registered` to `.speckit/pipeline-ledger.jsonl`:
+     ```bash
+     python scripts/pipeline_ledger.py append \
+       --feature-id "<feature_id>" \
+       --phase "solution" \
+       --event "backlog_registered" \
+       --actor "<agent-id>" \
+       --details "Added ad-hoc backlog task via speckit.addtobacklog"
+     ```
+
+9. **Prompt for next steps**:
    - Ask: "Tasks written and committed. Run `/speckit.implement` to proceed with implementation."
    - If `SCOPE_EXPANDS=true`, also report that spec sync was completed automatically via `/speckit.specify --update-current-spec`.
 
