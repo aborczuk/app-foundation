@@ -73,9 +73,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    3. Scope containment remains mandatory: do not introduce endpoints/env vars/auth/contracts/entities/dependencies not present in current spec artifacts.
    4. Before any broad code read, do one HUD-anchored bounded read first:
       ```bash
-      scripts/read-code.sh window <file-from-hud> <current-line-from-hud> 80 <hud-symbol>
+      scripts/read-code.sh window <file-from-hud> <current-line-from-hud> 80 --hud-symbol
       ```
-      - Default to strict symbol resolution (no fallback).
+      - `Current line` is the mandatory first anchor when present in HUD.
+      - If `Current line` is missing/stale, then use strict symbol resolution as fallback.
       - Use `--allow-fallback` only when strict lookup fails and only for non-large-file cases.
    5. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
 

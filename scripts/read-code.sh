@@ -177,23 +177,15 @@ _resolve_line_num_strict() {
     local matches=""
     local count=""
 
-    matches="$(_collect_literal_hits "$file" "$raw_pattern" | awk 'NF' | sort -n | awk '!seen[$0]++')"
-    count="$(printf '%s\n' "$matches" | awk 'NF' | wc -l | tr -d ' ')"
-    if [[ "$count" -eq 1 ]]; then
-        printf '%s\n' "$matches" | awk 'NF{print; exit}'
-        return 0
-    fi
-    if [[ "$count" -gt 1 ]]; then
-        echo "ERROR: Strict symbol match is ambiguous for '$raw_pattern' in $file." >&2
-        return 2
-    fi
-
     if [[ -n "$normalized_pattern" ]]; then
         matches="$(
             {
                 _collect_literal_hits "$file" "def $normalized_pattern("
                 _collect_literal_hits "$file" "async def $normalized_pattern("
                 _collect_literal_hits "$file" "class $normalized_pattern"
+                _collect_literal_hits "$file" "function $normalized_pattern"
+                _collect_literal_hits "$file" "$normalized_pattern() {"
+                _collect_literal_hits "$file" "$normalized_pattern () {"
                 _collect_literal_hits "$file" "$normalized_pattern ="
             } | awk 'NF' | sort -n | awk '!seen[$0]++'
         )"
@@ -206,6 +198,17 @@ _resolve_line_num_strict() {
             echo "ERROR: Strict symbol match is ambiguous for '$normalized_pattern' in $file." >&2
             return 2
         fi
+    fi
+
+    matches="$(_collect_literal_hits "$file" "$raw_pattern" | awk 'NF' | sort -n | awk '!seen[$0]++')"
+    count="$(printf '%s\n' "$matches" | awk 'NF' | wc -l | tr -d ' ')"
+    if [[ "$count" -eq 1 ]]; then
+        printf '%s\n' "$matches" | awk 'NF{print; exit}'
+        return 0
+    fi
+    if [[ "$count" -gt 1 ]]; then
+        echo "ERROR: Strict symbol match is ambiguous for '$raw_pattern' in $file." >&2
+        return 2
     fi
 
     return 1
@@ -373,40 +376,44 @@ read_code_window() {
     fi
 
     if is_large_code_file "$file"; then
-        if [[ -z "$pattern" ]]; then
-            echo "ERROR: symbol_or_pattern is required for files >${CODE_FILE_LINE_THRESHOLD} lines." >&2
-            echo "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>" >&2
-            return 1
-        fi
-        local normalized_pattern
-        normalized_pattern="$(normalize_symbol_pattern "$pattern")"
         local use_hud_fast_path=0
         if [[ "$hud_flag" == "--hud-symbol" || "${SPECKIT_HUD_DIRECT_READ:-0}" == "1" ]]; then
             use_hud_fast_path=1
         fi
-        if [[ "$use_hud_fast_path" -eq 0 ]]; then
-            if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
-                codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
-            else
-                codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
-            fi
-        fi
 
-        local normalized_pattern
-        normalized_pattern="$(normalize_symbol_pattern "$pattern")"
-        if ! _resolve_line_num_strict "$file" "$pattern" "$normalized_pattern" >/dev/null; then
-            local strict_status="$?"
-            if [[ "$allow_fallback" -ne 1 ]]; then
-                if [[ "$strict_status" -eq 2 ]]; then
-                    echo "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback." >&2
-                else
-                    echo "ERROR: Strict symbol resolution failed for '$pattern'. Re-run with --allow-fallback to allow bounded file-local fallback." >&2
-                fi
+        # HUD current-line fast-path: allow bounded line-anchored reads without symbol lookup.
+        if [[ -z "$pattern" && "$use_hud_fast_path" -eq 1 ]]; then
+            :
+        else
+            if [[ -z "$pattern" ]]; then
+                echo "ERROR: symbol_or_pattern is required for files >${CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path." >&2
+                echo "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>" >&2
                 return 1
             fi
-            if [[ -z "$(_find_line_num "$file" "$pattern" "$normalized_pattern")" ]]; then
-                echo "ERROR: Pattern not found after one bounded fallback: $pattern in $file" >&2
-                return 1
+            local normalized_pattern
+            normalized_pattern="$(normalize_symbol_pattern "$pattern")"
+            if [[ "$use_hud_fast_path" -eq 0 ]]; then
+                if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
+                    codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
+                else
+                    codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+                fi
+            fi
+
+            if ! _resolve_line_num_strict "$file" "$pattern" "$normalized_pattern" >/dev/null; then
+                local strict_status="$?"
+                if [[ "$allow_fallback" -ne 1 ]]; then
+                    if [[ "$strict_status" -eq 2 ]]; then
+                        echo "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback." >&2
+                    else
+                        echo "ERROR: Strict symbol resolution failed for '$pattern'. Re-run with --allow-fallback to allow bounded file-local fallback." >&2
+                    fi
+                    return 1
+                fi
+                if [[ -z "$(_find_line_num "$file" "$pattern" "$normalized_pattern")" ]]; then
+                    echo "ERROR: Pattern not found after one bounded fallback: $pattern in $file" >&2
+                    return 1
+                fi
             fi
         fi
     fi
@@ -421,6 +428,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         echo "Usage:"
         echo "  read_code_context <file_path> <symbol_or_pattern> [context_lines<=${READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback]"
         echo "  read_code_window  <file_path> <start_line> [line_count<=${READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
+        echo "                   (for large files, HUD current-line fast-path may omit symbol when --hud-symbol is set)"
         exit 1
     fi
 
