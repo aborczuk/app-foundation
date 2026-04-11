@@ -63,7 +63,15 @@ Use this when you need a change done **now** without running the full specify â†
 6. **Run `/speckit.estimate`** on the updated tasks.md.
    - Estimate owns the breakdown loop: if any task scores 8 or 13 it will automatically invoke `/speckit.breakdown` and re-estimate until all tasks are â‰¤5 points.
 
-7. **Commit planning artifacts**:
+7. **Determine next-phase handoff command** (deterministic triage output):
+   - Select exactly one next command based on triage + estimate outcomes:
+     - **Route to `/speckit.specify`** when `SCOPE_EXPANDS=true` or the request now represents net-new product scope.
+     - **Route to `/speckit.plan`** when architecture fit failed (already blocked in step 3).
+     - **Route to `/speckit.solution`** when architecture fits but the new/changed tasks are non-trivial (any added task estimated â‰¥3 points, cross-surface integration, or contract/seam changes).
+     - **Route to `/speckit.implement`** only when all added tasks are small (â‰¤2 points), architecture is unchanged, and required solution artifacts/HUDs are already present and current.
+   - Record the selected command as `NEXT_COMMAND` for the final handoff message.
+
+8. **Commit planning artifacts**:
    - If `SCOPE_EXPANDS=true`, stage `spec.md`, `checklists/requirements.md`, `tasks.md`, and `estimates.md`.
    - If `SCOPE_EXPANDS=false`, stage only `tasks.md` and `estimates.md`.
    - Do not stage source files â€” implementation has not run yet.
@@ -75,7 +83,7 @@ Use this when you need a change done **now** without running the full specify â†
      <what the task covers and why it fits the existing architecture>
      ```
 
-8. **Emit pipeline event**:
+9. **Emit pipeline event**:
    - Append `backlog_registered` to `.speckit/pipeline-ledger.jsonl`:
      ```bash
      python scripts/pipeline_ledger.py append \
@@ -86,8 +94,8 @@ Use this when you need a change done **now** without running the full specify â†
        --details "Added ad-hoc backlog task via speckit.addtobacklog"
      ```
 
-9. **Prompt for next steps**:
-   - Ask: "Tasks written and committed. Run `/speckit.implement` to proceed with implementation."
+10. **Prompt for next steps**:
+   - Ask: "Tasks written and committed. Next step: run `NEXT_COMMAND`."
    - If `SCOPE_EXPANDS=true`, also report that spec sync was completed automatically via `/speckit.specify --update-current-spec`.
 
 ## Notes
