@@ -222,6 +222,7 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
         if not isinstance(emits, list):
             raise ValueError(f"manifest emits must be a list: {command_id}")
         emit_events: list[str] = []
+        emit_contracts: list[dict[str, Any]] = []
         for emit in emits:
             if not isinstance(emit, Mapping):
                 raise ValueError(f"emit entry must be a mapping: {command_id}")
@@ -229,6 +230,20 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
             if not isinstance(event_name, str) or not event_name:
                 raise ValueError(f"emit.event must be a non-empty string: {command_id}")
             emit_events.append(event_name)
+            required_fields = emit.get("required_fields", [])
+            if not isinstance(required_fields, list):
+                raise ValueError(f"emit.required_fields must be a list: {command_id}")
+            normalized_required = [
+                str(field).strip()
+                for field in required_fields
+                if isinstance(field, str) and str(field).strip()
+            ]
+            emit_contracts.append(
+                {
+                    "event": event_name,
+                    "required_fields": normalized_required,
+                }
+            )
 
         routes[command_id] = {
             "mode": mode,
@@ -236,6 +251,7 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
             "timeout_seconds": timeout_seconds,
             "driver_managed": mode != "legacy",
             "emits": emit_events,
+            "emit_contracts": emit_contracts,
         }
 
     return routes

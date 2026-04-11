@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -910,6 +911,117 @@ def run_generative_handoff(
     }
 
 
+def append_pipeline_success_event(
+    *,
+    feature_id: str,
+    phase: str,
+    command_id: str | None,
+    actor: str = "pipeline_driver",
+    manifest_path: str | Path | None = None,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    """Append the manifest-declared success event for a completed step."""
+    from pipeline_driver_contracts import load_driver_routes
+
+    if not command_id:
+        return {"ok": True, "appended": False, "event": None}
+
+    routes = load_driver_routes(manifest_path)
+    route = routes.get(command_id)
+    if not isinstance(route, Mapping):
+        return {"ok": True, "appended": False, "event": None}
+
+    emit_contracts = route.get("emit_contracts")
+    if isinstance(emit_contracts, list):
+        selected_event: str | None = None
+        for contract in emit_contracts:
+            if not isinstance(contract, Mapping):
+                continue
+            event_name = contract.get("event")
+            required_fields = contract.get("required_fields", [])
+            if (
+                isinstance(event_name, str)
+                and event_name.strip()
+                and isinstance(required_fields, list)
+                and len(required_fields) == 0
+            ):
+                selected_event = event_name.strip()
+                break
+    else:
+        selected_event = None
+
+    if selected_event is None:
+        emits = route.get("emits")
+        if isinstance(emits, list) and emits:
+            first_emit = emits[0]
+            if isinstance(first_emit, str) and first_emit.strip():
+                selected_event = first_emit.strip()
+
+    if not selected_event:
+        return {"ok": True, "appended": False, "event": None}
+
+    ledger_script = Path(__file__).resolve().parent / "pipeline_ledger.py"
+    command = [
+        sys.executable,
+        str(ledger_script),
+        "append",
+        "--feature-id",
+        feature_id,
+        "--phase",
+        phase,
+        "--event",
+        selected_event,
+        "--actor",
+        actor,
+        "--details",
+        f"driver success append for {command_id}",
+    ]
+    execution = _execute_command(
+        command,
+        timeout_seconds=timeout_seconds,
+        cwd=Path(__file__).resolve().parent.parent,
+        env=os.environ,
+        input_payload=None,
+    )
+    process_exit_code = execution.get("exit_code")
+    timed_out = bool(execution.get("timed_out"))
+    stdout = str(execution.get("stdout") or "")
+    stderr = str(execution.get("stderr") or "")
+
+    if timed_out:
+        return {
+            "ok": False,
+            "appended": False,
+            "event": selected_event,
+            "error_code": "pipeline_event_append_timeout",
+            "stdout": stdout,
+            "stderr": stderr,
+            "process_exit_code": process_exit_code,
+            "timed_out": True,
+        }
+    if process_exit_code != 0:
+        return {
+            "ok": False,
+            "appended": False,
+            "event": selected_event,
+            "error_code": "pipeline_event_append_failed",
+            "stdout": stdout,
+            "stderr": stderr,
+            "process_exit_code": process_exit_code,
+            "timed_out": False,
+        }
+
+    return {
+        "ok": True,
+        "appended": True,
+        "event": selected_event,
+        "stdout": stdout,
+        "stderr": stderr,
+        "process_exit_code": process_exit_code,
+        "timed_out": False,
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run deterministic pipeline steps")
     parser.add_argument("--feature-id", required=True, help="Feature id, e.g. 019")
@@ -1130,6 +1242,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                 validation_result["generated_artifact"] = generated_artifact
                 step_result = validation_result
             else:
+                append_result = append_pipeline_success_event(
+                    feature_id=args.feature_id,
+                    phase=args.phase,
+                    command_id=mapping.get("command_id"),
+                )
+                if not append_result.get("ok"):
+                    step_result = {
+                        "schema_version": "1.0.0",
+                        "ok": False,
+                        "exit_code": 2,
+                        "correlation_id": correlation_id,
+                        "gate": None,
+                        "reasons": ["pipeline_event_append_failed"],
+                        "error_code": append_result.get("error_code", "pipeline_event_append_failed"),
+                        "next_phase": None,
+                        "debug_path": None,
+                    }
+                else:
+                    phase_state = resolve_phase_state(
+                        args.feature_id,
+                        pipeline_state={"phase": args.phase, "dry_run": False},
+                    )
+                    resolved_next_phase = phase_state.get("phase")
+                    if not isinstance(resolved_next_phase, str) or not resolved_next_phase:
+                        resolved_next_phase = args.phase
+                    step_result["next_phase"] = resolved_next_phase
+                    step_result["pipeline_event"] = append_result.get("event")
                 step_result["artifact_validation"] = {
                     "ok": True,
                     "artifact_path": str(artifact_path),

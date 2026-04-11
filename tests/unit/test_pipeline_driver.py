@@ -129,6 +129,19 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
         "validate_generated_artifact",
         _fake_validate_generated_artifact,
     )
+    appended: dict[str, str] = {}
+
+    def _fake_append_pipeline_success_event(*, feature_id, phase, command_id, **kwargs):
+        appended["feature_id"] = feature_id
+        appended["phase"] = phase
+        appended["command_id"] = str(command_id)
+        return {"ok": True, "appended": True, "event": "plan_started"}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        _fake_append_pipeline_success_event,
+    )
 
     exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
     assert exit_code == 0
@@ -138,6 +151,9 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
     assert validation_called["artifact_path"] == "specs/019-token-efficiency-docs/plan.md"
     assert validation_called["correlation_id"].endswith(":plan")
     assert validation_called["completion_marker"] == "## Summary"
+    assert appended["feature_id"] == "019"
+    assert appended["phase"] == "plan"
+    assert appended["command_id"] == "speckit.plan"
 
 
 def test_main_generative_route_blocks_when_artifact_validation_fails(monkeypatch) -> None:
@@ -200,6 +216,68 @@ def test_main_generative_route_blocks_when_artifact_validation_fails(monkeypatch
 
     exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
     assert exit_code == 1
+
+
+def test_main_generative_route_errors_when_pipeline_event_append_fails(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": "specs/019-token-efficiency-docs/plan.md",
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.plan",
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": "specs/019-token-efficiency-docs/plan.md",
+                "completion_marker": "## Summary",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        lambda **kwargs: {
+            "ok": False,
+            "appended": False,
+            "event": "plan_started",
+            "error_code": "pipeline_event_append_failed",
+        },
+    )
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+    assert exit_code == 2
 
 
 def test_build_correlation_id_uses_explicit_run_scope() -> None:
