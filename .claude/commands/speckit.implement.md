@@ -71,7 +71,13 @@ You **MUST** consider the user input before proceeding (if not empty).
       - `task_not_found_in_tasks_md` or `missing_tasks_md` → run `/speckit.tasking` or `/speckit.solution`
       - `missing_feature_dir` → re-run prerequisite setup
    3. Scope containment remains mandatory: do not introduce endpoints/env vars/auth/contracts/entities/dependencies not present in current spec artifacts.
-   4. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
+   4. Before any broad code read, do one HUD-anchored bounded read first:
+      ```bash
+      scripts/read-code.sh window <file-from-hud> <current-line-from-hud> 80 <hud-symbol>
+      ```
+      - Default to strict symbol resolution (no fallback).
+      - Use `--allow-fallback` only when strict lookup fails and only for non-large-file cases.
+   5. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
 
 6. Execute implementation following the task plan:
    - **Codebase MCP tools (use when connected)** — see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST use `codegraph` first for discovery/scope (find symbols, callers/callees, imports, and impact scope) before writing. You MUST use `get_type`/`get_diagnostics` (codebase-lsp, if connected) second to verify exact types/diagnostics before edits and after edits in touched files. Do not mark a task `[X]` while known type errors remain in files the task owns.
@@ -137,6 +143,7 @@ You **MUST** consider the user input before proceeding (if not empty).
         --json
       ```
       - Wrapper enforces payload schema validation (`validate-offline-qa-payload`) before running `scripts/offline_qa.py`.
+      - If the payload file is missing, the wrapper auto-builds it via `scripts/speckit_build_offline_qa_payload.py` from HUD/tasks/git/task-ledger context (override with `--payload-file`; disable with `--no-autobuild-payload`).
       - Default artifacts:
         - payload: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.handoff.json`
         - result: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.result.json`
@@ -178,6 +185,14 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 8. Progress tracking and error handling:
    - Report progress after each completed task
+   - **Default to compact checkpoint updates** (do not re-narrate the full protocol every task). Use:
+     - `T0XX | status=<in_progress|blocked|closed> | gates=<preflight,start,evidence,offline_qa> | tests=<pass|fail> | commit=<sha|none> | next=<single action>`
+   - **Expand detail only when blocked or decision-relevant**:
+     - gate/validator failure
+     - test failure
+     - ledger drift/sequence conflict
+     - missing artifact/external dependency
+     - user asks for full trace
    - Mark each task `[X]` in tasks.md only after `task_closed` is appended for that task (see step 6)
    - Halt execution when the current task fails validation, CI, or QA gate
    - Enforce per-agent serialization (one open task per agent). Allow parallel execution across different agents for tasks marked `[P]` when `assert-can-start` passes and file ownership does not overlap.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -36,6 +37,7 @@ CODE_EXTENSIONS = {
 }
 
 LINE_THRESHOLD = 200
+MAX_HELPER_LINES = 80
 
 
 def _emit_deny(reason: str) -> None:
@@ -76,6 +78,59 @@ def _is_large_code_file(path_text: str) -> bool:
     return line_count > LINE_THRESHOLD
 
 
+def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+
+    helper_idx = -1
+    helper_mode = ""
+    for idx, token in enumerate(tokens):
+        if token in {"read_code_context", "read_code_window"}:
+            helper_idx = idx
+            helper_mode = "context" if token == "read_code_context" else "window"
+            break
+        if token.endswith("read-code.sh"):
+            helper_idx = idx
+            helper_mode = ""
+            break
+    if helper_idx == -1:
+        return None
+
+    if helper_mode:
+        mode = helper_mode
+        args = tokens[helper_idx + 1 :]
+    else:
+        if helper_idx + 1 >= len(tokens):
+            return None
+        mode = tokens[helper_idx + 1]
+        args = tokens[helper_idx + 2 :]
+    if mode not in {"context", "window"}:
+        return None
+    if len(args) < 2:
+        return None
+
+    path_text = args[0]
+    allow_fallback = "--allow-fallback" in args
+    requested_lines = 60
+
+    if mode == "context":
+        tail = args[2:]
+        for token in tail:
+            if token.isdigit():
+                requested_lines = int(token)
+                break
+    else:
+        tail = args[2:]
+        for token in tail:
+            if token.isdigit():
+                requested_lines = int(token)
+                break
+
+    return mode, path_text, requested_lines, allow_fallback
+
+
 def main() -> int:
     """Evaluate command payload and deny risky broad reads of large code files."""
     try:
@@ -87,14 +142,25 @@ def main() -> int:
     if not command:
         return 0
 
-    helper_markers = (
-        "read_code_context",
-        "read_code_window",
-        "scripts/read-code.sh",
-        "read-code.sh context",
-        "read-code.sh window",
-    )
-    if any(marker in command for marker in helper_markers):
+    helper_policy = _extract_read_code_policy(command)
+    if helper_policy is not None:
+        _, target_path, requested_lines, allow_fallback = helper_policy
+        if _is_large_code_file(target_path):
+            if requested_lines > MAX_HELPER_LINES:
+                _emit_deny(
+                    f"read-code helper line windows over {MAX_HELPER_LINES} are denied for large files. "
+                    "Use a smaller bounded window."
+                )
+                return 0
+            if allow_fallback:
+                _emit_deny(
+                    "read-code --allow-fallback is denied for large files. "
+                    "Use strict symbol resolution or narrow the symbol first."
+                )
+                return 0
+        return 0
+
+    if "SPECKIT_HUD_DIRECT_READ=1" in command and "read-code.sh" in command:
         return 0
 
     risky_read_tokens = ("cat ", "nl -ba ", "sed -n", "awk ", "head ", "tail ", "less ", "more ")
@@ -105,7 +171,8 @@ def main() -> int:
         if _is_large_code_file(candidate):
             _emit_deny(
                 "Large code-file reads must use scripts/read-code.sh "
-                "(read_code_context/read_code_window) with codegraph discovery first."
+                "(read_code_context/read_code_window) with codegraph discovery first, "
+                "or approved HUD direct-read fast-path."
             )
             return 0
 

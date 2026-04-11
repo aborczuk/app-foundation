@@ -128,6 +128,8 @@ Execution steps:
    - [ ] tests_passed
    ```
 
+   `Current line` is mandatory for every non-`[H]` HUD. If unresolved, estimation is incomplete and must be re-run after symbol discovery is corrected.
+
    For `[H]` (human) tasks, generate a runbook HUD instead of a code sketch HUD:
 
    ```markdown

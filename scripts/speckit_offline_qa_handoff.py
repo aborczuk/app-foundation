@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--attempt", type=int, default=1)
     parser.add_argument("--payload-file")
     parser.add_argument("--result-file")
+    parser.add_argument(
+        "--no-autobuild-payload",
+        action="store_true",
+        help="Disable automatic payload generation when payload file is missing.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
@@ -64,9 +69,34 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     if not payload_file.exists():
-        payload["reasons"].append("missing_payload_file")
-        _json_print(payload, as_json=bool(args.json))
-        return 2
+        if args.no_autobuild_payload:
+            payload["reasons"].append("missing_payload_file")
+            _json_print(payload, as_json=bool(args.json))
+            return 2
+
+        build_cmd = [
+            sys.executable,
+            str(repo_root / "scripts" / "speckit_build_offline_qa_payload.py"),
+            "--feature-id",
+            args.feature_id,
+            "--task-id",
+            args.task_id,
+            "--attempt",
+            str(args.attempt),
+            "--payload-file",
+            str(payload_file),
+            "--json",
+        ]
+        build_code, build_out, build_err = _run(build_cmd, cwd=repo_root)
+        payload["payload_autobuild_exit_code"] = build_code
+        payload["payload_autobuild_stdout"] = build_out
+        if build_err:
+            payload["payload_autobuild_stderr"] = build_err
+        if build_code != 0 or not payload_file.exists():
+            payload["reasons"].append("payload_autobuild_failed")
+            _json_print(payload, as_json=bool(args.json))
+            return 2
+        payload["payload_autobuild"] = "created"
 
     validate_cmd = [
         sys.executable,

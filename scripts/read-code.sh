@@ -9,6 +9,9 @@
 # Usage:
 #   read_code_context <file_path> <symbol_or_pattern> [context_lines]
 #   read_code_window  <file_path> <start_line> [line_count] [symbol_or_pattern]
+# Optional HUD fast-path:
+#   add --hud-symbol (or set SPECKIT_HUD_DIRECT_READ=1) to skip codegraph
+#   discovery when the symbol came directly from a trusted HUD file:symbol entry.
 #
 # Examples:
 #   read_code_context src/module.py "def run_pipeline" 80
@@ -28,6 +31,9 @@ CODEGRAPH_CONTEXT_DIR="$REPO_ROOT/.codegraphcontext"
 CODEGRAPH_DB_DIR="$CODEGRAPH_CONTEXT_DIR/db"
 
 CODE_FILE_LINE_THRESHOLD=200
+READ_CODE_DEFAULT_CONTEXT_LINES=60
+READ_CODE_DEFAULT_WINDOW_LINES=60
+READ_CODE_MAX_LINES="${SPECKIT_READ_CODE_MAX_LINES:-80}"
 IGNORE_DIRS_DEFAULT="node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs"
 
 init_codegraph_env() {
@@ -93,6 +99,118 @@ codegraph_discover_or_fail() {
     return 0
 }
 
+normalize_symbol_pattern() {
+    local raw="$1"
+    local normalized="$raw"
+    normalized="${normalized#"${normalized%%[![:space:]]*}"}"
+    normalized="${normalized%"${normalized##*[![:space:]]}"}"
+    normalized="${normalized#async def }"
+    normalized="${normalized#def }"
+    normalized="${normalized#class }"
+    normalized="${normalized%%(*}"
+    normalized="${normalized%%:*}"
+    normalized="${normalized%%[[:space:]]*}"
+    echo "$normalized"
+}
+
+_find_line_num() {
+    local file="$1"
+    local raw_pattern="$2"
+    local normalized_pattern="$3"
+    local line_num=""
+
+    if command -v rg >/dev/null 2>&1; then
+        if [[ -n "$raw_pattern" ]]; then
+            line_num="$(rg -n -m 1 -F -- "$raw_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" && "$normalized_pattern" != "$raw_pattern" ]]; then
+            line_num="$(rg -n -m 1 -F -- "$normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" ]]; then
+            line_num="$(rg -n -m 1 -F -- "def $normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" ]]; then
+            line_num="$(rg -n -m 1 -F -- "async def $normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" ]]; then
+            line_num="$(rg -n -m 1 -F -- "class $normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+    else
+        if [[ -n "$raw_pattern" ]]; then
+            line_num="$(grep -n -m 1 -F -- "$raw_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" && "$normalized_pattern" != "$raw_pattern" ]]; then
+            line_num="$(grep -n -m 1 -F -- "$normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" ]]; then
+            line_num="$(grep -n -m 1 -F -- "def $normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" ]]; then
+            line_num="$(grep -n -m 1 -F -- "async def $normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+        if [[ -z "$line_num" && -n "$normalized_pattern" ]]; then
+            line_num="$(grep -n -m 1 -F -- "class $normalized_pattern" "$file" | cut -d: -f1)"
+        fi
+    fi
+
+    echo "$line_num"
+}
+
+_collect_literal_hits() {
+    local file="$1"
+    local literal="$2"
+    if [[ -z "$literal" ]]; then
+        return 0
+    fi
+
+    if command -v rg >/dev/null 2>&1; then
+        rg -n -F -- "$literal" "$file" | cut -d: -f1 || true
+    else
+        grep -n -F -- "$literal" "$file" | cut -d: -f1 || true
+    fi
+}
+
+_resolve_line_num_strict() {
+    local file="$1"
+    local raw_pattern="$2"
+    local normalized_pattern="$3"
+    local matches=""
+    local count=""
+
+    matches="$(_collect_literal_hits "$file" "$raw_pattern" | awk 'NF' | sort -n | awk '!seen[$0]++')"
+    count="$(printf '%s\n' "$matches" | awk 'NF' | wc -l | tr -d ' ')"
+    if [[ "$count" -eq 1 ]]; then
+        printf '%s\n' "$matches" | awk 'NF{print; exit}'
+        return 0
+    fi
+    if [[ "$count" -gt 1 ]]; then
+        echo "ERROR: Strict symbol match is ambiguous for '$raw_pattern' in $file." >&2
+        return 2
+    fi
+
+    if [[ -n "$normalized_pattern" ]]; then
+        matches="$(
+            {
+                _collect_literal_hits "$file" "def $normalized_pattern("
+                _collect_literal_hits "$file" "async def $normalized_pattern("
+                _collect_literal_hits "$file" "class $normalized_pattern"
+                _collect_literal_hits "$file" "$normalized_pattern ="
+            } | awk 'NF' | sort -n | awk '!seen[$0]++'
+        )"
+        count="$(printf '%s\n' "$matches" | awk 'NF' | wc -l | tr -d ' ')"
+        if [[ "$count" -eq 1 ]]; then
+            printf '%s\n' "$matches" | awk 'NF{print; exit}'
+            return 0
+        fi
+        if [[ "$count" -gt 1 ]]; then
+            echo "ERROR: Strict symbol match is ambiguous for '$normalized_pattern' in $file." >&2
+            return 2
+        fi
+    fi
+
+    return 1
+}
+
 is_large_code_file() {
     local file="$1"
     local lines
@@ -103,12 +221,37 @@ is_large_code_file() {
 read_code_context() {
     local file="$1"
     local pattern="$2"
-    local context="${3:-60}"
+    shift 2
+    local context="$READ_CODE_DEFAULT_CONTEXT_LINES"
+    local context_set=0
+    local hud_flag=""
+    local allow_fallback=0
 
     if [[ -z "$file" || -z "$pattern" ]]; then
         echo "ERROR: read_code_context requires: <file_path> <symbol_or_pattern> [context_lines]" >&2
         return 1
     fi
+
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --hud-symbol)
+                hud_flag="--hud-symbol"
+                ;;
+            --allow-fallback)
+                allow_fallback=1
+                ;;
+            *)
+                if [[ "$1" =~ ^[0-9]+$ ]] && [[ "$context_set" -eq 0 ]]; then
+                    context="$1"
+                    context_set=1
+                else
+                    echo "ERROR: Unexpected argument for context mode: $1" >&2
+                    return 1
+                fi
+                ;;
+        esac
+        shift
+    done
 
     if [[ ! -f "$file" ]]; then
         echo "ERROR: File not found: $file" >&2
@@ -119,18 +262,46 @@ read_code_context() {
         echo "ERROR: context_lines must be a positive integer: $context" >&2
         return 1
     fi
+    if [[ "$context" -gt "$READ_CODE_MAX_LINES" ]]; then
+        echo "ERROR: context_lines exceeds max ($READ_CODE_MAX_LINES): $context" >&2
+        return 1
+    fi
 
-    codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+    local normalized_pattern
+    normalized_pattern="$(normalize_symbol_pattern "$pattern")"
+
+    local use_hud_fast_path=0
+    if [[ "$hud_flag" == "--hud-symbol" || "${SPECKIT_HUD_DIRECT_READ:-0}" == "1" ]]; then
+        use_hud_fast_path=1
+    fi
+
+    if [[ "$use_hud_fast_path" -eq 0 ]]; then
+        if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
+            codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
+        else
+            codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+        fi
+    fi
 
     local line_num
-    if command -v rg >/dev/null 2>&1; then
-        line_num="$(rg -n -m 1 -F -- "$pattern" "$file" | cut -d: -f1)"
+    if line_num="$(_resolve_line_num_strict "$file" "$pattern" "$normalized_pattern")"; then
+        :
     else
-        line_num="$(grep -n -m 1 -F -- "$pattern" "$file" | cut -d: -f1)"
+        local strict_status="$?"
+        if [[ "$allow_fallback" -eq 1 ]]; then
+            line_num="$(_find_line_num "$file" "$pattern" "$normalized_pattern")"
+        else
+            if [[ "$strict_status" -eq 2 ]]; then
+                echo "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback." >&2
+            else
+                echo "ERROR: Strict symbol resolution failed for '$pattern'. Re-run with --allow-fallback to allow bounded file-local fallback." >&2
+            fi
+            return 1
+        fi
     fi
 
     if [[ -z "$line_num" ]]; then
-        echo "ERROR: Pattern not found: $pattern in $file" >&2
+        echo "ERROR: Pattern not found after one bounded fallback: $pattern in $file" >&2
         return 1
     fi
 
@@ -147,13 +318,40 @@ read_code_context() {
 read_code_window() {
     local file="$1"
     local start_line="$2"
-    local line_count="${3:-60}"
-    local pattern="${4:-}"
+    shift 2
+    local line_count="$READ_CODE_DEFAULT_WINDOW_LINES"
+    local line_count_set=0
+    local pattern=""
+    local hud_flag=""
+    local allow_fallback=0
 
     if [[ -z "$file" || -z "$start_line" ]]; then
         echo "ERROR: read_code_window requires: <file_path> <start_line> [line_count]" >&2
         return 1
     fi
+
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --hud-symbol)
+                hud_flag="--hud-symbol"
+                ;;
+            --allow-fallback)
+                allow_fallback=1
+                ;;
+            *)
+                if [[ "$1" =~ ^[0-9]+$ ]] && [[ "$line_count_set" -eq 0 ]]; then
+                    line_count="$1"
+                    line_count_set=1
+                elif [[ -z "$pattern" ]]; then
+                    pattern="$1"
+                else
+                    echo "ERROR: Unexpected argument for window mode: $1" >&2
+                    return 1
+                fi
+                ;;
+        esac
+        shift
+    done
 
     if [[ ! -f "$file" ]]; then
         echo "ERROR: File not found: $file" >&2
@@ -169,6 +367,10 @@ read_code_window() {
         echo "ERROR: line_count must be a positive integer: $line_count" >&2
         return 1
     fi
+    if [[ "$line_count" -gt "$READ_CODE_MAX_LINES" ]]; then
+        echo "ERROR: line_count exceeds max ($READ_CODE_MAX_LINES): $line_count" >&2
+        return 1
+    fi
 
     if is_large_code_file "$file"; then
         if [[ -z "$pattern" ]]; then
@@ -176,7 +378,37 @@ read_code_window() {
             echo "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>" >&2
             return 1
         fi
-        codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+        local normalized_pattern
+        normalized_pattern="$(normalize_symbol_pattern "$pattern")"
+        local use_hud_fast_path=0
+        if [[ "$hud_flag" == "--hud-symbol" || "${SPECKIT_HUD_DIRECT_READ:-0}" == "1" ]]; then
+            use_hud_fast_path=1
+        fi
+        if [[ "$use_hud_fast_path" -eq 0 ]]; then
+            if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
+                codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
+            else
+                codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+            fi
+        fi
+
+        local normalized_pattern
+        normalized_pattern="$(normalize_symbol_pattern "$pattern")"
+        if ! _resolve_line_num_strict "$file" "$pattern" "$normalized_pattern" >/dev/null; then
+            local strict_status="$?"
+            if [[ "$allow_fallback" -ne 1 ]]; then
+                if [[ "$strict_status" -eq 2 ]]; then
+                    echo "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback." >&2
+                else
+                    echo "ERROR: Strict symbol resolution failed for '$pattern'. Re-run with --allow-fallback to allow bounded file-local fallback." >&2
+                fi
+                return 1
+            fi
+            if [[ -z "$(_find_line_num "$file" "$pattern" "$normalized_pattern")" ]]; then
+                echo "ERROR: Pattern not found after one bounded fallback: $pattern in $file" >&2
+                return 1
+            fi
+        fi
     fi
 
     local end_line=$((start_line + line_count - 1))
@@ -187,8 +419,8 @@ read_code_window() {
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if [[ "$#" -lt 3 ]]; then
         echo "Usage:"
-        echo "  read_code_context <file_path> <symbol_or_pattern> [context_lines]"
-        echo "  read_code_window  <file_path> <start_line> [line_count] [symbol_or_pattern]"
+        echo "  read_code_context <file_path> <symbol_or_pattern> [context_lines<=${READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback]"
+        echo "  read_code_window  <file_path> <start_line> [line_count<=${READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
         exit 1
     fi
 
