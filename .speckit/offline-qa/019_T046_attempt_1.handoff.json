@@ -1,0 +1,27 @@
+{
+  "acceptance_criteria": [
+    "Run orchestrator against fixture states for mapped-success, mapped-blocked, and generative-handoff paths and verify deterministic routing outcome."
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "7fe32a5 T046 enforce generative artifact validation in main\n scripts/pipeline_driver.py         | 36 +++++++++++++++++\n tests/unit/test_pipeline_driver.py | 83 ++++++++++++++++++++++++++++++++++++++\n 2 files changed, 119 insertions(+)",
+  "feature_id": "019",
+  "hud_path": ".speckit/tasks/T046.md",
+  "known_risks": [
+    "Auto-generated payload for T046; confirm test evidence detail if stricter QA traceability is required.",
+    "Invoke post-generation artifact validation in scripts/pipeline_driver.py:main via validate_generated_artifact before returning success for generative routes"
+  ],
+  "quality_guards": [
+    "Domain 07, Domain 13, Domain 14, Domain 17"
+  ],
+  "task_id": "T046",
+  "test_runs": [
+    {
+      "command": "uv run pytest tests/unit/test_pipeline_driver.py -q (31 passed); UV_CACHE_DIR=/tmp/uv-cache uv run pyright scripts/pipeline_driver.py tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "uv run pytest tests/unit/test_pipeline_driver.py -q (31 passed); UV_CACHE_DIR=/tmp/uv-cache uv run pyright scripts/pipeline_driver.py tests/unit/test_pipeline_driver.py"
+    }
+  ]
+}

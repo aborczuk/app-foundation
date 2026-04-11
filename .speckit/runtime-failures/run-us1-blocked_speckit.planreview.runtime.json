@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/Users/andreborczuk/app-foundation/.venv/bin/python3",
+    "/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-319/test_deterministic_route_block0/feature/scripts/planreview_gate.py"
+  ],
+  "correlation_id": "run-us1-blocked:speckit.planreview",
+  "error_code": "invalid_step_result",
+  "initial": {
+    "exit_code": 1,
+    "stderr": "",
+    "stdout": "{\"correlation_id\": \"run-us1-blocked:speckit.planreview\", \"exit_code\": 1, \"gate\": \"planreview_questions\", \"next_phase\": null, \"ok\": false, \"reasons\": [\"fq_count_nonzero\"], \"schema_version\": \"1.0.0\"}\n",
+    "timed_out": false
+  },
+  "reason": "invalid_step_result",
+  "rerun": {
+    "exit_code": 1,
+    "stderr": "",
+    "stdout": "{\"correlation_id\": \"run-us1-blocked:speckit.planreview\", \"exit_code\": 1, \"gate\": \"planreview_questions\", \"next_phase\": null, \"ok\": false, \"reasons\": [\"fq_count_nonzero\"], \"schema_version\": \"1.0.0\"}\n",
+    "timed_out": false
+  },
+  "schema_version": "1.0.0",
+  "timestamp_utc": "2026-04-10T22:51:43.549142Z"
+}

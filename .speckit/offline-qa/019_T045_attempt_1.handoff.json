@@ -1,0 +1,40 @@
+{
+  "feature_id": "019",
+  "task_id": "T045",
+  "hud_path": ".speckit/tasks/T045.md",
+  "diff": "T045 adds run_generative_handoff adapter execution in scripts/pipeline_driver.py and unit tests in tests/unit/test_pipeline_driver.py; generative main path now routes through adapter and captures generated artifact metadata.",
+  "acceptance_criteria": [
+    "Generative route executes through explicit handoff adapter rather than placeholder-only return.",
+    "Adapter path captures generated artifact metadata for downstream validation."
+  ],
+  "quality_guards": [
+    "Domain 07",
+    "Domain 13",
+    "Domain 14",
+    "Domain 17"
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "test_runs": [
+    {
+      "command": "uv run pytest tests/unit/test_pipeline_driver.py -k \"generative_handoff or test_main_generative_route_executes_handoff_adapter\" -q",
+      "exit_code": 0,
+      "output": "4 passed, 26 deselected"
+    },
+    {
+      "command": "uv run pytest tests/unit/test_pipeline_driver.py -q",
+      "exit_code": 0,
+      "output": "30 passed"
+    },
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run pyright scripts/pipeline_driver.py tests/unit/test_pipeline_driver.py",
+      "exit_code": 0,
+      "output": "0 errors, 0 warnings, 0 informations"
+    }
+  ],
+  "known_risks": [
+    "Default no-runner mode remains backward-compatible and does not yet enforce artifact validation/event append (covered by T046/T047)."
+  ]
+}

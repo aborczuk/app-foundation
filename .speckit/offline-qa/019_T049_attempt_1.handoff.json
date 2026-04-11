@@ -1,0 +1,27 @@
+{
+  "acceptance_criteria": [
+    "Complete T049: Wire add-to-backlog pipeline event emission by updating .claude/commands/speckit.addtobacklog.md and .specify/command-manifest.yaml so `/speckit.addtobacklog` emits `backlog_registered` via scripts/pipeline_ledger.py"
+  ],
+  "changed_files": [
+    ".claude/commands/speckit.addtobacklog.md",
+    ".specify/command-manifest.yaml"
+  ],
+  "diff": "1016edf T049 wire addtobacklog backlog_registered emission\n .claude/commands/speckit.addtobacklog.md | 13 ++++++++++++-\n .specify/command-manifest.yaml           |  5 ++++-\n 2 files changed, 16 insertions(+), 2 deletions(-)",
+  "feature_id": "019",
+  "hud_path": ".speckit/tasks/T049.md",
+  "known_risks": [
+    "Auto-generated payload for T049; confirm test evidence detail if stricter QA traceability is required.",
+    "Wire add-to-backlog pipeline event emission by updating .claude/commands/speckit.addtobacklog.md and .specify/command-manifest.yaml so `/speckit.addtobacklog` emits `backlog_registered` via scripts/pipeline_ledger.py"
+  ],
+  "quality_guards": [
+    "Domain 16, Domain 13, Domain 14, Domain 17"
+  ],
+  "task_id": "T049",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/validate_command_script_coverage.py (PASS)",
+      "exit_code": 0,
+      "output": "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/validate_command_script_coverage.py (PASS)"
+    }
+  ]
+}

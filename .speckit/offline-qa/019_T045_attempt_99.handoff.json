@@ -1,0 +1,26 @@
+{
+  "acceptance_criteria": [
+    "Run orchestrator against fixture states for mapped-success, mapped-blocked, and generative-handoff paths and verify deterministic routing outcome."
+  ],
+  "changed_files": [
+    "specs/019-token-efficiency-docs/tasks.md"
+  ],
+  "diff": "a09b49c T045 close task bookkeeping\n specs/019-token-efficiency-docs/tasks.md | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)",
+  "feature_id": "019",
+  "hud_path": ".speckit/tasks/T045.md",
+  "known_risks": [
+    "Auto-generated payload for T045; confirm test evidence detail if stricter QA traceability is required.",
+    "Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata"
+  ],
+  "quality_guards": [
+    "Domain 07, Domain 13, Domain 14, Domain 17"
+  ],
+  "task_id": "T045",
+  "test_runs": [
+    {
+      "command": "uv run pytest tests/unit/test_pipeline_driver.py -q (30 passed) and focused adapter tests (4 passed)",
+      "exit_code": 0,
+      "output": "uv run pytest tests/unit/test_pipeline_driver.py -q (30 passed) and focused adapter tests (4 passed)"
+    }
+  ]
+}

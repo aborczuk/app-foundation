@@ -1,7 +1,7 @@
 {
   "command": [
-    "/Users/andreborczuk/app-foundation/.venv/bin/python",
-    "/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-295/test_approval_breakpoint_block0/feature/scripts/migration_step.py"
+    "/Users/andreborczuk/app-foundation/.venv/bin/python3",
+    "/private/var/folders/s9/kj4m9yfj4wbdwhx74nr4y_x00000gn/T/pytest-of-andreborczuk/pytest-319/test_approval_breakpoint_block0/feature/scripts/migration_step.py"
   ],
   "correlation_id": "run-us2-breakpoint:speckit.implement",
   "error_code": "invalid_step_result",
@@ -19,5 +19,5 @@
     "timed_out": false
   },
   "schema_version": "1.0.0",
-  "timestamp_utc": "2026-04-10T21:06:59.124147Z"
+  "timestamp_utc": "2026-04-10T22:51:43.652218Z"
 }

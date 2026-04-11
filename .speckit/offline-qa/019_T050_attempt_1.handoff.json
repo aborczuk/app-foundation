@@ -1,0 +1,26 @@
+{
+  "acceptance_criteria": [
+    "Complete T050: Route add-to-backlog triage outcomes to the appropriate downstream phase by estimate/scope in .claude/commands/speckit.addtobacklog.md (specify/plan/solution/implement handoff guidance)"
+  ],
+  "changed_files": [
+    ".claude/commands/speckit.addtobacklog.md"
+  ],
+  "diff": "121917b T050 route addtobacklog triage to next phase\n .claude/commands/speckit.addtobacklog.md | 16 ++++++++++++----\n 1 file changed, 12 insertions(+), 4 deletions(-)",
+  "feature_id": "019",
+  "hud_path": ".speckit/tasks/T050.md",
+  "known_risks": [
+    "Auto-generated payload for T050; confirm test evidence detail if stricter QA traceability is required.",
+    "Route add-to-backlog triage outcomes to the appropriate downstream phase by estimate/scope in .claude/commands/speckit.addtobacklog.md (specify/plan/solution/implement handoff guidance)"
+  ],
+  "quality_guards": [
+    "Domain 16, Domain 13, Domain 14, Domain 17"
+  ],
+  "task_id": "T050",
+  "test_runs": [
+    {
+      "command": "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/validate_command_script_coverage.py (PASS)",
+      "exit_code": 0,
+      "output": "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/validate_command_script_coverage.py (PASS)"
+    }
+  ]
+}
