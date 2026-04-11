@@ -42,6 +42,11 @@ gates:
       - feasibility_risk_unresolved
       - scope_exceeds_bounds
 
+  implement_task_preflight:
+    description: "Implement preflight detected task-contract mismatch between current branch and main"
+    reasons:
+      - feature_branch_stale
+
 standard_error_codes:
   description: "Non-gate errors that indicate runtime failures requiring verbose rerun"
   codes:

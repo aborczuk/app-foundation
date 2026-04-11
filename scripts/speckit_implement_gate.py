@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -43,12 +44,36 @@ def _exit_payload(ok: bool, payload: dict[str, Any]) -> tuple[int, dict[str, Any
     return (0 if ok else 2, payload)
 
 
-def _find_task_in_tasks_file(tasks_file: Path, task_id: str) -> bool:
+def _find_task_in_text(tasks_content: str, task_id: str) -> bool:
     pattern = re.compile(rf"^\s*-\s*\[[ xX]\]\s+{re.escape(task_id)}\b")
-    for line in tasks_file.read_text(encoding="utf-8").splitlines():
+    for line in tasks_content.splitlines():
         if pattern.match(line):
             return True
     return False
+
+
+def _find_task_in_tasks_file(tasks_file: Path, task_id: str) -> bool:
+    return _find_task_in_text(tasks_file.read_text(encoding="utf-8"), task_id)
+
+
+def _task_exists_on_main(tasks_file: Path, task_id: str) -> bool | None:
+    """Return task presence from main branch tasks file, or None if unavailable."""
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        relative_tasks = tasks_file.resolve().relative_to(repo_root)
+    except ValueError:
+        return None
+
+    result = subprocess.run(
+        ["git", "show", f"main:{relative_tasks.as_posix()}"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return _find_task_in_text(result.stdout, task_id)
 
 
 def _task_preflight(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
@@ -57,13 +82,21 @@ def _task_preflight(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     hud_path = Path(args.hud_path).resolve() if args.hud_path else Path(".speckit/tasks") / f"{args.task_id}.md"
     hud_path = hud_path.resolve()
     reasons: list[str] = []
+    task_present_in_tasks_file: bool | None = None
+    task_present_in_main: bool | None = None
 
     if not feature_dir.exists():
         reasons.append("missing_feature_dir")
     if not tasks_file.exists():
         reasons.append("missing_tasks_md")
-    if tasks_file.exists() and not _find_task_in_tasks_file(tasks_file, args.task_id):
-        reasons.append("task_not_found_in_tasks_md")
+    if tasks_file.exists():
+        task_present_in_tasks_file = _find_task_in_tasks_file(tasks_file, args.task_id)
+        if not task_present_in_tasks_file:
+            task_present_in_main = _task_exists_on_main(tasks_file, args.task_id)
+            if task_present_in_main:
+                reasons.append("feature_branch_stale")
+            else:
+                reasons.append("task_not_found_in_tasks_md")
     if not hud_path.exists():
         reasons.append("missing_hud")
 
@@ -73,6 +106,8 @@ def _task_preflight(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "task_id": args.task_id,
         "tasks_file": str(tasks_file),
         "hud_path": str(hud_path),
+        "task_present_in_tasks_file": task_present_in_tasks_file,
+        "task_present_in_main": task_present_in_main,
         "reasons": reasons,
     }
     return _exit_payload(len(reasons) == 0, payload)
