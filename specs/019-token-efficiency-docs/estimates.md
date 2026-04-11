@@ -1,6 +1,6 @@
 # Effort Estimate: Deterministic Pipeline Driver with LLM Handoff
 
-**Date**: 2026-04-09 | **Total Points**: 95 | **T-shirt Size**: L
+**Date**: 2026-04-10 | **Total Points**: 106 | **T-shirt Size**: L
 **Estimated by**: AI (speckit.estimate) — calibrate against actuals after implementation
 **Revision note**: Incorporates solutionreview DRY/reuse decisions (shared status contract primitives + shared integration harness).
 
@@ -46,6 +46,9 @@
 | T033 | 1 | Run task-format and plan gates on finalized artifacts via scripts/speckit_tasks_gate.py and scripts/speckit_gate_status.py | Bounded single-scope change using existing patterns. |
 | T034 | 2 | Run dry-run orchestration scenario and capture evidence in scripts/e2e_020.sh and specs/019-token-efficiency-docs/quickstart.md | Bounded single-scope change using existing patterns. |
 | T035 | 1 | Run lint/type checks for touched workflow files in scripts/pipeline_driver.py, scripts/pipeline_driver_contracts.py, scripts/validate_command_script_coverage.py | Bounded single-scope change using existing patterns. |
+| T045 | 5 | Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata | Crosses orchestrator-to-generation boundary and introduces execution/contract plumbing in the main dispatch path. |
+| T046 | 3 | Invoke post-generation artifact validation in scripts/pipeline_driver.py:main via validate_generated_artifact before returning success for generative routes | Medium integration change that reuses validator primitive but must route blocked/success outcomes deterministically. |
+| T047 | 3 | Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts | Medium orchestration change touching ledger/state transition invariants with existing event contract reuse. |
 
 ---
 
@@ -315,6 +318,33 @@
 
 [For 1-2 point tasks: no detailed sketch required]
 
+### T045 — Solution Sketch
+
+**Modify**: `scripts/pipeline_driver.py:main` — execute generative handoff via runner adapter and normalize generated output metadata.
+**Create**: optional helper for adapter invocation/normalization in `scripts/pipeline_driver.py` if needed for separation of concerns.
+**Reuse**: existing mapping/handoff payload from `resolve_step_mapping`; existing step-result envelope contract.
+**Composition**: dispatch generative mapping to adapter, collect artifact location + metadata, and keep canonical status output behavior unchanged.
+**Failing test assertion**: generative path without runnable adapter returns deterministic blocked/tooling outcome with stable reason code.
+**Domains touched**: Domain 07, Domain 13, Domain 14, Domain 17
+
+### T046 — Solution Sketch
+
+**Modify**: `scripts/pipeline_driver.py:main` — call `validate_generated_artifact` after adapter output resolution.
+**Create**: none unless helper extraction is needed for testability.
+**Reuse**: `validate_generated_artifact` blocked envelope semantics and `artifact_validation` reason-code contract.
+**Composition**: gate generative success on validator pass; route validator failures through normal blocked output contract.
+**Failing test assertion**: missing/invalid generated artifact returns `exit_code=1`, `gate=artifact_validation`, and stable reason list.
+**Domains touched**: Domain 07, Domain 13, Domain 14, Domain 17
+
+### T047 — Solution Sketch
+
+**Modify**: `scripts/pipeline_driver.py:main` — append success event for validated generative step and advance/recompute next phase.
+**Create**: optional helper in `scripts/pipeline_driver.py` for event append payload assembly.
+**Reuse**: `scripts/pipeline_ledger.py` event contract fields and existing phase-resolution helpers.
+**Composition**: after validator pass, emit required success event, then resolve/report next phase deterministically.
+**Failing test assertion**: generative success path without ledger append reports deterministic failure instead of silent advancement.
+**Domains touched**: Domain 07, Domain 13, Domain 14, Domain 17
+
 ---
 
 ## Phase Totals
@@ -323,11 +353,11 @@
 |-------|--------|------------|----------------|
 | Phase 1: Setup (Shared Infrastructure) | 9 | 4 | 1 |
 | Phase 2: Foundational (Blocking Prerequisites) | 29 | 10 | 5 |
-| Phase 3: User Story 1 - Deterministic Step Routing (Priority: P1) 🎯 MVP | 20 | 7 | 3 |
+| Phase 3: User Story 1 - Deterministic Step Routing (Priority: P1) 🎯 MVP | 31 | 10 | 3 |
 | Phase 4: User Story 2 - Compact Parsing Contract (Priority: P2) | 17 | 6 | 2 |
 | Phase 5: User Story 3 - Governance and Migration Safety (Priority: P3) | 16 | 6 | 2 |
 | Phase 6: Polish & Cross-Cutting Concerns | 4 | 3 | 2 |
-| **Total** | **95** | **36** | **15** |
+| **Total** | **106** | **39** | **15** |
 
 ---
 
