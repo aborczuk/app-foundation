@@ -52,6 +52,73 @@ def test_main_outputs_minimal_step_result(capsys) -> None:
     assert payload["step_result"]["exit_code"] == 0
 
 
+def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": "specs/019-token-efficiency-docs/plan.md",
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+
+    called: dict[str, str] = {}
+
+    def _fake_handoff_runner(
+        handoff,
+        *,
+        feature_id,
+        phase,
+        correlation_id,
+        handoff_runner=None,
+        **kwargs,
+    ):
+        called["feature_id"] = feature_id
+        called["phase"] = phase
+        called["correlation_id"] = correlation_id
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": phase,
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff": dict(handoff),
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": "specs/019-token-efficiency-docs/plan.md",
+                "exists": True,
+                "size_bytes": 100,
+                "line_count": 5,
+                "completion_marker": "## Summary",
+            },
+        }
+
+    monkeypatch.setattr(pipeline_driver, "run_generative_handoff", _fake_handoff_runner)
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+    assert exit_code == 0
+    assert called["feature_id"] == "019"
+    assert called["phase"] == "plan"
+    assert called["correlation_id"].endswith(":plan")
+
+
 def test_build_correlation_id_uses_explicit_run_scope() -> None:
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -567,6 +634,77 @@ def test_validate_generated_artifact_fails_when_empty(tmp_path: Path) -> None:
     )
     assert result["ok"] is False
     assert "artifact_empty_or_minimal" in result["reasons"]
+
+
+def test_run_generative_handoff_executes_runner_and_captures_metadata(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "plan.md"
+    runner_script = tmp_path / "runner.py"
+    runner_script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import sys",
+                "from pathlib import Path",
+                "payload = json.loads(sys.stdin.read())",
+                "artifact = Path(payload['handoff']['output_template_path'])",
+                "artifact.parent.mkdir(parents=True, exist_ok=True)",
+                "artifact.write_text('# Plan\\n## Summary\\nGenerated content\\n', encoding='utf-8')",
+                "print(json.dumps({'artifact_path': str(artifact), 'completion_marker': '## Summary'}))",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    handoff = {
+        "handoff_id": "handoff-runner",
+        "step_name": "speckit.plan",
+        "required_inputs": [],
+        "output_template_path": str(artifact_path),
+        "completion_marker": "## Summary",
+        "correlation_id": "run_20260410T120000Z_019:speckit.plan",
+    }
+
+    result = pipeline_driver.run_generative_handoff(
+        handoff,
+        feature_id="019",
+        phase="plan",
+        correlation_id="run_20260410T120000Z_019:speckit.plan",
+        handoff_runner=f"{sys.executable} {runner_script}",
+        cwd=tmp_path,
+    )
+
+    assert result["ok"] is True
+    assert result["exit_code"] == 0
+    assert result["handoff_execution"] == "executed"
+    assert result["generated_artifact"]["path"] == str(artifact_path)
+    assert result["generated_artifact"]["exists"] is True
+    assert result["generated_artifact"]["size_bytes"] is not None
+    assert result["generated_artifact"]["line_count"] == 3
+
+
+def test_run_generative_handoff_returns_handoff_when_runner_not_configured(tmp_path: Path) -> None:
+    handoff = {
+        "handoff_id": "handoff-no-runner",
+        "step_name": "speckit.plan",
+        "required_inputs": [],
+        "output_template_path": str(tmp_path / "plan.md"),
+        "completion_marker": "## Summary",
+        "correlation_id": "run_20260410T120000Z_019:speckit.plan",
+    }
+
+    result = pipeline_driver.run_generative_handoff(
+        handoff,
+        feature_id="019",
+        phase="plan",
+        correlation_id="run_20260410T120000Z_019:speckit.plan",
+        handoff_runner=None,
+    )
+
+    assert result["ok"] is True
+    assert result["exit_code"] == 0
+    assert result["handoff_execution"] == "not_configured"
+    assert result["generated_artifact"]["path"] == str(tmp_path / "plan.md")
+    assert result["generated_artifact"]["exists"] is False
 
 
 def test_resolve_step_mapping_uses_real_manifest() -> None:

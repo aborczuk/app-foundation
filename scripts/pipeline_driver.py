@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -736,6 +737,179 @@ def run_step(
     return result
 
 
+def _collect_generated_artifact_metadata(
+    artifact_path: str | Path,
+    *,
+    completion_marker: str | None = None,
+) -> dict[str, Any]:
+    artifact = Path(artifact_path)
+    metadata: dict[str, Any] = {
+        "path": str(artifact),
+        "exists": artifact.exists(),
+        "size_bytes": None,
+        "line_count": None,
+        "completion_marker": completion_marker,
+    }
+    if artifact.exists():
+        try:
+            content = artifact.read_text(encoding="utf-8")
+            metadata["size_bytes"] = len(content.encode("utf-8"))
+            metadata["line_count"] = len(content.splitlines())
+        except (OSError, UnicodeDecodeError):
+            metadata["size_bytes"] = None
+            metadata["line_count"] = None
+    return metadata
+
+
+def run_generative_handoff(
+    handoff: Mapping[str, Any],
+    *,
+    feature_id: str,
+    phase: str,
+    correlation_id: str,
+    timeout_seconds: int = 300,
+    handoff_runner: str | None = None,
+    cwd: str | Path | None = None,
+    sidecar_dir: str | Path = ".speckit/runtime-failures",
+) -> dict[str, Any]:
+    """Execute the generative handoff adapter and capture generated artifact metadata."""
+    if not isinstance(handoff, Mapping):
+        raise ValueError("handoff must be a mapping")
+    if not correlation_id:
+        raise ValueError("correlation_id is required")
+
+    runner_spec = handoff_runner or os.environ.get("SPECKIT_HANDOFF_RUNNER", "")
+    artifact_path = str(handoff.get("output_template_path") or "")
+    completion_marker = handoff.get("completion_marker")
+    if not isinstance(completion_marker, str):
+        completion_marker = None
+
+    # Backward-compatible mode: no runner configured, return explicit handoff with metadata probe.
+    if not runner_spec.strip():
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": phase,
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff": dict(handoff),
+            "handoff_execution": "not_configured",
+            "generated_artifact": _collect_generated_artifact_metadata(
+                artifact_path or ".",
+                completion_marker=completion_marker,
+            ),
+        }
+
+    command = shlex.split(runner_spec)
+    if not command:
+        raise ValueError("handoff_runner produced empty command")
+
+    payload = {
+        "feature_id": feature_id,
+        "phase": phase,
+        "correlation_id": correlation_id,
+        "handoff": dict(handoff),
+    }
+    execution = _execute_command(
+        command,
+        timeout_seconds=timeout_seconds,
+        cwd=cwd,
+        env=os.environ,
+        input_payload=json.dumps(payload, sort_keys=True),
+    )
+    stdout = str(execution["stdout"])
+    stderr = str(execution["stderr"])
+    exit_code = execution["exit_code"]
+    timed_out = bool(execution["timed_out"])
+
+    if timed_out:
+        return handle_runtime_failure(
+            command,
+            correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=None,
+            input_payload=json.dumps(payload, sort_keys=True),
+            error_code="step_timeout",
+            reason="step_timeout",
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=True,
+            sidecar_dir=sidecar_dir,
+        )
+
+    if exit_code != 0:
+        return handle_runtime_failure(
+            command,
+            correlation_id=correlation_id,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            env_overrides=None,
+            input_payload=json.dumps(payload, sort_keys=True),
+            error_code="invalid_exit_code",
+            reason="invalid_exit_code",
+            initial_stdout=stdout,
+            initial_stderr=stderr,
+            initial_exit_code=exit_code,
+            initial_timed_out=False,
+            sidecar_dir=sidecar_dir,
+        )
+
+    runner_payload: dict[str, Any] = {}
+    if stdout.strip():
+        try:
+            parsed_payload = json.loads(stdout)
+            if isinstance(parsed_payload, dict):
+                runner_payload = parsed_payload
+        except json.JSONDecodeError:
+            return handle_runtime_failure(
+                command,
+                correlation_id=correlation_id,
+                timeout_seconds=timeout_seconds,
+                cwd=cwd,
+                env_overrides=None,
+                input_payload=json.dumps(payload, sort_keys=True),
+                error_code="invalid_json_result",
+                reason="invalid_json_result",
+                initial_stdout=stdout,
+                initial_stderr=stderr,
+                initial_exit_code=exit_code,
+                initial_timed_out=False,
+                sidecar_dir=sidecar_dir,
+            )
+
+    runner_artifact = runner_payload.get("artifact_path")
+    if isinstance(runner_artifact, str) and runner_artifact.strip():
+        artifact_path = runner_artifact.strip()
+    if not artifact_path:
+        artifact_path = str(handoff.get("output_template_path") or ".")
+    if "completion_marker" in runner_payload and isinstance(runner_payload["completion_marker"], str):
+        completion_marker = runner_payload["completion_marker"]
+
+    return {
+        "schema_version": "1.0.0",
+        "ok": True,
+        "exit_code": 0,
+        "correlation_id": correlation_id,
+        "next_phase": phase,
+        "gate": None,
+        "reasons": [],
+        "error_code": None,
+        "debug_path": None,
+        "handoff": dict(handoff),
+        "handoff_execution": "executed",
+        "generated_artifact": _collect_generated_artifact_metadata(
+            artifact_path,
+            completion_marker=completion_marker,
+        ),
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run deterministic pipeline steps")
     parser.add_argument("--feature-id", required=True, help="Feature id, e.g. 019")
@@ -759,6 +933,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="output_json",
         help="Emit full JSON step result in addition to compact three-line status",
+    )
+    parser.add_argument(
+        "--handoff-runner",
+        default=None,
+        help="Optional command used to execute generative handoff payloads (stdin JSON).",
     )
     return parser
 
@@ -911,20 +1090,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
     elif mapping_type == "generative":
-        # Signal LLM handoff — driver does not execute generative steps
         handoff = mapping["handoff"]
-        step_result = {
-            "schema_version": "1.0.0",
-            "ok": True,
-            "exit_code": 0,
-            "correlation_id": correlation_id,
-            "next_phase": args.phase,
-            "gate": None,
-            "reasons": [],
-            "error_code": None,
-            "debug_path": None,
-            "handoff": handoff,
-        }
+        step_result = run_generative_handoff(
+            handoff,
+            feature_id=args.feature_id,
+            phase=args.phase,
+            correlation_id=correlation_id,
+            handoff_runner=args.handoff_runner,
+        )
 
     else:
         # legacy or unknown — route_legacy_step returns a blocked result
