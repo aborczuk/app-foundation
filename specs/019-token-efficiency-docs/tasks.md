@@ -67,7 +67,7 @@
 - [X] T018 [US1] Implement legacy fallback for non-driver-managed phases in scripts/pipeline_driver.py:route_legacy_step
 - [X] T019 [US1] Implement post-LLM artifact validation before success event append in scripts/pipeline_driver.py:validate_generated_artifact
 - [X] T020 [US1] Update routing metadata and driver-managed flags in command-manifest.yaml:commands and .specify/command-manifest.yaml:commands
-- [ ] T045 [US1] Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata
+- [X] T045 [US1] Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata
 - [ ] T046 [US1] Invoke post-generation artifact validation in scripts/pipeline_driver.py:main via validate_generated_artifact before returning success for generative routes
 - [ ] T047 [US1] Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts
 
