@@ -1,0 +1,28 @@
+{
+  "acceptance_criteria": [
+    "Run orchestrator against fixture states for mapped-success, mapped-blocked, and generative-handoff paths and verify deterministic routing outcome."
+  ],
+  "changed_files": [
+    "scripts/pipeline_driver.py",
+    "scripts/pipeline_driver_contracts.py",
+    "tests/unit/test_pipeline_driver.py"
+  ],
+  "diff": "4b3b7ea T047 append generative success event and phase advancement\n scripts/pipeline_driver.py           | 139 +++++++++++++++++++++++++++++++++++\n scripts/pipeline_driver_contracts.py |  16 ++++\n tests/unit/test_pipeline_driver.py   |  78 ++++++++++++++++++++\n 3 files changed, 233 insertions(+)",
+  "feature_id": "019",
+  "hud_path": ".speckit/tasks/T047.md",
+  "known_risks": [
+    "Auto-generated payload for T047; confirm test evidence detail if stricter QA traceability is required.",
+    "Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts"
+  ],
+  "quality_guards": [
+    "Domain 16, Domain 07, Domain 13, Domain 14, Domain 17"
+  ],
+  "task_id": "T047",
+  "test_runs": [
+    {
+      "command": "uv run pytest tests/unit/test_pipeline_driver.py -q (32 passed); UV_CACHE_DIR=/tmp/uv-cache uv run pyright ... (0 errors)",
+      "exit_code": 0,
+      "output": "uv run pytest tests/unit/test_pipeline_driver.py -q (32 passed); UV_CACHE_DIR=/tmp/uv-cache uv run pyright ... (0 errors)"
+    }
+  ]
+}

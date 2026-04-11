@@ -1,24 +1,24 @@
 {
   "command": [
-    "/Users/andreborczuk/app-foundation/.venv/bin/python",
+    "/Users/andreborczuk/app-foundation/.venv/bin/python3",
     "-c",
-    "import json, sys; print(json.dumps({'schema_version':'1.0.0','ok':False,'exit_code':1,'gate':'requirements','reasons':['missing_checklist'],'correlation_id':'run-019-blocked'})); sys.exit(1)"
+    "import json, sys; print(json.dumps({'schema_version':'1.0.0','ok':False,'exit_code':1,'gate':'planreview_questions','reasons':['fq_count_nonzero'],'correlation_id':'run-019-blocked'})); sys.exit(1)"
   ],
   "correlation_id": "run-019-blocked",
   "error_code": "invalid_step_result",
   "initial": {
     "exit_code": 1,
     "stderr": "",
-    "stdout": "{\"schema_version\": \"1.0.0\", \"ok\": false, \"exit_code\": 1, \"gate\": \"requirements\", \"reasons\": [\"missing_checklist\"], \"correlation_id\": \"run-019-blocked\"}\n",
+    "stdout": "{\"schema_version\": \"1.0.0\", \"ok\": false, \"exit_code\": 1, \"gate\": \"planreview_questions\", \"reasons\": [\"fq_count_nonzero\"], \"correlation_id\": \"run-019-blocked\"}\n",
     "timed_out": false
   },
   "reason": "invalid_step_result",
   "rerun": {
     "exit_code": 1,
     "stderr": "",
-    "stdout": "{\"schema_version\": \"1.0.0\", \"ok\": false, \"exit_code\": 1, \"gate\": \"requirements\", \"reasons\": [\"missing_checklist\"], \"correlation_id\": \"run-019-blocked\"}\n",
+    "stdout": "{\"schema_version\": \"1.0.0\", \"ok\": false, \"exit_code\": 1, \"gate\": \"planreview_questions\", \"reasons\": [\"fq_count_nonzero\"], \"correlation_id\": \"run-019-blocked\"}\n",
     "timed_out": false
   },
   "schema_version": "1.0.0",
-  "timestamp_utc": "2026-04-10T21:32:20.315620Z"
+  "timestamp_utc": "2026-04-10T22:51:41.351622Z"
 }
