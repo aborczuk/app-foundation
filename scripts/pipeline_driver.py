@@ -1098,6 +1098,42 @@ def main(argv: Sequence[str] | None = None) -> int:
             correlation_id=correlation_id,
             handoff_runner=args.handoff_runner,
         )
+        if int(step_result.get("exit_code", 1)) == 0:
+            generated_artifact = step_result.get("generated_artifact")
+            artifact_path: str | Path | None = None
+            completion_marker: str | None = None
+            if isinstance(generated_artifact, Mapping):
+                artifact_candidate = generated_artifact.get("path")
+                if isinstance(artifact_candidate, str) and artifact_candidate.strip():
+                    artifact_path = artifact_candidate.strip()
+                marker_candidate = generated_artifact.get("completion_marker")
+                if isinstance(marker_candidate, str) and marker_candidate.strip():
+                    completion_marker = marker_candidate.strip()
+
+            if artifact_path is None:
+                handoff_output = handoff.get("output_template_path")
+                if isinstance(handoff_output, str) and handoff_output.strip():
+                    artifact_path = handoff_output.strip()
+            if completion_marker is None:
+                handoff_marker = handoff.get("completion_marker")
+                if isinstance(handoff_marker, str) and handoff_marker.strip():
+                    completion_marker = handoff_marker.strip()
+
+            validation_result = validate_generated_artifact(
+                artifact_path or "",
+                correlation_id=correlation_id,
+                completion_marker=completion_marker,
+            )
+            if not validation_result.get("ok"):
+                validation_result["handoff"] = handoff
+                validation_result["handoff_execution"] = step_result.get("handoff_execution")
+                validation_result["generated_artifact"] = generated_artifact
+                step_result = validation_result
+            else:
+                step_result["artifact_validation"] = {
+                    "ok": True,
+                    "artifact_path": str(artifact_path),
+                }
 
     else:
         # legacy or unknown — route_legacy_step returns a blocked result
