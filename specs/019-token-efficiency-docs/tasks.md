@@ -69,7 +69,7 @@
 - [X] T020 [US1] Update routing metadata and driver-managed flags in command-manifest.yaml:commands and .specify/command-manifest.yaml:commands
 - [X] T045 [US1] Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata
 - [X] T046 [US1] Invoke post-generation artifact validation in scripts/pipeline_driver.py:main via validate_generated_artifact before returning success for generative routes
-- [ ] T047 [US1] Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts
+- [X] T047 [US1] Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts
 
 **Checkpoint**: Deterministic and generative routes are both enforced with explicit mapping rules.
 
