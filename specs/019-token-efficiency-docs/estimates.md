@@ -1,6 +1,6 @@
 # Effort Estimate: Deterministic Pipeline Driver with LLM Handoff
 
-**Date**: 2026-04-11 | **Total Points**: 111 | **T-shirt Size**: L
+**Date**: 2026-04-11 | **Total Points**: 114 | **T-shirt Size**: L
 **Estimated by**: AI (speckit.estimate) — calibrate against actuals after implementation
 **Revision note**: Incorporates solutionreview DRY/reuse decisions (shared status contract primitives + shared integration harness).
 
@@ -51,6 +51,7 @@
 | T047 | 3 | Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts | Medium orchestration change touching ledger/state transition invariants with existing event contract reuse. |
 | T048 | 3 | Add preflight branch-sync stale-contract guard in scripts/speckit_implement_gate.py:_task_preflight (with reason-code mapping in docs/governance/gate-reason-codes.yaml) so `.implement` blocks when target task exists on `main` but not current feature branch | Medium governance/flow guard touching git-state preflight logic plus deterministic reason-code routing and regression checks. |
 | T049 | 2 | Wire add-to-backlog pipeline event emission by updating .claude/commands/speckit.addtobacklog.md and .specify/command-manifest.yaml so `/speckit.addtobacklog` emits `backlog_registered` via scripts/pipeline_ledger.py | Small contract-alignment update across command workflow and manifest metadata with deterministic event reuse. |
+| T050 | 3 | Route add-to-backlog triage outcomes to the appropriate downstream phase by estimate/scope in .claude/commands/speckit.addtobacklog.md (specify/plan/solution/implement handoff guidance) | Medium workflow-contract update that changes command routing semantics and must preserve deterministic phase handoff behavior. |
 
 ---
 
@@ -356,6 +357,15 @@
 **Failing test assertion**: preflight returns blocked result with stale-branch reason when task exists on `main` but is absent on the current feature branch.
 **Domains touched**: Domain 16, Domain 13, Domain 14, Domain 17
 
+### T050 — Solution Sketch
+
+**Modify**: `.claude/commands/speckit.addtobacklog.md` triage/routing steps.
+**Create**: no new script required for initial routing contract patch.
+**Reuse**: existing estimate outcomes and phase command boundaries (`specify`, `plan`, `solution`, `implement`).
+**Composition**: map triage + estimate signals to a single explicit next command so add-to-backlog hands off to the correct phase.
+**Failing test assertion**: ambiguous or large-scope triage must not suggest direct implement; it must route to earlier phase command.
+**Domains touched**: Domain 16, Domain 13, Domain 14, Domain 17
+
 ---
 
 ## Phase Totals
@@ -367,8 +377,8 @@
 | Phase 3: User Story 1 - Deterministic Step Routing (Priority: P1) 🎯 MVP | 31 | 10 | 3 |
 | Phase 4: User Story 2 - Compact Parsing Contract (Priority: P2) | 17 | 6 | 2 |
 | Phase 5: User Story 3 - Governance and Migration Safety (Priority: P3) | 16 | 6 | 2 |
-| Phase 6: Polish & Cross-Cutting Concerns | 9 | 5 | 2 |
-| **Total** | **111** | **41** | **15** |
+| Phase 6: Polish & Cross-Cutting Concerns | 12 | 6 | 2 |
+| **Total** | **114** | **42** | **15** |
 
 ---
 

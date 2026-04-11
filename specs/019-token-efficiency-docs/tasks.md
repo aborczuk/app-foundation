@@ -139,6 +139,7 @@
 - [X] T044 [P] Run lint/type checks for touched workflow files in scripts/pipeline_driver.py, scripts/pipeline_driver_contracts.py, scripts/validate_command_script_coverage.py
 - [X] T048 Add preflight branch-sync stale-contract guard in scripts/speckit_implement_gate.py:cmd_task_preflight (with reason-code mapping in docs/governance/gate-reason-codes.yaml) so `.implement` blocks when target task exists on `main` but not current feature branch
 - [X] T049 Wire add-to-backlog pipeline event emission by updating .claude/commands/speckit.addtobacklog.md and .specify/command-manifest.yaml so `/speckit.addtobacklog` emits `backlog_registered` via scripts/pipeline_ledger.py
+- [ ] T050 Route add-to-backlog triage outcomes to the appropriate downstream phase by estimate/scope in .claude/commands/speckit.addtobacklog.md (specify/plan/solution/implement handoff guidance)
 
 **Checkpoint**: Task format and plan gates pass; E2E script validates all 45 tests (US1/US2/US3); lint and type checks clean.
 <!-- Checkpoint validated: PASS | 2026-04-10 | All Phase 6 tasks complete: T042 gate PASS, T043 E2E PASS (45 tests), T044 pyright 0 errors -->
