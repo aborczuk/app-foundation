@@ -1,6 +1,6 @@
 # Effort Estimate: Deterministic Pipeline Driver with LLM Handoff
 
-**Date**: 2026-04-10 | **Total Points**: 106 | **T-shirt Size**: L
+**Date**: 2026-04-11 | **Total Points**: 109 | **T-shirt Size**: L
 **Estimated by**: AI (speckit.estimate) — calibrate against actuals after implementation
 **Revision note**: Incorporates solutionreview DRY/reuse decisions (shared status contract primitives + shared integration harness).
 
@@ -49,6 +49,7 @@
 | T045 | 5 | Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata | Crosses orchestrator-to-generation boundary and introduces execution/contract plumbing in the main dispatch path. |
 | T046 | 3 | Invoke post-generation artifact validation in scripts/pipeline_driver.py:main via validate_generated_artifact before returning success for generative routes | Medium integration change that reuses validator primitive but must route blocked/success outcomes deterministically. |
 | T047 | 3 | Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts | Medium orchestration change touching ledger/state transition invariants with existing event contract reuse. |
+| T048 | 3 | Add preflight branch-sync stale-contract guard in scripts/speckit_implement_gate.py:_task_preflight (with reason-code mapping in docs/governance/gate-reason-codes.yaml) so `.implement` blocks when target task exists on `main` but not current feature branch | Medium governance/flow guard touching git-state preflight logic plus deterministic reason-code routing and regression checks. |
 
 ---
 
@@ -345,6 +346,15 @@
 **Failing test assertion**: generative success path without ledger append reports deterministic failure instead of silent advancement.
 **Domains touched**: Domain 07, Domain 13, Domain 14, Domain 17
 
+### T048 — Solution Sketch
+
+**Modify**: `scripts/speckit_implement_gate.py:_task_preflight` and `scripts/speckit_implement_gate.py:main` dispatch wiring.
+**Create**: targeted helper for branch-sync task-presence check against `main` task contract.
+**Reuse**: existing preflight reason emission (`task_not_found_in_tasks_md`, `missing_hud`) and deterministic gate payload structure.
+**Composition**: detect branch/task divergence early, emit stable stale-branch reason code, and block implement before task execution starts.
+**Failing test assertion**: preflight returns blocked result with stale-branch reason when task exists on `main` but is absent on the current feature branch.
+**Domains touched**: Domain 16, Domain 13, Domain 14, Domain 17
+
 ---
 
 ## Phase Totals
@@ -356,8 +366,8 @@
 | Phase 3: User Story 1 - Deterministic Step Routing (Priority: P1) 🎯 MVP | 31 | 10 | 3 |
 | Phase 4: User Story 2 - Compact Parsing Contract (Priority: P2) | 17 | 6 | 2 |
 | Phase 5: User Story 3 - Governance and Migration Safety (Priority: P3) | 16 | 6 | 2 |
-| Phase 6: Polish & Cross-Cutting Concerns | 4 | 3 | 2 |
-| **Total** | **106** | **39** | **15** |
+| Phase 6: Polish & Cross-Cutting Concerns | 7 | 4 | 2 |
+| **Total** | **109** | **40** | **15** |
 
 ---
 
