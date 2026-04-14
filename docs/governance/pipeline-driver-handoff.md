@@ -9,6 +9,7 @@ The deterministic pipeline driver stack is implemented and tested:
 - `scripts/pipeline_driver_state.py`
 - related tests in `tests/unit/test_pipeline_driver.py` and `tests/integration/test_pipeline_driver_feature_flow.py`
 - governance/coverage checks wired via `scripts/validate_command_script_coverage.py` and `scripts/speckit_gate_status.py`
+- research scaffold wiring and smoke test support for `speckit.research`
 
 The core behavior now exists for:
 
@@ -17,6 +18,7 @@ The core behavior now exists for:
 - canonical step envelope parsing (`exit_code` 0/1/2)
 - runtime failure sidecars and drill-down support
 - compact human status output contract
+- compact research scaffold template (`research-template-compact.md`) for `speckit.research`
 
 ## Current Runtime State (Important)
 
@@ -66,6 +68,9 @@ From repo root:
    - `scripts/validate_command_script_coverage.py`
    - unit/integration driver tests
 6. Validate ledger/task consistency before close.
+7. For research scaffold changes, run the smoke test:
+   - `.specify/scripts/test-research.sh feature_id=XYZ`
+   - This checks the manifest template binding, the documented compact scaffold invocation, and the generated `research.md` section headers.
 
 ## Minimal Verification Checklist
 
@@ -79,3 +84,18 @@ If both pass and manifest modes are intentional, routing state is coherent.
 ## Operational Note
 
 Feature 019 ledger reconciliation was performed to align `tasks.md` and `task-ledger.jsonl`. Keep task closure events and task checkmarks synchronized going forward to avoid audit drift.
+
+## Research Scaffold Note
+
+The `speckit.research` command now uses the compact scaffold template at `.specify/templates/research-template-compact.md`.
+That command doc also documents a local validation path:
+
+```bash
+.specify/scripts/test-research.sh feature_id=XYZ
+```
+
+The smoke test verifies:
+
+- manifest template binding for `speckit.research`
+- compact scaffold invocation documented in `.claude/commands/speckit.research.md`
+- required `research.md` section headers

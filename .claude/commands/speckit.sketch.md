@@ -1,5 +1,5 @@
 ---
-description: Generate a pre-task low-level design blueprint (`sketch.md`) from plan/spec/codebase context. Sub-agent of `/speckit.solution`; callable standalone.
+description: Generate a pre-task low-level design blueprint (`sketch.md`) from spec, plan, research, manifest, domain guidance, and codebase reality. Sub-agent of `/speckit.solution`; callable standalone.
 handoffs:
   - label: Review Sketch Blueprint
     agent: speckit.solutionreview
@@ -111,8 +111,24 @@ Read optional artifacts if present:
 
 - `research.md`
 - `spike.md`
+- `data-model.md`
+- `quickstart.md`
+- `contracts/*`
 - `catalog.yaml`
 - `constitution.md`
+- `command-manifest.yaml`
+
+Read the following command files if available to align handoffs and artifact ownership:
+
+- `speckit.plan.md`
+- `speckit.planreview.md`
+- `speckit.solution.md`
+- `speckit.solutionreview.md`
+- `speckit.tasking.md`
+- `speckit.estimate.md`
+- `speckit.analyze.md`
+- `speckit.e2e.md`
+- `speckit.implement.md`
 
 Extract and normalize:
 
@@ -123,31 +139,10 @@ Extract and normalize:
 - runtime shape
 - integration points
 - named components, commands, pipelines, services, scripts, artifacts, storage, env/config surfaces, external systems, or operator flows
-- any Architecture Flow references already present in the plan
-- any trust boundaries, ingress surfaces, or state-authority decisions already declared
+- declared downstream artifacts and events
+- expected solution-phase handoff boundaries
 
 Do not begin decomposition until the intended feature boundary is clear.
-
-### 3b. Load pipeline contract context (MANDATORY)
-
-Read the pipeline architecture sources if present:
-
-- `command-manifest.yaml`
-- `speckit.solution.md`
-- `speckit.solutionreview.md`
-- `speckit.tasking.md`
-- `speckit.analyze.md`
-
-Extract and normalize:
-
-- which artifacts `speckit.sketch` owns,
-- which downstream artifacts depend on `sketch.md`,
-- what `solutionreview` is expected to gate,
-- what `tasking` expects to derive from sketch,
-- what `analyze` will later compare across `spec -> plan -> sketch -> tasks`,
-- which plan-level abstractions sketch must preserve rather than re-decide.
-
-This context is mandatory because `sketch.md` is a downstream contract, not just a design memo.
 
 ### 4. Establish the feature solution frame (mandatory)
 
@@ -163,7 +158,7 @@ Produce an internal framing of:
 
 This is not task generation. This is the feature-level solution frame tasking will later decompose.
 
-### 5. Solution narrative (MANDATORY)
+### 5. Solution narrative (mandatory)
 
 Write a concise solution narrative that explains:
 
@@ -175,11 +170,11 @@ Write a concise solution narrative that explains:
 
 This section must read like a coherent build thesis, not an audit.
 
-### 6. Construction strategy (MANDATORY)
+### 6. Construction strategy (mandatory)
 
 Describe the major implementation moves in the order they should be realized.
 
-This is not task decomposition. It is the construction logic that tasking must preserve.
+This is not task decomposition. It is the **construction logic** that tasking must preserve.
 
 Typical structure:
 
@@ -192,7 +187,7 @@ Typical structure:
 
 If the feature needs a different construction order, state it explicitly.
 
-### 7. Acceptance traceability (MANDATORY)
+### 7. Acceptance traceability (mandatory)
 
 Build a design traceability map from:
 
@@ -211,7 +206,7 @@ For each major requirement or constraint, identify:
 
 If a functional requirement has no corresponding design element, record this as a design gap.
 
-### 8. Work-type classification (MANDATORY)
+### 8. Work-type classification (mandatory)
 
 Classify each story/capability into one or more work types, such as:
 
@@ -250,7 +245,7 @@ Use the following repo discovery order:
 
 Do not begin low-level design from raw intuition if codegraph discovery has not been used.
 
-### 10. CodeGraphContext traversal and impact mapping (MANDATORY)
+### 10. CodeGraphContext traversal and impact mapping (mandatory)
 
 Use **CodeGraphContext** as a required discovery mechanism, not an optional lookup.
 
@@ -301,7 +296,7 @@ Plan assumptions that appear unsupported by current codebase reality.
 
 Do not stop at “symbols reviewed.” Use graph traversal to determine both the **solution boundary** and the **impact boundary**.
 
-### 11. Current-system inventory (MANDATORY)
+### 11. Current-system inventory (mandatory)
 
 Build a current-state inventory of the feature’s relevant surfaces.
 
@@ -328,26 +323,26 @@ For each relevant surface, note:
 
 This inventory must be more than a list of filenames.
 
-### 12. Command / script surface map (MANDATORY)
+### 12. Command / script surface map (mandatory)
 
 Because this pipeline orchestrates existing commands, scripts, templates, manifests, and generated artifacts, sketch must explicitly model that runtime surface.
 
 For each relevant command, script, manifest entry, or pipeline-owned artifact, record:
 
-- name,
-- owning file/script/template,
-- role in the pipeline,
-- deterministic / human / external / hybrid classification,
-- inputs,
-- outputs/artifacts,
-- emitted events if any,
-- extension seam,
-- whether it is reused, wrapped, modified, or newly introduced,
-- whether it is a primary implementation surface or blast-radius-only surface.
+- name
+- owning file/script/template
+- role in the pipeline
+- deterministic / human / external / hybrid classification
+- inputs
+- outputs/artifacts
+- emitted events if any
+- extension seam
+- whether it is reused, wrapped, modified, or newly introduced
+- whether it is a primary implementation surface or blast-radius-only surface
 
 If the design depends on a command/script/manifest seam that does not exist, record that explicitly as a design gap.
 
-### 13. Blast-radius analysis (MANDATORY)
+### 13. Blast-radius analysis (mandatory)
 
 Determine the **direct and indirect blast radius** of the proposed change.
 
@@ -369,7 +364,7 @@ For each major affected area, identify:
 - what kind of breakage or drift is plausible,
 - what constraints or validation later phases must preserve.
 
-### 14. Reuse / modify / create model (MANDATORY)
+### 14. Reuse / modify / create model (mandatory)
 
 Classify the design surface into:
 
@@ -384,7 +379,7 @@ Prefer repository-grounded reuse over speculative net-new construction.
 
 If the plan implies a seam or capability that does not actually exist, say so explicitly.
 
-### 15. Manifest alignment check (MANDATORY)
+### 15. Manifest alignment check (mandatory)
 
 Validate the proposed design against the command manifest and artifact ownership model.
 
@@ -398,22 +393,22 @@ For each affected command or phase, determine:
 
 If manifest alignment is unclear, record that as a blocking design issue rather than leaving it implicit.
 
-### 16. Architecture Flow delta (MANDATORY)
+### 16. Architecture Flow delta (mandatory)
 
 If `plan.md` already contains an Architecture Flow, sketch must explicitly state one of:
 
-- **No Architecture Flow delta**, or
-- **Architecture Flow refined**
+- **No Architecture Flow delta** — the plan-level flow remains correct and only implementation detail is added, or
+- **Architecture Flow refined** — sketch adds implementation-relevant boundaries, trust edges, async return paths, operator boundaries, state authority details, or execution seams.
 
-If refined, record only the implementation-relevant delta:
+If refined, record the delta clearly:
 
 - what nodes/edges/boundaries were added,
 - why they are needed at LLD level,
 - what tasking and implementation must preserve.
 
-Do not recreate the full plan-level Architecture Flow.
+Do not silently diverge from the plan’s Architecture Flow.
 
-### 17. Component and boundary design (MANDATORY)
+### 17. Component and boundary design (mandatory)
 
 Define the major components/modules involved in the solution.
 
@@ -428,7 +423,7 @@ For each component or boundary, record:
 
 The goal is to make the construction path mechanically visible to tasking.
 
-### 18. Interface, symbol, and contract design (MANDATORY)
+### 18. Interface, symbol, and contract design (mandatory)
 
 Define the public interfaces and symbol boundaries that the solution requires.
 
@@ -447,7 +442,7 @@ Signatures are required before task generation for new public classes, functions
 
 Do not defer public contract shape to implementation.
 
-### 19. State / lifecycle / failure model (MANDATORY)
+### 19. State / lifecycle / failure model (mandatory)
 
 Where applicable, define:
 
@@ -464,7 +459,7 @@ Where applicable, define:
 
 If the feature has no lifecycle or recovery complexity, state that explicitly.
 
-### 20. Non-functional design implications (MANDATORY)
+### 20. Non-functional design implications (mandatory)
 
 Record only the non-functional requirements that materially shape the design, such as:
 
@@ -478,7 +473,7 @@ Record only the non-functional requirements that materially shape the design, su
 
 Do not restate broad plan-level NFRs unless they materially alter the design.
 
-### 21. Human-task and operator boundaries (MANDATORY)
+### 21. Human-task and operator boundaries (mandatory)
 
 Identify where the design inherently requires human action, operator approval, or manual intervention.
 
@@ -493,7 +488,7 @@ For each such boundary, record:
 
 This section exists so `/speckit.tasking` does not have to infer `[H]` placement from vague prose.
 
-### 22. Verification strategy (MANDATORY)
+### 22. Verification strategy (mandatory)
 
 Define the verification intent that tasking must preserve.
 
@@ -507,7 +502,7 @@ This is not acceptance-test generation. It is a design-level statement of what l
 - regression-sensitive areas,
 - deterministic pass/fail oracles where known.
 
-### 23. Domain review by touched surface (MANDATORY)
+### 23. Domain review by touched surface (mandatory)
 
 Determine touched domains from the actual design, not only from story labels.
 
@@ -530,7 +525,7 @@ For each touched domain, read **core principles**, **best practices**, and any s
 
 Do not run task-level subchecklists here.
 
-### 24. LLD decision log (MANDATORY)
+### 24. LLD decision log (mandatory)
 
 Add a structured decision log to distinguish what is settled from what is still provisional.
 
@@ -551,7 +546,9 @@ For each entry, record:
 - downstream implication,
 - whether tasking may proceed on it.
 
-### 25. Design gaps and repo contradictions (MANDATORY)
+Do not collapse all uncertainty into a generic risks section.
+
+### 25. Design gaps and repo contradictions (mandatory)
 
 Record only:
 
@@ -562,7 +559,7 @@ Record only:
 
 Do not re-run broad plan review here.
 
-### 26. Design-to-tasking contract (MANDATORY)
+### 26. Design-to-tasking contract (mandatory)
 
 Before finalizing `sketch.md`, define the explicit contract that `/speckit.tasking` must follow.
 
@@ -575,7 +572,11 @@ The contract must state:
 - acceptance tests must derive from the verification intent and acceptance traceability defined in sketch,
 - large-point tasks that require later breakdown must still preserve the originating design slice and safety invariants.
 
-### 27. Define decomposition-ready design slices (MANDATORY)
+### 27. Define decomposition-ready design slices (mandatory)
+
+Define the logical implementation slices that `/speckit.tasking` should convert into executable tasks.
+
+These are **not tasks** yet.
 
 Each design slice must include:
 
@@ -591,7 +592,7 @@ Each design slice must include:
 - dependency relationship to other slices,
 - likely verification or regression concern.
 
-Do not use line numbers as part of the stable contract.
+These slices are the primary handoff to tasking.
 
 ### 28. Generate `sketch.md`
 

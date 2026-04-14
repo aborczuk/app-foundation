@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from pipeline_driver_contracts import parse_step_result, render_status_lines
-from pipeline_driver_state import resolve_phase_state
+from pipeline_driver_state import advance_phase, resolve_phase_state
 
 
 def build_correlation_id(
@@ -792,7 +792,7 @@ def run_generative_handoff(
             "ok": True,
             "exit_code": 0,
             "correlation_id": correlation_id,
-            "next_phase": phase,
+            "next_phase": advance_phase(phase),
             "gate": None,
             "reasons": [],
             "error_code": None,
@@ -897,7 +897,7 @@ def run_generative_handoff(
         "ok": True,
         "exit_code": 0,
         "correlation_id": correlation_id,
-        "next_phase": phase,
+        "next_phase": advance_phase(phase),
         "gate": None,
         "reasons": [],
         "error_code": None,
@@ -1152,7 +1152,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "ok": True,
             "exit_code": 0,
             "correlation_id": correlation_id,
-            "next_phase": phase_state["phase"],
+            "next_phase": advance_phase(phase_state["phase"]),
             "gate": None,
             "reasons": [],
             "error_code": None,
@@ -1264,10 +1264,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         args.feature_id,
                         pipeline_state={"phase": args.phase, "dry_run": False},
                     )
-                    resolved_next_phase = phase_state.get("phase")
-                    if not isinstance(resolved_next_phase, str) or not resolved_next_phase:
-                        resolved_next_phase = args.phase
-                    step_result["next_phase"] = resolved_next_phase
+                    resolved_current_phase = phase_state.get("phase")
+                    if not isinstance(resolved_current_phase, str) or not resolved_current_phase:
+                        resolved_current_phase = args.phase
+                    step_result["next_phase"] = advance_phase(resolved_current_phase)
                     step_result["pipeline_event"] = append_result.get("event")
                 step_result["artifact_validation"] = {
                     "ok": True,

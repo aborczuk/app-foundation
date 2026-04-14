@@ -9,7 +9,7 @@
 
 manifest:
   version: "1.1.1"
-  updated_utc: "2026-04-11T00:00:00Z"
+  updated_utc: "2026-04-13T00:00:00Z"
   ledger_sync_policy:
     - "If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any emitted event contract changes, update this manifest in the same PR."
     - "On every ledger-contract change, bump manifest.version and update updated_utc."
@@ -83,7 +83,7 @@ commands:
       - "scripts/pipeline_ledger.py"
     artifacts:
       - output_path: "${FEATURE_DIR}/research.md"
-        template: "research-template.md"
+        template: "research-template-compact.md"
     emits:
       - event: research_completed
         required_fields: []
@@ -123,7 +123,10 @@ commands:
     scripts:
       - ".specify/scripts/bash/setup-plan.sh"
       - "scripts/pipeline_ledger.py"
-    artifacts: []
+    artifacts:
+      - output_path: "${FEATURE_DIR}/planreview.md"
+        template: "plan-review-template.md"
+        consumed_by: [speckit.feasibilityspike, speckit.sketch, speckit.analyze]
     emits:
       - event: planreview_completed
         required_fields: [fq_count, questions_asked]
@@ -143,18 +146,6 @@ commands:
         required_fields: [spike_artifact, fq_count]
       - event: feasibility_spike_failed
         required_fields: [failed_fq]
-
-  speckit.tasks:
-    description: "Generate actionable, dependency-ordered tasks.md for the feature"
-    mode: legacy
-    scripts:
-      - ".specify/scripts/bash/check-prerequisites.sh"
-      - ".specify/scripts/pipeline-scaffold.py"
-      - "scripts/speckit_tasks_gate.py"
-    artifacts:
-      - output_path: "${FEATURE_DIR}/tasks.md"
-        template: "tasks-template.md"
-    emits: []
 
   speckit.tasking:
     description: "Decompose an approved sketch.md into tasks.md, then perform estimate/breakdown stabilization and generate HUDs + acceptance tests"

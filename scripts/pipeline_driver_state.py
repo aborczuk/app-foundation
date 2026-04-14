@@ -30,6 +30,19 @@ EVENT_TO_PHASE: dict[str, str] = {
     "feature_closed": "closed",
 }
 
+PHASE_TRANSITIONS: dict[str, str] = {
+    "specify": "research",
+    "research": "plan",
+    "plan": "solution",
+    "solution": "implement",
+    "implement": "closed",
+}
+
+
+def advance_phase(current_phase: str) -> str:
+    """Return the next pipeline phase after current_phase."""
+    return PHASE_TRANSITIONS.get(current_phase, current_phase)
+
 REQUIRED_ARTIFACTS_BY_EVENT: dict[str, tuple[str, ...]] = {
     "plan_approved": ("plan.md",),
     "solution_approved": ("tasks.md", "estimates.md"),
