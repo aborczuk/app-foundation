@@ -1,2 +1,10 @@
 {"event": "backlog_registered", "feature_id": "020", "actor": "extraction", "timestamp_utc": "2026-04-08T00:00:00Z"}
 {"actor": "andreborczuk", "details": "Spec updated for deterministic pipeline driver orchestration with compact parsing contract.", "event": "backlog_registered", "feature_id": "019", "phase": "spec", "timestamp_utc": "2026-04-09T16:34:18.788347Z"}
+{"actor": "codex", "details": "Registered new spec for pipeline auto-chaining", "event": "backlog_registered", "feature_id": "021", "phase": "spec", "timestamp_utc": "2026-04-14T02:04:44.776490Z"}
+{"actor": "codex", "details": "Clarified embedding input to use full code body, docstring, and signature", "event": "spec_clarified", "feature_id": "020", "phase": "spec", "timestamp_utc": "2026-04-14T02:14:04.164398Z"}
+{"actor": "codex", "details": "Clarified default automated update trigger to use watchdog filesystem watcher, with post-commit fallback", "event": "spec_clarified", "feature_id": "020", "phase": "spec", "timestamp_utc": "2026-04-14T02:17:05.369200Z"}
+{"actor": "codex", "details": "Clarified persistence to use on-disk vector database storage at a stable local path", "event": "spec_clarified", "feature_id": "020", "phase": "spec", "timestamp_utc": "2026-04-14T02:17:51.442002Z"}
+{"actor": "codex", "event": "research_completed", "feature_id": "020", "phase": "spec", "timestamp_utc": "2026-04-14T02:27:46.034807Z"}
+{"actor": "codex", "details": "Plan artifacts filled from spec and research; ready for review", "event": "plan_started", "feature_id": "020", "phase": "plan", "timestamp_utc": "2026-04-14T03:20:58.165122Z"}
+{"actor": "codex", "details": "Plan review completed; all feasibility questions resolved in plan.md", "event": "planreview_completed", "feature_id": "020", "fq_count": 0, "phase": "plan", "questions_asked": 3, "timestamp_utc": "2026-04-14T03:33:37.585460Z"}
+{"actor": "codex", "details": "Plan approved after planreview; no feasibility spike required", "event": "plan_approved", "feasibility_required": "false", "feature_id": "020", "phase": "plan", "timestamp_utc": "2026-04-14T03:33:42.465451Z"}

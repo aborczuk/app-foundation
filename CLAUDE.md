@@ -93,6 +93,10 @@ microservice or agent is compromised.
 #### Security Details
 Each of the sub-clauses MUST be verified individually in the Constitution Check
 
+### IV. Verification First (NON-NEGOTIABLE)
+Code changes and markdown-process changes MUST be backed by deterministic verification before
+they are treated as complete.
+
 ## Governance Sources of Truth (READ FIRST)
 - Human-auditable process is mandatory: optimize for traceability, not speed.
 - No ad hoc work: every change must enter the speckit pipeline and ledgers.
@@ -257,5 +261,9 @@ Use this workflow:
 
 Full-file reads for large code files are disallowed unless the user explicitly requests full contents.
 In Claude Code, this is enforced by `.claude/settings.json` `PreToolUse` hooks.
+
+### Token efficiency
+
+After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
 
 <!-- MANUAL ADDITIONS END -->

@@ -7,6 +7,31 @@ Append new entries here (not to `constitution.md`) whenever the constitution is 
 
 ---
 
+## 2.3.4 (2026-04-13)
+
+**Version change**: 2.3.3 → 2.3.4 (PATCH — Verification First principle + testing-first workflow requirement)
+
+### Summary
+
+- Added a new constitution principle requiring deterministic verification for code and markdown-process changes.
+- Made test-first workflow changes explicit: markdown command docs, templates, scaffold scripts, and pipeline scripts now require an accompanying smoke test or deterministic gate update.
+- Clarified that code changes are not complete until relevant automated verification passes.
+
+### Files updated
+
+| File | Status |
+|------|--------|
+| `constitution.md` | ✅ updated (new Verification First principle + version bump) |
+| `constitution-changelog.md` | ✅ updated (this entry) |
+
+### SYNC IMPACT REPORT
+
+- The constitution now treats verification as a first-class governance requirement, not just a workflow convention.
+- Markdown-process changes and code changes now both carry an explicit deterministic verification obligation.
+- Command-level smoke tests remain the enforcement mechanism, but the rule now lives at the constitutional level as well.
+
+---
+
 ## 2.3.3 (2026-04-08)
 
 **Version change**: 2.3.2 → 2.3.3 (PATCH — machine-readable pipeline source + reason-code routing + compact-first loading)

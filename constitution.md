@@ -45,6 +45,19 @@ and approved. The spec owns the WHAT. The plan owns the HOW. They must not contr
 
 Spec authoring rules and behavioral contract requirements are defined in `/speckit.specify`.
 
+### IV. Verification First (NON-NEGOTIABLE)
+Changes to code or markdown-based process artifacts MUST be backed by deterministic verification
+before they are treated as complete. This includes command docs, templates, scaffold scripts,
+pipeline scripts, and feature code.
+
+- **Test-first workflow changes**: If a change alters a markdown process, command contract,
+  template, scaffold, or deterministic gate, update or add the corresponding smoke test before
+  relying on the change.
+- **Code changes require validation**: Changes to code MUST include the relevant automated test,
+  smoke test, or deterministic gate that proves the change works as intended.
+- **Process completeness**: A change is not complete until the relevant deterministic test or
+  smoke test passes for the updated behavior.
+
 ## Quality Gates
 
 Use deterministic scripts for entry gates; avoid manual counting.
@@ -113,4 +126,4 @@ agent processes must comply with these principles.
 Strategic governance principles (Human-First, Planning Behavior, Security First) are maintained
 in `CLAUDE.md` under **Governing Principles**.
 
-**Version**: 2.3.3 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-08 (Machine-readable pipeline matrix + reason-code routing + compact-first loading)
+**Version**: 2.3.4 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-13 (Verification First principle + testing-first workflow requirement for code and markdown-process changes)

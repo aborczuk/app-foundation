@@ -1,0 +1,189 @@
+## Canonical Phase Execution Model
+
+Every pipeline phase follows the same execution model unless explicitly exempted.
+
+### Purpose
+
+A phase is not just a prompt. It is a governed execution unit with a stable contract.
+
+Each phase should be understood as:
+
+- a **Phase Contract** — the execution contract for the phase itself
+- one or more **Artifact Contracts** — the structural contracts for the artifacts the phase owns
+
+This model exists to keep orchestration deterministic, reduce repeated LLM context load, and make downstream handoffs reliable.
+
+---
+
+## Phase Contract
+
+A **Phase Contract** defines how a pipeline phase runs.
+
+Each phase should specify:
+
+- **Purpose** — what the phase is for
+- **Prerequisites / Gates** — what must be true before the phase can run
+- **Inputs** — which upstream artifacts and context sources it consumes
+- **Owned Artifacts** — which files it is responsible for producing or updating
+- **Template / Scaffold Source** — which template and scaffold mechanism define the initial artifact shape
+- **Context Extraction** — which deterministic scripts gather or normalize inputs before the LLM step
+- **LLM Synthesis Scope** — what interpretive or judgment-heavy work the LLM is responsible for
+- **Validation** — which deterministic checks must pass before the phase is considered complete
+- **Events** — which ledger events the phase emits
+- **Handoffs** — which downstream phases are allowed to consume the result
+- **Completion Invariants** — what must be true if the phase is considered complete
+
+A phase is complete only when its validation passes and its completion event is emitted.
+
+---
+
+## Artifact Contract
+
+An **Artifact Contract** defines the required structure of a phase-owned artifact.
+
+Each artifact contract should specify:
+
+- **Artifact Path**
+- **Owning Phase**
+- **Template**
+- **Required Sections**
+- **Section Order** where important
+- **Required Tables / Fields**
+- **Allowed Status Values / Controlled Vocabulary**
+- **Downstream Consumers**
+- **Structural Invariants** required for safe downstream use
+
+Artifact contracts should be validated deterministically rather than enforced only through prompt prose.
+
+---
+
+## Standard Phase Flow
+
+Each phase should follow this sequence:
+
+1. **Orchestration**
+   - Run prerequisites and hard-block gates
+   - Resolve input/output paths
+   - Decide whether the phase may proceed
+
+2. **Context Extraction**
+   - Run deterministic helper scripts
+   - Gather and normalize repo, manifest, artifact, or codegraph facts
+   - Reduce what the LLM must rediscover
+
+3. **Artifact Scaffolding**
+   - Generate the owned artifact(s) from the canonical template(s)
+   - Create the structural shell before synthesis
+
+4. **LLM Synthesis**
+   - Perform the interpretive work only
+   - Fill the scaffolded artifact using normalized inputs
+   - Make architectural, design, sequencing, or review judgments as required by the phase
+
+5. **Artifact Validation**
+   - Validate the generated artifact against its Artifact Contract
+   - Fail if structure, required sections, or controlled vocabularies are invalid
+
+6. **Event Emission and Handoff**
+   - Emit the phase event(s)
+   - Permit handoff only if validation passed
+
+Short form:
+
+**orchestrate -> extract -> scaffold -> synthesize -> validate -> emit/handoff**
+
+---
+
+## Separation of Responsibilities
+
+### Deterministic scripts should own
+
+- prerequisite checks
+- path resolution
+- artifact scaffolding
+- manifest lookups
+- codegraph/context extraction
+- required section validation
+- required table/field validation
+- controlled vocabulary validation
+- ledger append mechanics
+- format gates and other deterministic checks
+
+### The LLM should own
+
+- architecture recognition
+- tradeoff reasoning
+- narrative synthesis
+- construction strategy
+- design judgment
+- semantic review
+- task grouping/ordering where judgment is required
+- ambiguity resolution that cannot be handled deterministically
+
+### Commands should own
+
+- phase intent
+- decision boundaries
+- routing/orchestration
+- when to block
+- what the LLM is allowed to decide
+- what downstream phases may rely on
+
+Commands should not carry large amounts of repeated structural schema when that schema can be enforced by templates, manifest metadata, or validators.
+
+---
+
+## Canonical Pattern Per Phase
+
+A well-formed phase should usually have:
+
+- **one orchestration command**
+- **zero or more extraction/helper scripts**
+- **one scaffold/template path**
+- **one focused LLM synthesis step**
+- **one validator step**
+- **one or more emitted events**
+
+Not every phase needs many scripts, but no phase should force the LLM to do deterministic extraction, scaffolding, and structural validation in the same prompt if those can be offloaded.
+
+---
+
+## Recommended Refactor Principle
+
+When a command repeatedly explains:
+
+- required headings
+- required tables
+- allowed status values
+- allowed category values
+- required artifact fields
+- repeated handoff structure
+
+those rules should be pushed down into:
+
+- manifest metadata,
+- artifact templates,
+- or deterministic validator scripts
+
+rather than restated as prompt prose.
+
+Prompt prose should primarily express:
+
+- what the phase is deciding
+- what constitutes a blocking issue
+- how to interpret ambiguous situations
+- what downstream contracts must be preserved
+
+---
+
+## Expected Outcome
+
+Using this model, each phase becomes:
+
+- easier to reason about
+- cheaper in token/context load
+- less repetitive
+- more deterministic
+- safer for downstream consumption
+
+This model is the default execution contract for pipeline phases unless a phase explicitly documents why it deviates.
