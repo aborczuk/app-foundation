@@ -105,7 +105,7 @@
 
 ### Tests for Recovery Coverage
 
-- [ ] T014 [P] Add the dedicated recovery integration suite in `tests/integration/test_codegraph_recovery.py` covering stale symbol queries, lock contention, local edit invalidation, and refresh/rebuild behavior for `022-codegraph-hardening` — `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes`
+- [X] T014 [P] Add the dedicated recovery integration suite in `tests/integration/test_codegraph_recovery.py` covering stale symbol queries, lock contention, local edit invalidation, and refresh/rebuild behavior for `022-codegraph-hardening` — `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes`
 
 **Checkpoint**: The recovery suite exists and proves the feature fails gracefully until the graph is refreshed or rebuilt.
 
