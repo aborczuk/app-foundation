@@ -18,8 +18,8 @@
 
 **Purpose**: Establish the repo-level readiness contract and the new shared health seam.
 
-- [ ] T000 Record the external ingress / runtime readiness gate as N/A with rationale in `specs/022-codegraph-hardening/tasks.md` and keep the plan's local-only readiness stance explicit — `specs/022-codegraph-hardening/plan.md:External Ingress + Runtime Readiness Gate`
-- [ ] T001 Create `src/mcp_codebase/health.py` with the shared graph-readiness domain models and classifier seam (`GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint`, `classify_graph_health`) — `src/mcp_codebase/health.py:classify_graph_health`
+- [X] T000 Record the external ingress / runtime readiness gate as N/A with rationale in `specs/022-codegraph-hardening/tasks.md` and keep the plan's local-only readiness stance explicit — `specs/022-codegraph-hardening/plan.md:External Ingress + Runtime Readiness Gate`
+- [X] T001 Create `src/mcp_codebase/health.py` with the shared graph-readiness domain models and classifier seam (`GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint`, `classify_graph_health`) — `src/mcp_codebase/health.py:classify_graph_health`
 
 **Checkpoint**: The shared health seam exists and the feature's readiness gate is explicitly recorded as local-only / N/A for ingress.
 
@@ -27,9 +27,9 @@
 
 **Purpose**: Create the adapters that will expose the shared health contract to agents and maintainers.
 
-- [ ] T002 Add the MCP health tool registration to `src/mcp_codebase/server.py` and serialize the shared health result there with run-scoped JSONL logging — `src/mcp_codebase/server.py:_register_tools`
-- [ ] T003 Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.sh` wrapper for a direct operator-facing health command — `src/mcp_codebase/doctor.py:main`
-- [ ] T004 Add structured telemetry fields for health checks (`run_id`, recovery hint id, status classification, latency) in `src/mcp_codebase/health.py` and `src/mcp_codebase/server.py` — `src/mcp_codebase/server.py:_setup_logging`
+- [X] T002 Add the MCP health tool registration to `src/mcp_codebase/server.py` and serialize the shared health result there with run-scoped JSONL logging — `src/mcp_codebase/server.py:_register_tools`
+- [X] T003 Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.sh` wrapper for a direct operator-facing health command — `src/mcp_codebase/doctor.py:main`
+- [X] T004 Add structured telemetry fields for health checks (`run_id`, recovery hint id, status classification, latency) in `src/mcp_codebase/health.py` and `src/mcp_codebase/server.py` — `src/mcp_codebase/server.py:_setup_logging`
 
 **Checkpoint**: A single health vocabulary exists for both the MCP server and the new doctor command.
 
@@ -41,12 +41,12 @@
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Add unit tests for healthy/stale/locked/unavailable classification and recovery hint selection in `tests/unit/test_health.py` — `tests/unit/test_health.py:test_classify_graph_health`
-- [ ] T006 [P] [US1] Add integration coverage for the doctor command and the MCP health tool contract in `tests/integration/test_codegraph_health.py` — `tests/integration/test_codegraph_health.py:test_doctor_and_mcp_health_contract`
+- [X] T005 [P] [US1] Add unit tests for healthy/stale/locked/unavailable classification and recovery hint selection in `tests/unit/test_health.py` — `tests/unit/test_health.py:test_classify_graph_health`
+- [X] T006 [P] [US1] Add integration coverage for the doctor command and the MCP health tool contract in `tests/integration/test_codegraph_health.py` — `tests/integration/test_codegraph_health.py:test_doctor_and_mcp_health_contract`
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Implement the explicit recovery-hint mapping and fallback-to-files behavior in `src/mcp_codebase/health.py` so the health result always names retry/refresh/fallback guidance — `src/mcp_codebase/health.py:build_recovery_hint`
+- [X] T007 [US1] Implement the explicit recovery-hint mapping and fallback-to-files behavior in `src/mcp_codebase/health.py` so the health result always names retry/refresh/fallback guidance — `src/mcp_codebase/health.py:build_recovery_hint`
 
 **Checkpoint**: Health checks are deterministic and return actionable status plus recovery guidance.
 
@@ -58,11 +58,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T008 [P] [US2] Add regression tests for lock contention, unreadable graph state, and query-failure recovery hints in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes`
+- [X] T008 [P] [US2] Add regression tests for lock contention, unreadable graph state, and query-failure recovery hints in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes`
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Thread the recovery hint into the MCP adapter and CLI doctor adapter so the agent-facing and operator-facing outputs say the same next action — `src/mcp_codebase/server.py:get_graph_health`
+- [X] T009 [US2] Thread the recovery hint into the MCP adapter and CLI doctor adapter so the agent-facing and operator-facing outputs say the same next action — `src/mcp_codebase/server.py:get_graph_health`
 
 **Checkpoint**: Failure modes are distinguishable and the same recovery guidance is visible to both agents and maintainers.
 
@@ -74,11 +74,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T010 [P] [US3] Add failure-mode coverage proving last-known-good graph preservation after refresh failure in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_last_known_good_snapshot_preserved`
+- [X] T010 [P] [US3] Add failure-mode coverage proving last-known-good graph preservation after refresh failure in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_last_known_good_snapshot_preserved`
 
 ### Implementation for User Story 3
 
-- [ ] T011 [US3] Update `specs/022-codegraph-hardening/quickstart.md` with the doctor command, the safe refresh / rebuild flow, and the smoke-test instructions — `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
+- [X] T011 [US3] Update `specs/022-codegraph-hardening/quickstart.md` with the doctor command, the safe refresh / rebuild flow, and the smoke-test instructions — `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
 
 **Checkpoint**: Safe recovery remains atomic, the operator path is documented, and large-graph health checks have an explicit timeout budget regression.
 
@@ -86,8 +86,8 @@
 
 **Purpose**: Align docs and smoke checks with the new health surface.
 
-- [ ] T012 [P] Add a deterministic smoke validation note for `scripts/validate_doc_graph.sh` and the new doctor flow in the feature docs — `scripts/validate_doc_graph.sh:main`
-- [ ] T013 [P] Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_large_graph_timeout_budget`
+- [X] T012 [P] Add a deterministic smoke validation note for `scripts/validate_doc_graph.sh` and the new doctor flow in the feature docs — `scripts/validate_doc_graph.sh:main`
+- [X] T013 [P] Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_large_graph_timeout_budget`
 
 **Checkpoint**: The feature has a documented smoke path and the repo-level smoke gate remains usable.
 
