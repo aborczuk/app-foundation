@@ -177,7 +177,7 @@ Rules:
 Run:
 
 ```bash
-python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
+      uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
 ```
 
 If non-zero exit, fix and re-run before continuing.

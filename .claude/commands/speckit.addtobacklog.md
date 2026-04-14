@@ -1,5 +1,5 @@
 ---
-description: Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, and auto-sync spec.md when scope expands.
+description: Run the add-to-backlog process to classify ad-hoc work against the current feature first, then route it to the current feature or the universal backlog as appropriate, with full architectural fit check, estimate it, and auto-sync spec.md when scope expands.
 ---
 
 ## User Input
@@ -18,8 +18,13 @@ Use this when you need a change done **now** without running the full specify â†
 
 ## Outline
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
-   - If tasks.md does not exist, **STOP** and ask: "No tasks.md found. Do you want me to create one, or should we run `/speckit.solution` first?"
+1. **Setup**: Run the add-to-backlog classification flow first by inspecting the current feature with `.specify/scripts/bash/check-prerequisites.sh --json --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
+   - The architectural fit check in step 3 determines whether the request belongs on the current feature's `tasks.md` or must fall back to the universal backlog.
+   - If the request is clearly related to the current feature after the architectural fit check, continue using that feature's `tasks.md`.
+   - If the request is not related to the current feature, rerun the same prerequisites check with `SPECIFY_FEATURE=000-universal-backlog` and use the universal backlog.
+   - The universal backlog lives at `specs/000-universal-backlog/` and is the fallback destination for unrelated ad-hoc backlog intake.
+   - If the current feature does not have `tasks.md`, rerun the same prerequisites check with `SPECIFY_FEATURE=000-universal-backlog` and continue with the rest of this command using the universal backlog.
+   - `tasks.md` is never a hard gate for add-to-backlog intake; missing feature-local tasks automatically route to the universal backlog.
 
 2. **Load context**:
    - **Required**: `plan.md` â€” tech stack, architecture, module boundaries, file structure
@@ -27,7 +32,7 @@ Use this when you need a change done **now** without running the full specify â†
    - **If exists**: `specs/001-auto-options-trader/behavior-map.md` â€” runtime behavior map
    - **If exists**: `data-model.md`, `contracts/`, `research.md`
    - **Codebase tree**: Read `src/` directory structure to understand actual module layout
-   - **Current tasks**: Read `tasks.md` to understand existing task IDs, phases, and placement
+   - **Current tasks**: If present, read `tasks.md` to understand existing task IDs, phases, and placement; if absent, continue with the universal backlog fallback
 
 3. **Architectural fit check** â€” this is a hard gate:
    - Does the change fit within the existing architecture as defined in `plan.md` and `spec.md`?
@@ -113,10 +118,10 @@ Use this when you need a change done **now** without running the full specify â†
      - `solution_approved`: `--task-count "<added_task_count>" --story-count "<affected_story_count_or_1>" --estimate-points "<added_task_points_total>"`
      - `analysis_completed`: `--critical-count 0`
      - `e2e_generated`: `--e2e-artifact "projected-by-addtobacklog"`
-   - Use `python scripts/pipeline_ledger.py assert-phase-complete` to skip events already present and keep projection idempotent.
+    - Use `uv run python scripts/pipeline_ledger.py assert-phase-complete` to skip events already present and keep projection idempotent.
    - Every append uses details indicating triage projection context:
      ```bash
-     python scripts/pipeline_ledger.py append \
+      uv run python scripts/pipeline_ledger.py append \
        --feature-id "<feature_id>" \
        --phase "<phase_label>" \
        --event "<event_name>" \

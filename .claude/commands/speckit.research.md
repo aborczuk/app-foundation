@@ -24,7 +24,7 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
 ## Outline
 
 1. **Setup and scaffold first**:
-   - Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse the JSON output for `FEATURE_SPEC` and `FEATURE_DIR`.
+   - Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root and parse the JSON output for `FEATURE_SPEC` and `FEATURE_DIR`.
    - Read the spec file at `FEATURE_SPEC` once to extract the feature's Functional Requirements list.
    - Cache those FR IDs and reuse the same list across every search pass in this command.
    - Immediately run:

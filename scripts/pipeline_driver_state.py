@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import sys
 from typing import Any, Mapping
@@ -42,6 +43,19 @@ PHASE_TRANSITIONS: dict[str, str] = {
 def advance_phase(current_phase: str) -> str:
     """Return the next pipeline phase after current_phase."""
     return PHASE_TRANSITIONS.get(current_phase, current_phase)
+
+
+def _feature_id_candidates(feature_id: str) -> tuple[str, ...]:
+    """Return exact and backward-compatible feature-id candidates."""
+    normalized = feature_id.strip()
+    candidates = [normalized]
+    match = re.match(r"^(?P<prefix>\d+)(?:[-_].+)?$", normalized)
+    if match:
+        prefix = match.group("prefix")
+        if prefix and prefix != normalized:
+            candidates.append(prefix)
+    return tuple(dict.fromkeys(candidates))
+
 
 REQUIRED_ARTIFACTS_BY_EVENT: dict[str, tuple[str, ...]] = {
     "plan_approved": ("plan.md",),
@@ -269,6 +283,7 @@ def resolve_phase_state(
     event_count = 0
     approved_plan = False
     approved_solution = False
+    ledger_feature_id = feature_id
 
     resolved_feature_dir: Path | None = None
     if feature_dir is not None:
@@ -279,16 +294,28 @@ def resolve_phase_state(
     try:
         pipeline_ledger = _load_pipeline_ledger_module()
         all_events = pipeline_ledger.read_events(Path(ledger_path))
+        ledger_feature_id = feature_id
         feature_events = [
             event for event in all_events if str(event.get("feature_id", "")).strip() == feature_id
         ]
+        if not feature_events:
+            for candidate in _feature_id_candidates(feature_id)[1:]:
+                candidate_events = [
+                    event
+                    for event in all_events
+                    if str(event.get("feature_id", "")).strip() == candidate
+                ]
+                if candidate_events:
+                    ledger_feature_id = candidate
+                    feature_events = candidate_events
+                    break
         event_count = len(feature_events)
 
         if feature_events:
             sequence_errors, feature_states = pipeline_ledger.validate_sequence(feature_events)
             if sequence_errors:
                 drift_reasons.append("ledger_sequence_invalid")
-            feature_state = feature_states.get(feature_id)
+            feature_state = feature_states.get(ledger_feature_id)
             if feature_state is not None:
                 approved_plan = bool(getattr(feature_state, "approved_plan", False))
                 approved_solution = bool(getattr(feature_state, "approved_solution", False))
@@ -324,6 +351,7 @@ def resolve_phase_state(
     drift_detected = bool(drift_reasons) or bool(state.get("drift_detected", False))
     return {
         "feature_id": feature_id,
+        "ledger_feature_id": ledger_feature_id,
         "phase": phase,
         "last_event": last_event,
         "ledger_event_count": event_count,

@@ -52,9 +52,16 @@ uv run python -m src.mcp_trello
 uv run python -m src.mcp_clickup
 
 # Pipeline status
-# If uv inherits a bad cache path, override it locally as shown below.
-# Use the current git branch name as the feature id.
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python scripts/pipeline_driver.py --feature-id "$(git branch --show-current)" --dry-run --json
+# Use the current git branch name as the feature id and the repo-local cache.
+UV_CACHE_DIR="$(git rev-parse --show-toplevel)/.uv-cache" uv run python scripts/pipeline_driver.py --feature-id "$(git branch --show-current)" --json
+
+# Repo-local Python scripts
+# Prefer `uv run python` for any script or module that belongs to this repo.
+# Bare `python` is not guaranteed to exist, and `python3` is reserved for host-level compatibility fallbacks.
+
+# Ad-hoc backlog intake
+# `speckit.addtobacklog` checks whether the change belongs to the current feature first; unrelated work or missing feature-local tasks fall back to the universal backlog feature.
+SPECIFY_FEATURE=000-universal-backlog .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
 
 # Code quality
 ruff check . && ruff format . --check
@@ -143,18 +150,18 @@ Each skill documents ledger usage in its own command file (`.claude/commands/spe
 **Never read `.speckit/*-ledger.jsonl` files directly.** All access routes through script subcommands only:
 
 **Pipeline Ledger** (`.speckit/pipeline-ledger.jsonl`) — feature-level phase transitions:
-- **Check if a phase is complete**: `python scripts/pipeline_ledger.py assert-phase-complete --feature-id <FEATURE_ID> --phase <PHASE_NAME>`
+- **Check if a phase is complete**: `uv run python scripts/pipeline_ledger.py assert-phase-complete --feature-id <FEATURE_ID> --phase <PHASE_NAME>`
   - Returns: Pass/Fail. Use this to gate entry into implementation.
-- **Record a phase event**: `python scripts/pipeline_ledger.py append --feature-id <FEATURE_ID> --event <EVENT_NAME> --actor <ACTOR>`
-- **Validate ledger syntax**: `python scripts/pipeline_ledger.py validate --feature-id <FEATURE_ID>`
-- **Other queries**: Run `python scripts/pipeline_ledger.py --help` to see all subcommands and valid event types.
+- **Record a phase event**: `uv run python scripts/pipeline_ledger.py append --feature-id <FEATURE_ID> --event <EVENT_NAME> --actor <ACTOR>`
+- **Validate ledger syntax**: `uv run python scripts/pipeline_ledger.py validate --feature-id <FEATURE_ID>`
+- **Other queries**: Run `uv run python scripts/pipeline_ledger.py --help` to see all subcommands and valid event types.
 
 **Task Ledger** (`.speckit/task-ledger.jsonl`) — per-task execution events:
-- **Check if a task can start**: `python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file <TASKS_FILE> --feature-id <FEATURE_ID> --task-id <TASK_ID> --actor <ACTOR>`
+- **Check if a task can start**: `uv run python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file <TASKS_FILE> --feature-id <FEATURE_ID> --task-id <TASK_ID> --actor <ACTOR>`
   - Returns: Pass/Fail. Use this before starting any task to verify dependencies are met.
-- **Record a task event**: `python scripts/task_ledger.py append --file .speckit/task-ledger.jsonl --feature-id <FEATURE_ID> --task-id <TASK_ID> --actor <ACTOR> --event <EVENT_NAME>`
-- **Validate ledger syntax**: `python scripts/task_ledger.py validate --file .speckit/task-ledger.jsonl`
-- **Other queries**: Run `python scripts/task_ledger.py --help` to see all subcommands and valid event types.
+- **Record a task event**: `uv run python scripts/task_ledger.py append --file .speckit/task-ledger.jsonl --feature-id <FEATURE_ID> --task-id <TASK_ID> --actor <ACTOR> --event <EVENT_NAME>`
+- **Validate ledger syntax**: `uv run python scripts/task_ledger.py validate --file .speckit/task-ledger.jsonl`
+- **Other queries**: Run `uv run python scripts/task_ledger.py --help` to see all subcommands and valid event types.
 
 **Why**: Ledgers are append-only, schema-enforced state machines. Direct reads bypass validation and schema checking. The script tools enforce event sequencing and state transitions safely. Use them.
 

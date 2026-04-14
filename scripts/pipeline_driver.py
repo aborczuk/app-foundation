@@ -17,6 +17,8 @@ from typing import Any, Mapping, Sequence
 from pipeline_driver_contracts import parse_step_result, render_status_lines
 from pipeline_driver_state import advance_phase, resolve_phase_state
 
+VALID_PIPELINE_PHASES = {"specify", "research", "plan", "solution", "implement", "closed"}
+
 
 def build_correlation_id(
     feature_id: str,
@@ -1024,11 +1026,15 @@ def append_pipeline_success_event(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run deterministic pipeline steps")
-    parser.add_argument("--feature-id", required=True, help="Feature id, e.g. 019")
+    parser.add_argument(
+        "--feature-id",
+        required=True,
+        help="Feature slug or id, e.g. 022-codegraph-hardening",
+    )
     parser.add_argument(
         "--phase",
-        default="setup",
-        help="Phase to execute, e.g. 'plan', 'sketch', 'implement'",
+        default=None,
+        help="Optional phase hint; defaults to the ledger-resolved current phase",
     )
     parser.add_argument(
         "--dry-run",
@@ -1118,27 +1124,99 @@ def validate_coverage_for_migration(
 def main(argv: Sequence[str] | None = None) -> int:
     """Orchestrate deterministic pipeline driver for feature phase execution."""
     args = _build_parser().parse_args(argv)
+    requested_feature_id = args.feature_id.strip() if isinstance(args.feature_id, str) else ""
+    if not requested_feature_id:
+        correlation_id = build_correlation_id("invalid_feature", "invalid_input")
+        step_result = {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "invalid_input",
+            "reasons": ["invalid_feature_id"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+        emit_human_status(step_result)
+        if args.output_json:
+            print(json.dumps({"feature_id": args.feature_id, "step_result": step_result}, sort_keys=True))
+        return 1
+
+    requested_phase = args.phase.strip() if isinstance(args.phase, str) and args.phase.strip() else None
 
     # 1. Resolve ledger-authoritative phase state
     phase_state = resolve_phase_state(
-        args.feature_id,
-        pipeline_state={"phase": args.phase, "dry_run": args.dry_run},
+        requested_feature_id,
+        pipeline_state={"phase": requested_phase or "", "dry_run": args.dry_run},
     )
-    correlation_id = build_correlation_id(args.feature_id, args.phase)
+    resolved_feature_id = phase_state.get("ledger_feature_id")
+    if not isinstance(resolved_feature_id, str) or not resolved_feature_id:
+        resolved_feature_id = requested_feature_id
+
+    current_phase = phase_state.get("phase")
+    if not isinstance(current_phase, str) or not current_phase:
+        current_phase = "unknown"
+
+    if requested_phase is not None and requested_phase not in VALID_PIPELINE_PHASES:
+        correlation_id = build_correlation_id(requested_feature_id, requested_phase)
+        step_result = {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "invalid_input",
+            "reasons": ["invalid_phase"],
+            "error_code": None,
+            "next_phase": current_phase if current_phase != "unknown" else None,
+            "debug_path": None,
+        }
+        emit_human_status(step_result)
+        if args.output_json:
+            print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
+        return 1
+
+    effective_phase = current_phase if requested_phase is None else requested_phase
+    correlation_id = build_correlation_id(requested_feature_id, effective_phase)
+
+    if requested_phase is not None and current_phase != "unknown" and requested_phase != current_phase:
+        step_result = {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "phase_drift",
+            "reasons": ["requested_phase_mismatch"],
+            "error_code": None,
+            "next_phase": current_phase,
+            "debug_path": None,
+        }
+        emit_human_status(step_result)
+        if args.output_json:
+            print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
+        return 1
 
     # 2. Blocked by drift — surface immediately, no execution
     if phase_state.get("blocked") and not args.dry_run:
         drift_reasons = phase_state.get("drift_reasons") or ["phase_hint_conflicts_with_ledger"]
+        blocked_reasons: list[str] = []
+        if "ledger_sequence_invalid" in drift_reasons:
+            blocked_reasons.append("ledger_sequence_invalid")
+        if any(str(reason).startswith("missing_artifact:") for reason in drift_reasons):
+            blocked_reasons.append("missing_required_artifact")
+        if not blocked_reasons:
+            blocked_reasons.append("ledger_sequence_invalid")
         step_result: dict[str, Any] = {
             "schema_version": "1.0.0",
             "ok": False,
             "exit_code": 1,
             "correlation_id": correlation_id,
             "gate": "phase_drift",
-            "reasons": drift_reasons,
+            "reasons": blocked_reasons,
             "error_code": None,
-            "next_phase": None,
+            "next_phase": current_phase if current_phase != "unknown" else None,
             "debug_path": None,
+            "drift_reasons": drift_reasons,
         }
         emit_human_status(step_result)
         if args.output_json:
@@ -1152,7 +1230,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "ok": True,
             "exit_code": 0,
             "correlation_id": correlation_id,
-            "next_phase": advance_phase(phase_state["phase"]),
+            "next_phase": advance_phase(current_phase),
             "gate": None,
             "reasons": [],
             "error_code": None,
@@ -1170,11 +1248,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     # 4. Resolve step mapping from manifest
-    mapping = resolve_step_mapping(args.phase, correlation_id=correlation_id)
+    mapping = resolve_step_mapping(effective_phase, correlation_id=correlation_id)
 
     # 5. Check approval breakpoint before execution
     approval_result = enforce_approval_breakpoint(
-        args.phase,
+        effective_phase,
         approval_token=args.approval_token,
         correlation_id=correlation_id,
     )
@@ -1205,8 +1283,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         handoff = mapping["handoff"]
         step_result = run_generative_handoff(
             handoff,
-            feature_id=args.feature_id,
-            phase=args.phase,
+            feature_id=resolved_feature_id,
+            phase=effective_phase,
             correlation_id=correlation_id,
             handoff_runner=args.handoff_runner,
         )
@@ -1243,8 +1321,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 step_result = validation_result
             else:
                 append_result = append_pipeline_success_event(
-                    feature_id=args.feature_id,
-                    phase=args.phase,
+                    feature_id=resolved_feature_id,
+                    phase=effective_phase,
                     command_id=mapping.get("command_id"),
                 )
                 if not append_result.get("ok"):
@@ -1261,12 +1339,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     }
                 else:
                     phase_state = resolve_phase_state(
-                        args.feature_id,
-                        pipeline_state={"phase": args.phase, "dry_run": False},
+                        resolved_feature_id,
+                        pipeline_state={"phase": effective_phase, "dry_run": False},
                     )
                     resolved_current_phase = phase_state.get("phase")
                     if not isinstance(resolved_current_phase, str) or not resolved_current_phase:
-                        resolved_current_phase = args.phase
+                        resolved_current_phase = effective_phase
                     step_result["next_phase"] = advance_phase(resolved_current_phase)
                     step_result["pipeline_event"] = append_result.get("event")
                 step_result["artifact_validation"] = {

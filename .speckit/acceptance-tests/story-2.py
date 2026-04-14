@@ -3,25 +3,23 @@ import subprocess
 from pathlib import Path
 
 
-def test_story2_compact_parsing_contract() -> None:
-    """US2: exit-code-first parsing with compact status contract."""
+def test_story2_agent_and_operator_outputs_match() -> None:
+    """US2: CLI and MCP health surfaces must agree on next action."""
     repo = Path(__file__).resolve().parents[2]
-    proc = subprocess.run(
+    doctor = subprocess.run(
         [
-            "python3",
-            "scripts/pipeline_driver.py",
-            "--feature-id",
-            "019",
-            "--dry-run",
-            "--phase",
-            "solution",
+            "bash",
+            "scripts/cgc_doctor.sh",
             "--json",
         ],
         cwd=repo,
         text=True,
         capture_output=True,
     )
-    assert proc.returncode == 0
-    payload = json.loads(proc.stdout)
-    assert payload["exit_code"] in (0, 1, 2)
-    assert "correlation_id" in payload
+    assert doctor.returncode == 0
+    doctor_payload = json.loads(doctor.stdout)
+    assert "status" in doctor_payload
+    assert "recovery_hint" in doctor_payload
+    assert doctor_payload["status"] in {"healthy", "stale", "locked", "unavailable"}
+    assert doctor_payload["recovery_hint"]
+    assert doctor_payload["recovery_hint"]["id"]

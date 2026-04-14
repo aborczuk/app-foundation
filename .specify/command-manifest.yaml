@@ -78,7 +78,7 @@ commands:
       mode: generative
       timeout_seconds: 240
     scripts:
-      - ".specify/scripts/bash/setup-plan.sh"
+      - ".specify/scripts/bash/check-prerequisites.sh"
       - ".specify/scripts/pipeline-scaffold.py"
       - "scripts/pipeline_ledger.py"
     artifacts:
@@ -300,7 +300,7 @@ commands:
     emits: []
 
   speckit.addtobacklog:
-    description: "Add an ad-hoc task to tasks.md with full architectural fit check, estimate it, auto-sync spec, and project prerequisite readiness events"
+    description: "Classify ad-hoc work against the current feature first, then route it to the current feature or universal backlog, with architectural fit check, estimate, spec sync when needed, and prerequisite readiness projection"
     mode: legacy
     scripts:
       - ".specify/scripts/bash/check-prerequisites.sh"

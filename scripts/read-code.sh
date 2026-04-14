@@ -48,6 +48,35 @@ init_codegraph_env() {
     export IGNORE_DIRS="${IGNORE_DIRS:-$IGNORE_DIRS_DEFAULT}"
 }
 
+codegraph_health_status() {
+    local project_root="${1:-$REPO_ROOT}"
+    local health_json status
+
+    if ! health_json="$(uv run --no-sync python -m src.mcp_codebase.doctor --json --project-root "$project_root" 2>/dev/null)"; then
+        echo "unavailable"
+        return 0
+    fi
+
+    status="$(python3 -c 'import json, sys; print(json.loads(sys.stdin.read()).get("status", "unavailable"))' <<<"$health_json" 2>/dev/null || true)"
+    if [[ -z "$status" ]]; then
+        status="unavailable"
+    fi
+    echo "$status"
+}
+
+codegraph_refresh_if_needed() {
+    local scope_path="${1:-$REPO_ROOT}"
+    local health_status
+
+    health_status="$(codegraph_health_status "$REPO_ROOT")"
+    if [[ "$health_status" == "stale" || "$health_status" == "unavailable" ]]; then
+        if [[ -x "$SCRIPT_DIR/cgc_safe_index.sh" ]]; then
+            echo "WARN: codegraph is $health_status; refreshing scoped index for $scope_path" >&2
+            "$SCRIPT_DIR/cgc_safe_index.sh" "$scope_path" >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
 codegraph_discover_or_fail() {
     local pattern="$1"
     local scope_path="${2:-$REPO_ROOT}"
@@ -63,6 +92,7 @@ codegraph_discover_or_fail() {
     fi
 
     init_codegraph_env
+    codegraph_refresh_if_needed "$scope_path"
 
     local output
     if ! output="$(uv run --no-sync cgc find pattern -- "$pattern" 2>&1)"; then

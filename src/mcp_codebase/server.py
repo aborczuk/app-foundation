@@ -1,7 +1,7 @@
 """FastMCP server for codebase-lsp.
 
-Registers get_type and get_diagnostics tools. Manages PyrightClient
-lifecycle and run-scoped structured logging.
+Registers get_type, get_diagnostics, and get_graph_health tools. Manages
+PyrightClient lifecycle and run-scoped structured logging.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from mcp.server.fastmcp import FastMCP
 
 from src.mcp_codebase import config
 from src.mcp_codebase.diag_tool import get_diagnostics_impl
+from src.mcp_codebase.health import classify_graph_health
 from src.mcp_codebase.pyright_client import PyrightClient
 from src.mcp_codebase.type_tool import get_type_impl
 
@@ -103,6 +104,27 @@ class CodebaseLSPServer:
                 file_path,
                 project_root=server_ref._project_root,
             )
+
+        @self.mcp.tool()
+        async def get_graph_health() -> dict:
+            """Return the current local CodeGraph readiness status."""
+
+            health = classify_graph_health(server_ref._project_root).to_dict()
+            recovery_hint = health.get("recovery_hint", {})
+            logger.info(
+                "codebase-lsp: graph health checked",
+                extra={
+                    "run_id": server_ref._run_id,
+                    "status": health.get("status"),
+                    "recovery_hint_id": (
+                        recovery_hint.get("id")
+                        if isinstance(recovery_hint, dict)
+                        else None
+                    ),
+                    "latency_ms": health.get("latency_ms"),
+                },
+            )
+            return health
 
     @property
     def _run_log_dir(self) -> Path:

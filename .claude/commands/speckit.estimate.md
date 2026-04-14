@@ -88,7 +88,7 @@ Execution steps:
 
 6. **Generate estimates.md** in FEATURE_DIR by pre-scaffolding from template:
 
-   1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.estimate --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+    1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.estimate --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
       - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.estimate owns
       - Copies `.specify/templates/estimates-template.md` to `$FEATURE_DIR/estimates.md`
       - Pre-structures the file with table headers and sections ready to fill

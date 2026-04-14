@@ -508,7 +508,7 @@ Report:
 To ensure deterministic template consistency, `/speckit.solutionreview` invokes the pipeline scaffold helper:
 
 ```bash
-python .specify/scripts/pipeline-scaffold.py speckit.solutionreview
+ uv run python .specify/scripts/pipeline-scaffold.py speckit.solutionreview
 ```
 
 This scaffold:

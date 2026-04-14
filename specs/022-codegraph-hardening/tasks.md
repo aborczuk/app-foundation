@@ -1,0 +1,149 @@
+# Tasks: CodeGraph Reliability Hardening
+
+**Input**: Design documents from `/specs/022-codegraph-hardening/`
+**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
+**Skills**: Invoke any workflow skills listed in plan.md `Implementation Skills` field before the tasks that depend on them (Constitution V: Reuse, VIII: Reuse Over Invention)
+
+**Tests**: The feature explicitly requires deterministic health, recovery, and smoke verification, so test tasks are included.
+
+**Organization**: Tasks are grouped by user story / build slice so each part of the graph-hardening flow can be implemented and verified independently.
+
+## Format: `[ID] [P?] [Story] Description — file:symbol`
+
+- **[P]**: Can run in parallel (different files, no dependencies)
+- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
+- Include exact file paths in descriptions
+
+## Phase 1: Setup (Shared Infrastructure)
+
+**Purpose**: Establish the repo-level readiness contract and the new shared health seam.
+
+- [ ] T000 Record the external ingress / runtime readiness gate as N/A with rationale in `specs/022-codegraph-hardening/tasks.md` and keep the plan's local-only readiness stance explicit — `specs/022-codegraph-hardening/plan.md:External Ingress + Runtime Readiness Gate`
+- [ ] T001 Create `src/mcp_codebase/health.py` with the shared graph-readiness domain models and classifier seam (`GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint`, `classify_graph_health`) — `src/mcp_codebase/health.py:classify_graph_health`
+
+**Checkpoint**: The shared health seam exists and the feature's readiness gate is explicitly recorded as local-only / N/A for ingress.
+
+## Phase 2: Foundational (Blocking Prerequisites)
+
+**Purpose**: Create the adapters that will expose the shared health contract to agents and maintainers.
+
+- [ ] T002 Add the MCP health tool registration to `src/mcp_codebase/server.py` and serialize the shared health result there with run-scoped JSONL logging — `src/mcp_codebase/server.py:_register_tools`
+- [ ] T003 Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.sh` wrapper for a direct operator-facing health command — `src/mcp_codebase/doctor.py:main`
+- [ ] T004 Add structured telemetry fields for health checks (`run_id`, recovery hint id, status classification, latency) in `src/mcp_codebase/health.py` and `src/mcp_codebase/server.py` — `src/mcp_codebase/server.py:_setup_logging`
+
+**Checkpoint**: A single health vocabulary exists for both the MCP server and the new doctor command.
+
+## Phase 3: User Story 1 - Graph Health Check for Developers (Priority: P1)
+
+**Goal**: A developer can run a deterministic health check and see a clear healthy/stale/locked/unavailable verdict.
+
+**Independent Test**: Run the doctor command on a healthy checkout and a deliberately unhealthy checkout; the output should distinguish the states without crashing.
+
+### Tests for User Story 1
+
+- [ ] T005 [P] [US1] Add unit tests for healthy/stale/locked/unavailable classification and recovery hint selection in `tests/unit/test_health.py` — `tests/unit/test_health.py:test_classify_graph_health`
+- [ ] T006 [P] [US1] Add integration coverage for the doctor command and the MCP health tool contract in `tests/integration/test_codegraph_health.py` — `tests/integration/test_codegraph_health.py:test_doctor_and_mcp_health_contract`
+
+### Implementation for User Story 1
+
+- [ ] T007 [US1] Implement the explicit recovery-hint mapping and fallback-to-files behavior in `src/mcp_codebase/health.py` so the health result always names retry/refresh/fallback guidance — `src/mcp_codebase/health.py:build_recovery_hint`
+
+**Checkpoint**: Health checks are deterministic and return actionable status plus recovery guidance.
+
+## Phase 4: User Story 2 - Agent-Facing Recovery on Lock / Query Failure (Priority: P1)
+
+**Goal**: An agent gets a clear failure mode and next action when the graph is locked, stale, unreadable, or query-failing.
+
+**Independent Test**: Simulate lock contention and unreadable graph state; the health result should say whether to retry, refresh, or fall back to direct file reads.
+
+### Tests for User Story 2
+
+- [ ] T008 [P] [US2] Add regression tests for lock contention, unreadable graph state, and query-failure recovery hints in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes`
+
+### Implementation for User Story 2
+
+- [ ] T009 [US2] Thread the recovery hint into the MCP adapter and CLI doctor adapter so the agent-facing and operator-facing outputs say the same next action — `src/mcp_codebase/server.py:get_graph_health`
+
+**Checkpoint**: Failure modes are distinguishable and the same recovery guidance is visible to both agents and maintainers.
+
+## Phase 5: User Story 3 - Safe Refresh and Rebuild (Priority: P2)
+
+**Goal**: A maintainer can refresh or rebuild safely without losing the last known good graph.
+
+**Independent Test**: Force or simulate a refresh failure, then verify the prior good snapshot remains usable and the recovery path still points at the safe index wrapper.
+
+### Tests for User Story 3
+
+- [ ] T010 [P] [US3] Add failure-mode coverage proving last-known-good graph preservation after refresh failure in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_last_known_good_snapshot_preserved`
+
+### Implementation for User Story 3
+
+- [ ] T011 [US3] Update `specs/022-codegraph-hardening/quickstart.md` with the doctor command, the safe refresh / rebuild flow, and the smoke-test instructions — `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
+
+**Checkpoint**: Safe recovery remains atomic, the operator path is documented, and large-graph health checks have an explicit timeout budget regression.
+
+## Phase 6: Polish & Cross-Cutting Concerns
+
+**Purpose**: Align docs and smoke checks with the new health surface.
+
+- [ ] T012 [P] Add a deterministic smoke validation note for `scripts/validate_doc_graph.sh` and the new doctor flow in the feature docs — `scripts/validate_doc_graph.sh:main`
+- [ ] T013 [P] Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_large_graph_timeout_budget`
+
+**Checkpoint**: The feature has a documented smoke path and the repo-level smoke gate remains usable.
+
+---
+
+## Dependencies & Execution Order
+
+### Phase Dependencies
+
+- **Setup (Phase 1)**: No dependencies - can start immediately
+- **Foundational (Phase 2)**: Depends on Setup completion - blocks all user stories
+- **User Stories (Phase 3+)**: All depend on Foundational completion
+- **Polish (Final Phase)**: Depends on all desired user stories being complete
+
+### User Story Dependencies
+
+- **User Story 1 (P1)**: Can start after Foundational - no dependencies on other stories
+- **User Story 2 (P1)**: Can start after Foundational - may reuse User Story 1 surfaces but must remain independently testable
+- **User Story 3 (P2)**: Can start after Foundational - may reuse User Story 1 / 2 surfaces but must remain independently testable
+
+### Within Each User Story
+
+- Tests MUST be written and should fail before implementation where practical
+- Async integrations (if any) must include lifecycle coverage and no-orphan verification
+- Live-vs-local state paths must include explicit reconciliation and drift handling
+- If runtime behavior or operator flow changes, preserve the quickstart and smoke path
+- Models before services
+- Services before adapters
+- Core implementation before integration polish
+
+### Parallel Opportunities
+
+- Setup / foundational tasks touching different files can run in parallel when they do not share the same module
+- The user-story test tasks marked [P] can run in parallel with each other
+- Implementation tasks can be split across the health module, server adapter, CLI adapter, and docs once the shared contract is stable
+
+---
+
+## Implementation Strategy
+
+### MVP First (User Story 1 Only)
+
+1. Complete Phase 1: Setup
+2. Complete Phase 2: Foundational
+3. Complete Phase 3: User Story 1
+4. STOP and validate the health command before touching recovery behavior
+
+### Incremental Delivery
+
+1. Complete Setup + Foundational
+2. Add User Story 1 health classification and validate it
+3. Add User Story 2 recovery guidance and failure-mode tests
+4. Add User Story 3 safe refresh / rebuild verification and docs
+
+### Parallel Team Strategy
+
+1. One developer can own `src/mcp_codebase/health.py`
+2. One developer can own `src/mcp_codebase/server.py` and the doctor adapter
+3. One developer can own the unit/integration tests and quickstart updates

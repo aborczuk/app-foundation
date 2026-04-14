@@ -75,7 +75,7 @@ This command is a **validation gate** — it verifies that the software actually
    - **Execution priority** (try in order):
      1. Run with `--dry-run` or equivalent safe mode if available
      2. Run the entrypoint and capture output (with a timeout — max 30 seconds unless the checkpoint requires longer)
-     3. Run smoke-test imports (`python -c "from module import Class"`) for each module touched in the phase
+      3. Run smoke-test imports (`uv run python -c "from module import Class"`) for each module touched in the phase
    - Capture ALL output: stdout, stderr, log files, and exit code
    - If the application requires a running process (not a one-shot command), start it in the background, wait for it to produce output, then terminate it gracefully
    - **Async process management guard** (mandatory when asyncio/event loops/background workers are involved):

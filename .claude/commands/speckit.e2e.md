@@ -56,7 +56,7 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
 4. **Generate `FEATURE_DIR/e2e.md`**: Pre-scaffold the E2E test plan from template:
 
    ```bash
-   python .specify/scripts/pipeline-scaffold.py speckit.e2e --feature-dir $FEATURE_DIR \
+    uv run python .specify/scripts/pipeline-scaffold.py speckit.e2e --feature-dir $FEATURE_DIR \
      FEATURE_NAME="[Feature Name]" FEATURE_SLUG="[slug]"
    ```
 
@@ -72,7 +72,7 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
 5. **Generate `scripts/e2e_<feature-slug>.sh`**: Pre-scaffold the E2E execution script from template:
 
    ```bash
-   python .specify/scripts/pipeline-scaffold.py speckit.e2e --feature-dir $FEATURE_DIR \
+    uv run python .specify/scripts/pipeline-scaffold.py speckit.e2e --feature-dir $FEATURE_DIR \
      FEATURE_NAME="[Feature Name]" FEATURE_SLUG="[slug]"
    ```
 

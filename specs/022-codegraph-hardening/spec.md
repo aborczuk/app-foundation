@@ -141,7 +141,7 @@ flowchart TD
 - **FR-001**: System MUST provide a deterministic health check for the local CodeGraph/Kuzu path that reports healthy, stale, locked, or unavailable status.
 - **FR-002**: System MUST detect stale or conflicting graph access and return a clear recovery message instead of an opaque crash.
 - **FR-003**: System MUST preserve the last known good graph snapshot when a refresh, rebuild, or query path fails.
-- **FR-004**: System MUST provide a deterministic smoke test or doctor-style check that validates the graph is usable before code browsing workflows depend on it.
+- **FR-004**: System MUST provide a deterministic smoke test or doctor-style check that can be `run` before code browsing workflows depend on it.
 - **FR-005**: System MUST support a safe refresh/rebuild path that can recover from stale sessions or lock contention without corrupting the graph state.
 - **FR-006**: System MUST make graph failure modes distinguishable enough that a developer or agent can decide whether to retry, refresh, or fall back to direct file reads.
 

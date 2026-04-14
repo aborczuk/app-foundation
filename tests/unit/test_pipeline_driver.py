@@ -45,7 +45,7 @@ def _ledger_event(event: str, *, timestamp_utc: str, **fields: object) -> dict[s
 
 def test_main_outputs_minimal_step_result(capsys) -> None:
     # dry-run + json: introspection mode, no execution, always returns 0 with structured output
-    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "implement", "--dry-run", "--json"])
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--dry-run", "--json"])
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out.strip())
     assert payload["feature_id"] == "019"
@@ -544,6 +544,41 @@ def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
     assert "phase_hint_conflicts_with_ledger" in state["drift_reasons"]
 
 
+def test_resolve_phase_state_falls_back_to_numeric_prefix_for_slug(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        {
+            "event": "backlog_registered",
+            "feature_id": "022",
+            "timestamp_utc": "2026-04-10T00:00:00Z",
+        },
+        {
+            "event": "research_completed",
+            "feature_id": "022",
+            "timestamp_utc": "2026-04-10T00:01:00Z",
+        },
+        {
+            "event": "plan_started",
+            "feature_id": "022",
+            "timestamp_utc": "2026-04-10T00:02:00Z",
+        },
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "022-codegraph-hardening",
+        pipeline_state={"phase": "setup", "blocked": False},
+        ledger_path=ledger_path,
+    )
+    assert state["feature_id"] == "022-codegraph-hardening"
+    assert state["ledger_feature_id"] == "022"
+    assert state["phase"] == "plan"
+    assert state["last_event"] == "plan_started"
+
+
 def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
@@ -585,6 +620,64 @@ def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> 
     assert state["drift_detected"] is True
     assert "missing_artifact:plan.md" in state["drift_reasons"]
     assert state["blocked"] is True
+
+
+def test_main_rejects_requested_phase_mismatch(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "022-codegraph-hardening",
+            "ledger_feature_id": "022",
+            "phase": "specify",
+            "last_event": "backlog_registered",
+            "ledger_event_count": 1,
+            "approved_plan": False,
+            "approved_solution": False,
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(
+        ["--feature-id", "022-codegraph-hardening", "--phase", "plan", "--json"]
+    )
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["step_result"]["gate"] == "phase_drift"
+    assert payload["step_result"]["reasons"] == ["requested_phase_mismatch"]
+    assert payload["step_result"]["next_phase"] == "specify"
+
+
+def test_main_rejects_invalid_phase_input(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "022-codegraph-hardening",
+            "ledger_feature_id": "022",
+            "phase": "specify",
+            "last_event": "backlog_registered",
+            "ledger_event_count": 1,
+            "approved_plan": False,
+            "approved_solution": False,
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(
+        ["--feature-id", "022-codegraph-hardening", "--phase", "sketch", "--json"]
+    )
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["step_result"]["gate"] == "invalid_input"
+    assert payload["step_result"]["reasons"] == ["invalid_phase"]
+    assert payload["step_result"]["next_phase"] == "specify"
 
 
 def test_handoff_contract_requires_all_fields() -> None:

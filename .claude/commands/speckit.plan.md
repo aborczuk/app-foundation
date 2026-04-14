@@ -26,13 +26,13 @@ Run these steps first; only load expanded guidance when a gate fails or the user
 
 1. Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse `FEATURE_SPEC`, `IMPL_PLAN`, `FEATURE_DIR`, and `BRANCH`.
 2. Derive `FEATURE_DIR="$(dirname "$FEATURE_SPEC")"` and run deterministic gates:
-   - `python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
-   - `python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json`
-   - `python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --json`
-   - `python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json`
-   - `python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
+    - `uv run python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
+    - `uv run python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json`
+    - `uv run python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --json`
+    - `uv run python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json`
+    - `uv run python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
 3. Scaffold plan artifacts immediately:
-   - `python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
+    - `uv run python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
    - This creates `plan.md`, `data-model.md`, and `quickstart.md` from the manifest templates.
 4. Fill the scaffolded artifacts using `spec.md`, `research.md`, and repo context. Keep `plan.md` table-heavy and use it as the source of truth for architecture decisions, gates, and the sketch handoff contract.
 5. Emit `plan_started`, then let the existing driver-backed flow continue to `/speckit.planreview`. If open feasibility questions remain, continue to `/speckit.feasibilityspike`. Emit `plan_approved` only after those sub-processes complete successfully.

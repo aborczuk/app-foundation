@@ -17,7 +17,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 1a. **Deterministic pre-implementation gate (MANDATORY)**:
    - Run:
      ```bash
-     python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json
+      uv run python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json
      ```
    - If the script exits non-zero, inspect `hard_block_reasons`:
      - If `missing_e2e_md` or `missing_e2e_script`: **STOP** with:
@@ -46,7 +46,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 4. **Project setup verification (deterministic)**:
    - Run:
      ```bash
-     python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json
+      uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json
      ```
    - If command exits non-zero: **STOP**.
    - Treat JSON output as authoritative for created/updated ignore files and warnings (including eslint config ignore coverage warnings).
@@ -61,7 +61,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 5.5 **Task Scaffolding & Discovery Gate (MANDATORY before coding each task)**:
    1. Run deterministic preflight:
       ```bash
-      python scripts/speckit_implement_gate.py task-preflight \
+       uv run python scripts/speckit_implement_gate.py task-preflight \
         --feature-dir "$FEATURE_DIR" \
         --task-id "T0XX" \
         --json
@@ -98,7 +98,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      2. Present the runbook to the human; they complete it asynchronously.
      3. When the human signals completion, run the verification command from the HUD. If it fails: **STOP** — do not unblock dependent implementation tasks until it passes.
      4. Append `human_action_started`, `human_action_verified`, `task_closed` to the task ledger and mark `[X]` in tasks.md.
-   - **Task ledger logging (MANDATORY)**: Log every transition to `.speckit/task-ledger.jsonl` via `python scripts/task_ledger.py append ...` using immutable events:
+    - **Task ledger logging (MANDATORY)**: Log every transition to `.speckit/task-ledger.jsonl` via `uv run python scripts/task_ledger.py append ...` using immutable events:
      - `task_started`
      - `discovery_completed` (Phase 1: Recon)
      - `lld_recorded` (3+ point tasks only)
@@ -112,11 +112,11 @@ You **MUST** consider the user input before proceeding (if not empty).
      - `commit_created`
      - `task_closed`
    - **Start gate (MANDATORY before coding each task)**: Run
-     `python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file FEATURE_DIR/tasks.md --feature-id NNN --task-id T0XX --actor <agent-id>`
+      `uv run python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file FEATURE_DIR/tasks.md --feature-id NNN --task-id T0XX --actor <agent-id>`
      and do not proceed if it fails.
    - **Per-task validation gate (MANDATORY)** — validate evidence with:
      ```bash
-     python scripts/speckit_implement_gate.py validate-task-evidence \
+      uv run python scripts/speckit_implement_gate.py validate-task-evidence \
        --task-kind <logic|module|integration> \
        --tests-passed <pass|fail> \
        --smoke-exit <int-if-module> \
@@ -137,7 +137,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    2. Append `commit_created` and `offline_qa_started` to the task ledger.
    3. Run deterministic handoff wrapper:
       ```bash
-      python scripts/speckit_offline_qa_handoff.py \
+       uv run python scripts/speckit_offline_qa_handoff.py \
         --feature-id "<feature_id>" \
         --task-id "T0XX" \
         --attempt <n> \
@@ -166,7 +166,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    3. For story phases, run Layer 3 with `/speckit.e2e-run [USn]` (or `/speckit.e2e-run full` at final closeout).
    4. Evaluate gate closure with:
       ```bash
-      python scripts/speckit_implement_gate.py phase-gate \
+       uv run python scripts/speckit_implement_gate.py phase-gate \
         --feature-dir "$FEATURE_DIR" \
         --phase-name "Phase [N]" \
         --phase-type <setup|foundational|story|polish> \

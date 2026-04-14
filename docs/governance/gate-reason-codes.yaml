@@ -20,6 +20,19 @@ gates:
       - artifact_empty_or_minimal
       - completion_marker_not_found
 
+  invalid_input:
+    description: "Caller provided malformed or unsupported pipeline driver input"
+    reasons:
+      - invalid_feature_id
+      - invalid_phase
+
+  phase_drift:
+    description: "Requested phase does not match the ledger-authoritative current phase"
+    reasons:
+      - requested_phase_mismatch
+      - ledger_sequence_invalid
+      - missing_required_artifact
+
   command_not_driver_managed:
     description: "Command is not yet migrated to deterministic driver control"
     reasons:

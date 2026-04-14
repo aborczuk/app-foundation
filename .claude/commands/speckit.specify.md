@@ -27,10 +27,10 @@ Run these steps first; only load **Expanded Guidance** when a gate fails or user
 3. Update mode: resolve existing paths via `.specify/scripts/bash/check-prerequisites.sh --json --paths-only`.
 4. Run code discovery (`codegraph` first, fallback grep) before writing any spec text.
 5. Write spec from template, scaffold requirements checklist, then run:
-   - `python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json`
-   - `python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json`
+    - `uv run python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json`
+    - `uv run python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json`
 6. If clarifications exist, validate question-table format before asking:
-   - `python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json`
+    - `uv run python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json`
 7. Branch on reason codes from `docs/governance/gate-reason-codes.yaml`; emit `backlog_registered` only after gates pass.
 
 ## Expanded Guidance (Load On Demand)
@@ -125,15 +125,15 @@ Given that feature description, do this:
 
    a. **Create Spec Quality Checklist**: Pre-scaffold checklist from template:
 
-      1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+       1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
          - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.specify owns
          - Copies `.specify/templates/requirements-checklist-template.md` to `$FEATURE_DIR/checklists/requirements.md`
          - Performs scalar substitutions: `[FEATURE_NAME]` → the feature name, `[DATE]` → today's date, etc.
 
    b. **Run deterministic checklist + clarification extraction**:
       ```bash
-      python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json
-      python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json
+       uv run python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json
+       uv run python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json
       ```
 
    c. **Apply quality invariants, then re-run deterministic checks**:
@@ -152,7 +152,7 @@ Given that feature description, do this:
         1. Group into at most 3 questions and draft one markdown block containing all questions.
         2. Validate draft format before presenting:
            ```bash
-           python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json
+            uv run python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json
            ```
         3. If format check fails, fix format and re-run.
         4. Present validated questions, collect responses, replace markers, then re-run `extract-clarifications`.

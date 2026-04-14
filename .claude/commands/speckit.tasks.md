@@ -65,7 +65,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 4. **Generate tasks.md** by pre-scaffolding from template:
 
-   1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.tasks --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+    1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.tasks --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
       - Pre-structures the file with Phase sections, Dependencies section, Parallel Opportunities section, etc.
 
    2. Fill in the scaffolded structure:
@@ -98,7 +98,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Suggested MVP scope (typically just User Story 1)
    - Format validation result from:
      ```bash
-     python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
+      uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
      ```
    - Path to generated estimates.md and total points summary from `/speckit.estimate`
    - **Pipeline continuation** — always append this block verbatim at the end of the report:
@@ -129,7 +129,7 @@ Tasks MUST be organized by user story and include mandatory tests per constituti
 
 **Deterministic format gate (MANDATORY before reporting completion)**:
 ```bash
-python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
+ uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
 ```
 - If exit code is non-zero: fix all reported errors and re-run.
 

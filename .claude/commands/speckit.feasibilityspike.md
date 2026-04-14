@@ -36,7 +36,7 @@ Prove that the architecture committed to in plan.md is actually buildable before
 
    Determine probe type from the question and Probe field:
    - **subprocess test**: Can a service execute a shell command? → `subprocess.run(["service-cli", "exec", "echo", "ok"], capture_output=True, timeout=60)`
-   - **library import test**: Is a package importable at the right version? → `python -c "import lib; assert lib.__version__ >= '2.1.0'"`
+    - **library import test**: Is a package importable at the right version? → `uv run python -c "import lib; assert lib.__version__ >= '2.1.0'"`
    - **API call**: Does an endpoint respond as expected? → `httpx.get(url, timeout=30)`
    - **service availability**: Is a local service reachable? → check port / ping process
    - **code experiment**: Run a minimal script that exercises the specific capability in question
@@ -53,7 +53,7 @@ Prove that the architecture committed to in plan.md is actually buildable before
 
 5. **Write spike.md**: Pre-scaffold the spike file from template:
 
-   1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.feasibilityspike --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+    1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.feasibilityspike --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
       - Pre-structures the file with Summary section, Probed Questions section, Technology Selection table, Failed Questions table, etc.
 
    2. Fill in the scaffolded structure with every FQ: its probe, result, evidence snippet, and architecture implication — regardless of pass/fail.
