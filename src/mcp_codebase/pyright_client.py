@@ -316,7 +316,7 @@ class PyrightClient:
                 },
             )
         except (asyncio.TimeoutError, ConnectionError):
-            return None
+            raise
         finally:
             # didClose
             try:

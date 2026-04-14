@@ -109,6 +109,18 @@
 
 **Checkpoint**: The recovery suite exists and proves the feature fails gracefully until the graph is refreshed or rebuilt.
 
+## Phase 8: Query Failure & Input Validation
+
+**Purpose**: Make the query tools fail explicitly for malformed input and real query execution failures instead of collapsing them into generic or misleading errors.
+
+**Independent Test**: Call the query tools with empty input and a simulated query failure; malformed requests should fail validation, and a failed hover/query should return a clear query-failure recovery path rather than SYMBOL_NOT_FOUND.
+
+### Tests for Query Tool Recovery
+
+- [ ] T015 [P] Add unit coverage in `tests/unit/test_query_tools.py` for malformed input and query-failure handling in `src/mcp_codebase/type_tool.py` and `src/mcp_codebase/diag_tool.py` — `tests/unit/test_query_tools.py:test_query_failure_and_validation_contract`
+
+**Checkpoint**: The query tools distinguish malformed input, missing symbols, and real execution failures.
+
 ---
 
 ## Dependencies & Execution Order

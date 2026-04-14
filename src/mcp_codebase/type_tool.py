@@ -6,6 +6,7 @@ results/errors to the contract-defined response shapes.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -59,7 +60,26 @@ async def get_type_impl(
         }
 
     # Hover request
-    hover_result = await pyright_client.hover(resolved, line=line, column=column)
+    try:
+        hover_result = await pyright_client.hover(resolved, line=line, column=column)
+    except (asyncio.TimeoutError, ConnectionError):
+        latency_ms = (time.monotonic() - start_time) * 1000
+        logger.warning(
+            "get_type: query failed",
+            extra={
+                "file_path": file_path,
+                "line": line,
+                "column": column,
+                "latency_ms": round(latency_ms, 1),
+                "failure_code": "QUERY_FAILED",
+            },
+        )
+        return {
+            "error": {
+                "code": "QUERY_FAILED",
+                "message": f"Type checker query failed at {file_path}:{line}:{column}",
+            }
+        }
 
     latency_ms = (time.monotonic() - start_time) * 1000
 
