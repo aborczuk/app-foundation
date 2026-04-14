@@ -8,3 +8,4 @@
 {"actor": "codex", "details": "Plan artifacts filled from spec and research; ready for review", "event": "plan_started", "feature_id": "020", "phase": "plan", "timestamp_utc": "2026-04-14T03:20:58.165122Z"}
 {"actor": "codex", "details": "Plan review completed; all feasibility questions resolved in plan.md", "event": "planreview_completed", "feature_id": "020", "fq_count": 0, "phase": "plan", "questions_asked": 3, "timestamp_utc": "2026-04-14T03:33:37.585460Z"}
 {"actor": "codex", "details": "Plan approved after planreview; no feasibility spike required", "event": "plan_approved", "feasibility_required": "false", "feature_id": "020", "phase": "plan", "timestamp_utc": "2026-04-14T03:33:42.465451Z"}
+{"actor": "extraction", "event": "backlog_registered", "feature_id": "022", "timestamp_utc": "2026-04-13T00:00:00Z"}

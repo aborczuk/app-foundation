@@ -279,16 +279,33 @@ if [ ${#BRANCH_NAME} -gt $MAX_BRANCH_LENGTH ]; then
 fi
 
 if [ "$HAS_GIT" = true ]; then
-    if ! git checkout -b "$BRANCH_NAME" 2>/dev/null; then
+    branch_create_stderr="$(mktemp)"
+    if ! git switch -c "$BRANCH_NAME" 2>"$branch_create_stderr"; then
+        branch_create_error="$(tr '\n' ' ' < "$branch_create_stderr" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+        rm -f "$branch_create_stderr"
+
         # Check if branch already exists
         if git branch --list "$BRANCH_NAME" | grep -q .; then
             >&2 echo "Error: Branch '$BRANCH_NAME' already exists. Please use a different feature name or specify a different number with --number."
             exit 1
-        else
-            >&2 echo "Error: Failed to create git branch '$BRANCH_NAME'. Please check your git configuration and try again."
+        fi
+
+        if printf '%s\n' "$branch_create_error" | grep -qiE 'permission denied|operation not permitted|read-only|unable to create|could not lock ref|failed to lock|index\.lock'; then
+            >&2 echo "Error: Failed to create git branch '$BRANCH_NAME' because repository metadata is not writable in this environment."
+            >&2 echo "Hint: rerun with write-enabled git permissions, or create the branch manually and then rerun /speckit.specify in update mode."
+            if [ -n "$branch_create_error" ]; then
+                >&2 echo "[specify] git stderr: $branch_create_error"
+            fi
             exit 1
         fi
+
+        >&2 echo "Error: Failed to create git branch '$BRANCH_NAME'."
+        if [ -n "$branch_create_error" ]; then
+            >&2 echo "[specify] git stderr: $branch_create_error"
+        fi
+        exit 1
     fi
+    rm -f "$branch_create_stderr"
 else
     >&2 echo "[specify] Warning: Git repository not detected; skipped branch creation for $BRANCH_NAME"
 fi
