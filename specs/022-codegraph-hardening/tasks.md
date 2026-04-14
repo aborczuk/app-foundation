@@ -22,6 +22,7 @@
 - [X] T001 Create `src/mcp_codebase/health.py` with the shared graph-readiness domain models and classifier seam (`GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint`, `classify_graph_health`) — `src/mcp_codebase/health.py:classify_graph_health`
 
 **Checkpoint**: The shared health seam exists and the feature's readiness gate is explicitly recorded as local-only / N/A for ingress.
+<!-- Checkpoint validated: PASS | 2026-04-14 | Shared health seam present; readiness gate recorded as local-only / N/A -->
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
@@ -32,6 +33,7 @@
 - [X] T004 Add structured telemetry fields for health checks (`run_id`, recovery hint id, status classification, latency) in `src/mcp_codebase/health.py` and `src/mcp_codebase/server.py` — `src/mcp_codebase/server.py:_setup_logging`
 
 **Checkpoint**: A single health vocabulary exists for both the MCP server and the new doctor command.
+<!-- Checkpoint validated: PASS | 2026-04-14 | Doctor CLI and MCP health contract share the same vocabulary and recovery hints -->
 
 ## Phase 3: User Story 1 - Graph Health Check for Developers (Priority: P1)
 
@@ -49,6 +51,7 @@
 - [X] T007 [US1] Implement the explicit recovery-hint mapping and fallback-to-files behavior in `src/mcp_codebase/health.py` so the health result always names retry/refresh/fallback guidance — `src/mcp_codebase/health.py:build_recovery_hint`
 
 **Checkpoint**: Health checks are deterministic and return actionable status plus recovery guidance.
+<!-- Checkpoint validated: PASS | 2026-04-14 | Story acceptance tests pass and doctor output is stable -->
 
 ## Phase 4: User Story 2 - Agent-Facing Recovery on Lock / Query Failure (Priority: P1)
 
@@ -65,6 +68,7 @@
 - [X] T009 [US2] Thread the recovery hint into the MCP adapter and CLI doctor adapter so the agent-facing and operator-facing outputs say the same next action — `src/mcp_codebase/server.py:get_graph_health`
 
 **Checkpoint**: Failure modes are distinguishable and the same recovery guidance is visible to both agents and maintainers.
+<!-- Checkpoint validated: PASS | 2026-04-14 | Healthy/stale/locked/unavailable states and recovery hints are observable via doctor -->
 
 ## Phase 5: User Story 3 - Safe Refresh and Rebuild (Priority: P2)
 
@@ -81,6 +85,7 @@
 - [X] T011 [US3] Update `specs/022-codegraph-hardening/quickstart.md` with the doctor command, the safe refresh / rebuild flow, and the smoke-test instructions — `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
 
 **Checkpoint**: Safe recovery remains atomic, the operator path is documented, and large-graph health checks have an explicit timeout budget regression.
+<!-- Checkpoint validated: PASS | 2026-04-14 | Quickstart documents recovery flow; large-graph timeout budget regression is covered -->
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
@@ -90,6 +95,19 @@
 - [X] T013 [P] Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_large_graph_timeout_budget`
 
 **Checkpoint**: The feature has a documented smoke path and the repo-level smoke gate remains usable.
+<!-- Checkpoint validated: PASS | 2026-04-14 | Doc graph smoke validation passes and the doctor flow is documented -->
+
+## Phase 7: Recovery Integration Suite
+
+**Purpose**: Prove the real recovery path for stale symbols, lock contention, and refresh/rebuild behavior under local edits.
+
+**Independent Test**: Run the dedicated recovery integration suite against deliberate stale, locked, and refresh-failure scenarios; stale symbol reads should fail or redirect until the graph is patched, and safe rebuild paths should preserve the last known good state.
+
+### Tests for Recovery Coverage
+
+- [ ] T014 [P] Add the dedicated recovery integration suite in `tests/integration/test_codegraph_recovery.py` covering stale symbol queries, lock contention, local edit invalidation, and refresh/rebuild behavior for `022-codegraph-hardening` — `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes`
+
+**Checkpoint**: The recovery suite exists and proves the feature fails gracefully until the graph is refreshed or rebuilt.
 
 ---
 

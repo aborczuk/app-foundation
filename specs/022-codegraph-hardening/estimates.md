@@ -1,6 +1,6 @@
 # Effort Estimate: CodeGraph Reliability Hardening
 
-**Date**: 2026-04-14 | **Total Points**: 35 | **T-shirt Size**: L  
+**Date**: 2026-04-14 | **Total Points**: 38 | **T-shirt Size**: L  
 **Estimated by**: AI (speckit.estimate) — calibrate against actuals after implementation
 
 ---
@@ -23,6 +23,7 @@
 | T011 | 1 | Update `quickstart.md` with the doctor command, the safe refresh / rebuild flow, and the smoke-test instructions | Documentation-only with one existing feature doc to align |
 | T012 | 1 | Add a deterministic smoke validation note for `scripts/validate_doc_graph.sh` and the new doctor flow in the feature docs | Documentation-only smoke guidance with no implementation change |
 | T013 | 3 | Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` | Large-graph timeout handling crosses subprocess and recovery-path boundaries, so it needs a dedicated integration regression |
+| T014 | 3 | Add the dedicated recovery integration suite in `tests/integration/test_codegraph_recovery.py` covering stale symbol queries, lock contention, local edit invalidation, and refresh/rebuild behavior | New integration suite that exercises the actual recovery matrix and command-level guidance, but remains bounded to the existing doctor/health seam |
 
 ---
 
@@ -144,7 +145,8 @@ No detailed sketch required. This is a docs-only smoke-note task.
 | Phase 4: User Story 2 | 6 | 2 | 1 |
 | Phase 5: User Story 3 | 7 | 3 | 2 |
 | Phase 6: Polish & Cross-Cutting Concerns | 1 | 1 | 1 |
-| **Total** | **35** | **14** | **6** |
+| Phase 7: Recovery Integration Suite | 3 | 1 | 1 |
+| **Total** | **38** | **15** | **7** |
 
 ---
 
@@ -156,3 +158,4 @@ No detailed sketch required. This is a docs-only smoke-note task.
 - No state-safety coverage gaps remain in the task plan; refresh and snapshot behavior is explicitly covered.
 - No transaction-integrity coverage gaps remain in the task plan; the feature does not mutate a local DB transactionally.
 - The large-graph timeout budget is now explicitly covered by T013.
+- The recovery matrix is now explicitly covered by T014.
