@@ -20,3 +20,4 @@
 {"actor": "codex", "estimate_points": 32, "event": "solution_approved", "feature_id": "022", "phase": "solution", "story_count": 3, "task_count": 13, "timestamp_utc": "2026-04-14T17:25:53.748472Z"}
 {"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "022", "phase": "solution", "timestamp_utc": "2026-04-14T17:26:27.119086Z"}
 {"actor": "codex", "e2e_artifact": "specs/022-codegraph-hardening/e2e.md", "event": "e2e_generated", "feature_id": "022", "phase": "implement", "timestamp_utc": "2026-04-14T18:06:32.298128Z"}
+{"actor": "codex", "event": "feature_closed", "feature_id": "022", "phase": "", "timestamp_utc": "2026-04-14T19:18:54.791004Z"}

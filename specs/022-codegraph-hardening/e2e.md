@@ -1,14 +1,15 @@
 # E2E Testing Pipeline: CodeGraph Reliability Hardening
 
-Validates the local CodeGraph/Kuzu health and recovery surface end-to-end, including the doctor flow, recovery guidance, safe refresh/rebuild behavior, and timeout-budget checks.
+Validates the local CodeGraph/Kuzu health and recovery surface end-to-end, including the doctor flow, recovery guidance, safe refresh/rebuild behavior, malformed-input handling, and timeout-budget checks.
 
 ---
 
 ## Prerequisites
 
-- [External service 1]: [how to verify it's running]
-- [Config file]: [how to create from example]
-- [Env vars]: [which ones, what they do — NEVER include actual values]
+- `config.yaml`: `.codegraphcontext/config.yaml`
+- `uv` is installed and can run repo-local Python commands
+- `scripts/cgc_doctor.sh` is executable
+- `scripts/cgc_safe_index.sh` can run scoped indexing for `src/mcp_codebase`, `scripts`, and `tests`
 
 ---
 
@@ -18,88 +19,129 @@ Use the pipeline script instead of manual commands:
 
 ```bash
 # Full E2E flow
-scripts/e2e_022_codegraph_hardening.sh full <config>
+scripts/e2e_022_codegraph_hardening.sh full .codegraphcontext/config.yaml
 
 # Preflight only (dry-run, no external deps needed beyond the app)
-scripts/e2e_022_codegraph_hardening.sh preflight <config>
+scripts/e2e_022_codegraph_hardening.sh preflight .codegraphcontext/config.yaml
 
 # Run specific user story section
-scripts/e2e_022_codegraph_hardening.sh run <config>
+scripts/e2e_022_codegraph_hardening.sh run .codegraphcontext/config.yaml
 
 # Print verification commands
-scripts/e2e_022_codegraph_hardening.sh verify <config>
+scripts/e2e_022_codegraph_hardening.sh verify .codegraphcontext/config.yaml
 
 # CI-safe non-interactive checks only
-scripts/e2e_022_codegraph_hardening.sh ci <config>
+scripts/e2e_022_codegraph_hardening.sh ci .codegraphcontext/config.yaml
 ```
 
 ---
 
 ## Section 1: Preflight (Dry-Run Smoke Test)
 
-**Purpose**: Validate the app starts, loads config, and completes a cycle without side effects  
-**External deps**: None (uses --dry-run or equivalent)
+**Purpose**: Validate the repo can run the health harness and the current feature docs are internally consistent.
+**External deps**: None.
 
-1. [Step]: [What to do]
-   - Verify: [What "good" looks like]
+1. Run the health contract tests against healthy fixtures.
+   - Verify: `uv run pytest tests/unit/test_health.py tests/integration/test_codegraph_health.py -q`
+   - Good looks like: healthy fixtures report `healthy` and the doctor contract matches the shared classifier.
+
+**Pass criteria**: The health smoke checks pass without mutating the repository state.
 
 ---
 
-## Section 2: [User Story 1 Title] (Priority: P1)
+## Section 2: User Story 1 - Graph Health Check for Developers (Priority: P1)
 
-**Purpose**: [What this section validates]  
-**External deps**: [What must be running]
+**Purpose**: Validate the developer-facing health command distinguishes healthy, stale, locked, and unreadable graph states.
+**External deps**: None beyond repo-local Python.
 
 **User asks before starting**:
-- [ ] [External service] is running and accessible
-- [ ] [Config] is set up correctly
-- [ ] [Any other prerequisite the human must confirm]
+- [ ] `.codegraphcontext/config.yaml` is present
+- [ ] `uv` can run repo-local pytest
 
 **Steps**:
-1. [Step]: [What to do]
-   - Verify: [automated check — log event, DB query, exit code]
-2. [Step]: [What to do]
-   - **Human verify (only if needed)**: [thing only a human can check — UI state, external tool]
-   - Reason manual is required: [why deterministic automation is not reliable yet]
+1. Run the shared health classifier and doctor contract tests.
+   - Verify: `uv run pytest tests/unit/test_health.py tests/integration/test_codegraph_health.py -q`
+2. Confirm the doctor CLI returns a non-zero exit code for stale/unhealthy fixtures.
+   - Verify: the integration tests assert the exit code and recovery hint id.
 
-**Pass criteria**: [Automated gates required; include human gate only where documented as non-automatable]
+**Pass criteria**: Healthy and unhealthy states are distinct, and the doctor / MCP contract agree on the same recovery hint.
 
 ---
 
-## Section N: [User Story N Title]
+## Section 3: User Story 2 - Agent-Facing Recovery on Lock/Query Failure (Priority: P1)
 
-[Same pattern as Section 2]
+**Purpose**: Validate the agent-facing recovery path distinguishes lock contention, unreadable state, malformed input, missing symbols, and real query failures.
+**External deps**: None beyond repo-local Python.
+
+**User asks before starting**:
+- [ ] `.codegraphcontext/config.yaml` is present
+- [ ] `uv` can run repo-local pytest
+
+**Steps**:
+1. Run the recovery matrix and query-tool validation tests.
+   - Verify: `uv run pytest tests/integration/test_codegraph_recovery.py::test_lock_and_query_failure_modes tests/unit/test_query_tools.py -q`
+2. Confirm malformed input returns validation errors while hover transport failure returns a dedicated query-failure code.
+   - Verify: the unit tests assert `INVALID_ARGUMENT`, `SYMBOL_NOT_FOUND`, and `QUERY_FAILED` as distinct outcomes.
+
+**Pass criteria**: Lock contention, unreadable graph state, malformed input, missing symbols, and real query failures all surface distinct guidance.
+
+---
+
+## Section 4: User Story 3 - Safe Refresh and Rebuild (Priority: P2)
+
+**Purpose**: Validate that local edits invalidate the graph, refresh restores health, and the last known good snapshot remains usable.
+**External deps**: None beyond repo-local Python.
+
+**User asks before starting**:
+- [ ] `.codegraphcontext/config.yaml` is present
+- [ ] `uv` can run repo-local pytest
+
+**Steps**:
+1. Run the refresh/rebuild regression test.
+   - Verify: `uv run pytest tests/integration/test_codegraph_recovery.py::test_local_edit_invalidates_then_refresh_restores_health -q`
+2. Confirm the healthy → stale → healthy cycle is deterministic.
+   - Verify: the test asserts stale detection after a local edit and healthy recovery after refresh.
+
+**Pass criteria**: The graph fails gracefully after local edits, and a refresh returns it to a healthy state without losing the prior usable snapshot.
 
 ---
 
 ## Section Final: Full Feature E2E
 
-**Purpose**: Validate all user stories work together end-to-end  
-**Runs**: After all stories are implemented, and after every significant change
+**Purpose**: Validate all user stories work together end-to-end and the repo-level health gate remains usable after the full recovery matrix runs.
+**Runs**: After all stories are implemented, and after every significant change.
 
 **User asks before starting**:
 - [ ] All per-story E2E sections have passed at least once
-- [ ] [All external deps running]
+- [ ] `.codegraphcontext/config.yaml` is present
 
 **Steps**:
-1. Run preflight (automated)
-2. [Story 1 flow]
-3. [Story 2 flow — building on state from story 1]
-4. [Cross-story integration checks]
-5. [Graceful shutdown / cleanup verification]
+1. Run preflight.
+2. Run US1, US2, and US3 sections.
+3. Refresh the touched codegraph scopes with the safe index wrapper.
+4. Verify the live doctor command reports `healthy` on the repository root.
+5. Run the full regression suite across health, recovery, query-tools, and story acceptance tests.
+6. Validate the task ledger and task file format.
 
-**Pass criteria**: [All automated gates pass; required human gates pass where no deterministic oracle exists]
+**Pass criteria**: All automated gates pass, the doctor command reports healthy after refresh, and the full regression suite completes without stale or ambiguous recovery signals.
 
 ---
 
 ## Verification Commands
 
 ```bash
-[Useful commands for inspecting state — log tails, DB queries, etc.]
+scripts/cgc_doctor.sh --json --project-root ./
+uv run pytest tests/unit/test_health.py tests/unit/test_query_tools.py tests/integration/test_codegraph_health.py tests/integration/test_codegraph_recovery.py -q
+uv run python scripts/task_ledger.py validate --file .speckit/task-ledger.jsonl
+uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file specs/022-codegraph-hardening/tasks.md --json
 ```
 
 ---
 
 ## Common Blockers
 
-- **[Blocker]**: Symptom: [what you see]. Fix: [how to resolve].
+- **Config missing**: `.codegraphcontext/config.yaml` does not exist. Fix: create the repo-local config file or restore it from the checkout.
+- **Doctor unhealthy after refresh**: Symptom: `scripts/cgc_doctor.sh --json --project-root .` reports stale/locked/unavailable. Fix: run `scripts/cgc_safe_index.sh src/mcp_codebase`, `scripts/cgc_safe_index.sh scripts`, and `scripts/cgc_safe_index.sh tests`, then rerun the doctor check.
+- **Query failure collapse**: Symptom: malformed input or a transport failure gets reported as `SYMBOL_NOT_FOUND`. Fix: ensure the query-tool contract is returning `INVALID_ARGUMENT` and `QUERY_FAILED` distinctly.
+
+<!-- E2E Run: PASS | 2026-04-14 | full | preflight + story1 + story2 + story3 + final passed -->
