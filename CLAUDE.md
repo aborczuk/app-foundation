@@ -51,6 +51,11 @@ uv run python -m src.mcp_codebase
 uv run python -m src.mcp_trello
 uv run python -m src.mcp_clickup
 
+# Pipeline status
+# If uv inherits a bad cache path, override it locally as shown below.
+# Use the current git branch name as the feature id.
+UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python scripts/pipeline_driver.py --feature-id "$(git branch --show-current)" --dry-run --json
+
 # Code quality
 ruff check . && ruff format . --check
 ```
