@@ -117,7 +117,7 @@
 
 ### Tests for Query Tool Recovery
 
-- [ ] T015 [P] Add unit coverage in `tests/unit/test_query_tools.py` for malformed input and query-failure handling in `src/mcp_codebase/type_tool.py` and `src/mcp_codebase/diag_tool.py` — `tests/unit/test_query_tools.py:test_query_failure_and_validation_contract`
+- [X] T015 [P] Add unit coverage in `tests/unit/test_query_tools.py` for malformed input and query-failure handling in `src/mcp_codebase/type_tool.py` and `src/mcp_codebase/diag_tool.py` — `tests/unit/test_query_tools.py:test_query_failure_and_validation_contract`
 
 **Checkpoint**: The query tools distinguish malformed input, missing symbols, and real execution failures.
 
