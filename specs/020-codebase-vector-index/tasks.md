@@ -47,7 +47,7 @@ description: "Task list for Codebase Vector Index"
 ### Tests for User Story 1
 
 - [X] T006 [P] [US1] Add a failing integration test for code-symbol lookup metadata, scope filtering, and empty-result behavior — tests/integration/test_codebase_vector_index.py:test_code_symbol_lookup_returns_metadata
-- [ ] T007 [P] [US1] Add a unit test for Python symbol extraction, signatures, and no-docstring normalization — tests/unit/test_vector_index_extractors.py:test_extract_python_symbols
+- [X] T007 [P] [US1] Add a unit test for Python symbol extraction, signatures, and no-docstring normalization — tests/unit/test_vector_index_extractors.py:test_extract_python_symbols
 
 ### Implementation for User Story 1
 
