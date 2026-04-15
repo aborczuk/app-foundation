@@ -10,6 +10,11 @@ from src.mcp_codebase.index.domain import (
     MarkdownSection,
     QueryResult,
 )
+from src.mcp_codebase.index.extractors import (
+    extract_markdown_sections,
+    extract_python_symbols,
+    should_skip_path,
+)
 
 __all__ = (
     "CodeSymbol",
@@ -18,4 +23,7 @@ __all__ = (
     "IndexScope",
     "MarkdownSection",
     "QueryResult",
+    "extract_markdown_sections",
+    "extract_python_symbols",
+    "should_skip_path",
 )
