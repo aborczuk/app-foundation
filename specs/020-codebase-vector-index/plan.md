@@ -269,7 +269,7 @@ No separate `contracts/` artifact is required at plan time. If the implementatio
 |------------------------------------|---------|---------------|-------|
 | `src/mcp_codebase/` runtime config | Yes | `src/mcp_codebase/config.py` or new index config module | Add index path, embedding model, watcher scope, and refresh settings. |
 | Query tool surface | Yes | `src/mcp_codebase/server.py` or index tool module | Expose search/staleness/update entry points. |
-| Repo-local storage path | Yes | `.codegraphcontext/db/chroma/` | Document the on-disk collection and metadata sidecar path. |
+| Repo-local storage path | Yes | `.codegraphcontext/db/vector-index/` | Document the on-disk collection and metadata sidecar path. |
 | Environment defaults | Yes | `.env.example` or equivalent docs | Only if runtime config needs explicit overrides. |
 | `scripts/cgc_safe_index.sh` | No | N/A | Existing helper remains a pattern reference, not a required edit for this feature. |
 | `scripts/read-markdown.sh` | No | N/A | Existing fallback read helper stays as-is. |
@@ -351,7 +351,7 @@ No separate `contracts/` artifact is required at plan time. If the implementatio
 - [x] Architecture Flow is complete
 - [x] Trust boundaries are explicit
 - [x] Artifact/event contract architecture is explicit
-- [ ] Open feasibility questions are isolated
+- [x] Open feasibility questions are isolated
 - [x] Sketch handoff contract is explicit
 
 ### Suggested Next Step

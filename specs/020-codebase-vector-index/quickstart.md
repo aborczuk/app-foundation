@@ -79,7 +79,7 @@ For the feature itself, the implementation should eventually provide a determini
 |-------|---------|-----|
 | Missing local index dependencies | Import or startup failure | Run `uv sync` and rebuild the environment. |
 | Stale results after editing files | Query returns old line ranges | Confirm the watcher is running or invoke the manual refresh command. |
-| Index storage missing | Query reports no active snapshot | Rebuild the index from the repo root and verify `.codegraphcontext/db/chroma/` exists. |
+| Index storage missing | Query reports no active snapshot | Rebuild the index from the repo root and verify `.codegraphcontext/db/vector-index/` exists. |
 | Embedding runtime unavailable | Refresh fails early | Confirm the local embedding package is installed and reachable in the `uv` environment. |
 
 ---

@@ -50,6 +50,10 @@ Execution steps:
 
    - If catalog.yaml does not exist: note in the report that catalog.yaml is absent; no block.
 
+2c. **Scaffold the review artifact**:
+   - Run `.specify/scripts/pipeline-scaffold.py speckit.planreview --feature-dir "$FEATURE_DIR"` to create or refresh `planreview.md` from `plan-review-template.md`.
+   - If the scaffold script fails or the template is missing, stop and report the artifact wiring gap before continuing.
+
 3. **ERROR check first** — abort if any of the following are found:
    - Any remaining `NEEDS CLARIFICATION` markers in plan.md or generated artifacts — these are unresolved Phase 0 items that must be fixed in the plan before review can proceed; instruct user to re-run `/speckit.plan`
    - Any empty cells in the Constitution Check table — these are required gate items

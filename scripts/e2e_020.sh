@@ -79,7 +79,7 @@ section_preflight() {
   # Python syntax validation
   log_info "Validating Python syntax..."
   find src -name "*.py" -type f | while read -r py_file; do
-    python3 -m py_compile "$py_file" 2>/dev/null || { log_fail "Syntax error in $py_file"; exit 1; }
+    run_python -m py_compile "$py_file" 2>/dev/null || { log_fail "Syntax error in $py_file"; exit 1; }
   done
   log_pass "All Python files compile cleanly"
 
@@ -97,9 +97,9 @@ section_preflight() {
 
   # Dependency file validation
   log_info "Validating configuration files..."
-  python3 -c "import tomllib; tomllib.loads(open('pyproject.toml').read())" 2>/dev/null || \
+  run_python -c "import tomllib; tomllib.loads(open('pyproject.toml').read())" 2>/dev/null || \
     { log_fail "Invalid pyproject.toml syntax"; exit 1; }
-  python3 -c "import yaml; yaml.safe_load(open('catalog.yaml'))" 2>/dev/null || \
+  run_python -c "import yaml; yaml.safe_load(open('catalog.yaml'))" 2>/dev/null || \
     { log_fail "Invalid catalog.yaml syntax"; exit 1; }
   log_pass "Configuration files valid"
 
@@ -404,13 +404,13 @@ case "$subcommand" in
   verify)
     log_info "=== Verification Commands ==="
     log_info "Check Python syntax:"
-    echo "  python3 -m py_compile src/clickup_control_plane/*.py"
+    echo "  uv run python -m py_compile src/clickup_control_plane/*.py"
     log_info "List imports:"
     echo "  grep -r '^import\|^from' src/ | sort -u | head -20"
     log_info "Count source files:"
     echo "  find src -name '*.py' | wc -l"
     log_info "Check YAML syntax:"
-    echo "  python3 -c \"import yaml; yaml.safe_load(open('catalog.yaml'))\""
+    echo "  uv run python -c \"import yaml; yaml.safe_load(open('catalog.yaml'))\""
     log_info "Run contract tests:"
     echo "  pytest tests/contract/test_clickup_control_plane_contract.py -v"
     log_info "Check for trading code:"

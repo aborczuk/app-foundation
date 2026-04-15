@@ -22,6 +22,9 @@
 - [ ] T002 [P] Add subprocess CLI coverage for `scripts/pipeline_driver.py` in `tests/integration/test_pipeline_driver_cli.py`
 - [ ] T003 [P] Add integration coverage for slug resolution and wrong-phase redirection in `tests/integration/test_pipeline_driver_feature_flow.py`
 - [ ] T004 Wire `speckit.specify` handoff to a real artifact path and stop falling back to `.` in `scripts/pipeline_driver.py`
+- [ ] T005 Replace the remaining host `python3` examples with `uv run python` in `docs/governance/how-to-add-speckit-step.md`
+- [ ] T006 Update `.github/workflows/ci.yml` to run task-ledger validation through `uv run python`
+- [ ] T007 Standardize remaining repo-owned host-python invocations in `scripts/e2e_020.sh` and `.github/workflows/ci.yml` to use `uv run python`
 
 ## Dependencies & Execution Order
 

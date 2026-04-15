@@ -61,7 +61,7 @@ Entities, relationships, and state transitions for the local semantic index.
 | `symbol_count` | int | Yes | >= 0 | Count of indexed Python symbols. |
 | `section_count` | int | Yes | >= 0 | Count of indexed markdown sections. |
 | `embedding_model_id` | string | Yes | Non-empty | Local embedding model identifier. |
-| `storage_path` | string | Yes | Stable on-disk path | Location of the active Chroma collection. |
+| `storage_path` | string | Yes | Stable on-disk path | Location of the active vector collection under `.codegraphcontext/db/vector-index/`. |
 | `index_version` | string | Yes | Semver or monotonic version | Supports future migration. |
 | `refresh_reason` | string | No | Controlled vocabulary if present | `full_build`, `watcher_update`, `post_commit_update`, or `manual_refresh`. |
 
@@ -123,7 +123,7 @@ pending -> current -> stale -> rebuilding -> current
 
 ## Storage & Indexing
 
-- **Primary storage**: On-disk Chroma collection under `.codegraphcontext/db/chroma/`
+- **Primary storage**: On-disk Chroma collection under `.codegraphcontext/db/vector-index/`
 - **Caching**: Optional in-memory hot path cache for the current process only; never the source of truth
 - **Indexes**:
   - Stable record identity on `id`
@@ -137,4 +137,3 @@ pending -> current -> stale -> rebuilding -> current
 - **Read**: Read the current active snapshot without blocking refresh when possible
 - **Write**: Single-flight refresh lock per repo checkout
 - **Conflict resolution**: Deterministic upsert by `content_hash` plus path/span identity; the newest successful refresh wins only after an atomic swap
-

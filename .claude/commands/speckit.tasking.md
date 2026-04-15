@@ -198,7 +198,7 @@ uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-runbook 
 
 ### 10. Generate acceptance tests
 
-For each story, write `.speckit/acceptance-tests/story-N.py` from:
+Use `.specify/scripts/acceptance-test-scaffold.py` to create `.speckit/acceptance-tests/story-N.py` from the task graph, then fill in the story-specific deterministic assertions from:
 
 - Independent Test Criteria in `tasks.md`
 - verification intent preserved from sketch

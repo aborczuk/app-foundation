@@ -74,8 +74,8 @@
    - `docs/governance/command-script-coverage.md`
 
 8. **Run deterministic validations**
-   - `python3 scripts/pipeline_ledger.py validate-manifest`
-   - `python3 scripts/pipeline_ledger.py validate --file .speckit/pipeline-ledger.jsonl` (optional sanity)
+    - `uv run python scripts/pipeline_ledger.py validate-manifest`
+    - `uv run python scripts/pipeline_ledger.py validate --file .speckit/pipeline-ledger.jsonl` (optional sanity)
    - `uv run pytest tests/unit/test_pipeline_ledger_sequence.py -q` (when transitions changed)
 
 9. **Final consistency check**
