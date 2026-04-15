@@ -26,6 +26,7 @@ class _SpanRecord(BaseModel):
     line_start: int = Field(ge=1)
     line_end: int = Field(ge=1)
     scope: IndexScope
+    content_hash: str = ""
     preview: str = ""
 
     @model_validator(mode="after")
