@@ -59,6 +59,9 @@ UV_CACHE_DIR="$(git rev-parse --show-toplevel)/.uv-cache" uv run python scripts/
 # Prefer `uv run python` for any script or module that belongs to this repo.
 # Bare `python` is not guaranteed to exist, and `python3` is reserved for host-level compatibility fallbacks.
 
+# Canonical task closeout
+# Use `/speckit.closeout` (backed by `scripts/speckit_closeout_task.py`) for the one append-first path that records task tests, offline QA, commit SHA, QA run id, and `task_closed`, then either continues silently or hard-stops to `/speckit.checkpoint` at a user-story boundary.
+
 # Ad-hoc backlog intake
 # `speckit.addtobacklog` checks whether the change belongs to the current feature first; unrelated work or missing feature-local tasks fall back to the universal backlog feature.
 SPECIFY_FEATURE=000-universal-backlog .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks

@@ -121,7 +121,7 @@ This command is a **validation gate** — it verifies that the software actually
      - Confirm state safety guard passed (no unresolved live-vs-local drift, no log-only transitions) when applicable.
      - Confirm local DB transaction guard passed (no partial writes/impossible transitions, explicit transaction behavior) when applicable.
      - The phase is validated. Implementation can proceed to the next phase.
-     - If this checkpoint was invoked from `/speckit.implement` at a user-story hard stop, return a compact PASS status and stop. Do not auto-start the next story or produce a prose summary.
+     - If this checkpoint was invoked from `/speckit.implement` or `/speckit.closeout` at a user-story hard stop, return a compact PASS status and stop. Do not auto-start the next story or produce a prose summary.
 
    - **If ANY claim FAILS**:
      - Report the full validation table with failure details
@@ -134,7 +134,7 @@ This command is a **validation gate** — it verifies that the software actually
      - **STOP and report**: "Checkpoint FAILED for Phase [N]. The following claims failed: [list]. This phase is NOT complete."
      - Suggest specific fixes for each failure
      - Do NOT proceed to the next phase
-     - If called from `/speckit.implement`, return control to the implement workflow with FAIL status so it can address the failures. Keep the response compact and do not narrate a summary.
+      - If called from `/speckit.implement` or `/speckit.closeout`, return control to the caller with FAIL status so it can address the failures. Keep the response compact and do not narrate a summary.
 
    - **If any claim is INCONCLUSIVE**:
      - Report the inconclusive claims

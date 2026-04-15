@@ -150,7 +150,7 @@ You **MUST** consider the user input before proceeding (if not empty).
         - payload: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.handoff.json`
         - result: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.result.json`
       - Exit code semantics: `0=PASS`, `1=FIX_REQUIRED`, `2=invalid/missing payload`.
-   4. On `PASS`: append `offline_qa_passed` (+ `qa_run_id`), append `task_closed`, then mark `[X]` in `tasks.md` and commit closure-only bookkeeping.
+    4. On `PASS`: invoke `/speckit.closeout` (or `uv run python scripts/speckit_closeout_task.py ...`) with the commit SHA and QA run id. The closeout path appends the canonical ledger events, marks `[X]` in `tasks.md`, and returns a compact next-action payload.
    5. On `FIX_REQUIRED`: append `offline_qa_failed`, append `fix_started`/`fix_completed`, then re-run the handoff.
    6. Do not start another task for the same agent until the current task has `task_closed`.
    7. After `task_closed`, run `scripts/cgc_safe_index.sh <files changed by this task>` scoped to changed files only.

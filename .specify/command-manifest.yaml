@@ -308,6 +308,28 @@ commands:
     - scripts/cgc_safe_index.sh
     artifacts: []
     emits: []
+  speckit.closeout:
+    description: Close a completed task through the canonical append-first ledger path
+      and hand off to checkpoint when a user story ends
+    mode: legacy
+    scripts:
+    - .specify/scripts/bash/check-prerequisites.sh
+    - scripts/speckit_closeout_task.py
+    - scripts/task_ledger.py
+    artifacts: []
+    emits:
+    - event: tests_passed
+      required_fields: []
+    - event: commit_created
+      required_fields:
+      - commit_sha
+    - event: offline_qa_started
+      required_fields: []
+    - event: offline_qa_passed
+      required_fields:
+      - qa_run_id
+    - event: task_closed
+      required_fields: []
   speckit.taskstoissues:
     description: Convert existing tasks into actionable, dependency-ordered GitHub
       issues for the feature
