@@ -36,6 +36,28 @@ class Example:
     assert all(symbol.scope is IndexScope.CODE for symbol in symbols)
 
 
+def test_extract_python_symbols_preserves_signatures_and_no_docstring_normalization(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "src" / "signature_example.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+def first(value: int) -> int:
+    return value + 1
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    symbols = extract_python_symbols(source, repo_root=tmp_path)
+
+    assert len(symbols) == 1
+    assert symbols[0].signature.startswith("def first")
+    assert symbols[0].docstring == ""
+    assert symbols[0].preview.startswith("def first")
+
+
 def test_extract_markdown_sections_builds_breadcrumbs_and_skips_generated_paths(
     tmp_path: Path,
 ) -> None:
