@@ -176,3 +176,66 @@ def current_name() -> str:
     fallback = service.query("updated", scope=IndexScope.CODE, top_k=1)
     assert fallback
     assert fallback[0].body
+
+
+def test_refresh_excludes_generated_artifacts_and_surfaces_post_edit_symbols(
+    tmp_path: Path,
+) -> None:
+    """Generated artifacts should stay out of the index while refreshed symbols surface."""
+
+    source = tmp_path / "src" / "sample.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+def live_symbol() -> str:
+    return "live"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    generated = tmp_path / "generated" / "auto.py"
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text(
+        """
+def generated_symbol() -> str:
+    return "generated"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    service = VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=".codegraphcontext/db/vector-index",
+            embedding_model="local-default",
+        )
+    )
+    service.build_full_index(revision="rev-a")
+
+    assert service.query("generated_symbol", scope=IndexScope.CODE, top_k=1) == []
+    baseline = service.query("live_symbol", scope=IndexScope.CODE, top_k=1)
+    assert baseline
+    assert baseline[0].file_path == source
+
+    source.write_text(
+        """
+def live_symbol() -> str:
+    return "live"
+
+
+def refreshed_symbol() -> str:
+    return "refreshed"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    refreshed = service.refresh_changed_files([source], revision="rev-b")
+    assert refreshed.indexed_commit == "rev-b"
+
+    surfacing = service.query("refreshed_symbol", scope=IndexScope.CODE, top_k=1)
+    assert surfacing
+    assert surfacing[0].file_path == source
+    assert service.query("generated_symbol", scope=IndexScope.CODE, top_k=1) == []
