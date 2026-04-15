@@ -109,7 +109,14 @@ def extract_python_symbols(
         def _pop(self) -> None:
             self._qualname_stack.pop()
 
-        def _record(self, node: ast.AST, *, name: str, scope: IndexScope) -> None:
+        def _record(
+            self,
+            node: ast.AST,
+            *,
+            name: str,
+            scope: IndexScope,
+            symbol_type: str,
+        ) -> None:
             segment = ast.get_source_segment(source, node) or ""
             first_line = segment.splitlines()[0].strip() if segment else ""
             if not first_line:
@@ -128,6 +135,8 @@ def extract_python_symbols(
                     line_end=end_lineno,
                     signature=first_line or name,
                     docstring=docstring,
+                    body=segment or "",
+                    symbol_type=symbol_type,
                     content_hash=hashlib.sha256(
                         (segment or first_line or name).encode("utf-8")
                     ).hexdigest(),
@@ -137,7 +146,12 @@ def extract_python_symbols(
             )
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
-            self._record(node, name=node.name, scope=IndexScope.CODE)
+            self._record(
+                node,
+                name=node.name,
+                scope=IndexScope.CODE,
+                symbol_type="class",
+            )
             self._push(node.name)
             try:
                 self.generic_visit(node)
@@ -145,7 +159,12 @@ def extract_python_symbols(
                 self._pop()
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
-            self._record(node, name=node.name, scope=IndexScope.CODE)
+            self._record(
+                node,
+                name=node.name,
+                scope=IndexScope.CODE,
+                symbol_type="function",
+            )
             self._push(node.name)
             try:
                 self.generic_visit(node)
@@ -153,7 +172,12 @@ def extract_python_symbols(
                 self._pop()
 
         def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
-            self._record(node, name=node.name, scope=IndexScope.CODE)
+            self._record(
+                node,
+                name=node.name,
+                scope=IndexScope.CODE,
+                symbol_type="async_function",
+            )
             self._push(node.name)
             try:
                 self.generic_visit(node)

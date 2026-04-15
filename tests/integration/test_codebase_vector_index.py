@@ -58,9 +58,10 @@ Run the index and then query the doctor.
     assert payload[0]["rank"] == 1
     assert payload[0]["scope"] == "code"
     assert payload[0]["file_path"] == str(source)
-    assert payload[0]["line_start"] == 1
+    assert payload[0]["line_start"] == 7
     assert payload[0]["line_end"] >= payload[0]["line_start"]
     assert payload[0]["signature"].startswith("def build_index")
+    assert "vector search" in payload[0]["body"]
     assert payload[0]["docstring"] == ""
     assert payload[0]["symbol_type"] == "function"
     assert service.query("nonsense phrase", scope=IndexScope.CODE, top_k=3) == []

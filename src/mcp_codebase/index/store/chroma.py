@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import uuid
 from collections import Counter
@@ -157,12 +158,7 @@ class ChromaIndexStore:
 
 
 def _tokenize(value: str) -> set[str]:
-    tokens = {
-        token
-        for token in value.lower().replace("/", " ").replace(".", " ").replace("-", " ").split()
-        if token
-    }
-    return tokens
+    return set(re.findall(r"[A-Za-z0-9_]+", value.lower()))
 
 
 def _score_record(query_tokens: set[str], record: CodeSymbol | MarkdownSection) -> float:
@@ -183,6 +179,7 @@ def _record_text(record: CodeSymbol | MarkdownSection) -> str:
         record.preview,
         getattr(record, "signature", ""),
         getattr(record, "docstring", ""),
+        getattr(record, "body", ""),
         getattr(record, "qualified_name", ""),
         getattr(record, "heading", ""),
         " ".join(getattr(record, "breadcrumb", ())),
