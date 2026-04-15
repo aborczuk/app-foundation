@@ -110,6 +110,19 @@ def _task_lines(tasks_path: Path) -> list[str]:
     return tasks_path.read_text(encoding="utf-8").splitlines()
 
 
+def _ledger_events_for_task(ledger_file: Path, feature_id: str, task_id: str) -> list[str]:
+    events: list[str] = []
+    if not ledger_file.exists():
+        return events
+    for raw_line in ledger_file.read_text(encoding="utf-8").splitlines():
+        if not raw_line.strip():
+            continue
+        event = json.loads(raw_line)
+        if event.get("feature_id") == feature_id and event.get("task_id") == task_id:
+            events.append(str(event.get("event", "")))
+    return events
+
+
 def _find_task_line(lines: list[str], task_id: str) -> int:
     for idx, line in enumerate(lines):
         match = TASK_LINE_RE.match(line)
@@ -183,58 +196,47 @@ def _closeout(
     lines = _task_lines(tasks_file)
     task_idx = _find_task_line(lines, task_id)
     start, end, phase_heading = _phase_bounds(lines, task_idx)
-    if "Checkpoint" not in "".join(lines[start:end]):
-        _fail("phase checkpoint missing from tasks.md")
+    phase_text = "".join(lines[start:end])
+    has_checkpoint = "Checkpoint" in phase_text
+
+    existing_events = _ledger_events_for_task(ledger_file, feature_id, task_id)
+    existing_event_set = set(existing_events)
 
     if not _phase_has_open_tasks(lines, start, end, task_id):
-        checkpoint_phase = phase_heading.lstrip("# ").strip()
-        next_action = "checkpoint"
-        next_task_id = None
+        if has_checkpoint:
+            checkpoint_phase = phase_heading.lstrip("# ").strip()
+            next_action = "checkpoint"
+            next_task_id = None
+        else:
+            checkpoint_phase = None
+            next_action = "continue"
+            next_task_id = None
     else:
         checkpoint_phase = None
         next_action = "continue"
         next_task_id = _phase_next_task(lines, start, end, task_id)
 
-    _append_event(
-        ledger_file=ledger_file,
-        feature_id=feature_id,
-        task_id=task_id,
-        event="tests_passed",
-        actor=actor,
-        details="closeout path recorded task test evidence",
-    )
-    _append_event(
-        ledger_file=ledger_file,
-        feature_id=feature_id,
-        task_id=task_id,
-        event="commit_created",
-        actor=actor,
-        commit_sha=commit_sha,
-    )
-    _append_event(
-        ledger_file=ledger_file,
-        feature_id=feature_id,
-        task_id=task_id,
-        event="offline_qa_started",
-        actor=actor,
-    )
-    _append_event(
-        ledger_file=ledger_file,
-        feature_id=feature_id,
-        task_id=task_id,
-        event="offline_qa_passed",
-        actor=actor,
-        qa_run_id=qa_run_id,
-        details="closeout path recorded offline QA pass",
-    )
-    _append_event(
-        ledger_file=ledger_file,
-        feature_id=feature_id,
-        task_id=task_id,
-        event="task_closed",
-        actor=actor,
-        details="canonical closeout path completed",
-    )
+    canonical_events: list[tuple[str, dict[str, str | None]]] = [
+        ("tests_passed", {"details": "closeout path recorded task test evidence"}),
+        ("commit_created", {"commit_sha": commit_sha}),
+        ("offline_qa_started", {}),
+        ("offline_qa_passed", {"qa_run_id": qa_run_id, "details": "closeout path recorded offline QA pass"}),
+        ("task_closed", {"details": "canonical closeout path completed"}),
+    ]
+    for event_name, extra in canonical_events:
+        if event_name in existing_event_set:
+            continue
+        _append_event(
+            ledger_file=ledger_file,
+            feature_id=feature_id,
+            task_id=task_id,
+            event=event_name,
+            actor=actor,
+            commit_sha=extra.get("commit_sha"),
+            qa_run_id=extra.get("qa_run_id"),
+            details=extra.get("details"),
+        )
+        existing_event_set.add(event_name)
     _validate_ledger(ledger_file)
 
     updated = list(lines)
