@@ -32,7 +32,7 @@ description: "Task list for Codebase Vector Index"
 **Purpose**: Core domain, extraction, storage, and adapter seams that every story depends on.
 
 - [X] T002 Define index domain and config models for `IndexScope`, `CodeSymbol`, `MarkdownSection`, `IndexMetadata`, `QueryResult`, and `IndexConfig` — src/mcp_codebase/index/domain.py:IndexScope
-- [ ] T003 Implement Python and markdown extractors with exclusion and no-docstring handling — src/mcp_codebase/index/extractors/python.py:extract_python_symbols
+- [X] T003 Implement Python and markdown extractors with exclusion and no-docstring handling — src/mcp_codebase/index/extractors/python.py:extract_python_symbols
 - [ ] T004 Implement the vector store and service orchestration for build/query/refresh/status — src/mcp_codebase/index/store/chroma.py:ChromaIndexStore
 - [ ] T005 Wire the vector index service into the MCP server and CLI adapter entrypoint — src/mcp_codebase/server.py:register_vector_index_tools
 
