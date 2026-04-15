@@ -52,7 +52,7 @@ description: "Task list for Codebase Vector Index"
 ### Implementation for User Story 1
 
 - [X] T008 [US1] Implement code-symbol query ranking and result shaping in `VectorIndexService` — src/mcp_codebase/index/service.py:VectorIndexService.query
-- [ ] T009 [US1] Preserve `read_code_context`-ready provenance in code-symbol results, including empty-string docstrings and line spans — src/mcp_codebase/index/domain.py:CodeSymbol
+- [X] T009 [US1] Preserve `read_code_context`-ready provenance in code-symbol results, including empty-string docstrings and line spans — src/mcp_codebase/index/domain.py:CodeSymbol
 
 **Checkpoint**: Code-symbol lookup is independently usable and returns actionable provenance.
 
