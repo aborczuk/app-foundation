@@ -23,6 +23,8 @@ description: "Task list for Codebase Vector Index"
 - [ ] T000 [P] Record External Ingress + Runtime Readiness Gate as N/A with rationale in `specs/020-codebase-vector-index/tasks.md` — specs/020-codebase-vector-index/tasks.md:T000
 - [X] T001 [P] Create the `src/mcp_codebase/index/` package skeleton and public exports — src/mcp_codebase/index/__init__.py:__all__
 
+**Runtime Gate Rationale**: N/A — the vector index feature is local-only, reads from the repo checkout, and exposes no external ingress or remote runtime readiness surface.
+
 **Checkpoint**: Runtime gate status is explicit and the new package imports cleanly.
 
 ## Phase 2: Foundational (Blocking Prerequisites)
