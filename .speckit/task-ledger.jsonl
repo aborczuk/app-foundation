@@ -653,3 +653,17 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:38.133653Z"}
 {"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t013-20260415T005944Z", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:47.818578Z"}
 {"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:47.847361Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.103486Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.201014Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.266628Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.331086Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.395700Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.461464Z"}
+{"actor": "codex", "attempt": 1, "details": "Universal backlog bootstrap surface exists and validates; ad-hoc intake can start.", "event": "task_closed", "feature_id": "000", "task_id": "T000", "timestamp_utc": "2026-04-15T01:36:49.570676Z"}
+{"actor": "codex", "attempt": 1, "details": "Start large-read enforcement for universal backlog task routing.", "event": "task_started", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:43.485683Z"}
+{"actor": "codex", "attempt": 1, "details": "Inspected current hook ordering and large-read policy; markdown docs were not covered.", "event": "discovery_completed", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:55.905988Z"}
+{"actor": "codex", "attempt": 1, "details": "Focused hook tests passed for large markdown sed denial and small markdown allowance.", "event": "quality_guards_passed", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:56.008431Z"}
+{"actor": "codex", "attempt": 1, "details": "Large markdown/doc reads are now routed through scripts/read-code.sh policy enforcement.", "event": "functional_goal_achieved", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:56.109997Z"}
+{"actor": "codex", "attempt": 1, "details": "Running offline QA for hook enforcement update.", "event": "offline_qa_started", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:56.181614Z"}
+{"actor": "codex", "attempt": 1, "details": "Offline QA passed for large markdown sed enforcement.", "event": "offline_qa_passed", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:56.249426Z"}
+{"actor": "codex", "attempt": 1, "details": "Large markdown/doc reads are now enforced through the read-code helper and the hook is prioritized in settings.", "event": "task_closed", "feature_id": "000", "task_id": "T001", "timestamp_utc": "2026-04-15T01:37:56.318356Z"}

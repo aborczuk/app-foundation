@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: deny broad reads of large code files unless read-code helper is used."""
+"""PreToolUse hook: deny broad reads of large code/doc files unless read-code helper is used."""
 
 from __future__ import annotations
 
@@ -36,6 +36,20 @@ CODE_EXTENSIONS = {
     ".zsh",
 }
 
+TEXT_EXTENSIONS = {
+    ".md",
+    ".markdown",
+    ".rst",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".env",
+}
+
 LINE_THRESHOLD = 200
 MAX_HELPER_LINES = 80
 
@@ -67,7 +81,8 @@ def _is_large_code_file(path_text: str) -> bool:
     if not path.is_file():
         return False
 
-    if path.suffix.lower() not in CODE_EXTENSIONS:
+    suffix = path.suffix.lower()
+    if suffix not in CODE_EXTENSIONS and suffix not in TEXT_EXTENSIONS:
         return False
 
     try:
@@ -154,7 +169,7 @@ def main() -> int:
                 return 0
             if allow_fallback:
                 _emit_deny(
-                    "read-code --allow-fallback is denied for large files. "
+                    "read-code --allow-fallback is denied for large code/doc files. "
                     "Use strict symbol resolution or narrow the symbol first."
                 )
                 return 0
@@ -170,7 +185,7 @@ def main() -> int:
     for candidate in _extract_candidate_paths(command):
         if _is_large_code_file(candidate):
             _emit_deny(
-                "Large code-file reads must use scripts/read-code.sh "
+                "Large code/doc-file reads must use scripts/read-code.sh "
                 "(read_code_context/read_code_window) with codegraph discovery first, "
                 "or approved HUD direct-read fast-path."
             )

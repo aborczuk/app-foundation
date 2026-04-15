@@ -8,7 +8,7 @@
 
 **Purpose**: Keep the universal backlog available as a stable intake surface.
 
-- [ ] T000 Maintain the universal backlog intake surface in `specs/000-universal-backlog/tasks.md`
+- [X] T000 Maintain the universal backlog intake surface in `specs/000-universal-backlog/tasks.md`
 
 **Checkpoint**: The universal backlog exists and is ready to accept ad-hoc tasks from any branch.
 
@@ -18,7 +18,7 @@
 
 <!-- Ad-hoc tasks are ordered below by backlog priority. -->
 
-- [ ] T001 Add `sed`-read enforcement to the `PreToolUse` hook in `.claude/settings.json` and `scripts/hook_enforce_code_reads.py` so large file reads are routed through `scripts/read-code.sh`
+- [X] T001 Add `sed`-read enforcement to the `PreToolUse` hook in `.claude/settings.json` and `scripts/hook_enforce_code_reads.py` so large file reads are routed through `scripts/read-code.sh`
 - [ ] T002 Add a checkpoint pause, GitHub sync handoff, and next-task HUD kickout to `.claude/commands/speckit.checkpoint.md` and `.claude/commands/speckit.implement.md`
 - [ ] T003 Write a canonical task closeout command/script plus governance and command-doc updates in `.claude/commands/`, `scripts/`, and `CLAUDE.md` so task closure happens through one append-first path that records tests, offline QA, `task_closed`, `[X]`, commit SHA, and QA run id
 - [ ] T004 Harden UUID-based feature identity routing in `scripts/pipeline_driver.py` and `scripts/pipeline_driver_state.py`
