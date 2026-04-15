@@ -93,3 +93,29 @@ Run the indexer and then query the doctor.
     generated.write_text("# Generated\n", encoding="utf-8")
 
     assert extract_markdown_sections(generated, repo_root=tmp_path) == []
+
+
+def test_extract_markdown_sections_preserves_nested_breadcrumbs_and_preview(
+    tmp_path: Path,
+) -> None:
+    docs = tmp_path / "specs" / "guide.md"
+    docs.parent.mkdir(parents=True, exist_ok=True)
+    docs.write_text(
+        """
+# Guide
+
+## Usage
+
+### Querying
+
+Run the indexer before querying the doctor.
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    sections = extract_markdown_sections(docs, repo_root=tmp_path)
+
+    assert [section.heading for section in sections] == ["Guide", "Usage", "Querying"]
+    assert sections[-1].breadcrumb == ("Guide", "Usage", "Querying")
+    assert sections[-1].preview.startswith("Run the indexer")
