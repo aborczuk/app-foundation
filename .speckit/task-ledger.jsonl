@@ -596,3 +596,13 @@
 {"actor": "codex", "attempt": 1, "details": "Starting offline QA handoff for the extractor signature regression.", "event": "offline_qa_started", "feature_id": "020", "task_id": "T007", "timestamp_utc": "2026-04-15T00:50:04.436943Z"}
 {"actor": "codex", "attempt": 1, "details": "Offline QA passed for the extractor signature regression.", "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t007-20260415T005006Z", "task_id": "T007", "timestamp_utc": "2026-04-15T00:50:09.762393Z"}
 {"actor": "codex", "attempt": 1, "details": "T007 closed after the extractor regression passed unit tests and offline QA.", "event": "task_closed", "feature_id": "020", "task_id": "T007", "timestamp_utc": "2026-04-15T00:50:09.822983Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:53:59.678748Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:53:59.740050Z"}
+{"actor": "codex", "attempt": 1, "event": "lld_recorded", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:53:59.807092Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:53:59.877350Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:53:59.952874Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:54:00.023908Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "e1fd366", "event": "commit_created", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:54:30.349652Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:54:30.382115Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t008-20260415T005432Z", "task_id": "T008", "timestamp_utc": "2026-04-15T00:54:37.520903Z"}
+{"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T008", "timestamp_utc": "2026-04-15T00:54:37.579745Z"}
