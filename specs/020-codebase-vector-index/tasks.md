@@ -64,8 +64,8 @@ description: "Task list for Codebase Vector Index"
 
 ### Tests for User Story 2
 
-- [ ] T010 [P] [US2] Add a failing integration test for markdown section discovery, breadcrumb rendering, and preview output — tests/integration/test_codebase_vector_index.py:test_markdown_section_lookup_returns_breadcrumb
-- [ ] T011 [P] [US2] Add a unit test for markdown extraction, nested headings, and section preview normalization — tests/unit/test_vector_index_extractors.py:test_extract_markdown_sections
+- [X] T010 [P] [US2] Add a failing integration test for markdown section discovery, breadcrumb rendering, and preview output — tests/integration/test_codebase_vector_index.py:test_markdown_section_lookup_returns_breadcrumb
+- [X] T011 [P] [US2] Add a unit test for markdown extraction, nested headings, and section preview normalization — tests/unit/test_vector_index_extractors.py:test_extract_markdown_sections
 
 ### Implementation for User Story 2
 

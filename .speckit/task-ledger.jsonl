@@ -615,3 +615,22 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T009", "timestamp_utc": "2026-04-15T00:55:29.763153Z"}
 {"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t009-20260415T005531Z", "task_id": "T009", "timestamp_utc": "2026-04-15T00:55:35.425226Z"}
 {"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T009", "timestamp_utc": "2026-04-15T00:55:37.603001Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:38.664263Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:38.724088Z"}
+{"actor": "codex", "attempt": 1, "event": "lld_recorded", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:38.788083Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:38.853843Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:38.915460Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:38.976780Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "e2c61d9", "event": "commit_created", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:43.079230Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:43.083988Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t010-20260415T005745Z", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:49.994218Z"}
+{"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T010", "timestamp_utc": "2026-04-15T00:57:50.001311Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:19.945811Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:20.006412Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:20.067234Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:20.134335Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:20.195428Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:23.812004Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "e2c61d9", "event": "commit_created", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:23.816991Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t011-20260415T005826Z", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:32.641272Z"}
+{"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T011", "timestamp_utc": "2026-04-15T00:58:32.694548Z"}
