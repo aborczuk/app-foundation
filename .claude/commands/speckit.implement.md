@@ -10,7 +10,19 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## Outline
+## Compact Contract (Load First)
+
+Use `.specify/command-manifest.yaml` as the command registry source of truth. Run these steps first; only load expanded guidance when a gate fails or the user asks for detail.
+
+1. Resolve `FEATURE_DIR` and `AVAILABLE_DOCS` with `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks`.
+2. Run `uv run python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`.
+3. If hard blocks report missing `e2e.md`/E2E script or `estimates.md`, stop and route to `/speckit.e2e` or `/speckit.estimate` respectively.
+4. If `checklists.incomplete_total > 0`, pause and ask before continuing.
+5. Load `tasks.md`, `plan.md`, and any optional context docs listed in the implement playbook.
+6. Run `uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json`.
+7. Execute tasks in order, using the task gate and ledger flow defined below.
+
+## Expanded Guidance (Load On Demand)
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
@@ -58,7 +70,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Acceptance Criteria**: Extract "Story Goal" and "Independent Test Criteria" for the phase containing the current task.
    - **Execution flow**: Order and dependency requirements
 
-5.5 **Task Scaffolding & Discovery Gate (MANDATORY before coding each task)**:
+5.5 **Task Scaffolding, Read Hierarchy & Discovery Gate (MANDATORY before coding each task)**:
    1. Run deterministic preflight:
       ```bash
        uv run python scripts/speckit_implement_gate.py task-preflight \
@@ -71,17 +83,22 @@ You **MUST** consider the user input before proceeding (if not empty).
       - `task_not_found_in_tasks_md` or `missing_tasks_md` → run `/speckit.tasking` or `/speckit.solution`
       - `missing_feature_dir` → re-run prerequisite setup
    3. Scope containment remains mandatory: do not introduce endpoints/env vars/auth/contracts/entities/dependencies not present in current spec artifacts.
-   4. Before any broad code read, do one HUD-anchored bounded read first:
-      ```bash
-      scripts/read-code.sh window <file-from-hud> <current-line-from-hud> 80 --hud-symbol
-      ```
-      - `Current line` is the mandatory first anchor when present in HUD.
-      - If `Current line` is missing/stale, then use strict symbol resolution as fallback.
-      - Use `--allow-fallback` only when strict lookup fails and only for non-large-file cases.
+   4. Apply mandatory read hierarchy before any edits:
+      - Run helper entrypoints first:
+        - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
+        - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
+      - Helper behavior (internal order): semantic lookup first, then exact bounded read.
+      - If HUD provides `Current line`, use it as the first code anchor:
+        ```bash
+        scripts/read-code.sh window <file-from-hud> <current-line-from-hud> 80 --hud-symbol
+        ```
+      - Keep strict symbol checks; use `--allow-fallback` only when strict lookup fails and only for non-large-file cases.
+      - Run `discovery checks` third:
+        - `codegraph` caller/callee/import blast-radius queries only after the exact seam is anchored by helper output.
    5. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
 
 6. Execute implementation following the task plan:
-   - **Codebase MCP tools (use when connected)** — see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST use `codegraph` first for discovery/scope (find symbols, callers/callees, imports, and impact scope) before writing. You MUST use `get_type`/`get_diagnostics` (codebase-lsp, if connected) second to verify exact types/diagnostics before edits and after edits in touched files. Do not mark a task `[X]` while known type errors remain in files the task owns.
+   - **Codebase MCP tools (use when connected)** — see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST follow this order per task: `helper-driven read (read-code/read-markdown; semantic+exact) -> discovery checks (codegraph blast radius) -> type verification (codebase-lsp get_type/get_diagnostics)`. Do not mark a task `[X]` while known type errors remain in files the task owns.
    - **Phase-by-phase execution**: Complete each phase before moving to the next
    - **Per-story RED step (MANDATORY at the start of each User Story phase — before any task code)**:
      1. Write the failing story-level acceptance test derived from the "Independent Test Criteria" in tasks.md for this story. This is a pytest case (or equivalent) targeting the story's observable outcome — not a unit test.

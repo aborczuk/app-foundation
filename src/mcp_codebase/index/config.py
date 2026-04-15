@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.mcp_codebase.index.domain import IndexScope
+
+EXCLUDE_PATTERNS_ENV = "MCP_CODEBASE_INDEX_EXCLUDE_PATTERNS"
 
 
 class IndexConfig(BaseModel):
@@ -52,3 +56,13 @@ class IndexConfig(BaseModel):
         object.__setattr__(self, "db_path", db_path)
         object.__setattr__(self, "exclude_patterns", tuple(cleaned_patterns))
         return self
+
+
+def load_exclude_patterns(raw_value: str | None = None) -> tuple[str, ...]:
+    """Load configured exclude patterns from an environment string."""
+    if raw_value is None:
+        raw_value = os.getenv(EXCLUDE_PATTERNS_ENV, "")
+    if not raw_value.strip():
+        return ()
+    patterns = [part.strip() for part in re.split(r"[,\n;]", raw_value) if part.strip()]
+    return tuple(patterns)

@@ -4,19 +4,41 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
+import time
 from pathlib import Path
 from typing import Sequence
 
 from src.mcp_codebase.index import IndexConfig, IndexScope, build_vector_index_service
+from src.mcp_codebase.index.config import load_exclude_patterns
+from src.mcp_codebase.index.extractors.python import should_skip_path
 
+try:  # pragma: no cover - exercised in runtime verification
+    from watchdog.events import FileSystemEventHandler  # type: ignore[import-not-found]
+    from watchdog.observers import Observer  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - handled with a clear runtime error
+    class FileSystemEventHandler:  # type: ignore[override]
+        """Fallback base class used when watchdog is unavailable."""
+
+        pass
+
+    Observer = None
+
+_WATCHABLE_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown"}
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for vector-index operations."""
-
     parser = argparse.ArgumentParser(prog="mcp-codebase-indexer")
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--db-path", type=Path, default=Path(".codegraphcontext/db/vector-index"))
     parser.add_argument("--embedding-model", type=str, default="local-default")
+    parser.add_argument(
+        "--exclude-pattern",
+        action="append",
+        dest="exclude_patterns",
+        default=None,
+        help="Exclude matching paths from indexing; can be repeated.",
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -32,25 +54,117 @@ def build_parser() -> argparse.ArgumentParser:
     refresh.add_argument("changed_paths", nargs="+")
     refresh.add_argument("--revision", default="local")
 
-    subparsers.add_parser("status", help="Report the active snapshot status")
+    status = subparsers.add_parser("status", help="Report the active snapshot status")
+    status.set_defaults(command="status")
+
+    watch = subparsers.add_parser("watch", help="Watch for local file changes and refresh incrementally")
+    watch.add_argument("--revision", default="local")
+    watch.add_argument(
+        "--debounce-seconds",
+        type=float,
+        default=0.5,
+        help="Wait this long after the most recent change before refreshing.",
+    )
 
     return parser
 
 
 def build_service(args: argparse.Namespace):
     """Construct the shared vector-index service from CLI arguments."""
-
+    cli_patterns = tuple(args.exclude_patterns or ())
+    env_patterns = load_exclude_patterns()
     config = IndexConfig(
         repo_root=args.repo_root,
         db_path=args.db_path,
         embedding_model=args.embedding_model,
+        exclude_patterns=cli_patterns or env_patterns,
     )
     return build_vector_index_service(config)
 
 
+class _PendingRefreshBuffer:
+    """Collect file paths until the watcher has been quiet long enough."""
+
+    def __init__(self, service, repo_root: Path, *, revision: str) -> None:
+        self._service = service
+        self._repo_root = repo_root.expanduser().resolve()
+        self._revision = revision
+        self._pending_paths: set[Path] = set()
+        self._lock = threading.Lock()
+
+    def add(self, raw_path: str | Path) -> None:
+        candidate = Path(raw_path)
+        if should_skip_path(candidate, self._repo_root):
+            return
+
+        if not candidate.is_absolute():
+            candidate = (self._repo_root / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+
+        if candidate.suffix.lower() not in _WATCHABLE_SUFFIXES:
+            return
+
+        with self._lock:
+            self._pending_paths.add(candidate)
+
+    def flush(self):
+        with self._lock:
+            if not self._pending_paths:
+                return None
+            changed_paths = sorted(self._pending_paths)
+            self._pending_paths.clear()
+        return self._service.refresh_changed_files(changed_paths, revision=self._revision)
+
+
+class _WatchEventHandler(FileSystemEventHandler):
+    """Watchdog event handler that batches local file changes."""
+
+    def __init__(self, buffer: _PendingRefreshBuffer, trigger: threading.Event) -> None:
+        self._buffer = buffer
+        self._trigger = trigger
+
+    def on_any_event(self, event) -> None:  # pragma: no cover - watchdog callback wiring
+        if getattr(event, "is_directory", False):
+            return
+        self._buffer.add(getattr(event, "src_path", ""))
+        if getattr(event, "event_type", "") == "moved":
+            self._buffer.add(getattr(event, "dest_path", ""))
+        self._trigger.set()
+
+
+def _run_watch(service, *, repo_root: Path, revision: str, debounce_seconds: float) -> int:
+    if Observer is None:
+        raise RuntimeError("watchdog is required for watch mode; run `uv sync` first.")
+
+    trigger = threading.Event()
+    buffer = _PendingRefreshBuffer(service, repo_root, revision=revision)
+    handler = _WatchEventHandler(buffer, trigger)
+    observer = Observer()
+    observer.schedule(handler, str(repo_root), recursive=True)  # type: ignore[arg-type]
+    observer.start()
+    print(f"Watching {repo_root} for local changes. Press Ctrl-C to stop.")
+
+    try:
+        while True:
+            trigger.wait()
+            trigger.clear()
+            time.sleep(debounce_seconds)
+            while trigger.is_set():
+                trigger.clear()
+                time.sleep(debounce_seconds)
+            metadata = buffer.flush()
+            if metadata is not None:
+                print(json.dumps(metadata.model_dump(mode="json"), indent=2, sort_keys=True))
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        observer.stop()
+        observer.join()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the vector-index CLI adapter."""
-
     parser = build_parser()
     args = parser.parse_args(argv)
     service = build_service(args)
@@ -87,6 +201,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 0
+
+    if args.command == "watch":
+        return _run_watch(
+            service,
+            repo_root=args.repo_root,
+            revision=args.revision,
+            debounce_seconds=args.debounce_seconds,
+        )
 
     raise ValueError(f"Unknown command: {args.command}")
 

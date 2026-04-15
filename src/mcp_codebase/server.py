@@ -113,7 +113,6 @@ class CodebaseLSPServer:
         @self.mcp.tool()
         async def get_graph_health() -> dict:
             """Return the current local CodeGraph readiness status."""
-
             health = classify_graph_health(server_ref._project_root).to_dict()
             recovery_hint = health.get("recovery_hint", {})
             logger.info(
@@ -177,11 +176,13 @@ class CodebaseLSPServer:
 
     def _build_index_config(self):
         from src.mcp_codebase.index import IndexConfig
+        from src.mcp_codebase.index.config import load_exclude_patterns
 
         return IndexConfig(
             repo_root=self._project_root,
             db_path=Path(".codegraphcontext/db/vector-index"),
             embedding_model="local-default",
+            exclude_patterns=load_exclude_patterns(),
         )
 
 

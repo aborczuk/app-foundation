@@ -34,7 +34,13 @@ Run these steps first; only load expanded guidance when a gate fails or the user
 3. Scaffold plan artifacts immediately:
     - `uv run python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
    - This creates `plan.md`, `data-model.md`, and `quickstart.md` from the manifest templates.
-4. Fill the scaffolded artifacts using `spec.md`, `research.md`, and repo context. Keep `plan.md` table-heavy and use it as the source of truth for architecture decisions, gates, and the sketch handoff contract.
+4. Fill the scaffolded artifacts using `spec.md`, `research.md`, and repo context with this mandatory read hierarchy:
+    - First, run the read helpers (entrypoint):
+      - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
+      - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
+    - Helper behavior (internal order): semantic lookup first, then exact bounded read.
+    - After the seam is anchored, run discovery checks (`codegraph` caller/callee/import blast radius).
+   - Do not start with broad `codegraph` or grep sweeps unless helper-driven reads fail to locate the target.
 5. Emit `plan_started`, then let the existing driver-backed flow continue to `/speckit.planreview`. If open feasibility questions remain, continue to `/speckit.feasibilityspike`. Emit `plan_approved` only after those sub-processes complete successfully.
 6. On any non-zero gate result, route by reason code using `docs/governance/gate-reason-codes.yaml`.
 
@@ -47,6 +53,17 @@ Read:
 - `research.md` if present
 - `constitution.md`
 - the `plan.md` template that will be scaffolded
+
+### 1a. Read hierarchy enforcement (MANDATORY)
+
+For any repo code/doc claim included in `plan.md`:
+- Start with helper-driven exact reads:
+  - `read_code_context` / `read_code_window` for code
+  - `read_markdown_section` for docs
+- These helpers are semantic-first internally and return bounded, anchored reads.
+- Run discovery checks (`codegraph`) only after the exact seam is confirmed.
+
+This order is required for architecture decisions, risk reasoning, and any blast-radius statement.
 
 ## 2. Artifact shape
 

@@ -200,8 +200,10 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 - Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` (`cwd: /Users/andreborczuk/app-foundation`)
 
 **Mandatory workflow order**:
-1.  **Discovery**: Use `github` (if remote context needed) and `codegraph` (local context) first to identify all symbols, callers/callees, and existing issues.
-2.  **Verification**: Use `codebase-lsp` second to verify exact types/diagnostics before and after edits. Do not mark a task `[X]` while known type errors remain in files the task owns.
+1.  **Helper-driven read**: Start with `scripts/read-code.sh` / `scripts/read-markdown.sh` for anchored bounded reads.
+2.  **Semantic+exact semantics (internal)**: Those helpers run semantic lookup first, then exact seam anchoring.
+3.  **Discovery checks**: Use `codegraph` after the seam is anchored to map callers/callees/imports/blast radius (plus `github` if remote context is needed).
+4.  **Verification**: Use `codebase-lsp` to verify exact types/diagnostics before and after edits. Do not mark a task `[X]` while known type errors remain in files the task owns.
 
 **CodeGraph safety guard (NON-NEGOTIABLE)**:
 - Do not run `uv run cgc index --force ...` directly.
@@ -251,14 +253,14 @@ Treat every generated shell script as macOS-first. Apply all three rules uncondi
 
 ### Markdown File Read Efficiency
 
-For any markdown file >100 lines, use `scripts/read-markdown.sh` to enforce grep-first navigation:
+For any markdown file >100 lines, use `scripts/read-markdown.sh` to enforce vector-first section anchoring with exact-heading fallback:
 ```bash
 source scripts/read-markdown.sh
 read_markdown_section <file> <section_heading>
 ```
 Example: `read_markdown_section specs/020-analytics-platform/plan.md "External Ingress"`
 
-This is automatic and mandatory — it greps for the section, then reads only the relevant window (token-efficient).
+This is automatic and mandatory — it queries the vector index first for the target section, then falls back to exact heading grep, and reads only the relevant window (token-efficient).
 
 ### Code File Read Efficiency
 
@@ -270,9 +272,10 @@ read_code_context <file> <symbol_or_pattern> [context_lines]
 Example: `read_code_context src/clickup_control_plane/webhook_auth.py "def verify_signature" 80`
 
 Use this workflow:
-1. Discover target symbols/scope via `codegraph` first (per mandatory workflow order above).
-2. Read only a bounded code window around the symbol/pattern.
-3. Expand to additional windows only when needed to resolve ambiguity.
+1. Invoke `read_code_context` / `read_code_window` first for code seam anchoring.
+2. The helper resolves semantic lookup first and then performs exact bounded reads.
+3. Run codegraph discovery checks for blast radius only after the seam is confirmed.
+4. Expand to additional windows only when needed to resolve ambiguity.
 
 Full-file reads for large code files are disallowed unless the user explicitly requests full contents.
 In Claude Code, this is enforced by `.claude/settings.json` `PreToolUse` hooks.

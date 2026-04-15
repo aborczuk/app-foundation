@@ -186,8 +186,8 @@ def main() -> int:
         if _is_large_code_file(candidate):
             _emit_deny(
                 "Large code/doc-file reads must use scripts/read-code.sh "
-                "(read_code_context/read_code_window) with codegraph discovery first, "
-                "or approved HUD direct-read fast-path."
+                "(read_code_context/read_code_window) with semantic lookup first, exact bounded reads second, "
+                "and discovery checks after anchoring (or approved HUD direct-read fast-path)."
             )
             return 0
 

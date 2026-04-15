@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import subprocess
+import uuid
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from src.mcp_codebase.index.config import IndexConfig
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
@@ -16,13 +17,13 @@ class VectorIndexService:
     """Orchestrate build, query, refresh, and status operations."""
 
     def __init__(self, config: IndexConfig, *, store: ChromaIndexStore | None = None) -> None:
+        """Create a service bound to a specific index configuration."""
         self._config = config
         self._store = store or ChromaIndexStore(config)
 
     @property
     def config(self) -> IndexConfig:
         """Return the active index configuration."""
-
         return self._config
 
     def build_full_index(
@@ -32,9 +33,17 @@ class VectorIndexService:
         source_paths: Sequence[str | Path] | None = None,
     ) -> IndexMetadata:
         """Rebuild the active snapshot from the full repository checkout."""
-
         content_units = self._collect_content_units(source_paths=source_paths)
-        metadata = self._build_metadata(revision=revision, entry_count=len(content_units), is_stale=False, stale_reason="")
+        code_symbol_count, markdown_section_count = _count_content_units(content_units)
+        resolved_revision = _resolve_revision_label(revision, self._config.repo_root)
+        metadata = self._build_metadata(
+            revision=resolved_revision,
+            entry_count=len(content_units),
+            code_symbol_count=code_symbol_count,
+            markdown_section_count=markdown_section_count,
+            is_stale=False,
+            stale_reason="",
+        )
         return self._store.write_snapshot(content_units, metadata)
 
     def query(
@@ -45,7 +54,6 @@ class VectorIndexService:
         scope: IndexScope | None = None,
     ) -> list[QueryResult]:
         """Query the active snapshot."""
-
         return self._store.query(query_text, top_k=top_k, scope=scope)
 
     def refresh_changed_files(
@@ -55,7 +63,6 @@ class VectorIndexService:
         revision: str = "local",
     ) -> IndexMetadata:
         """Refresh only changed content units and keep prior data queryable on failure."""
-
         existing = self._store.load_snapshot()
         changed_units = self._collect_content_units(changed_paths=changed_paths)
 
@@ -67,13 +74,56 @@ class VectorIndexService:
             retained_units = [unit for unit in current_units if unit.file_path.resolve() not in changed_set]
             content_units = retained_units + changed_units
 
-        metadata = self._build_metadata(revision=revision, entry_count=len(content_units), is_stale=False, stale_reason="")
+        resolved_revision = _resolve_revision_label(revision, self._config.repo_root)
+        code_symbol_count, markdown_section_count = _count_content_units(content_units)
+        metadata = self._build_metadata(
+            revision=resolved_revision,
+            entry_count=len(content_units),
+            code_symbol_count=code_symbol_count,
+            markdown_section_count=markdown_section_count,
+            is_stale=False,
+            stale_reason="",
+        )
         return self._store.refresh_snapshot(content_units, metadata)
 
     def status(self) -> IndexMetadata | None:
         """Return the active snapshot metadata."""
+        metadata = self._store.status()
+        if metadata is None:
+            return None
 
-        return self._store.status()
+        current_commit = _resolve_current_commit(self._config.repo_root)
+        indexed_age_seconds = round(max(0.0, (_utc_now() - metadata.indexed_at).total_seconds()), 3)
+        updates: dict[str, object] = {"indexed_age_seconds": indexed_age_seconds}
+
+        if current_commit is None:
+            return metadata.model_copy(update=updates)
+
+        commits_behind_head = _resolve_commit_distance(
+            self._config.repo_root,
+            metadata.indexed_commit,
+            current_commit,
+        )
+        is_stale = current_commit != metadata.indexed_commit
+        stale_reason = ""
+        if is_stale:
+            reason_parts = [
+                f"indexed commit {metadata.indexed_commit} is behind current HEAD {current_commit}",
+            ]
+            if commits_behind_head is not None:
+                reason_parts[0] += f" by {commits_behind_head} commits"
+            reason_parts.append(f"built {indexed_age_seconds} seconds ago")
+            stale_reason = "; ".join(reason_parts)
+
+        updates.update(
+            {
+                "current_commit": current_commit,
+                "is_stale": is_stale,
+                "stale_reason": stale_reason,
+                "commits_behind_head": commits_behind_head,
+            }
+        )
+        return metadata.model_copy(update=updates)
 
     def _collect_content_units(
         self,
@@ -125,6 +175,8 @@ class VectorIndexService:
         *,
         revision: str,
         entry_count: int,
+        code_symbol_count: int,
+        markdown_section_count: int,
         is_stale: bool,
         stale_reason: str,
     ) -> IndexMetadata:
@@ -134,6 +186,10 @@ class VectorIndexService:
             current_commit=revision,
             indexed_at=_utc_now(),
             entry_count=entry_count,
+            code_symbol_count=code_symbol_count,
+            markdown_section_count=markdown_section_count,
+            embedding_model=self._store.embedding_model,
+            collection_name=f"{self._config.collection_name}-{uuid.uuid4().hex}",
             is_stale=is_stale,
             stale_reason=stale_reason,
             scopes=self._config.default_scopes,
@@ -142,7 +198,6 @@ class VectorIndexService:
 
 def build_vector_index_service(config: IndexConfig) -> VectorIndexService:
     """Factory for dependency injection and adapters."""
-
     return VectorIndexService(config)
 
 
@@ -159,3 +214,46 @@ def _utc_now():
     from datetime import UTC, datetime
 
     return datetime.now(UTC)
+
+
+def _resolve_current_commit(repo_root: Path) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    commit = completed.stdout.strip()
+    return commit or None
+
+
+def _resolve_revision_label(revision: str, repo_root: Path) -> str:
+    if revision != "local":
+        return revision
+    current_commit = _resolve_current_commit(repo_root)
+    return current_commit or revision
+
+
+def _count_content_units(content_units: Sequence[CodeSymbol | MarkdownSection]) -> tuple[int, int]:
+    code_symbol_count = sum(1 for unit in content_units if unit.scope is IndexScope.CODE)
+    markdown_section_count = sum(1 for unit in content_units if unit.scope is IndexScope.MARKDOWN)
+    return code_symbol_count, markdown_section_count
+
+
+def _resolve_commit_distance(repo_root: Path, indexed_commit: str, current_commit: str) -> int | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-list", "--count", f"{indexed_commit}..{current_commit}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    try:
+        return int(completed.stdout.strip())
+    except ValueError:
+        return None

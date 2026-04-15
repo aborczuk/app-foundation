@@ -68,8 +68,15 @@ class IndexMetadata(BaseModel):
     current_commit: str = Field(min_length=1)
     indexed_at: datetime
     entry_count: int = Field(ge=0)
+    code_symbol_count: int = Field(default=0, ge=0)
+    markdown_section_count: int = Field(default=0, ge=0)
+    embedding_model: str = Field(default="local-default", min_length=1)
+    collection_name: str = Field(default="codebase-vector-index", min_length=1)
+    snapshot_path: str = Field(default="")
     is_stale: bool = False
     stale_reason: str = ""
+    commits_behind_head: int | None = Field(default=None, ge=0)
+    indexed_age_seconds: float | None = Field(default=None, ge=0.0)
     scopes: tuple[IndexScope, ...] = Field(
         default_factory=lambda: (IndexScope.CODE, IndexScope.MARKDOWN)
     )

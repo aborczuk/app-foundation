@@ -1,17 +1,19 @@
 #!/bin/bash
 
-# read-code.sh: Enforce symbol-first, windowed reads for large code files.
+# read-code.sh: Enforce vector-first, symbol-checked reads for large code files.
 #
 # MANDATORY: For code files >200 lines, read through this helper.
 # This script enforces the Code File Read Efficiency rule from CLAUDE.md:
-# "Use codegraph for discovery first, then read only bounded windows."
+# "Use the vector index first for line anchoring, then keep strict symbol checks,
+#  then bounded window reads."
 #
 # Usage:
 #   read_code_context <file_path> <symbol_or_pattern> [context_lines]
 #   read_code_window  <file_path> <start_line> [line_count] [symbol_or_pattern]
 # Optional HUD fast-path:
-#   add --hud-symbol (or set SPECKIT_HUD_DIRECT_READ=1) to skip codegraph
-#   discovery when the symbol came directly from a trusted HUD file:symbol entry.
+#   add --hud-symbol (or set SPECKIT_HUD_DIRECT_READ=1) to skip the expensive
+#   discovery side-path when the symbol came directly from a trusted HUD
+#   file:symbol entry.
 #
 # Examples:
 #   read_code_context src/module.py "def run_pipeline" 80
@@ -137,10 +139,115 @@ normalize_symbol_pattern() {
     normalized="${normalized#async def }"
     normalized="${normalized#def }"
     normalized="${normalized#class }"
-    normalized="${normalized%%(*}"
+    # Escape the literal paren so the helper works when sourced from zsh as well as bash.
+    normalized="${normalized%%\(*}"
     normalized="${normalized%%:*}"
     normalized="${normalized%%[[:space:]]*}"
     echo "$normalized"
+}
+
+_vector_query_line_num() {
+    local file="$1"
+    local query="$2"
+    local scope="$3"
+
+    if [[ -z "$file" || -z "$query" || -z "$scope" ]]; then
+        return 1
+    fi
+
+    if ! command -v uv >/dev/null 2>&1; then
+        return 1
+    fi
+
+    python3 - "$REPO_ROOT" "$file" "$query" "$scope" <<'PYTHON_EOF'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1]).expanduser().resolve()
+target_file = Path(sys.argv[2]).expanduser().resolve()
+query = sys.argv[3]
+scope = sys.argv[4]
+
+cmd = [
+    "uv",
+    "run",
+    "--no-sync",
+    "python",
+    "-m",
+    "src.mcp_codebase.indexer",
+    "--repo-root",
+    str(repo_root),
+    "query",
+    query,
+    "--scope",
+    scope,
+    "--top-k",
+    "5",
+]
+proc = subprocess.run(cmd, capture_output=True, text=True)
+if proc.returncode != 0:
+    raise SystemExit(1)
+
+try:
+    payload = json.loads(proc.stdout or "[]")
+except json.JSONDecodeError:
+    raise SystemExit(1)
+
+def _resolve_candidate(item):
+    candidate = item.get("file_path")
+    if candidate:
+        return candidate
+    content = item.get("content")
+    if isinstance(content, dict):
+        return content.get("file_path")
+    return None
+
+def _resolve_line(item):
+    line = item.get("line_start")
+    if line is not None:
+        return line
+    content = item.get("content")
+    if isinstance(content, dict):
+        return content.get("line_start")
+    return None
+
+for item in payload:
+    candidate = _resolve_candidate(item)
+    if not candidate:
+        continue
+    try:
+        if Path(candidate).expanduser().resolve() != target_file:
+            continue
+    except Exception:
+        continue
+
+    line = _resolve_line(item)
+    if line:
+        print(line)
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PYTHON_EOF
+}
+
+_vector_find_line_num() {
+    local file="$1"
+    local raw_pattern="$2"
+    local normalized_pattern="$3"
+    local scope="$4"
+    local line_num=""
+
+    if [[ -n "$raw_pattern" ]]; then
+        line_num="$(_vector_query_line_num "$file" "$raw_pattern" "$scope" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$line_num" && -n "$normalized_pattern" && "$normalized_pattern" != "$raw_pattern" ]]; then
+        line_num="$(_vector_query_line_num "$file" "$normalized_pattern" "$scope" 2>/dev/null || true)"
+    fi
+
+    echo "$line_num"
 }
 
 _find_line_num() {
@@ -302,13 +409,15 @@ read_code_context() {
 
     local normalized_pattern
     normalized_pattern="$(normalize_symbol_pattern "$pattern")"
+    local vector_line_num=""
+    vector_line_num="$(_vector_find_line_num "$file" "$pattern" "$normalized_pattern" code)"
 
     local use_hud_fast_path=0
     if [[ "$hud_flag" == "--hud-symbol" || "${SPECKIT_HUD_DIRECT_READ:-0}" == "1" ]]; then
         use_hud_fast_path=1
     fi
 
-    if [[ "$use_hud_fast_path" -eq 0 ]]; then
+    if [[ -z "$vector_line_num" && "$use_hud_fast_path" -eq 0 ]]; then
         if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
             codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
         else
@@ -317,8 +426,13 @@ read_code_context() {
     fi
 
     local line_num
-    if line_num="$(_resolve_line_num_strict "$file" "$pattern" "$normalized_pattern")"; then
-        :
+    local strict_line_num=""
+    if strict_line_num="$(_resolve_line_num_strict "$file" "$pattern" "$normalized_pattern")"; then
+        if [[ -n "$vector_line_num" ]]; then
+            line_num="$vector_line_num"
+        else
+            line_num="$strict_line_num"
+        fi
     else
         local strict_status="$?"
         if [[ "$allow_fallback" -eq 1 ]]; then
@@ -405,47 +519,55 @@ read_code_window() {
         return 1
     fi
 
-    if is_large_code_file "$file"; then
-        local use_hud_fast_path=0
-        if [[ "$hud_flag" == "--hud-symbol" || "${SPECKIT_HUD_DIRECT_READ:-0}" == "1" ]]; then
-            use_hud_fast_path=1
+    local vector_line_num=""
+    local use_hud_fast_path=0
+    if [[ "$hud_flag" == "--hud-symbol" || "${SPECKIT_HUD_DIRECT_READ:-0}" == "1" ]]; then
+        use_hud_fast_path=1
+    fi
+
+    if [[ -n "$pattern" ]]; then
+        local normalized_pattern
+        normalized_pattern="$(normalize_symbol_pattern "$pattern")"
+        vector_line_num="$(_vector_find_line_num "$file" "$pattern" "$normalized_pattern" code)"
+
+        if [[ -z "$vector_line_num" && "$use_hud_fast_path" -eq 0 ]]; then
+            if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
+                codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
+            else
+                codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+            fi
         fi
 
-        # HUD current-line fast-path: allow bounded line-anchored reads without symbol lookup.
-        if [[ -z "$pattern" && "$use_hud_fast_path" -eq 1 ]]; then
-            :
+        local strict_line_num=""
+        if strict_line_num="$(_resolve_line_num_strict "$file" "$pattern" "$normalized_pattern")"; then
+            if [[ -n "$vector_line_num" ]]; then
+                start_line="$vector_line_num"
+            else
+                start_line="$strict_line_num"
+            fi
         else
-            if [[ -z "$pattern" ]]; then
-                echo "ERROR: symbol_or_pattern is required for files >${CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path." >&2
-                echo "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>" >&2
+            local strict_status="$?"
+            if [[ "$allow_fallback" -ne 1 ]]; then
+                if [[ "$strict_status" -eq 2 ]]; then
+                    echo "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback." >&2
+                else
+                    echo "ERROR: Strict symbol resolution failed for '$pattern'. Re-run with --allow-fallback to allow bounded file-local fallback." >&2
+                fi
                 return 1
             fi
-            local normalized_pattern
-            normalized_pattern="$(normalize_symbol_pattern "$pattern")"
-            if [[ "$use_hud_fast_path" -eq 0 ]]; then
-                if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
-                    codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
-                else
-                    codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
-                fi
-            fi
-
-            if ! _resolve_line_num_strict "$file" "$pattern" "$normalized_pattern" >/dev/null; then
-                local strict_status="$?"
-                if [[ "$allow_fallback" -ne 1 ]]; then
-                    if [[ "$strict_status" -eq 2 ]]; then
-                        echo "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback." >&2
-                    else
-                        echo "ERROR: Strict symbol resolution failed for '$pattern'. Re-run with --allow-fallback to allow bounded file-local fallback." >&2
-                    fi
-                    return 1
-                fi
-                if [[ -z "$(_find_line_num "$file" "$pattern" "$normalized_pattern")" ]]; then
-                    echo "ERROR: Pattern not found after one bounded fallback: $pattern in $file" >&2
-                    return 1
-                fi
+            local fallback_line_num=""
+            fallback_line_num="$(_find_line_num "$file" "$pattern" "$normalized_pattern")"
+            if [[ -n "$fallback_line_num" ]]; then
+                start_line="$fallback_line_num"
+            else
+                echo "ERROR: Pattern not found after one bounded fallback: $pattern in $file" >&2
+                return 1
             fi
         fi
+    elif is_large_code_file "$file" && [[ "$use_hud_fast_path" -eq 0 ]]; then
+        echo "ERROR: symbol_or_pattern is required for files >${CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path." >&2
+        echo "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>" >&2
+        return 1
     fi
 
     local end_line=$((start_line + line_count - 1))

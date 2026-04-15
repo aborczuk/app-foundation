@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from src.mcp_codebase.index import CodeSymbol, IndexConfig, IndexMetadata, IndexScope, QueryResult
+from src.mcp_codebase.index import CodeSymbol, IndexMetadata, IndexScope, QueryResult
 from src.mcp_codebase.server import CodebaseLSPServer, register_vector_index_tools
 
 
@@ -43,7 +44,7 @@ def test_register_vector_index_tools_routes_through_shared_service() -> None:
                 source_root=Path.cwd(),
                 indexed_commit=revision,
                 current_commit=revision,
-                indexed_at="2026-04-14T00:00:00Z",
+                indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
                 entry_count=1,
                 is_stale=False,
                 stale_reason="",
@@ -62,6 +63,8 @@ def test_register_vector_index_tools_routes_through_shared_service() -> None:
 
     asyncio.run(mcp.call_tool("search_vector_index", {"query": "hello", "top_k": 2, "scope": "code"}))
     assert service.calls[0] == ("query", "hello", 2, IndexScope.CODE)
+    asyncio.run(mcp.call_tool("get_vector_index_status", {}))
+    assert service.calls[-1] == ("status",)
 
 
 def test_server_keeps_existing_pyright_tools_and_adds_vector_tools(tmp_path: Path) -> None:
@@ -72,3 +75,16 @@ def test_server_keeps_existing_pyright_tools_and_adds_vector_tools(tmp_path: Pat
 
     assert {"get_type", "get_diagnostics", "get_graph_health"}.issubset(tool_names)
     assert {"search_vector_index", "refresh_vector_index", "get_vector_index_status"}.issubset(tool_names)
+
+
+def test_server_build_index_config_reads_exclude_patterns_from_env(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Server config should pick up configured exclude patterns from the environment."""
+
+    monkeypatch.setenv("MCP_CODEBASE_INDEX_EXCLUDE_PATTERNS", "docs/build/**,generated/**")
+    server = CodebaseLSPServer(project_root=tmp_path, log_base_dir=tmp_path / "logs")
+
+    config = server._build_index_config()
+
+    assert config.exclude_patterns == ("docs/build/**", "generated/**")

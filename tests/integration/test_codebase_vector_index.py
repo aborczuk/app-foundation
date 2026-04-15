@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from src.mcp_codebase.index import IndexConfig, IndexScope
+from src.mcp_codebase.index import service as index_service
 from src.mcp_codebase.index.service import VectorIndexService
 
 
@@ -47,7 +49,7 @@ Run the index and then query the doctor.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=Path(".codegraphcontext/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -103,7 +105,7 @@ Use the local index for governance lookups.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=Path(".codegraphcontext/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -138,7 +140,7 @@ def current_name() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=Path(".codegraphcontext/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -208,7 +210,7 @@ def generated_symbol() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=Path(".codegraphcontext/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -239,3 +241,47 @@ def refreshed_symbol() -> str:
     assert surfacing
     assert surfacing[0].file_path == source
     assert service.query("generated_symbol", scope=IndexScope.CODE, top_k=1) == []
+
+
+def test_staleness_reports_commit_delta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Status should report when the active snapshot lags behind the current HEAD."""
+
+    source = tmp_path / "src" / "sample.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+def stable_symbol() -> str:
+    return "stable"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    build_time = datetime(2026, 4, 14, 12, 0, tzinfo=UTC)
+    status_time = datetime(2026, 4, 14, 13, 0, tzinfo=UTC)
+    monkeypatch.setattr(index_service, "_utc_now", lambda: build_time)
+
+    service = VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    service.build_full_index(revision="rev-a")
+
+    monkeypatch.setattr(index_service, "_resolve_current_commit", lambda repo_root: "rev-b")
+    monkeypatch.setattr(index_service, "_resolve_commit_distance", lambda repo_root, indexed, current: 7)
+    monkeypatch.setattr(index_service, "_utc_now", lambda: status_time)
+
+    status = service.status()
+
+    assert status is not None
+    assert status.indexed_commit == "rev-a"
+    assert status.current_commit == "rev-b"
+    assert status.is_stale is True
+    assert status.commits_behind_head == 7
+    assert status.indexed_age_seconds == 3600.0
+    assert "rev-a" in status.stale_reason
+    assert "rev-b" in status.stale_reason
+    assert "7 commits" in status.stale_reason
+    assert "built 3600.0 seconds ago" in status.stale_reason

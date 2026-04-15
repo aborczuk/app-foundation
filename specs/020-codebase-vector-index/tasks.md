@@ -101,12 +101,12 @@ description: "Task list for Codebase Vector Index"
 
 ### Tests for User Story 4
 
-- [ ] T018 [P] [US4] Add a failing staleness-check regression test for recorded commit vs current HEAD — tests/integration/test_codebase_vector_index.py:test_staleness_reports_commit_delta
+- [X] T018 [P] [US4] Add a failing staleness-check regression test for recorded commit vs current HEAD — tests/integration/test_codebase_vector_index.py:test_staleness_reports_commit_delta
 
 ### Implementation for User Story 4
 
-- [ ] T019 [US4] Implement staleness reporting in the service and MCP/CLI adapters — src/mcp_codebase/index/service.py:VectorIndexService.status
-- [ ] T020 [US4] Add quickstart assertions for staleness output and update-trigger guidance — specs/020-codebase-vector-index/quickstart.md
+- [X] T019 [US4] Implement staleness reporting in the service and MCP/CLI adapters — src/mcp_codebase/index/service.py:VectorIndexService.status
+- [X] T020 [US4] Add quickstart assertions for staleness output and update-trigger guidance — specs/020-codebase-vector-index/quickstart.md
 
 **Checkpoint**: Staleness is observable and actionable from both the service and operator workflow.
 
@@ -114,9 +114,9 @@ description: "Task list for Codebase Vector Index"
 
 **Purpose**: Finish documentation, validation, performance, scale, and smoke coverage for the final operator workflow.
 
-- [ ] T021 [P] Update docs and smoke validation for the final vector-index local workflow — specs/020-codebase-vector-index/quickstart.md
-- [ ] T022 [P] Add a failing benchmark regression for the SC-001/SC-002 timing budgets — tests/integration/test_codebase_vector_index_performance.py:test_index_build_and_refresh_meets_timing_budgets
-- [ ] T023 [P] Add a failing load regression for the max-volume edge case — tests/integration/test_codebase_vector_index_performance.py:test_index_handles_max_volume_without_oom
+- [X] T021 [P] Update docs and smoke validation for the final vector-index local workflow — specs/020-codebase-vector-index/quickstart.md
+- [X] T022 [P] Add a failing benchmark regression for the SC-001/SC-002 timing budgets — tests/integration/test_codebase_vector_index_performance.py:test_index_build_and_refresh_meets_timing_budgets
+- [X] T023 [P] Add a failing load regression for the max-volume edge case — tests/integration/test_codebase_vector_index_performance.py:test_index_handles_max_volume_without_oom
 
 **Checkpoint**: Quickstart and smoke validation match the final local workflow.
 
@@ -124,8 +124,8 @@ description: "Task list for Codebase Vector Index"
 
 **Purpose**: Make the configurable exclusion policy literal and independently testable.
 
-- [ ] T024 Add a failing regression for configured exclude patterns beyond the built-in generated-artifact rules — tests/integration/test_codebase_vector_index_performance.py:test_configurable_excludes_respected
-- [ ] T025 Implement configurable exclude-pattern loading and filtering in the extractor/config path — src/mcp_codebase/index/config.py:IndexConfig.exclude_patterns
+- [X] T024 Add a failing regression for configured exclude patterns beyond the built-in generated-artifact rules — tests/integration/test_codebase_vector_index_performance.py:test_configurable_excludes_respected
+- [X] T025 Implement configurable exclude-pattern loading and filtering in the extractor/config path — src/mcp_codebase/index/config.py:IndexConfig.exclude_patterns
 
 **Checkpoint**: Configurable exclude patterns are enforced by the index path and proven by regression coverage.
 

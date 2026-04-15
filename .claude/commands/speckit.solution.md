@@ -38,6 +38,16 @@ Top-level LLD phase for sketch-first planning. `/speckit.solution` now enforces:
    - Read `## Open Feasibility Questions` in plan.md.
    - If any unchecked items remain, stop and route to `/speckit.feasibilityspike`.
 
+2a. **Read hierarchy gate (MANDATORY for this phase and all auto-invoked subcommands)**:
+   - Use this order whenever repo code/docs are used for sketching, review, decomposition, or drift analysis:
+     1. Run helper entrypoints first:
+        - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
+        - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
+     2. Treat helper output as semantic-first + exact bounded read anchor.
+     3. Run `discovery checks` (`codegraph` blast-radius/caller/callee/import checks) from that anchored seam.
+   - Do not start with broad `codegraph` sweeps before helper-driven reads, unless those reads fail.
+   - This ordering applies to `/speckit.sketch`, `/speckit.solutionreview`, `/speckit.tasking`, and `/speckit.analyze` in the current solution run.
+
 3. **Auto-invoke `/speckit.sketch`**:
    - Produce `FEATURE_DIR/sketch.md`.
    - Sketch must include the contract sections required by the current sketch template, especially:
@@ -75,5 +85,6 @@ Top-level LLD phase for sketch-first planning. `/speckit.solution` now enforces:
 ## Behavior rules
 
 - Hard-block on unresolved Open Feasibility Questions.
+- Enforce phase read hierarchy: `helper-driven read (semantic+exact) -> discovery checks` before any design claim grounded in repo context.
 - Do not emit `solution_approved` before sketch review and tasking stabilization complete.
 - `solution_approved` is solution-phase completion; analysis remains a separate post-solution gate event.

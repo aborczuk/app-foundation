@@ -54,6 +54,37 @@ pytest tests/unit/ -v
 - **.claude/** — Development governance (domains, speckit commands)
 - **.speckit/** — Task and pipeline audit ledgers
 
+## Codebase Vector Index
+
+The repo now includes a local semantic index backed by Chroma and `fastembed`.
+It is stored entirely on disk under `.codegraphcontext/db/vector-index/`, so it
+stays local to the checkout and does not require a remote database.
+
+Key implementation files:
+
+- `src/mcp_codebase/index/domain.py` — typed models for symbols, markdown
+  sections, metadata, and query results
+- `src/mcp_codebase/index/config.py` — repo-local configuration and configurable
+  exclude-pattern loading
+- `src/mcp_codebase/index/extractors/` — Python and markdown chunk extraction
+- `src/mcp_codebase/index/store/chroma.py` — Chroma persistence, embeddings,
+  queries, and snapshot swaps
+- `src/mcp_codebase/index/service.py` — build/query/refresh/status orchestration
+- `src/mcp_codebase/indexer.py` — CLI entrypoint
+- `src/mcp_codebase/server.py` — MCP tool registration
+- `src/mcp_codebase/index/telemetry.py` — local no-op telemetry client to keep
+  Chroma quiet during runs
+
+Operational docs and workflow helpers:
+
+- `specs/020-codebase-vector-index/quickstart.md` — operator quickstart
+- `specs/020-codebase-vector-index/e2e.md` — end-to-end workflow contract
+- `scripts/e2e_020_codebase_vector_index.sh` — local smoke/E2E helper
+- `tests/integration/test_codebase_vector_index.py` — semantic lookup,
+  refresh, and staleness coverage
+- `tests/integration/test_codebase_vector_index_performance.py` — timing,
+  max-volume, and configurable-exclude regressions
+
 ## Customization
 
 ### For a New Project
