@@ -27,6 +27,7 @@ def test_code_symbol_preserves_typed_fields() -> None:
         line_end=21,
         signature="def build_index(...):",
         docstring="Build the local vector index.",
+        body="def build_index(...):\n    return True",
     )
 
     assert symbol.file_path == Path("src/mcp_codebase/index/service.py")
@@ -34,6 +35,7 @@ def test_code_symbol_preserves_typed_fields() -> None:
     assert symbol.line_end == 21
     assert symbol.scope is IndexScope.CODE
     assert symbol.docstring == "Build the local vector index."
+    assert symbol.body.startswith("def build_index")
 
 
 def test_markdown_section_preserves_breadcrumb_and_scope() -> None:
@@ -62,6 +64,7 @@ def test_query_result_preserves_typed_content() -> None:
         line_end=81,
         signature="def query(...):",
         docstring="Return ranked index results.",
+        body="def query(...):\n    return []",
     )
 
     result = QueryResult(rank=1, score=0.98, content=symbol)
@@ -70,6 +73,7 @@ def test_query_result_preserves_typed_content() -> None:
     assert result.score == pytest.approx(0.98)
     assert isinstance(result.content, CodeSymbol)
     assert result.content.file_path == Path("src/mcp_codebase/index/service.py")
+    assert result.body.startswith("def query")
 
 
 def test_index_metadata_rejects_malformed_freshness_metadata() -> None:

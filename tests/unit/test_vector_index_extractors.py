@@ -31,6 +31,9 @@ class Example:
     assert [symbol.symbol_name for symbol in symbols] == ["Example", "build"]
     assert symbols[0].docstring == ""
     assert symbols[1].docstring == ""
+    assert symbols[0].body.startswith("class Example")
+    assert symbols[1].body.startswith("def build")
+    assert [symbol.symbol_type for symbol in symbols] == ["class", "function"]
     assert symbols[0].content_hash
     assert symbols[1].content_hash
     assert all(symbol.scope is IndexScope.CODE for symbol in symbols)
