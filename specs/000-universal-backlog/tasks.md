@@ -25,6 +25,9 @@
 - [ ] T005 Replace the remaining host `python3` examples with `uv run python` in `docs/governance/how-to-add-speckit-step.md`
 - [ ] T006 Update `.github/workflows/ci.yml` to run task-ledger validation through `uv run python`
 - [ ] T007 Standardize remaining repo-owned host-python invocations in `scripts/e2e_020.sh` and `.github/workflows/ci.yml` to use `uv run python`
+- [ ] T008 Add `sed`-read enforcement to the `PreToolUse` hook in `.claude/settings.json` and `scripts/hook_enforce_code_reads.py` so large file reads are routed through `scripts/read-code.sh`
+- [ ] T009 Add a checkpoint pause, GitHub sync handoff, and next-task HUD kickout to `.claude/commands/speckit.checkpoint.md` and `.claude/commands/speckit.implement.md`
+- [ ] T010 Write a canonical task closeout command/script plus governance and command-doc updates in `.claude/commands/`, `scripts/`, and `CLAUDE.md` so task closure happens through one append-first path that records tests, offline QA, `task_closed`, `[X]`, commit SHA, and QA run id`
 
 ## Dependencies & Execution Order
 
