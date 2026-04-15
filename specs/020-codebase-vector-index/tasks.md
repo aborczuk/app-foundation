@@ -91,6 +91,7 @@ description: "Task list for Codebase Vector Index"
 - [X] T017 [US3] Implement atomic swap and last-good snapshot preservation on refresh failure — src/mcp_codebase/index/store/chroma.py:ChromaIndexStore
 
 **Checkpoint**: Incremental refresh is safe, non-blocking, and preserves the last good snapshot on failure.
+<!-- Checkpoint validated: PASS | 2026-04-15 | Incremental refresh regression slice passed (9 tests) -->
 
 ## Phase 6: User Story 4 - Staleness Check (Priority: P3)
 
