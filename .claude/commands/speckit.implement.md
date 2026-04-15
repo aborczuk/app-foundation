@@ -98,7 +98,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      2. Present the runbook to the human; they complete it asynchronously.
      3. When the human signals completion, run the verification command from the HUD. If it fails: **STOP** — do not unblock dependent implementation tasks until it passes.
      4. Append `human_action_started`, `human_action_verified`, `task_closed` to the task ledger and mark `[X]` in tasks.md.
-    - **Task ledger logging (MANDATORY)**: Log every transition to `.speckit/task-ledger.jsonl` via `uv run python scripts/task_ledger.py append ...` using immutable events:
+   - **Task ledger logging (MANDATORY)**: Log every transition to `.speckit/task-ledger.jsonl` via `uv run python scripts/task_ledger.py append ...` using immutable events:
      - `task_started`
      - `discovery_completed` (Phase 1: Recon)
      - `lld_recorded` (3+ point tasks only)
@@ -109,8 +109,9 @@ You **MUST** consider the user input before proceeding (if not empty).
      - `offline_qa_started`
      - `offline_qa_passed` / `offline_qa_failed`
      - `fix_started` / `fix_completed` (if offline QA fails)
-     - `commit_created`
-     - `task_closed`
+    - `commit_created`
+    - `task_closed`
+   - **Story-boundary handoff (MANDATORY)**: When the current task closes the last open task in a user story, immediately perform GitHub sync handoff (`git push origin HEAD`, then refresh or update the branch/PR if one exists), then invoke `/speckit.checkpoint Phase [N]` and stop. Do not start the next story until the checkpoint returns PASS.
    - **Start gate (MANDATORY before coding each task)**: Run
       `uv run python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file FEATURE_DIR/tasks.md --feature-id NNN --task-id T0XX --actor <agent-id>`
      and do not proceed if it fails.
@@ -204,13 +205,14 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Verify all required tasks are completed
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
-   - For logging/runtime visibility changes, validate run-scoped logs and latest-run pointer behavior from a real run and report the resolved active log path in the final summary
+   - For logging/runtime visibility changes, validate run-scoped logs and latest-run pointer behavior from a real run and include the resolved active log path in the compact status line
    - **Final E2E gate**: If `FEATURE_DIR/e2e.md` and a corresponding `scripts/e2e_*.sh` exist, invoke `/speckit.e2e-run full` to run the complete E2E pipeline:
      - This runs all sections: preflight → per-story → final full-feature
      - If external dependencies are unavailable, final completion is BLOCKED until dependencies are available and full E2E can run
      - Completion requires `/speckit.e2e-run full` to return PASS (no skip/blocked/fail)
    - Confirm the implementation follows the technical plan
-   - Report final status with summary of completed work, including E2E results
+   - Report final status as a compact status line with completed-work and E2E result fields; do not emit a prose summary
+   - When a user story reaches its hard stop, return only the compact status line and the checkpoint result; do not emit a prose summary before yielding control back to the user.
 
 10. **Retrospective: Estimate vs Actual** (if FEATURE_DIR/estimates.md exists):
     - For each completed task, assess actual complexity relative to the fibonacci estimate:
