@@ -16,6 +16,8 @@ from mcp.server.fastmcp import FastMCP
 from src.mcp_codebase import config
 from src.mcp_codebase.diag_tool import get_diagnostics_impl
 from src.mcp_codebase.health import classify_graph_health
+from src.mcp_codebase.index import IndexScope, build_vector_index_service
+from src.mcp_codebase.index.service import VectorIndexService
 from src.mcp_codebase.pyright_client import PyrightClient
 from src.mcp_codebase.type_tool import get_type_impl
 
@@ -54,6 +56,9 @@ class CodebaseLSPServer:
         self._log_base_dir = log_base_dir
         self._run_id = str(uuid.uuid4())[:8]
         self._pyright_client: PyrightClient | None = None
+        self._vector_index_service: VectorIndexService = build_vector_index_service(
+            self._build_index_config()
+        )
 
         self.mcp = FastMCP("codebase-lsp")
 
@@ -126,6 +131,8 @@ class CodebaseLSPServer:
             )
             return health
 
+        register_vector_index_tools(self.mcp, self._vector_index_service)
+
     @property
     def _run_log_dir(self) -> Path:
         return self._log_base_dir / self._run_id
@@ -167,6 +174,56 @@ class CodebaseLSPServer:
     def pyright(self) -> PyrightClient | None:
         """Execute the function."""
         return self._pyright_client
+
+    def _build_index_config(self):
+        from src.mcp_codebase.index import IndexConfig
+
+        return IndexConfig(
+            repo_root=self._project_root,
+            db_path=Path(".codegraphcontext/db/vector-index"),
+            embedding_model="local-default",
+        )
+
+
+def register_vector_index_tools(
+    mcp: FastMCP,
+    vector_service: VectorIndexService,
+) -> None:
+    """Register vector-index tools without changing the existing pyright tools."""
+
+    @mcp.tool()
+    async def search_vector_index(
+        query: str,
+        top_k: int = 10,
+        scope: str | None = None,
+    ) -> list[dict]:
+        parsed_scope = IndexScope(scope) if scope else None
+        results = vector_service.query(query, top_k=top_k, scope=parsed_scope)
+        return [result.model_dump(mode="json") for result in results]
+
+    @mcp.tool()
+    async def refresh_vector_index(
+        changed_paths: list[str] | None = None,
+        revision: str = "local",
+    ) -> dict:
+        metadata = vector_service.refresh_changed_files(changed_paths or [], revision=revision)
+        return metadata.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_vector_index_status() -> dict:
+        metadata = vector_service.status()
+        if metadata is None:
+            return {
+                "entry_count": 0,
+                "indexed_at": None,
+                "indexed_commit": "",
+                "current_commit": "",
+                "is_stale": True,
+                "source_root": str(Path.cwd()),
+                "stale_reason": "vector index has not been built yet",
+                "scopes": [],
+            }
+        return metadata.model_dump(mode="json")
 
 
 def create_server(

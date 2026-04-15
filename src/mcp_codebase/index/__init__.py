@@ -15,6 +15,7 @@ from src.mcp_codebase.index.extractors import (
     extract_python_symbols,
     should_skip_path,
 )
+from src.mcp_codebase.index.service import VectorIndexService, build_vector_index_service
 
 __all__ = (
     "CodeSymbol",
@@ -23,6 +24,8 @@ __all__ = (
     "IndexScope",
     "MarkdownSection",
     "QueryResult",
+    "VectorIndexService",
+    "build_vector_index_service",
     "extract_markdown_sections",
     "extract_python_symbols",
     "should_skip_path",
