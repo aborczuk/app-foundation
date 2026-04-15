@@ -82,13 +82,13 @@ description: "Task list for Codebase Vector Index"
 
 ### Tests for User Story 3
 
-- [ ] T014 [P] [US3] Add a failing integration test for watcher-driven incremental refresh and interrupted update recovery — tests/integration/test_codebase_vector_index.py:test_incremental_refresh_preserves_last_good_snapshot
-- [ ] T015 [P] [US3] Add a regression test for excluded generated artifacts and post-edit symbol surfacing — tests/integration/test_codebase_vector_index.py:test_refresh_excludes_generated_artifacts
+- [X] T014 [P] [US3] Add a failing integration test for watcher-driven incremental refresh and interrupted update recovery — tests/integration/test_codebase_vector_index.py:test_incremental_refresh_preserves_last_good_snapshot
+- [X] T015 [P] [US3] Add a regression test for excluded generated artifacts and post-edit symbol surfacing — tests/integration/test_codebase_vector_index.py:test_refresh_excludes_generated_artifacts
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Implement watchdog/post-commit update triggers and incremental content-hash refresh — src/mcp_codebase/index/service.py:VectorIndexService.refresh_changed_files
-- [ ] T017 [US3] Implement atomic swap and last-good snapshot preservation on refresh failure — src/mcp_codebase/index/store/chroma.py:ChromaIndexStore
+- [X] T016 [US3] Implement watchdog/post-commit update triggers and incremental content-hash refresh — src/mcp_codebase/index/service.py:VectorIndexService.refresh_changed_files
+- [X] T017 [US3] Implement atomic swap and last-good snapshot preservation on refresh failure — src/mcp_codebase/index/store/chroma.py:ChromaIndexStore
 
 **Checkpoint**: Incremental refresh is safe, non-blocking, and preserves the last good snapshot on failure.
 
