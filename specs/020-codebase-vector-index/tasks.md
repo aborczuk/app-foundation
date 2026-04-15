@@ -69,7 +69,7 @@ description: "Task list for Codebase Vector Index"
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Implement markdown query ranking and preview shaping in `VectorIndexService` — src/mcp_codebase/index/service.py:VectorIndexService.query
+- [X] T012 [US2] Implement markdown query ranking and preview shaping in `VectorIndexService` — src/mcp_codebase/index/service.py:VectorIndexService.query
 - [ ] T013 [US2] Preserve `read_markdown_section`-ready breadcrumb metadata and section depth in markdown results — src/mcp_codebase/index/domain.py:MarkdownSection
 
 **Checkpoint**: Markdown discovery is independently usable and returns breadcrumb-rich section results.
