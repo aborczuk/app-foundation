@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 import os
 import re
-from pathlib import Path
 import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Mapping
 
 EVENT_TO_PHASE: dict[str, str] = {
@@ -26,7 +26,7 @@ EVENT_TO_PHASE: dict[str, str] = {
     "estimation_completed": "solution",
     "tasking_completed": "solution",
     "solution_approved": "solution",
-    "analysis_completed": "analyze",
+    "analysis_completed": "solution",
     "e2e_generated": "implement",
     "feature_closed": "closed",
 }
@@ -143,7 +143,6 @@ def acquire_feature_lock(
     now_utc: datetime | None = None,
 ) -> dict[str, Any]:
     """Acquire a feature-scoped lock with stale-owner takeover semantics."""
-
     if not feature_id:
         raise ValueError("feature_id is required")
     if not owner:
@@ -225,7 +224,6 @@ def release_feature_lock(
     now_utc: datetime | None = None,
 ) -> dict[str, Any]:
     """Release a feature lock if owner matches, or clean stale/corrupt locks."""
-
     if not feature_id:
         raise ValueError("feature_id is required")
     if not owner:
@@ -273,7 +271,6 @@ def resolve_phase_state(
 
     If pipeline_state includes dry_run=True, no mutations occur (read-only mode).
     """
-
     if not feature_id:
         raise ValueError("feature_id is required")
 
