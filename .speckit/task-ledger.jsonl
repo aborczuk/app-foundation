@@ -643,3 +643,13 @@
 {"actor": "codex", "attempt": 1, "commit_sha": "e2c61d9", "event": "commit_created", "feature_id": "020", "task_id": "T012", "timestamp_utc": "2026-04-15T00:59:05.492920Z"}
 {"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t012-20260415T005907Z", "task_id": "T012", "timestamp_utc": "2026-04-15T00:59:10.608560Z"}
 {"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T012", "timestamp_utc": "2026-04-15T00:59:12.716613Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:32.478341Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:32.538621Z"}
+{"actor": "codex", "attempt": 1, "event": "lld_recorded", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:32.600424Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:32.667816Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:32.729512Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:32.815869Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "e2c61d9", "event": "commit_created", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:38.093157Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:38.133653Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "offline-qa-t013-20260415T005944Z", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:47.818578Z"}
+{"actor": "codex", "attempt": 1, "event": "task_closed", "feature_id": "020", "task_id": "T013", "timestamp_utc": "2026-04-15T00:59:47.847361Z"}
