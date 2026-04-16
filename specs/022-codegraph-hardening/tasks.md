@@ -140,7 +140,7 @@
 - [ ] T022 Migrate shared helpers in `.specify/scripts/bash/common.sh` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/bash/common.sh:main`
 - [X] T023 Migrate `.specify/scripts/bash/create-new-feature.sh` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/bash/create-new-feature.sh:main`
 - [X] T024 Migrate `.specify/scripts/bash/setup-plan.sh` into Python while preserving plan artifact resolution outputs — `.specify/scripts/bash/setup-plan.sh:main`
-- [ ] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
+- [X] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
 - [X] T026 Migrate `.specify/scripts/bash/check-prerequisites.sh` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/bash/check-prerequisites.sh:main`
 - [ ] T027 Migrate `scripts/read-markdown.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-markdown.sh:read_markdown_section`
 - [ ] T028 Migrate `scripts/read-code.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-code.sh:read_code_context`
