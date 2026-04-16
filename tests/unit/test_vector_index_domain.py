@@ -46,12 +46,14 @@ def test_markdown_section_preserves_breadcrumb_and_scope() -> None:
         line_start=1,
         line_end=8,
         depth=2,
+        body="Run the indexer and then query the doctor.",
         preview="Run the indexer and then query the doctor.",
     )
 
     assert section.file_path == Path("specs/020-codebase-vector-index/quickstart.md")
     assert section.breadcrumb == ("Codebase Vector Index", "Quickstart")
     assert section.scope is IndexScope.MARKDOWN
+    assert section.body.startswith("Run the indexer")
     assert section.preview.startswith("Run the indexer")
 
 

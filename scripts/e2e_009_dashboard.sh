@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# End-to-end pipeline for feature 009 dashboard visibility.
 set -euo pipefail
 
 usage() {

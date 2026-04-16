@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Scoped CodeGraph indexing wrapper that avoids unsafe full-repo reindexing.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# gh_safe_pr_info.sh: low-payload PR metadata view for research workflows.
+# gh_safe_pr_info.sh: low-payload PR metadata view for research and review workflows.
 #
 # Usage:
 #   scripts/gh_safe_pr_info.sh <owner/repo> <pr_number>

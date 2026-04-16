@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E Testing Pipeline: Deterministic Pipeline Driver with LLM Handoff (Feature 019)
+# E2E pipeline for 019-token-efficiency-docs; validates token-efficiency docs flow end to end.
 # Automates the checks documented in specs/019-token-efficiency-docs/e2e.md
 
 set -euo pipefail

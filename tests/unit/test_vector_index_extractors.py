@@ -8,6 +8,7 @@ from src.mcp_codebase.index import IndexScope
 from src.mcp_codebase.index.extractors import (
     extract_markdown_sections,
     extract_python_symbols,
+    extract_shell_scripts,
 )
 
 
@@ -84,6 +85,7 @@ Run the indexer and then query the doctor.
 
     assert [section.heading for section in sections] == ["Guide", "Usage"]
     assert sections[1].breadcrumb == ("Guide", "Usage")
+    assert sections[1].body == "Run the indexer and then query the doctor."
     assert sections[1].preview.startswith("Run the indexer")
     assert sections[1].content_hash
     assert all(section.scope is IndexScope.MARKDOWN for section in sections)
@@ -118,4 +120,80 @@ Run the indexer before querying the doctor.
 
     assert [section.heading for section in sections] == ["Guide", "Usage", "Querying"]
     assert sections[-1].breadcrumb == ("Guide", "Usage", "Querying")
+    assert sections[-1].body == "Run the indexer before querying the doctor."
     assert sections[-1].preview.startswith("Run the indexer")
+
+
+def test_extract_python_symbols_includes_module_level_blocks(tmp_path: Path) -> None:
+    source = tmp_path / "src" / "module_example.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        '''
+"""Module docstring."""
+
+from pathlib import Path
+
+SETTING = 1
+
+def work() -> int:
+    return SETTING
+
+if __name__ == "__main__":
+    print(Path.cwd())
+'''.strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    symbols = extract_python_symbols(source, repo_root=tmp_path)
+
+    assert any(symbol.symbol_name == "work" and symbol.symbol_type == "function" for symbol in symbols)
+    module_blocks = [symbol for symbol in symbols if symbol.symbol_type == "module_block"]
+    assert module_blocks
+    assert any("SETTING = 1" in symbol.body for symbol in module_blocks)
+    assert any("if __name__ == \"__main__\"" in symbol.body for symbol in module_blocks)
+
+
+def test_extract_shell_scripts_uses_header_comment_and_full_body(tmp_path: Path) -> None:
+    script = tmp_path / "scripts" / "refresh.sh"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(
+        """#!/usr/bin/env bash
+# Refresh the vector index after a repo change.
+#
+# This keeps the script discoverable in the vector store.
+set -euo pipefail
+
+# Check whether a command exists.
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+# Run the refresh action.
+run_refresh() {
+  echo refresh
+}
+
+case "${1:-}" in
+  refresh)
+    run_refresh
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+
+    scripts = extract_shell_scripts(script, repo_root=tmp_path)
+
+    function_symbols = [symbol for symbol in scripts if symbol.symbol_type == "script_function"]
+    block_symbols = [symbol for symbol in scripts if symbol.symbol_type == "script_block"]
+
+    assert {symbol.symbol_name for symbol in function_symbols} == {"require_cmd", "run_refresh"}
+    assert block_symbols
+    assert all(symbol.docstring for symbol in function_symbols)
+    assert any(symbol.symbol_name == "require_cmd" and "command -v" in symbol.body for symbol in function_symbols)
+    assert any(symbol.symbol_name == "run_refresh" and "run_refresh()" in symbol.body for symbol in function_symbols)
+    assert any("case \"${1:-}\"" in symbol.body for symbol in block_symbols)
+    assert any(symbol.docstring == "Check whether a command exists." for symbol in function_symbols)
+    assert any(symbol.docstring == "Run the refresh action." for symbol in function_symbols)
+    assert scripts[0].scope is IndexScope.CODE

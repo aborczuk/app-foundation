@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Validate the documentation graph and cross-reference coverage.
 
 set -euo pipefail
 

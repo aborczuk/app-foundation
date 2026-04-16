@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E Testing Pipeline: [FEATURE NAME]
+# E2E pipeline for codegraph hardening; exercises the legacy feature workflow and health gates.
 # Automates the steps documented in e2e.md
 
 set -euo pipefail

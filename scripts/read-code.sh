@@ -52,16 +52,25 @@ init_codegraph_env() {
 
 codegraph_health_status() {
     local project_root="${1:-$REPO_ROOT}"
-    local health_json status
+    local health_json status doctor_err_file doctor_err
 
-    if ! health_json="$(uv run --no-sync python -m src.mcp_codebase.doctor --json --project-root "$project_root" 2>/dev/null)"; then
-        echo "unavailable"
+    doctor_err_file="$(mktemp "${TMPDIR:-/tmp}/codegraph-doctor.XXXXXX")"
+    if ! health_json="$(uv run --no-sync python -m src.mcp_codebase.doctor --json --project-root "$project_root" 2>"$doctor_err_file")"; then
+        doctor_err="$(cat "$doctor_err_file" 2>/dev/null || true)"
+        rm -f "$doctor_err_file"
+        if [[ -n "$doctor_err" ]]; then
+            echo "WARN: codegraph health probe failed: $doctor_err" >&2
+        fi
+        echo "probe-failed"
         return 0
     fi
+    rm -f "$doctor_err_file"
 
     status="$(python3 -c 'import json, sys; print(json.loads(sys.stdin.read()).get("status", "unavailable"))' <<<"$health_json" 2>/dev/null || true)"
     if [[ -z "$status" ]]; then
-        status="unavailable"
+        echo "WARN: codegraph health probe returned non-JSON output" >&2
+        echo "probe-failed"
+        return 0
     fi
     echo "$status"
 }
@@ -77,6 +86,20 @@ codegraph_refresh_if_needed() {
             "$SCRIPT_DIR/cgc_safe_index.sh" "$scope_path" >/dev/null 2>&1 || true
         fi
     fi
+}
+
+codegraph_supports_file() {
+    local file="$1"
+
+    case "$file" in
+        *.py|*.pyi|*.js|*.jsx|*.mjs|*.cjs|*.go|*.ts|*.tsx|*.cpp|*.h|*.hpp|*.hh|*.rs|*.c|*.java|*.rb|*.cs|*.php|*.kt|*.scala|*.sc|*.swift|*.hs|*.dart|*.pl|*.pm|*.ex|*.exs)
+            return 0
+            ;;
+        *)
+            echo "WARN: unsupported file type for codegraph discovery: $file" >&2
+            return 1
+            ;;
+    esac
 }
 
 codegraph_discover_or_fail() {
@@ -122,10 +145,6 @@ codegraph_discover_or_fail() {
             echo "$output" | tail -20 >&2
             return 1
         fi
-    fi
-
-    if [[ "$output" == *"No matches found for pattern"* ]]; then
-        echo "WARN: codegraph found no matches for '$pattern'; proceeding with file-local window read." >&2
     fi
 
     return 0
@@ -418,11 +437,15 @@ read_code_context() {
     fi
 
     if [[ -z "$vector_line_num" && "$use_hud_fast_path" -eq 0 ]]; then
-        if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
-            codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
-        else
-            codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+        if codegraph_supports_file "$file"; then
+            if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
+                codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
+            else
+                codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+            fi
         fi
+
+        vector_line_num="$(_vector_find_line_num "$file" "$pattern" "$normalized_pattern" code)"
     fi
 
     local line_num
@@ -531,11 +554,15 @@ read_code_window() {
         vector_line_num="$(_vector_find_line_num "$file" "$pattern" "$normalized_pattern" code)"
 
         if [[ -z "$vector_line_num" && "$use_hud_fast_path" -eq 0 ]]; then
-            if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
-                codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
-            else
-                codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+            if codegraph_supports_file "$file"; then
+                if [[ -n "$normalized_pattern" && "$normalized_pattern" != "$pattern" ]]; then
+                    codegraph_discover_or_fail "$normalized_pattern" "$(dirname "$file")"
+                else
+                    codegraph_discover_or_fail "$pattern" "$(dirname "$file")"
+                fi
             fi
+
+            vector_line_num="$(_vector_find_line_num "$file" "$pattern" "$normalized_pattern" code)"
         fi
 
         local strict_line_num=""

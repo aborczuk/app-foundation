@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# End-to-end pipeline for the codebase vector index feature.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Verify that command docs, manifests, and constitution stay in sync.
 
 set -euo pipefail
 

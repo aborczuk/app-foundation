@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# gh_safe_pr_files.sh: bounded changed-file listing for PR research workflows.
+# gh_safe_pr_files.sh: bounded changed-file listing for PR research and review workflows.
 #
 # Usage:
 #   scripts/gh_safe_pr_files.sh <owner/repo> <pr_number> [max_rows]

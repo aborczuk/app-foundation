@@ -53,6 +53,7 @@ class MarkdownSection(_SpanRecord):
 
     heading: str = Field(min_length=1)
     symbol_type: str = Field(default="section", min_length=1)
+    body: str = ""
     breadcrumb: tuple[str, ...] = Field(default_factory=tuple)
     depth: int = Field(ge=1)
     scope: IndexScope = IndexScope.MARKDOWN

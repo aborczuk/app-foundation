@@ -11,6 +11,7 @@
 - **Latest-Run Pointer**: A deterministic latest-run pointer MUST be maintained; startup MUST expose the active run ID.
 - **Actionable Alerts**: Alerts MUST be actionable and tied to a runbook or documented response.
 - **Detect Stalls and Missing Signals**: The absence of expected events (stall) MUST be detectable.
+- **Long-Running Work Must Be Visible**: Long-running build, index, embed, and write paths MUST emit stage markers, batch counts, and completion timing so silence is not the only signal.
 - **Redaction and Privacy**: Sensitive data MUST be consistently redacted from logs/traces.
 - **Forensic Reconstruction**: It MUST be possible to reconstruct major lifecycle events for critical operations from telemetry.
 - **Minimum Metrics**: Critical paths MUST emit at least latency, error rate, and throughput metrics; saturation signals (queue depth, concurrency, DB busy) SHOULD be emitted where applicable.
@@ -33,6 +34,7 @@
 - [ ] Are key business events emitted as structured events (where applicable)?
 - [ ] Are alerts actionable and linked to a runbook/response?
 - [ ] Can stalls/missing signals be detected?
+- [ ] Do long-running build/index/embed/write paths emit stage markers, batch counts, and completion timing?
 - [ ] Are secrets and sensitive values redacted?
 - [ ] Can critical flows be reconstructed from logs/metrics?
 - [ ] Do critical paths emit latency + error rate + throughput metrics?
@@ -45,4 +47,5 @@
 - Run `cat logs/last.jsonl | jq .` (or equivalent) to verify parseability.
 - Trigger a known failure and confirm alert/event emitted (where applicable).
 - Verify dashboards include latency/error/throughput for critical flows (where applicable).
+- For a representative long-running build or refresh, verify stage markers and batch progress appear before completion.
 - Verify retention policy is documented and applied.

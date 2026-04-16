@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E Testing Pipeline: CodeGraph Reliability Hardening
+# E2E pipeline for codegraph reliability hardening; validates the CodeGraph recovery path.
 # Automates the steps documented in e2e.md
 
 set -euo pipefail

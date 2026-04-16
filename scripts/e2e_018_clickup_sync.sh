@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# End-to-end pipeline for ClickUp sync validation.
 set -euo pipefail
 
 usage() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E Testing Pipeline: Extract App Foundation Template (Feature 020)
+# E2E pipeline for 020-app-foundation extraction; validates repo extraction, boot, and governance gates.
 # Validates: Repository extraction, dependency resolution, service boot, zero trading imports,
 # governance pipeline dry-run, and contract test suite pass.
 

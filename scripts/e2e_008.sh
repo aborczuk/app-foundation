@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E pipeline for 008-codebase-mcp-toolkit (Codebase MCP Toolkit)
+# E2E pipeline for 008-codebase-mcp-toolkit; validates the codebase MCP toolkit flow.
 # Usage: scripts/e2e_008.sh [preflight|us1|us2|us3|final|full|ci]
 set -euo pipefail
 

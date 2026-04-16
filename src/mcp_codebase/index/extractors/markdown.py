@@ -61,6 +61,7 @@ def extract_markdown_sections(
             headings[index + 1][0] if index + 1 < len(headings) else len(lines)
         )
         section_lines = lines[start_line_no + 1 : next_line_no]
+        body = "\n".join(section_lines).strip("\n")
         preview = _section_preview(section_lines)
         content_hash = hashlib.sha256(
             "\n".join([heading, *section_lines]).encode("utf-8")
@@ -74,6 +75,7 @@ def extract_markdown_sections(
                 line_start=start_line_no + 1,
                 line_end=max(start_line_no + 1, next_line_no),
                 depth=depth,
+                body=body,
                 preview=preview,
                 content_hash=content_hash,
                 scope=IndexScope.MARKDOWN,

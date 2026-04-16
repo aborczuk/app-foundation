@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Build or refresh the repository CodeGraph index in a scoped, safe manner.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

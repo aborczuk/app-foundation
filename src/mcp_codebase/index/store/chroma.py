@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import logging
 import json
 import re
 import shutil
@@ -10,6 +11,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+from time import monotonic
 
 from src.mcp_codebase.index.config import IndexConfig
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
@@ -33,6 +35,7 @@ _NO_OP_TELEMETRY_IMPL = "src.mcp_codebase.index.telemetry.NoOpProductTelemetry"
 _MIN_QUERY_SCORE = 0.55
 _HIGH_CONFIDENCE_QUERY_SCORE = 0.8
 _MARKDOWN_COMMAND_DOC_PENALTY = 0.25
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -101,9 +104,22 @@ class ChromaIndexStore:
         staging_run_dir.mkdir(parents=True, exist_ok=False)
 
         try:
+            start = monotonic()
+            logger.info(
+                "vector-index: staging snapshot entries=%d target=%s",
+                len(content_units),
+                staging_run_dir,
+            )
             chunks = self._prepare_chunks(content_units)
+            logger.info(
+                "vector-index: prepared %d chunks in %.2fs",
+                len(chunks),
+                monotonic() - start,
+            )
             collection = self._open_collection(staging_run_dir, metadata.collection_name, create=True)
             if chunks:
+                upsert_start = monotonic()
+                logger.info("vector-index: upserting %d chunks", len(chunks))
                 collection.upsert(
                     ids=[chunk.record_id for chunk in chunks],
                     documents=[chunk.document for chunk in chunks],
@@ -112,13 +128,27 @@ class ChromaIndexStore:
                 )
                 del collection
                 gc.collect()
+                logger.info(
+                    "vector-index: upsert complete in %.2fs",
+                    monotonic() - upsert_start,
+                )
 
+            activate_start = monotonic()
+            logger.info("vector-index: activating snapshot")
             self._activate_snapshot(staging_run_dir)
             self._write_manifest(metadata.model_copy(update={"snapshot_path": str(staging_run_dir)}))
+            logger.info(
+                "vector-index: snapshot activated in %.2fs",
+                monotonic() - activate_start,
+            )
         except Exception:
             shutil.rmtree(staging_run_dir, ignore_errors=True)
             raise
 
+        logger.info(
+            "vector-index: staged snapshot complete in %.2fs",
+            monotonic() - start,
+        )
         return metadata.model_copy(update={"snapshot_path": str(staging_run_dir)})
 
     def refresh_snapshot(
@@ -128,6 +158,122 @@ class ChromaIndexStore:
     ) -> IndexMetadata:
         """Refresh the active snapshot while preserving the previous one."""
         return self.write_snapshot(content_units, metadata)
+
+    def refresh_changed_snapshot(
+        self,
+        *,
+        changed_paths: Sequence[str | Path],
+        changed_units: Sequence[CodeSymbol | MarkdownSection],
+        metadata: IndexMetadata,
+    ) -> IndexMetadata:
+        """Refresh changed paths while reusing unchanged embeddings from the active snapshot."""
+        snapshot = self.load_snapshot()
+        if snapshot is None:
+            return self.write_snapshot(changed_units, metadata)
+
+        active_metadata, _ = snapshot
+        active_snapshot_path = Path(active_metadata.snapshot_path)
+        active_collection = self._open_collection(active_snapshot_path, active_metadata.collection_name, create=False)
+        payload = active_collection.get(include=["metadatas", "documents", "embeddings"])
+
+        changed_path_set = {
+            _normalize_index_path(path, self._config.repo_root)
+            for path in changed_paths
+        }
+        ids = _payload_sequence(payload, "ids")
+        metadatas = _payload_sequence(payload, "metadatas")
+        documents = _payload_sequence(payload, "documents")
+        embeddings = _payload_sequence(payload, "embeddings")
+
+        retained_ids: list[str] = []
+        retained_metadatas: list[dict[str, object]] = []
+        retained_documents: list[str] = []
+        retained_embeddings: list[list[float]] = []
+
+        for index, record_id in enumerate(ids):
+            metadata_payload = metadatas[index] if index < len(metadatas) else None
+            if not isinstance(metadata_payload, dict):
+                continue
+            file_path = str(metadata_payload.get("file_path", ""))
+            if file_path in changed_path_set:
+                continue
+
+            retained_ids.append(str(record_id))
+            retained_metadatas.append(metadata_payload)
+
+            document = documents[index] if index < len(documents) else ""
+            retained_documents.append(str(document or ""))
+
+            embedding_vector = embeddings[index] if index < len(embeddings) else None
+            if embedding_vector is None:
+                embedding_vector = self._embed_texts([retained_documents[-1]])[0]
+            retained_embeddings.append([float(value) for value in embedding_vector])
+
+        logger.info(
+            "vector-index: reusing %d unchanged embeddings; embedding %d changed texts",
+            len(retained_ids),
+            len(changed_units),
+        )
+        changed_chunks = self._prepare_chunks(changed_units)
+
+        staging_run_dir = self._staging_root / uuid.uuid4().hex
+        self._db_root.mkdir(parents=True, exist_ok=True)
+        staging_run_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            start = monotonic()
+            total_entries = len(retained_ids) + len(changed_chunks)
+            logger.info(
+                "vector-index: staging snapshot entries=%d target=%s",
+                total_entries,
+                staging_run_dir,
+            )
+            collection = self._open_collection(staging_run_dir, metadata.collection_name, create=True)
+            if retained_ids:
+                upsert_start = monotonic()
+                logger.info("vector-index: upserting %d reused chunks", len(retained_ids))
+                collection.upsert(
+                    ids=retained_ids,
+                    documents=retained_documents,
+                    embeddings=retained_embeddings,
+                    metadatas=retained_metadatas,
+                )
+                logger.info(
+                    "vector-index: reused chunk upsert complete in %.2fs",
+                    monotonic() - upsert_start,
+                )
+            if changed_chunks:
+                upsert_start = monotonic()
+                logger.info("vector-index: upserting %d changed chunks", len(changed_chunks))
+                collection.upsert(
+                    ids=[chunk.record_id for chunk in changed_chunks],
+                    documents=[chunk.document for chunk in changed_chunks],
+                    embeddings=[chunk.embedding for chunk in changed_chunks],
+                    metadatas=[chunk.metadata for chunk in changed_chunks],
+                )
+                logger.info(
+                    "vector-index: changed chunk upsert complete in %.2fs",
+                    monotonic() - upsert_start,
+                )
+            del collection
+            gc.collect()
+
+            activate_start = monotonic()
+            logger.info("vector-index: activating snapshot")
+            self._activate_snapshot(staging_run_dir)
+            self._write_manifest(metadata.model_copy(update={"snapshot_path": str(staging_run_dir)}))
+            logger.info(
+                "vector-index: snapshot activated in %.2fs",
+                monotonic() - activate_start,
+            )
+        except Exception:
+            shutil.rmtree(staging_run_dir, ignore_errors=True)
+            raise
+
+        logger.info(
+            "vector-index: staged snapshot complete in %.2fs",
+            monotonic() - start,
+        )
+        return metadata.model_copy(update={"snapshot_path": str(staging_run_dir)})
 
     def load_snapshot(self) -> tuple[IndexMetadata, list[CodeSymbol | MarkdownSection]] | None:
         """Load the active snapshot if present."""
@@ -211,7 +357,11 @@ class ChromaIndexStore:
         return [item.model_copy(update={"rank": index}) for index, item in enumerate(ranked[:top_k], start=1)]
 
     def _prepare_chunks(self, content_units: Sequence[CodeSymbol | MarkdownSection]) -> list[_PreparedChunk]:
-        embeddings = self._embed_texts([_embedding_text(unit) for unit in content_units])
+        embedding_inputs = [_embedding_text(unit) for unit in content_units]
+        logger.info("vector-index: embedding %d texts", len(embedding_inputs))
+        embed_start = monotonic()
+        embeddings = self._embed_texts(embedding_inputs)
+        logger.info("vector-index: embedded %d texts in %.2fs", len(embedding_inputs), monotonic() - embed_start)
         chunks: list[_PreparedChunk] = []
         for unit, embedding in zip(content_units, embeddings, strict=True):
             metadata = _record_metadata(unit)
@@ -228,7 +378,10 @@ class ChromaIndexStore:
 
     def _embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         backend = self._ensure_embedding_backend()
-        return backend.embed_texts(texts)
+        embed_start = monotonic()
+        vectors = backend.embed_texts(texts)
+        logger.info("vector-index: embedding backend returned %d vectors in %.2fs", len(vectors), monotonic() - embed_start)
+        return vectors
 
     def _ensure_embedding_backend(self) -> _FastEmbedBackend:
         if self._embedding_backend is None:
@@ -279,7 +432,7 @@ class ChromaIndexStore:
                 qualified_name=str(payload.get("qualified_name", "")),
                 signature=str(payload.get("signature", "")),
                 docstring=str(payload.get("docstring", "")),
-                body=document or str(payload.get("body", "")),
+                body=str(payload.get("body", "")) or (document or ""),
                 file_path=Path(str(payload.get("file_path", "."))),
                 line_start=int(payload.get("line_start", 1)),
                 line_end=int(payload.get("line_end", 1)),
@@ -292,6 +445,7 @@ class ChromaIndexStore:
             return MarkdownSection(
                 heading=str(payload.get("heading", "")),
                 symbol_type=str(payload.get("symbol_type", "section")),
+                body=str(payload.get("body", "")) or (document or ""),
                 breadcrumb=tuple(str(item) for item in breadcrumb),
                 depth=int(payload.get("depth", 1)),
                 file_path=Path(str(payload.get("file_path", "."))),
@@ -308,7 +462,7 @@ def _embedding_text(unit: CodeSymbol | MarkdownSection) -> str:
     if isinstance(unit, CodeSymbol):
         parts = [unit.qualified_name, unit.symbol_name, unit.signature, unit.docstring, unit.body]
     else:
-        parts = [unit.heading, " > ".join(unit.breadcrumb), unit.preview]
+        parts = [unit.heading, unit.body, unit.preview]
     return "\n\n".join(part for part in parts if part)
 
 
@@ -334,7 +488,7 @@ def _record_metadata(unit: CodeSymbol | MarkdownSection) -> dict[str, object]:
                 "qualified_name": unit.qualified_name,
                 "signature": unit.signature,
                 "docstring": unit.docstring,
-                "body": "",
+                "body": unit.body,
                 "breadcrumb_json": "[]",
                 "heading": "",
                 "depth": 0,
@@ -347,13 +501,30 @@ def _record_metadata(unit: CodeSymbol | MarkdownSection) -> dict[str, object]:
                 "qualified_name": "",
                 "signature": "",
                 "docstring": "",
-                "body": "",
+                "body": unit.body,
                 "breadcrumb_json": json.dumps(list(unit.breadcrumb)),
                 "heading": unit.heading,
                 "depth": unit.depth,
             }
         )
     return common
+
+
+def _normalize_index_path(file_path: str | Path, repo_root: str | Path) -> str:
+    root = Path(repo_root).expanduser().resolve()
+    candidate = Path(file_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = (root / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    return candidate.as_posix()
+
+
+def _payload_sequence(payload: dict[str, Any], key: str) -> list[Any]:
+    value = payload.get(key)
+    if value is None:
+        return []
+    return list(value)
 
 
 def _distance_to_score(distance: float | None) -> float:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# End-to-end pipeline for feature 002 watchlist research.
 set -euo pipefail
 
 usage() {

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# End-to-end pipeline for the paper trading validation flow.
 set -euo pipefail
 
 usage() {

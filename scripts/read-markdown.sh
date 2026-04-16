@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# read-markdown.sh: Resolve markdown sections with vector-first anchoring and grep fallback
+# read-markdown.sh: Resolve markdown sections with vector-first anchoring and grep fallback.
 #
 # MANDATORY: All reads of markdown files >100 lines MUST use this helper.
 # This script now prefers a vector markdown hit for the section anchor, then

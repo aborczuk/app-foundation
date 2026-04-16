@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -165,6 +166,8 @@ def _run_watch(service, *, repo_root: Path, revision: str, debounce_seconds: flo
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the vector-index CLI adapter."""
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = build_parser()
     args = parser.parse_args(argv)
     service = build_service(args)

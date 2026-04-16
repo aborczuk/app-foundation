@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import uuid
 from pathlib import Path
@@ -9,8 +10,15 @@ from typing import Sequence
 
 from src.mcp_codebase.index.config import IndexConfig
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
-from src.mcp_codebase.index.extractors import extract_markdown_sections, extract_python_symbols
+from src.mcp_codebase.index.extractors import (
+    extract_markdown_sections,
+    extract_python_symbols,
+    extract_shell_scripts,
+)
+from src.mcp_codebase.index.extractors.python import should_skip_path
 from src.mcp_codebase.index.store import ChromaIndexStore
+
+logger = logging.getLogger(__name__)
 
 
 class VectorIndexService:
@@ -33,7 +41,9 @@ class VectorIndexService:
         source_paths: Sequence[str | Path] | None = None,
     ) -> IndexMetadata:
         """Rebuild the active snapshot from the full repository checkout."""
+        logger.info("vector-index: collecting source files")
         content_units = self._collect_content_units(source_paths=source_paths)
+        logger.info("vector-index: collected %d content units", len(content_units))
         code_symbol_count, markdown_section_count = _count_content_units(content_units)
         resolved_revision = _resolve_revision_label(revision, self._config.repo_root)
         metadata = self._build_metadata(
@@ -44,7 +54,16 @@ class VectorIndexService:
             is_stale=False,
             stale_reason="",
         )
-        return self._store.write_snapshot(content_units, metadata)
+        logger.info("vector-index: writing snapshot")
+        written = self._store.write_snapshot(content_units, metadata)
+        logger.info(
+            "vector-index: build complete entries=%d code=%d markdown=%d snapshot=%s",
+            written.entry_count,
+            written.code_symbol_count,
+            written.markdown_section_count,
+            written.snapshot_path,
+        )
+        return written
 
     def query(
         self,
@@ -63,6 +82,7 @@ class VectorIndexService:
         revision: str = "local",
     ) -> IndexMetadata:
         """Refresh only changed content units and keep prior data queryable on failure."""
+        logger.info("vector-index: refreshing %d changed paths", len(changed_paths))
         existing = self._store.load_snapshot()
         changed_units = self._collect_content_units(changed_paths=changed_paths)
 
@@ -84,7 +104,11 @@ class VectorIndexService:
             is_stale=False,
             stale_reason="",
         )
-        return self._store.refresh_snapshot(content_units, metadata)
+        return self._store.refresh_changed_snapshot(
+            changed_paths=changed_paths,
+            changed_units=changed_units,
+            metadata=metadata,
+        )
 
     def status(self) -> IndexMetadata | None:
         """Return the active snapshot metadata."""
@@ -137,11 +161,16 @@ class VectorIndexService:
         candidate_paths = source_paths if source_paths is not None else changed_paths
         if candidate_paths is None:
             candidate_paths = self._iter_source_files()
+        candidate_paths = list(candidate_paths)
+        total_candidates = len(candidate_paths)
+        if total_candidates:
+            logger.info("vector-index: extracting %d files", total_candidates)
 
         units: list[CodeSymbol | MarkdownSection] = []
-        for raw_path in candidate_paths:
+        for index, raw_path in enumerate(candidate_paths, start=1):
             path = _normalize_path(raw_path, self._config.repo_root)
-            if path.suffix in {".py", ".pyi"}:
+            suffix = path.suffix.lower()
+            if suffix in {".py", ".pyi"}:
                 units.extend(
                     extract_python_symbols(
                         path,
@@ -149,7 +178,7 @@ class VectorIndexService:
                         exclude_patterns=self._config.exclude_patterns,
                     )
                 )
-            elif path.suffix.lower() in {".md", ".markdown", ".mdown"}:
+            elif suffix in {".md", ".markdown", ".mdown"}:
                 units.extend(
                     extract_markdown_sections(
                         path,
@@ -157,6 +186,16 @@ class VectorIndexService:
                         exclude_patterns=self._config.exclude_patterns,
                     )
                 )
+            elif suffix in {".sh", ".bash", ".zsh"}:
+                units.extend(
+                    extract_shell_scripts(
+                        path,
+                        repo_root=self._config.repo_root,
+                        exclude_patterns=self._config.exclude_patterns,
+                    )
+                )
+            if total_candidates and (index % 50 == 0 or index == total_candidates):
+                logger.info("vector-index: processed %d/%d files", index, total_candidates)
         return units
 
     def _iter_source_files(self) -> list[Path]:
@@ -165,7 +204,9 @@ class VectorIndexService:
         for path in repo_root.rglob("*"):
             if not path.is_file():
                 continue
-            if path.suffix.lower() not in {".py", ".pyi", ".md", ".markdown", ".mdown"}:
+            if should_skip_path(path, repo_root, self._config.exclude_patterns):
+                continue
+            if path.suffix.lower() not in {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}:
                 continue
             files.append(path)
         return files

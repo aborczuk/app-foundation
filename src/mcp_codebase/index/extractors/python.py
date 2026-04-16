@@ -11,7 +11,13 @@ from typing import Iterable, Sequence
 from src.mcp_codebase.index.domain import CodeSymbol, IndexScope
 
 _BUILTIN_EXCLUDE_DIRS = {
+    ".idea",
     ".git",
+    ".uv-cache",
+    ".vscode",
+    ".env",
+    "env",
+    "logs",
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
@@ -22,7 +28,11 @@ _BUILTIN_EXCLUDE_DIRS = {
     "__pycache__",
     "build",
     "dist",
+    "out",
     "node_modules",
+    "shadow-runs",
+    "target",
+    "venv",
 }
 _BUILTIN_EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".so", ".dylib", ".dll"}
 
@@ -185,4 +195,119 @@ def extract_python_symbols(
                 self._pop()
 
     _Visitor().visit(parsed)
+    symbols.extend(_extract_python_module_blocks(parsed, source, candidate, repo_root))
+    symbols.sort(key=lambda item: (item.line_start, item.line_end, item.symbol_type, item.symbol_name))
     return symbols
+
+
+def _extract_python_module_blocks(
+    parsed: ast.Module,
+    source: str,
+    candidate: Path,
+    repo_root: Path,
+) -> list[CodeSymbol]:
+    lines = source.splitlines()
+    if not lines:
+        return []
+
+    covered = [False] * len(lines)
+    for node in parsed.body:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            start = max(0, getattr(node, "lineno", 1) - 1)
+            end = max(start, getattr(node, "end_lineno", getattr(node, "lineno", 1)) - 1)
+            for line_no in range(start, min(end + 1, len(lines))):
+                covered[line_no] = True
+
+    try:
+        qualified_base = candidate.relative_to(repo_root).as_posix()
+    except Exception:
+        qualified_base = candidate.as_posix()
+
+    module_docstring = ast.get_docstring(parsed, clean=False) or ""
+    blocks: list[CodeSymbol] = []
+    block_index = 1
+    cursor = 0
+    while cursor < len(lines):
+        if covered[cursor]:
+            cursor += 1
+            continue
+
+        start = cursor
+        has_text = False
+        while cursor < len(lines) and not covered[cursor]:
+            if lines[cursor].strip():
+                has_text = True
+            cursor += 1
+
+        end = cursor - 1
+        if not has_text:
+            continue
+
+        block_lines = lines[start : end + 1]
+        body = "\n".join(block_lines).rstrip("\n")
+        preview = _python_block_preview(block_lines, module_docstring if start == 0 else "")
+        docstring = _python_block_docstring(block_lines, module_docstring if start == 0 else "")
+        signature = _python_block_signature(block_lines)
+        content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        blocks.append(
+            CodeSymbol(
+                symbol_name=f"module_block_{block_index}",
+                qualified_name=f"{qualified_base}::module_block_{block_index}",
+                file_path=candidate,
+                line_start=start + 1,
+                line_end=end + 1,
+                signature=signature,
+                docstring=docstring,
+                body=body,
+                symbol_type="module_block",
+                content_hash=content_hash,
+                preview=preview,
+                scope=IndexScope.CODE,
+            )
+        )
+        block_index += 1
+
+    return blocks
+
+
+def _python_block_docstring(lines: list[str], fallback: str = "") -> str:
+    leading_comments = _leading_comment_block(lines)
+    if leading_comments:
+        return leading_comments
+    return fallback
+
+
+def _python_block_signature(lines: list[str]) -> str:
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped
+    return "module block"
+
+
+def _python_block_preview(lines: list[str], fallback: str = "") -> str:
+    docstring = _leading_comment_block(lines)
+    if docstring:
+        return docstring.splitlines()[0].strip()
+    if fallback:
+        return fallback.splitlines()[0].strip()
+    return _python_block_signature(lines)
+
+
+def _leading_comment_block(lines: list[str]) -> str:
+    comments: list[str] = []
+    seen_comment = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if index == 0 and stripped.startswith('"""'):
+            return stripped.strip('"')
+        if not stripped:
+            if seen_comment:
+                comments.append("")
+            continue
+        if stripped.startswith("#"):
+            seen_comment = True
+            comments.append(stripped.lstrip("#").strip())
+            continue
+        break
+    return "\n".join(comments).strip()

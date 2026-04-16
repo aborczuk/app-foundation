@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Run the CodeGraph doctor against the repository and surface index health.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
