@@ -121,6 +121,31 @@
 
 **Checkpoint**: The query tools distinguish malformed input, missing symbols, and real execution failures.
 
+## Phase 9: Add-to-Backlog - Python Orchestration Migration
+
+**Purpose**: Move orchestration-critical shell scripts to Python entrypoints so blast-radius analysis and dependency visibility improve without breaking existing command paths.
+
+**Independent Test**: Run parity contracts for each migrated wrapper and execute Speckit plan/implement smoke flows; outputs, exit codes, and required JSON payloads must remain compatible.
+
+### Migration Tasks
+
+### Safety-First Execution Order (Mandatory)
+
+- [ ] T016 [P] Add contract tests that compare legacy shell wrappers vs Python implementations for args, stdout/stderr, JSON fields, and exit codes for all migrated entrypoints — `tests/integration/test_specify_script_parity.py:test_script_contract_parity`
+- [ ] T017 [P] Add source-compatible shell wrapper tests proving `source scripts/read-code.sh` / `source scripts/read-markdown.sh` still expose callable shell functions after Python migration — `tests/integration/test_read_helper_wrapper_compat.py:test_source_compat`
+- [ ] T018 [P] Add golden fixture tests for `.specify/scripts/bash/check-prerequisites.sh` JSON payloads and exit-code behavior across `--json`, `--paths-only`, `--require-tasks`, and `--include-tasks` combinations — `tests/integration/test_check_prerequisites_contract.py:test_json_and_exit_code_matrix`
+- [ ] T019 [P] Add parity checks for tool availability/error handling (`uv`, `git`, `python3`) between legacy shell and Python entrypoints — `tests/integration/test_script_tool_dependency_parity.py:test_tool_dependency_failures`
+- [ ] T020 [P] Add stderr contract tests for known failure modes (branch validation, missing plan/tasks, unresolved sections/symbols) to lock error-message compatibility — `tests/integration/test_script_stderr_contract.py:test_known_failure_messages`
+- [ ] T021 [P] Add a temporary shadow-compare mode to emit output diffs between legacy and Python paths during rollout and fail on parity regression — `src/mcp_codebase/orchestration/shadow_compare.py:compare_outputs`
+- [ ] T022 Migrate shared helpers in `.specify/scripts/bash/common.sh` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/bash/common.sh:main`
+- [ ] T023 Migrate `.specify/scripts/bash/create-new-feature.sh` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/bash/create-new-feature.sh:main`
+- [X] T024 Migrate `.specify/scripts/bash/setup-plan.sh` into Python while preserving plan artifact resolution outputs — `.specify/scripts/bash/setup-plan.sh:main`
+- [ ] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
+- [ ] T026 Migrate `.specify/scripts/bash/check-prerequisites.sh` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/bash/check-prerequisites.sh:main`
+- [ ] T027 Migrate `scripts/read-markdown.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-markdown.sh:read_markdown_section`
+- [ ] T028 Migrate `scripts/read-code.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-code.sh:read_code_context`
+- [ ] T029 [P] Add Speckit pipeline smoke coverage for plan/implement/addtobacklog paths that depend on `check-prerequisites` and `setup-plan` after migration — `tests/integration/test_speckit_pipeline_driver.py:test_python_orchestration_entrypoints`
+
 ---
 
 ## Dependencies & Execution Order
@@ -131,6 +156,7 @@
 - **Foundational (Phase 2)**: Depends on Setup completion - blocks all user stories
 - **User Stories (Phase 3+)**: All depend on Foundational completion
 - **Polish (Final Phase)**: Depends on all desired user stories being complete
+- **Add-to-Backlog Migration (Phase 9)**: Starts after core recovery phases; may run in parallel with follow-on hardening work but must preserve existing command contracts.
 
 ### User Story Dependencies
 
