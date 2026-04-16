@@ -143,7 +143,7 @@
 - [X] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
 - [X] T026 Migrate `.specify/scripts/bash/check-prerequisites.sh` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/bash/check-prerequisites.sh:main`
 - [X] T027 Migrate `scripts/read-markdown.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-markdown.sh:read_markdown_section`
-- [ ] T028 Migrate `scripts/read-code.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-code.sh:read_code_context`
+- [X] T028 Migrate `scripts/read-code.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-code.sh:read_code_context`
 - [ ] T029 [P] Add Speckit pipeline smoke coverage for plan/implement/addtobacklog paths that depend on `check-prerequisites` and `setup-plan` after migration — `tests/integration/test_speckit_pipeline_driver.py:test_python_orchestration_entrypoints`
 
 ---
