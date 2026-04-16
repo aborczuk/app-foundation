@@ -28,6 +28,7 @@ Note: This review is expected to run AFTER `/speckit.plan` completes and BEFORE 
 Execution steps:
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root **once**. Parse fields:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - `FEATURE_DIR`
    - `IMPL_PLAN` (plan.md path)
    - (Optionally capture `FEATURE_SPEC`, `TASKS`.)
@@ -35,10 +36,12 @@ Execution steps:
    - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 2. Load plan artifacts from FEATURE_DIR:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Required**: plan.md
    - **Load if present**: research.md, data-model.md, contracts/*, quickstart.md
 
 2b. **Catalog cross-reference** (MANDATORY after loading plan artifacts):
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Read `catalog.yaml` from repo root if it exists.
    - For each external service node in the Architecture Flow diagram in plan.md:
 
@@ -51,10 +54,12 @@ Execution steps:
    - If catalog.yaml does not exist: note in the report that catalog.yaml is absent; no block.
 
 2c. **Scaffold the review artifact**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Run `.specify/scripts/pipeline-scaffold.py speckit.planreview --feature-dir "$FEATURE_DIR"` to create or refresh `planreview.md` from `plan-review-template.md`.
    - If the scaffold script fails or the template is missing, stop and report the artifact wiring gap before continuing.
 
 3. **ERROR check first** — abort if any of the following are found:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Any remaining `NEEDS CLARIFICATION` markers in plan.md or generated artifacts — these are unresolved Phase 0 items that must be fixed in the plan before review can proceed; instruct user to re-run `/speckit.plan`
    - Any empty cells in the Constitution Check table — these are required gate items
    - Any empty cells in the `Behavior Map Sync Gate` table in plan.md — this gate must be completed before task generation
@@ -65,6 +70,7 @@ Execution steps:
      - `Handoff Contract to Sketch`
 
 4. **Ambiguity scan** — build an internal prioritized queue of candidate questions. Do NOT output the queue. Scan for:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    **Technical Context gaps**:
    - Dependencies listed without version floors (e.g., `httpx` with no minimum version pinned)
@@ -183,6 +189,7 @@ Execution steps:
    - Record risk assessments in Complexity Tracking (add a Risk column) for high-risk items only — do not clutter with low-risk items
 
 5. **Sequential questioning loop** (interactive):
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Present EXACTLY ONE question at a time
    - For each question, analyze options and provide a **Recommended** answer with brief reasoning (1-2 sentences)
    - Format as: `**Recommended:** [answer] — [reasoning]`
@@ -199,6 +206,7 @@ Execution steps:
    - Never reveal future queued questions in advance
 
 6. **Write answers back to plan artifacts** after each accepted answer (incremental, atomic saves):
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Version pin resolved → update `**Technology Direction**` in plan.md Technical Context (note: Technology Selection is filled by /speckit.feasibilityspike, not here)
    - Architecture ambiguity resolved → update the relevant module entry in Project Structure or add an annotation to the Architecture Flow section
    - Repeated-unit ambiguity resolved → update `Repeated Architectural Unit Recognition`
@@ -217,6 +225,7 @@ Execution steps:
    - Only allowed new content: in-place updates to existing fields or appended rows in existing tables
 
 7. **Validation after each write**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - No NEEDS CLARIFICATION markers remain in any updated file
    - No contradictory statements introduced (e.g., two different version pins for same library)
    - Markdown structure valid; no new headings created outside existing plan structure
@@ -226,6 +235,7 @@ Execution steps:
    - For venue-constrained integrations, live-data request paths are constrained to metadata-discovered valid objects and discovery-failure policy is explicit
 
 8. **Report completion**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Number of questions asked and answered
    - Files updated (list paths)
    - Any items deferred (low-impact ambiguities the user chose to skip) — note them explicitly

@@ -23,15 +23,22 @@ You **MUST** consider the user input before proceeding (if not empty).
 Run these steps first; only load **Expanded Guidance** when a gate fails or user asks for detail.
 
 1. Parse mode from `$ARGUMENTS` (`default` vs `--update-current-spec`).
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Default mode: create branch/spec once with `.specify/scripts/bash/create-new-feature.sh --json --short-name ...`.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. Update mode: resolve existing paths via `.specify/scripts/bash/check-prerequisites.sh --json --paths-only`.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. Run code discovery (`codegraph` first, fallback grep) before writing any spec text.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. Write spec from template, scaffold requirements checklist, then run:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - `uv run python scripts/speckit_spec_gate.py checklist-status --feature-dir "$FEATURE_DIR" --json`
     - `uv run python scripts/speckit_spec_gate.py extract-clarifications --spec-file "$SPEC_FILE" --json`
 6. If clarifications exist, validate question-table format before asking:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - `uv run python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json`
 7. Branch on reason codes from `docs/governance/gate-reason-codes.yaml`; emit `backlog_registered` only after gates pass.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -40,17 +47,20 @@ The text the user typed after `/speckit.specify` in the triggering message **is*
 Given that feature description, do this:
 
 1. **Determine execution mode and parse description**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If `$ARGUMENTS` contains `--update-current-spec`, run in **update mode**.
    - Otherwise run in **default mode** (new feature branch/spec creation).
    - Strip the `--update-current-spec` flag from `$ARGUMENTS` before analysis.
    - If the remaining description is empty: ERROR "No feature description provided"
 
 2. **If in default mode, generate a concise short name** (2-4 words):
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Extract the highest-signal keywords from the feature description.
    - Prefer `action-noun` style and preserve technical acronyms.
    - Keep it short and unique within existing branch/spec naming.
 
 3. **If in default mode, create the feature branch/spec once using the script**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    a. Run (pass only `--json` and `--short-name`; never pass `--number`):
 
@@ -62,6 +72,7 @@ Given that feature description, do this:
    c. Run this script once per feature. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 4. **If in update mode (`--update-current-spec`) resolve existing spec paths**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Run:
 
      ```bash
@@ -73,6 +84,7 @@ Given that feature description, do this:
    - If `SPEC_FILE` does not exist: stop (`missing_spec_file`).
 
 5. **Codebase discovery scan (mandatory before writing any spec)**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Before writing anything, use `codegraph` to verify whether the described capability already exists in the codebase. Extract 3–5 key domain terms from the feature description (e.g., entity names, action verbs, integration targets) and run `find_code` for each.
 
@@ -89,14 +101,19 @@ Given that feature description, do this:
    This step satisfies the CLAUDE.md mandatory workflow order: "Use `codegraph` first for discovery and scope."
 
 6. Load `.specify/templates/spec-template.md` to understand required sections.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 7. Follow this execution flow:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
     1. Parse user description from Input
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
        If empty: ERROR "No feature description provided"
     2. Extract key concepts from description
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
        Identify: actors, actions, data, constraints
     3. For unclear aspects:
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
        - Always err on the side of asking rather than doing without override
        - mark with [NEEDS CLARIFICATION: specific question]
        - Refer to the constituion.md principles
@@ -106,26 +123,34 @@ Given that feature description, do this:
          an adopted dependency or boundary assumption's internals. If unknown, mark as
          [NEEDS CLARIFICATION: what tool/agent/command executes the actual automated work?]
     4. Fill User Scenarios & Testing section
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
        If no clear user flow: ERROR "Cannot determine user scenarios"
     5. Generate Functional Requirements
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
        Each requirement must be testable
        Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
     6. Define Success Criteria
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
        Create measurable, technology-agnostic outcomes
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
        Each criterion must be verifiable without implementation details
     7. Identify Key Entities (if data involved)
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     8. Return: SUCCESS (spec ready for planning)
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 8. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - In **default mode**, this writes the newly created spec file.
    - In **update mode**, this updates the existing `spec.md` in-place.
 
 9. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    a. **Create Spec Quality Checklist**: Pre-scaffold checklist from template:
 
        1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+          - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
          - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.specify owns
          - Copies `.specify/templates/requirements-checklist-template.md` to `$FEATURE_DIR/checklists/requirements.md`
          - Performs scalar substitutions: `[FEATURE_NAME]` → the feature name, `[DATE]` → today's date, etc.
@@ -150,16 +175,21 @@ Given that feature description, do this:
 
       - If `extract-clarifications` reports markers:
         1. Group into at most 3 questions and draft one markdown block containing all questions.
+           - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
         2. Validate draft format before presenting:
+           - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
            ```bash
             uv run python scripts/speckit_spec_gate.py validate-clarification-questions --markdown-file <draft.md> --json
            ```
         3. If format check fails, fix format and re-run.
+           - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
         4. Present validated questions, collect responses, replace markers, then re-run `extract-clarifications`.
+           - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    e. **Update checklist file** after each iteration with current pass/fail state.
 
 10. **T-shirt size estimate**: After spec validation passes, produce a rough complexity estimate for the feature as a whole. This is NOT task-level — it is an epic-level signal for prioritization across features.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    - Evaluate based on: number of user stories, number of edge cases, number of external integrations, breadth of acceptance criteria, and data model complexity (entity count, relationship density)
    - Assign one of: **XS** (single concern, 1 story, no integrations), **S** (1-2 stories, minimal edge cases), **M** (2-3 stories, some integrations or data model), **L** (3-5 stories, multiple integrations, non-trivial data model), **XL** (5+ stories, complex integrations, significant edge cases, multiple actors)
@@ -167,12 +197,14 @@ Given that feature description, do this:
    - This estimate is informational only — it does NOT block any workflow step
 
 11. **Final ask-alignment pass (required)**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    - Run one final pass comparing the completed spec against the original ask text parsed from Step 1 (after stripping `--update-current-spec`).
    - Confirm all explicit asks are represented in the spec (or explicitly marked out-of-scope/assumption), and no contradictory scope was introduced.
    - If drift or omission is found, update the spec immediately and re-run deterministic checks from Step 9 before continuing.
 
 12. **Emit pipeline event**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    
    Emit `backlog_registered` to `.speckit/pipeline-ledger.jsonl`:
    ```json
@@ -180,6 +212,7 @@ Given that feature description, do this:
    ```
 
 13. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, ask-alignment result (`pass`/`corrected`), and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - In **update mode**, explicitly report that existing spec scope was updated in-place (no new branch created).
 
 **NOTE:** In default mode, the script creates and checks out a new branch and initializes the spec file before writing. In update mode, no new branch is created.

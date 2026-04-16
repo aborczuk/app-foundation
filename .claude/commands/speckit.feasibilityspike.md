@@ -26,13 +26,16 @@ Prove that the architecture committed to in plan.md is actually buildable before
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root. Parse `FEATURE_DIR` and `IMPL_PLAN`. Read plan.md.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. **Read Open Feasibility Questions**: Locate `## Open Feasibility Questions` in plan.md.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If section is absent or contains only the placeholder comment: report "No open feasibility questions found. Plan is ready for /speckit.solution." Emit `feasibility_spike_completed` to `.speckit/pipeline-ledger.jsonl` with `fq_count: 0` and exit.
    - If all items are already checked `[x]`: same — report complete and exit.
    - Parse all unchecked `- [ ] **FQ-NNN**:` items. Extract: question text, Probe field, Blocking field.
 
 3. **For each open FQ — run a targeted probe**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Determine probe type from the question and Probe field:
    - **subprocess test**: Can a service execute a shell command? → `subprocess.run(["service-cli", "exec", "echo", "ok"], capture_output=True, timeout=60)`
@@ -47,18 +50,23 @@ Prove that the architecture committed to in plan.md is actually buildable before
    - Do NOT assume a probe passes because it does not crash — verify the specific claim.
 
 4. **Classify each FQ result**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **CONFIRMED**: The probe demonstrates the capability works as the architecture assumes.
    - **FAILED**: The probe demonstrates the capability does NOT work. Hard stop — do not continue to other FQs.
    - **INCONCLUSIVE**: Probe timed out, service unavailable, or result is ambiguous. Ask human: "FQ-NNN could not be proven automatically: [reason]. Can you confirm this works, or should the architecture be revised?"
 
 5. **Write spike.md**: Pre-scaffold the spike file from template:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
     1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.feasibilityspike --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Pre-structures the file with Summary section, Probed Questions section, Technology Selection table, Failed Questions table, etc.
 
    2. Fill in the scaffolded structure with every FQ: its probe, result, evidence snippet, and architecture implication — regardless of pass/fail.
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 6. **Branch on overall result**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    **If ALL confirmed**:
    - Update `plan.md ## Technology Selection`: fill in confirmed library/tool selections with evidence links (e.g., `"async IBKR connectivity: ib-async 2.1.0 — confirmed by FQ-001"`).

@@ -34,10 +34,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Execution Steps
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - All file paths must be absolute.
    - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 2. **Clarify intent (dynamic)**: Derive up to THREE initial contextual clarifying questions (no pre-baked catalog). They MUST:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Be generated from the user's phrasing + extracted signals from spec/plan/tasks
    - Only ask about information that materially changes checklist content
    - Be skipped individually if already unambiguous in `$ARGUMENTS`
@@ -45,10 +47,15 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    Generation algorithm:
    1. Extract signals: feature domain keywords (e.g., auth, latency, UX, API), risk indicators ("critical", "must", "compliance"), stakeholder hints ("QA", "review", "security team"), and explicit deliverables ("a11y", "rollback", "contracts").
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    2. Cluster signals into candidate focus areas (max 4) ranked by relevance.
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    3. Identify probable audience & timing (author, reviewer, QA, release) if not explicit.
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    4. Detect missing dimensions: scope breadth, depth/rigor, risk emphasis, exclusion boundaries, measurable acceptance criteria.
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    5. Formulate questions chosen from these archetypes:
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Scope refinement (e.g., "Should this include integration touchpoints with X and Y or stay limited to local module correctness?")
       - Risk prioritization (e.g., "Which of these potential risk areas should receive mandatory gating checks?")
       - Depth calibration (e.g., "Is this a lightweight pre-commit sanity list or a formal release gate?")
@@ -70,12 +77,14 @@ You **MUST** consider the user input before proceeding (if not empty).
    Output the questions (label Q1/Q2/Q3). After answers: if ≥2 scenario classes (Alternate / Exception / Recovery / Non-Functional domain) remain unclear, you MAY ask up to TWO more targeted follow‑ups (Q4/Q5) with a one-line justification each (e.g., "Unresolved recovery path risk"). Do not exceed five total questions. Skip escalation if user explicitly declines more.
 
 3. **Understand user request**: Combine `$ARGUMENTS` + clarifying answers:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Derive checklist theme (e.g., security, review, deploy, ux)
    - Consolidate explicit must-have items mentioned by user
    - Map focus selections to category scaffolding
    - Infer any missing context from spec/plan/tasks (do NOT hallucinate)
 
 4. **Load feature context**: Read from FEATURE_DIR:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - spec.md: Feature requirements and scope
    - plan.md (if exists): Technical details, dependencies
    - tasks.md (if exists): Implementation tasks
@@ -87,6 +96,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - If source docs are large, generate interim summary items instead of embedding raw text
 
 5. **Generate checklist** - Create "Unit Tests for Requirements":
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Create `FEATURE_DIR/checklists/` directory if it doesn't exist
    - Generate unique checklist filename:
      - Use short, descriptive name based on domain (e.g., `ux.md`, `api.md`, `security.md`)
@@ -205,8 +215,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - ✅ "Does the spec define [missing aspect]?"
 
 6. **Structure Reference**: Generate the checklist following the canonical template in `.specify/templates/checklist-template.md` for title, meta section, category headings, and ID formatting. If template is unavailable, use: H1 title, purpose/created meta lines, `##` category sections containing `- [ ] CHK### <requirement item>` lines with globally incrementing IDs starting at CHK001.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 7. **Report**: Output full path to checklist file, item count, and summarize whether the run created a new file or appended to an existing one. Summarize:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Focus areas selected
    - Depth level
    - Actor/timing

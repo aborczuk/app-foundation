@@ -22,13 +22,16 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. **Load design documents**: Read from FEATURE_DIR:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Required**: plan.md (tech stack, libraries, structure), spec.md (user stories with priorities)
    - **Optional**: data-model.md (entities), contracts/ (interface contracts), research.md (decisions), quickstart.md (test scenarios)
    - Note: Not all projects have all documents. Generate tasks based on what's available.
 
 3. **Execute task generation workflow**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Load plan.md and extract tech stack, libraries, project structure
    - Load `## External Ingress + Runtime Readiness Gate` from plan.md:
      - ERROR if this section is missing
@@ -58,17 +61,21 @@ You **MUST** consider the user input before proceeding (if not empty).
      - validation task asserting impossible/partial local lifecycle states cannot persist.
 
 3b. **Symbol annotation (MANDATORY before writing tasks.md)**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - For each task identified in step 3, run `mcp__codegraph__find_code` for the primary symbol or file it will touch.
    - Record the result as `file:symbol` pairs — stable identifiers that survive line number drift as earlier tasks are completed.
    - If codegraph returns no match (new file/symbol not yet created), record the intended file path only — no symbol annotation needed.
    - These annotations attach to the task description and become the input to `speckit.implement`'s CodeGraph Recon step.
 
 4. **Generate tasks.md** by pre-scaffolding from template:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
     1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.tasks --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Pre-structures the file with Phase sections, Dependencies section, Parallel Opportunities section, etc.
 
    2. Fill in the scaffolded structure:
+      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Correct feature name from plan.md
       - Phase 1: Setup tasks (project initialization)
       - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
@@ -82,12 +89,14 @@ You **MUST** consider the user input before proceeding (if not empty).
       - Implementation strategy section (MVP first, incremental delivery)
 
 5. **Run estimation (MANDATORY)**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Immediately invoke `/speckit.estimate` after writing `tasks.md`.
    - Require `FEATURE_DIR/estimates.md` to exist before reporting completion.
    - If estimation identifies 8/13-point tasks, follow the estimate command's mandatory breakdown loop until those warnings are cleared.
    - If estimation cannot complete, stop and report the blocker (do not proceed to implementation-ready status).
 
 6. **Report**: Output path to generated tasks.md and summary:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Total task count
    - Task count per user story
    - Parallel opportunities identified
@@ -103,15 +112,18 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Path to generated estimates.md and total points summary from `/speckit.estimate`
    - **Pipeline continuation** — always append this block verbatim at the end of the report:
 
-     ```
-     ## Remaining Pipeline to Implementation
+    ```
+    ## Remaining Pipeline to Implementation
 
-     tasks.md + estimates.md are ready. Complete all of the following steps in order before running /speckit.implement:
+    tasks.md + estimates.md are ready. Complete all of the following steps in order before running /speckit.implement:
 
-     1. /speckit.analyze    — cross-artifact consistency check (resolve CRITICAL issues before proceeding)
-     2. /speckit.e2e        — generate e2e.md + E2E script (REQUIRED — /speckit.implement will hard-block without these artifacts)
-     3. /speckit.implement  — execute tasks in phase order (hard-blocks if estimates.md is missing)
-     ```
+    1. /speckit.analyze    — cross-artifact consistency check (resolve CRITICAL issues before proceeding)
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
+    2. /speckit.e2e        — generate e2e.md + E2E script (REQUIRED — /speckit.implement will hard-block without these artifacts)
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
+    3. /speckit.implement  — execute tasks in phase order (hard-blocks if estimates.md is missing)
+       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
+    ```
 
 Context for task generation: $ARGUMENTS
 
@@ -144,9 +156,13 @@ Tasks MUST be organized by user story and include mandatory tests per constituti
 After generating tasks.md, if `TRELLO_AUTO_SYNC=1` is set in the environment:
 
 1. Detect TASKS path from the prerequisite output (FEATURE_DIR/tasks.md)
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Resolve board_id from `TRELLO_BOARD_ID` env var (if not set, skip with a warning)
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. Call `sync_tasks_to_trello(tasks_md_path=TASKS, board_id=TRELLO_BOARD_ID)` via the MCP tool
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. Append sync results to the completion report:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ```
 ## Trello Sync Results

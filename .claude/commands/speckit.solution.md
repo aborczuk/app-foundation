@@ -25,30 +25,42 @@ You **MUST** consider the user input before proceeding (if not empty).
 Top-level LLD phase for sketch-first planning. `/speckit.solution` now enforces:
 
 1. sketch blueprint generation,
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. sketch quality review,
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. post-sketch task decomposition with estimate/breakdown stabilization and HUD/test generation,
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. solution approval event,
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. post-solution drift analysis.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse `FEATURE_DIR`, `IMPL_PLAN`, and `AVAILABLE_DOCS`.
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. **Hard-block gate (MANDATORY)**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Read `## Open Feasibility Questions` in plan.md.
    - If any unchecked items remain, stop and route to `/speckit.feasibilityspike`.
 
 2a. **Read hierarchy gate (MANDATORY for this phase and all auto-invoked subcommands)**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Use this order whenever repo code/docs are used for sketching, review, decomposition, or drift analysis:
      1. Run helper entrypoints first:
+        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
         - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
         - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
      2. Treat helper output as semantic-first + exact bounded read anchor.
+        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      3. Run `discovery checks` (`codegraph` blast-radius/caller/callee/import checks) from that anchored seam.
+        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Do not start with broad `codegraph` sweeps before helper-driven reads, unless those reads fail.
    - This ordering applies to `/speckit.sketch`, `/speckit.solutionreview`, `/speckit.tasking`, and `/speckit.analyze` in the current solution run.
 
 3. **Auto-invoke `/speckit.sketch`**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Produce `FEATURE_DIR/sketch.md`.
    - Sketch must include the contract sections required by the current sketch template, especially:
      - `Solution Narrative`
@@ -59,25 +71,30 @@ Top-level LLD phase for sketch-first planning. `/speckit.solution` now enforces:
      - `Decomposition-Ready Design Slices`
 
 4. **Auto-invoke `/speckit.solutionreview`**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Review `sketch.md`.
    - If CRITICAL findings exist, loop back to `/speckit.sketch` and re-run `/speckit.solutionreview`.
 
 5. **Auto-invoke `/speckit.tasking`**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Decompose approved sketch into `tasks.md`.
    - Run estimate/breakdown subprocess loop to settle points.
    - Run deterministic tasks format gate.
    - Generate HUDs and acceptance tests only after stabilization.
 
 6. **Emit `solution_approved`** to `.speckit/pipeline-ledger.jsonl`:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    ```json
    {"event": "solution_approved", "feature_id": "NNN", "phase": "solution", "task_count": N, "story_count": N, "estimate_points": N, "actor": "<agent-id>", "timestamp_utc": "..."}
    ```
 
 7. **Auto-invoke `/speckit.analyze`** (post-solution drift gate):
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Analyze consistency across `spec -> plan -> sketch -> tasks`.
    - `analysis_completed` remains a separate event emitted by `/speckit.analyze`.
 
 8. **Report**:
+   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - "Solution phase complete and analysis executed."
    - List generated artifacts: `sketch.md`, `solutionreview.md`, `tasks.md`, `estimates.md`, HUDs, acceptance tests, analysis report.
    - Suggested next: `/speckit.e2e`.
