@@ -138,7 +138,7 @@
 - [ ] T020 [P] Add stderr contract tests for known failure modes (branch validation, missing plan/tasks, unresolved sections/symbols) to lock error-message compatibility — `tests/integration/test_script_stderr_contract.py:test_known_failure_messages`
 - [ ] T021 [P] Add a temporary shadow-compare mode to emit output diffs between legacy and Python paths during rollout and fail on parity regression — `src/mcp_codebase/orchestration/shadow_compare.py:compare_outputs`
 - [ ] T022 Migrate shared helpers in `.specify/scripts/bash/common.sh` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/bash/common.sh:main`
-- [ ] T023 Migrate `.specify/scripts/bash/create-new-feature.sh` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/bash/create-new-feature.sh:main`
+- [X] T023 Migrate `.specify/scripts/bash/create-new-feature.sh` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/bash/create-new-feature.sh:main`
 - [X] T024 Migrate `.specify/scripts/bash/setup-plan.sh` into Python while preserving plan artifact resolution outputs — `.specify/scripts/bash/setup-plan.sh:main`
 - [ ] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
 - [ ] T026 Migrate `.specify/scripts/bash/check-prerequisites.sh` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/bash/check-prerequisites.sh:main`
