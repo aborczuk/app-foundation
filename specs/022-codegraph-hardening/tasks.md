@@ -161,6 +161,8 @@
 - [X] T040 [P] Add a root-level `CLAUDE.md` rule that Python function docstrings are mandatory for new or modified functions so executable docs stay colocated with the implementation — `CLAUDE.md:186`
 - [X] T041 [P] Add a repo-level docstring validator that checks every Python function, including private helpers, and wire it into the post-edit workflow so doc coverage is enforced beyond Ruff's public-function default — `scripts/validate_python_docstrings.py`
 - [X] T042 [P] Wire the Python docstring validator into CI so changed Python files are checked in GitHub Actions as well as in the editor hook — `.github/workflows/ci.yml`
+- [X] T043 [P] Remove the route-tree scaffold/template/generator/artifact layer and keep the progressive-load documentation in the router or tool itself — `.specify/scripts/python/generate_route_tree.py`
+- [X] T044 [P] Swap the repo source-of-truth docs so `AGENTS.md` carries the operational instructions and `CLAUDE.md` becomes the pointer back to `AGENTS.md` — `AGENTS.md`
 
 ---
 
