@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
-"""Python entrypoint for markdown section reads with vector-first anchoring."""
+"""Python entrypoint for markdown section reads with vector-first anchoring.
+
+Markdown file read-efficiency contract:
+- Use this helper for markdown files over 100 lines.
+- Prefer the helper over raw file reads so the read stays bounded.
+- Resolve the target section semantically first, then fall back to exact
+  heading matching if the vector hit is unavailable or ambiguous.
+- The companion shell entrypoint is ``scripts/read-markdown.sh``; source it
+  when you need the shell function form.
+- If you need only the smallest bounded window, pass the specific section
+  heading rather than scanning the whole file.
+
+How to use:
+1. Source ``scripts/read-markdown.sh`` or invoke the Python entrypoint.
+2. Call ``read_markdown_section <file> <section_heading>``.
+3. Let the helper anchor the section and print only the relevant window.
+
+Validation:
+- If the section does not resolve, the helper prints a clear not-found error.
+- If the file is large, the helper keeps the read window bounded.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +31,7 @@ from pathlib import Path
 
 
 def _repo_root_from_cwd() -> Path:
+    """Resolve the repository root from the current working directory."""
     try:
         proc = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -24,6 +45,7 @@ def _repo_root_from_cwd() -> Path:
 
 
 def _resolve_file(item: dict[str, object]) -> str | None:
+    """Resolve the file path from a vector hit payload."""
     candidate = item.get("file_path")
     if isinstance(candidate, str) and candidate:
         return candidate
@@ -37,6 +59,7 @@ def _resolve_file(item: dict[str, object]) -> str | None:
 
 
 def _resolve_line(item: dict[str, object]) -> int | None:
+    """Resolve the first line number from a vector hit payload."""
     line = item.get("line_start")
     if isinstance(line, int):
         return line
@@ -54,6 +77,7 @@ def _resolve_line(item: dict[str, object]) -> int | None:
 
 
 def _resolve_heading(item: dict[str, object]) -> str | None:
+    """Resolve the heading text from a vector hit payload."""
     heading = item.get("heading")
     if isinstance(heading, str) and heading:
         return heading
@@ -67,6 +91,7 @@ def _resolve_heading(item: dict[str, object]) -> str | None:
 
 
 def _resolve_breadcrumb_tail(item: dict[str, object]) -> str | None:
+    """Resolve the last breadcrumb element from a vector hit payload."""
     breadcrumb = item.get("breadcrumb")
     if isinstance(breadcrumb, list) and breadcrumb:
         last = breadcrumb[-1]
@@ -84,10 +109,12 @@ def _resolve_breadcrumb_tail(item: dict[str, object]) -> str | None:
 
 
 def _normalize_heading_text(text: str) -> str:
+    """Normalize heading text for fuzzy comparisons."""
     return re.sub(r"\s+", " ", text.strip().lstrip("#").strip()).rstrip(":").lower()
 
 
 def _section_matches_query(section: str, candidate: str | None) -> bool:
+    """Return whether a query and candidate heading are close enough to match."""
     if not section or not candidate:
         return False
     section_norm = _normalize_heading_text(section)
@@ -103,6 +130,7 @@ def _section_matches_query(section: str, candidate: str | None) -> bool:
 
 
 def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
+    """Use vector lookup to resolve a markdown section line number."""
     if not target_file or not section:
         return None
 
@@ -169,6 +197,7 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
 
 
 def _fallback_heading_line_num(target_file: Path, section: str) -> int | None:
+    """Fall back to exact heading matching when vector lookup is unavailable."""
     with target_file.open(encoding="utf-8") as handle:
         for index, line in enumerate(handle, start=1):
             stripped = line.rstrip("\n")

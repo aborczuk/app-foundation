@@ -2,6 +2,12 @@
 
 # read-markdown.sh shell wrapper: keeps the function-based interface source-compatible
 # while delegating orchestration logic to the Python entrypoint.
+#
+# How to use:
+#   source scripts/read-markdown.sh
+#   read_markdown_section <file> <section_heading>
+#
+# The Python entrypoint carries the detailed progressive-load contract.
 
 set -e
 

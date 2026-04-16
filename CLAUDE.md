@@ -175,6 +175,19 @@ Each skill documents ledger usage in its own command file (`.claude/commands/spe
 - For `.claude/commands/speckit.*.md`, read `## Compact Contract (Load First)` first.
 - Load `## Expanded Guidance (Load On Demand)` only when a deterministic gate fails or the user asks for deeper rationale.
 
+**Progressive load routing**:
+- Treat `CLAUDE.md` as the route map, not the full knowledge base.
+- Prefer the smallest task-specific artifact first: `scripts/read-code.sh`, `scripts/read-markdown.sh`, or the relevant `.claude/commands/*.md`.
+- Read `catalog.yaml` only for system topology, services, resources, auth, hosting, or dependency questions.
+- Read `specs/*/behavior-map.md` only for runtime behavior and `specs/*/tasks.md` only for task state and execution order.
+- Use `codegraph` for relationship/blast-radius questions after a seam is anchored.
+- Use `codebase-lsp` for exact type and diagnostic checks before or after edits.
+- When adding a new function, script, or tool surface, generate the companion route-tree artifact under `.specify/route-trees/` with `.specify/scripts/python/generate_route_tree.py` so the progressive-load path stays explicit.
+
+**Python function docs**:
+- Function docstrings are mandatory for new or modified Python functions.
+- Keep them short, specific, and colocated with the function they describe.
+
 ## Operational Bootstrap
 
 ### Codebase MCP Toolkit
@@ -207,6 +220,7 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 
 **CodeGraph safety guard (NON-NEGOTIABLE)**:
 - Do not run `uv run cgc index --force ...` directly.
+- Post-edit refreshes go through `scripts/hook_refresh_indexes.py`, which fans out to codegraph/vector refreshes for the changed paths.
 - For manual indexing, use `scripts/cgc_safe_index.sh` only.
 - If codegraph discovery is stale or incomplete, run a scoped non-force refresh first:
   `scripts/cgc_safe_index.sh <scoped-path>` (example: `scripts/cgc_safe_index.sh src/clickup_control_plane`),
@@ -253,14 +267,9 @@ Treat every generated shell script as macOS-first. Apply all three rules uncondi
 
 ### Markdown File Read Efficiency
 
-For any markdown file >100 lines, use `scripts/read-markdown.sh` to enforce vector-first section anchoring with exact-heading fallback:
-```bash
-source scripts/read-markdown.sh
-read_markdown_section <file> <section_heading>
-```
-Example: `read_markdown_section specs/020-analytics-platform/plan.md "External Ingress"`
-
-This is automatic and mandatory — it queries the vector index first for the target section, then falls back to exact heading grep, and reads only the relevant window (token-efficient).
+For markdown files >100 lines, use `scripts/read-markdown.sh`; the detailed
+vector-first anchoring and how-to live in `scripts/read_markdown.sh` and
+`scripts/read_markdown.py`.
 
 ### Code File Read Efficiency
 

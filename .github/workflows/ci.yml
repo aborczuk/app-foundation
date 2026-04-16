@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -29,6 +31,24 @@ jobs:
 
       - name: Enforce prompt word caps
         run: uv run python scripts/validate_prompt_word_caps.py
+
+      - name: Validate Python docstrings on changed files
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+          fi
+
+          changed_py_files="$(git diff --name-only "$base_sha" HEAD -- '*.py')"
+          if [ -z "$changed_py_files" ]; then
+            echo "No Python files changed; skipping docstring validation."
+            exit 0
+          fi
+
+          python3 scripts/validate_python_docstrings.py $changed_py_files
 
       - name: Guard CodeGraph force indexing scope
         run: |

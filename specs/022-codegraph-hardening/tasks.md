@@ -149,6 +149,18 @@
 - [X] T031 [P] Rework `scripts/read_markdown.py` so vector section hits anchor the read first and normalized heading prefixes like `Phase 9` can resolve to full headings before exact heading fallback — `scripts/read_markdown.py:read_markdown_section`
 - [X] T032 [P] Add regression tests covering vector-vs-header precedence, HUD hint priority, ambiguous symbol handling, and markdown prefix resolution for the read helpers — `tests/integration/test_read_code_python_migration.py:test_read_code_context_vector_anchor_precedence`
 - [X] T033 [P] Allow unsupported read-code file types to skip codegraph discovery and still use vector or bounded local anchoring instead of failing early — `tests/unit/test_read_code_unsupported_file_type.py:test_unsupported_file_type_can_still_use_vector_anchor`
+- [X] T034 [P] Document that post-edit refreshes go through `scripts/hook_refresh_indexes.py` before the codegraph/vector helpers fan out — `CLAUDE.md:211`
+- [X] T035 [P] Add operator-facing instructions to `scripts/hook_refresh_indexes.py` describing stdin payloads, codegraph fan-out, and vector refresh behavior — `scripts/hook_refresh_indexes.py:main`
+
+## Ad-Hoc Tasks
+
+- [X] T036 [P] Add a progressive-load tool routing section to `CLAUDE.md` so the repo routes topology questions to `catalog.yaml`, feature behavior to `specs/*/behavior-map.md`, and narrows default reads to the smallest relevant tool first — `CLAUDE.md:178`
+- [X] T037 [P] Add a route-tree scaffold template plus a Python generator so new functions and scripts can emit a companion progressive-load/how-to artifact instead of relying on ad-hoc documentation — `.specify/templates/route-tree-template.md`
+- [X] T038 [P] Move the detailed markdown read-efficiency guidance out of `CLAUDE.md` and into the `scripts/read_markdown.py` / `scripts/read-markdown.sh` tool documentation so the root doc only points to the executable helper — `scripts/read_markdown.py`
+- [X] T039 [P] Generate the first concrete route-tree artifact for `scripts/read_markdown.py` so the progressive-load pattern exists as a real output, not just a scaffold — `.specify/route-trees/scripts/read_markdown__read_markdown_section.md`
+- [X] T040 [P] Add a root-level `CLAUDE.md` rule that Python function docstrings are mandatory for new or modified functions so executable docs stay colocated with the implementation — `CLAUDE.md:186`
+- [X] T041 [P] Add a repo-level docstring validator that checks every Python function, including private helpers, and wire it into the post-edit workflow so doc coverage is enforced beyond Ruff's public-function default — `scripts/validate_python_docstrings.py`
+- [X] T042 [P] Wire the Python docstring validator into CI so changed Python files are checked in GitHub Actions as well as in the editor hook — `.github/workflows/ci.yml`
 
 ---
 
