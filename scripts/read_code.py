@@ -36,6 +36,10 @@ class _VectorMatch:
     raw_score: float
     metadata_score: float
     exact_symbol_match: bool
+    symbol_type: str
+    has_body: bool
+    has_docstring: bool
+    line_span: int
 
 
 def _command_exists(name: str) -> bool:
@@ -323,27 +327,34 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
     if record_type == "code":
         score += 1.0
     if symbol_type in {"function", "method", "class"}:
-        score += 2.0
+        score += 5.0
     if symbol_name:
-        score += 0.5
+        score += 1.0
     if qualified_name:
-        score += 0.5
+        score += 1.0
     if signature:
-        score += 2.5
+        score += 3.5
+        signature_lower = signature.lstrip().lower()
+        if signature_lower.startswith(("def ", "async def ", "class ", "function ")):
+            score += 2.0
+        elif symbol_name and signature_lower.startswith(
+            (f"{symbol_name.lower()}(", f"{symbol_name.lower()} ()", f"{symbol_name.lower()}()")
+        ):
+            score += 1.5
     if docstring:
-        score += 3.0
+        score += 4.0
     if body:
-        score += 3.0
+        score += 4.0
         if len(body) > 200:
-            score += 0.5
+            score += 1.0
     if preview:
-        score += 0.5
+        score += 1.0
     if heading:
         score += 0.5
     if breadcrumb:
         score += 0.5
     if line_end > line_start:
-        score += 0.5
+        score += 1.0
 
     if query:
         query_lower = query.lower()
@@ -370,6 +381,19 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
     return score, exact_symbol_match
 
 
+def _vector_anchor_rank(match: _VectorMatch) -> tuple[int, int, int, int, float, float, int, int]:
+    return (
+        1 if match.exact_symbol_match else 0,
+        1 if match.symbol_type in {"function", "method", "class"} else 0,
+        1 if match.has_body else 0,
+        1 if match.has_docstring else 0,
+        match.metadata_score,
+        match.raw_score,
+        match.line_span,
+        -match.line_num,
+    )
+
+
 def _vector_match_for_item(item: dict[str, object], query: str, normalized_query: str) -> _VectorMatch | None:
     line_num = _resolve_candidate_line(item)
     if line_num is None:
@@ -382,6 +406,10 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
         raw_score=raw_score,
         metadata_score=metadata_score,
         exact_symbol_match=exact_symbol_match,
+        symbol_type=_candidate_text(item, "symbol_type"),
+        has_body=bool(_candidate_text(item, "body")),
+        has_docstring=bool(_candidate_text(item, "docstring")),
+        line_span=max(0, (_candidate_int(item, "line_end") or 0) - line_num),
     )
 
 
@@ -437,18 +465,8 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
             best_match = match
             continue
 
-        best_tuple = (
-            best_match.exact_symbol_match,
-            best_match.metadata_score,
-            best_match.raw_score,
-            -best_match.line_num,
-        )
-        candidate_tuple = (
-            match.exact_symbol_match,
-            match.metadata_score,
-            match.raw_score,
-            -match.line_num,
-        )
+        best_tuple = _vector_anchor_rank(best_match)
+        candidate_tuple = _vector_anchor_rank(match)
         if candidate_tuple > best_tuple:
             best_match = match
 
@@ -575,12 +593,11 @@ def read_code_context(argv: list[str]) -> int:
 
     context = READ_CODE_DEFAULT_CONTEXT_LINES
     context_set = False
-    hud_flag = False
     allow_fallback = False
 
     for token in extra:
         if token == "--hud-symbol":
-            hud_flag = True
+            continue
         elif token == "--allow-fallback":
             allow_fallback = True
         elif token.isdigit() and not context_set:
@@ -605,8 +622,16 @@ def read_code_context(argv: list[str]) -> int:
     normalized_pattern = normalize_symbol_pattern(pattern)
     vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
-    use_hud_fast_path = hud_flag or os.environ.get("SPECKIT_HUD_DIRECT_READ", "0") == "1"
-    if vector_match is None and not use_hud_fast_path:
+    strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+    line_num: int | None = None
+    if vector_match is not None:
+        line_num = vector_match.line_num
+    elif strict_status == 0:
+        line_num = strict_line_num
+    elif allow_fallback:
+        line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+    if line_num is None and strict_status != 0:
         if codegraph_supports_file(file_path):
             discover_pattern = (
                 normalized_pattern
@@ -615,31 +640,31 @@ def read_code_context(argv: list[str]) -> int:
             )
             if not codegraph_discover_or_fail(discover_pattern, file_path.parent):
                 return 1
-        vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+            if vector_match is not None:
+                line_num = vector_match.line_num
+        else:
+            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+            if vector_match is not None:
+                line_num = vector_match.line_num
 
-    strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-    if strict_status == 0:
-        if vector_match is None:
+        if line_num is None and strict_status == 0:
             line_num = strict_line_num
-        elif vector_match.exact_symbol_match:
-            line_num = vector_match.line_num
-        else:
-            line_num = strict_line_num
-    else:
-        if allow_fallback:
+        elif line_num is None and allow_fallback:
             line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+    if line_num is None:
+        if strict_status == 2:
+            print(
+                "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
+                file=sys.stderr,
+            )
         else:
-            if strict_status == 2:
-                print(
-                    "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
-                    file=sys.stderr,
-                )
-            return 1
+            print(
+                f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
+                file=sys.stderr,
+            )
+        return 1
 
     if line_num is None:
         print(f"ERROR: Pattern not found after one bounded fallback: {pattern} in {file_arg}", file=sys.stderr)
@@ -708,7 +733,16 @@ def read_code_window(argv: list[str]) -> int:
         normalized_pattern = normalize_symbol_pattern(pattern)
         vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
-        if vector_match is None and not use_hud_fast_path:
+        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+        line_num: int | None = None
+        if vector_match is not None:
+            line_num = vector_match.line_num
+        elif strict_status == 0:
+            line_num = int(strict_line_num or 0)
+        elif allow_fallback:
+            line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+        if line_num is None and strict_status != 0:
             if codegraph_supports_file(file_path):
                 discover_pattern = (
                     normalized_pattern
@@ -718,37 +752,27 @@ def read_code_window(argv: list[str]) -> int:
                 if not codegraph_discover_or_fail(discover_pattern, file_path.parent):
                     return 1
             vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+            if vector_match is not None:
+                line_num = vector_match.line_num
+            elif strict_status == 0:
+                line_num = int(strict_line_num or 0)
+            elif allow_fallback:
+                line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
-        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-        if strict_status == 0:
-            if vector_match is None:
-                start_line = int(strict_line_num or 0)
-            elif vector_match.exact_symbol_match:
-                start_line = vector_match.line_num
-            else:
-                start_line = int(strict_line_num or 0)
-        else:
-            if not allow_fallback:
-                if strict_status == 2:
-                    print(
-                        "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
-                        file=sys.stderr,
-                    )
-                else:
-                    print(
-                        f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
-                        file=sys.stderr,
-                    )
-                return 1
-            fallback_line_num = _find_line_num(file_path, pattern, normalized_pattern)
-            if fallback_line_num is not None:
-                start_line = fallback_line_num
-            else:
+        if line_num is None:
+            if strict_status == 2:
                 print(
-                    f"ERROR: Pattern not found after one bounded fallback: {pattern} in {file_arg}",
+                    "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
                     file=sys.stderr,
                 )
-                return 1
+            else:
+                print(
+                    f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
+                    file=sys.stderr,
+                )
+            return 1
+
+        start_line = int(line_num)
     elif is_large_code_file(file_path) and not use_hud_fast_path:
         print(
             f"ERROR: symbol_or_pattern is required for files >{CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path.",

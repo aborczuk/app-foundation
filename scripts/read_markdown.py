@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -82,6 +83,25 @@ def _resolve_breadcrumb_tail(item: dict[str, object]) -> str | None:
     return None
 
 
+def _normalize_heading_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lstrip("#").strip()).rstrip(":").lower()
+
+
+def _section_matches_query(section: str, candidate: str | None) -> bool:
+    if not section or not candidate:
+        return False
+    section_norm = _normalize_heading_text(section)
+    candidate_norm = _normalize_heading_text(candidate)
+    if not section_norm or not candidate_norm:
+        return False
+    return (
+        candidate_norm == section_norm
+        or candidate_norm.startswith(f"{section_norm}:")
+        or candidate_norm.startswith(f"{section_norm} -")
+        or candidate_norm.startswith(f"{section_norm} ")
+    )
+
+
 def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
     if not target_file or not section:
         return None
@@ -138,7 +158,7 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
 
         heading = _resolve_heading(raw_item)
         breadcrumb_tail = _resolve_breadcrumb_tail(raw_item)
-        if heading != section and breadcrumb_tail != section:
+        if not _section_matches_query(section, heading) and not _section_matches_query(section, breadcrumb_tail):
             continue
 
         line = _resolve_line(raw_item)
@@ -149,10 +169,13 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
 
 
 def _fallback_heading_line_num(target_file: Path, section: str) -> int | None:
-    heading = f"## {section}"
     with target_file.open(encoding="utf-8") as handle:
         for index, line in enumerate(handle, start=1):
-            if line.rstrip("\n") == heading:
+            stripped = line.rstrip("\n")
+            if not stripped.startswith("## "):
+                continue
+            heading = stripped[3:]
+            if _section_matches_query(section, heading):
                 return index
     return None
 

@@ -131,20 +131,24 @@
 
 ### Safety-First Execution Order (Mandatory)
 
-- [ ] T016 [P] Add contract tests that compare legacy shell wrappers vs Python implementations for args, stdout/stderr, JSON fields, and exit codes for all migrated entrypoints — `tests/integration/test_specify_script_parity.py:test_script_contract_parity`
-- [ ] T017 [P] Add source-compatible shell wrapper tests proving `source scripts/read-code.sh` / `source scripts/read-markdown.sh` still expose callable shell functions after Python migration — `tests/integration/test_read_helper_wrapper_compat.py:test_source_compat`
+- [X] T016 [P] Add contract tests that compare legacy shell wrappers vs Python implementations for args, stdout/stderr, JSON fields, and exit codes for all migrated entrypoints — `tests/integration/test_specify_script_parity.py:test_script_contract_parity`
+- [X] T017 [P] Add source-compatible shell wrapper tests proving `source scripts/read-code.sh` / `source scripts/read-markdown.sh` still expose callable shell functions after Python migration — `tests/integration/test_read_helper_wrapper_compat.py:test_source_compat`
 - [X] T018 [P] Add golden fixture tests for `.specify/scripts/bash/check-prerequisites.sh` JSON payloads and exit-code behavior across `--json`, `--paths-only`, `--require-tasks`, and `--include-tasks` combinations — `tests/integration/test_check_prerequisites_python_migration.py:test_check_prerequisites_json_include_tasks_contract`
-- [ ] T019 [P] Add parity checks for tool availability/error handling (`uv`, `git`, `python3`) between legacy shell and Python entrypoints — `tests/integration/test_script_tool_dependency_parity.py:test_tool_dependency_failures`
-- [ ] T020 [P] Add stderr contract tests for known failure modes (branch validation, missing plan/tasks, unresolved sections/symbols) to lock error-message compatibility — `tests/integration/test_script_stderr_contract.py:test_known_failure_messages`
-- [ ] T021 [P] Add a temporary shadow-compare mode to emit output diffs between legacy and Python paths during rollout and fail on parity regression — `src/mcp_codebase/orchestration/shadow_compare.py:compare_outputs`
-- [ ] T022 Migrate shared helpers in `.specify/scripts/bash/common.sh` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/bash/common.sh:main`
+- [X] T019 [P] Add parity checks for tool availability/error handling (`uv`, `git`, `python3`) between legacy shell and Python entrypoints — `tests/integration/test_script_tool_dependency_parity.py:test_tool_dependency_failures`
+- [X] T020 [P] Add stderr contract tests for known failure modes (branch validation, missing plan/tasks, unresolved sections/symbols) to lock error-message compatibility — `tests/integration/test_script_stderr_contract.py:test_known_failure_messages`
+- [X] T021 [P] Add a temporary shadow-compare mode to emit output diffs between legacy and Python paths during rollout and fail on parity regression — `src/mcp_codebase/orchestration/shadow_compare.py:compare_outputs`
+- [X] T022 Migrate shared helpers in `.specify/scripts/bash/common.sh` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/bash/common.sh:main`
 - [X] T023 Migrate `.specify/scripts/bash/create-new-feature.sh` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/bash/create-new-feature.sh:main`
 - [X] T024 Migrate `.specify/scripts/bash/setup-plan.sh` into Python while preserving plan artifact resolution outputs — `.specify/scripts/bash/setup-plan.sh:main`
 - [X] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
 - [X] T026 Migrate `.specify/scripts/bash/check-prerequisites.sh` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/bash/check-prerequisites.sh:main`
 - [X] T027 Migrate `scripts/read-markdown.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-markdown.sh:read_markdown_section`
 - [X] T028 Migrate `scripts/read-code.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-code.sh:read_code_context`
-- [ ] T029 [P] Add Speckit pipeline smoke coverage for plan/implement/addtobacklog paths that depend on `check-prerequisites` and `setup-plan` after migration — `tests/integration/test_speckit_pipeline_driver.py:test_python_orchestration_entrypoints`
+- [X] T029 [P] Add Speckit pipeline smoke coverage for plan/implement/addtobacklog paths that depend on `check-prerequisites` and `setup-plan` after migration — `tests/integration/test_speckit_pipeline_driver.py:test_python_orchestration_entrypoints`
+- [X] T030 [P] Rework `scripts/read_code.py` to use a ranked anchor-selection pipeline where HUD hints, vector chunk metadata, and strict local symbols compete before bounded file reads, with the selected chunk's stored line span driving the window — `scripts/read_code.py:read_code_context`
+- [X] T031 [P] Rework `scripts/read_markdown.py` so vector section hits anchor the read first and normalized heading prefixes like `Phase 9` can resolve to full headings before exact heading fallback — `scripts/read_markdown.py:read_markdown_section`
+- [X] T032 [P] Add regression tests covering vector-vs-header precedence, HUD hint priority, ambiguous symbol handling, and markdown prefix resolution for the read helpers — `tests/integration/test_read_code_python_migration.py:test_read_code_context_vector_anchor_precedence`
+- [X] T033 [P] Allow unsupported read-code file types to skip codegraph discovery and still use vector or bounded local anchoring instead of failing early — `tests/unit/test_read_code_unsupported_file_type.py:test_unsupported_file_type_can_still_use_vector_anchor`
 
 ---
 

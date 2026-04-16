@@ -13,6 +13,16 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from common import (
+    check_feature_branch,
+    find_feature_dir_by_prefix,
+    get_current_branch,
+    get_repo_root,
+)
+from common import (
+    has_git as common_has_git,
+)
+
 
 @dataclass
 class RuntimeContext:
@@ -64,63 +74,19 @@ def _run_git(args: list[str], cwd: Path) -> str | None:
 
 
 def _get_repo_root(script_path: Path) -> Path:
-    cwd = Path.cwd()
-    git_root = _run_git(["rev-parse", "--show-toplevel"], cwd)
-    if git_root:
-        return Path(git_root).resolve()
-    return script_path.resolve().parents[3]
+    return get_repo_root(script_path)
 
 
 def _has_git(repo_root: Path) -> bool:
-    return _run_git(["rev-parse", "--show-toplevel"], repo_root) is not None
+    return common_has_git(repo_root)
 
 
 def _get_current_branch(repo_root: Path) -> str:
-    override = os.environ.get("SPECIFY_FEATURE", "").strip()
-    if override:
-        return override
-
-    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root)
-    if branch:
-        return branch
-
-    specs_dir = repo_root / "specs"
-    highest = -1
-    latest_feature = ""
-    if specs_dir.is_dir():
-        for candidate in specs_dir.iterdir():
-            if not candidate.is_dir():
-                continue
-            match = re.match(r"^([0-9]{3})-", candidate.name)
-            if not match:
-                continue
-            number = int(match.group(1), 10)
-            if number > highest:
-                highest = number
-                latest_feature = candidate.name
-    if latest_feature:
-        return latest_feature
-    return "main"
+    return get_current_branch(repo_root)
 
 
 def _find_feature_dir_by_prefix(repo_root: Path, branch_name: str) -> Path:
-    specs_dir = repo_root / "specs"
-    match = re.match(r"^([0-9]{3})-", branch_name)
-    if not match:
-        return specs_dir / branch_name
-
-    prefix = match.group(1)
-    matches = sorted(item.name for item in specs_dir.glob(f"{prefix}-*") if item.is_dir())
-    if len(matches) == 0:
-        return specs_dir / branch_name
-    if len(matches) == 1:
-        return specs_dir / matches[0]
-
-    log_error(
-        f"Multiple spec directories found with prefix '{prefix}': {' '.join(matches)}"
-    )
-    log_error("Please ensure only one spec directory exists per numeric prefix.")
-    return specs_dir / branch_name
+    return find_feature_dir_by_prefix(repo_root, branch_name)
 
 
 def _build_context(script_path: Path, argv: list[str]) -> RuntimeContext:
@@ -578,6 +544,10 @@ def print_summary(ctx: RuntimeContext, plan_data: PlanData) -> None:
 def main(argv: list[str]) -> int:
     script_path = Path(__file__)
     ctx = _build_context(script_path, argv)
+    try:
+        check_feature_branch(ctx.current_branch, ctx.has_git)
+    except SystemExit:
+        return 1
     if not validate_environment(ctx):
         return 1
 

@@ -116,7 +116,7 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
     assert any(line.endswith("\t    return step") for line in lines)
 
 
-def test_read_code_context_requires_uv_when_not_using_hud_fast_path(tmp_path: Path) -> None:
+def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text(
         "def run_pipeline():\n"
@@ -129,6 +129,27 @@ def test_read_code_context_requires_uv_when_not_using_hud_fast_path(tmp_path: Pa
         "context",
         str(code_file),
         "run_pipeline",
+        "2",
+        env=_env_without_uv(),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+
+
+def test_read_code_context_requires_uv_only_when_no_local_anchor_exists(tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text(
+        "def helper():\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+
+    result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "missing_pipeline",
         "2",
         env=_env_without_uv(),
     )

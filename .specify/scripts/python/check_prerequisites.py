@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import json
-import os
-import re
-import subprocess
 import sys
 from pathlib import Path
+
+from common import (
+    check_feature_branch,
+    find_feature_dir_by_prefix,
+    get_current_branch,
+    get_repo_root,
+    has_git,
+)
 
 
 def _help_text() -> str:
@@ -33,20 +38,6 @@ EXAMPLES:
   # Get feature paths only (no validation)
   ./check-prerequisites.sh --paths-only
   """
-
-
-def _run_git(args: list[str], cwd: Path) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except Exception:
-        return None
-    return result.stdout.strip()
 
 
 def _parse_args(argv: list[str]) -> tuple[bool, bool, bool, bool]:
@@ -74,87 +65,11 @@ def _parse_args(argv: list[str]) -> tuple[bool, bool, bool, bool]:
     return json_mode, require_tasks, include_tasks, paths_only
 
 
-def _get_repo_root(script_path: Path) -> Path:
-    cwd = Path.cwd()
-    git_root = _run_git(["rev-parse", "--show-toplevel"], cwd)
-    if git_root:
-        return Path(git_root).resolve()
-
-    script_dir = script_path.resolve().parent
-    return (script_dir / "../../..").resolve()
-
-
-def _get_current_branch(repo_root: Path) -> str:
-    override = os.environ.get("SPECIFY_FEATURE", "").strip()
-    if override:
-        return override
-
-    git_branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root)
-    if git_branch:
-        return git_branch
-
-    specs_dir = repo_root / "specs"
-    highest = -1
-    latest_feature = ""
-    if specs_dir.is_dir():
-        for candidate in specs_dir.iterdir():
-            if not candidate.is_dir():
-                continue
-            match = re.match(r"^([0-9]{3})-", candidate.name)
-            if not match:
-                continue
-            number = int(match.group(1), 10)
-            if number > highest:
-                highest = number
-                latest_feature = candidate.name
-
-    if latest_feature:
-        return latest_feature
-    return "main"
-
-
-def _has_git(repo_root: Path) -> bool:
-    return _run_git(["rev-parse", "--show-toplevel"], repo_root) is not None
-
-
-def _check_feature_branch(branch: str, has_git_repo: bool) -> None:
-    if not has_git_repo:
-        print("[specify] Warning: Git repository not detected; skipped branch validation", file=sys.stderr)
-        return
-
-    if re.match(r"^[0-9]{3}-", branch):
-        return
-
-    print(f"ERROR: Not on a feature branch. Current branch: {branch}", file=sys.stderr)
-    print("Feature branches should be named like: 001-feature-name", file=sys.stderr)
-    raise SystemExit(1)
-
-
-def _find_feature_dir_by_prefix(repo_root: Path, branch_name: str) -> Path:
-    specs_dir = repo_root / "specs"
-    match = re.match(r"^([0-9]{3})-", branch_name)
-    if not match:
-        return specs_dir / branch_name
-
-    prefix = match.group(1)
-    matches = [item.name for item in specs_dir.glob(f"{prefix}-*") if item.is_dir()]
-    matches.sort()
-
-    if len(matches) == 0:
-        return specs_dir / branch_name
-    if len(matches) == 1:
-        return specs_dir / matches[0]
-
-    print(f"ERROR: Multiple spec directories found with prefix '{prefix}': {' '.join(matches)}", file=sys.stderr)
-    print("Please ensure only one spec directory exists per numeric prefix.", file=sys.stderr)
-    return specs_dir / branch_name
-
-
 def _get_feature_paths(script_path: Path) -> dict[str, str]:
-    repo_root = _get_repo_root(script_path)
-    branch = _get_current_branch(repo_root)
-    has_git_repo = _has_git(repo_root)
-    feature_dir = _find_feature_dir_by_prefix(repo_root, branch)
+    repo_root = get_repo_root(script_path)
+    branch = get_current_branch(repo_root)
+    has_git_repo = has_git(repo_root)
+    feature_dir = find_feature_dir_by_prefix(repo_root, branch)
 
     return {
         "REPO_ROOT": str(repo_root),
@@ -182,11 +97,12 @@ def _check_dir(path: Path, label: str) -> str:
 
 
 def main(argv: list[str]) -> int:
+    """CLI entrypoint for the check-prerequisites workflow."""
     json_mode, require_tasks, include_tasks, paths_only = _parse_args(argv)
     script_path = Path(__file__)
     paths = _get_feature_paths(script_path)
 
-    _check_feature_branch(paths["CURRENT_BRANCH"], paths["HAS_GIT"] == "true")
+    check_feature_branch(paths["CURRENT_BRANCH"], paths["HAS_GIT"] == "true")
 
     feature_dir = Path(paths["FEATURE_DIR"])
     impl_plan = Path(paths["IMPL_PLAN"])
