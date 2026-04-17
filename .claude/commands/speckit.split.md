@@ -43,7 +43,6 @@ This command operates on the **current feature branch's spec**, or on a spec ide
    c. If no spec is found, abort with: `ERROR: No spec found. Run /speckit.specify first or provide a valid feature number.`
 
 2. **Read and analyze the source spec**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Load the full `spec.md`. Extract:
    - Feature name and one-line purpose
@@ -58,7 +57,6 @@ This command operates on the **current feature branch's spec**, or on a spec ide
    `ERROR: This spec is already [M/S/XS] — splitting is only warranted for L or XL specs. Proceed directly to /speckit.plan.`
 
 3. **Propose a phase split**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Apply these splitting rules in order of preference:
 
@@ -85,7 +83,6 @@ This command operates on the **current feature branch's spec**, or on a spec ide
    - The phase split must be presented to the user for approval **before** any new spec files are written.
 
 4. **Present the proposed split to the user**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Output a structured proposal in this format:
 
@@ -141,10 +138,8 @@ This command operates on the **current feature branch's spec**, or on a spec ide
    ```
 
 5. **Wait for user approval** before proceeding. Do NOT create any files until the user replies "approve" or an adjusted variant.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 6. **On approval — create phase specs**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    For each phase in the approved split:
 
@@ -182,7 +177,6 @@ This command operates on the **current feature branch's spec**, or on a spec ide
       ```
 
 7. **Update the source spec**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Add a `## Split Into Phases` section at the bottom of the source spec's `spec.md`:
 
@@ -201,7 +195,6 @@ This command operates on the **current feature branch's spec**, or on a spec ide
    Also update the source spec's **Status** header field from `Draft` to `Superseded`.
 
 8. **Report completion**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Output a summary:
    ```

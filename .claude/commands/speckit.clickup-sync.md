@@ -16,22 +16,18 @@ You **MUST** consider the user input before proceeding. If `--status` is present
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. Validate runtime environment variables:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - `CLICKUP_API_TOKEN`
    - `CLICKUP_SPACE_ID`
 
 3. Build command:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Bootstrap: `uv run python -m mcp_clickup`
    - Status: `uv run python -m mcp_clickup --status`
 
 4. Execute command and summarize outcome:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Success: report created/updated/skipped (bootstrap) or grouped status totals (`--status`)
    - Failure: report error code and actionable hint
 
 5. If bootstrap changed ClickUp items, remind the operator that `.speckit/clickup-manifest.json` may have been updated and should be reviewed.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Usage Examples
 

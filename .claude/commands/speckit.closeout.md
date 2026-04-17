@@ -19,9 +19,7 @@ Close the current task through one append-first path that records the task evide
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Require `--commit-sha` and `--qa-run-id` in the user input or reject the request.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. Invoke:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    ```bash
    uv run python scripts/speckit_closeout_task.py \
@@ -35,11 +33,9 @@ Close the current task through one append-first path that records the task evide
    ```
 
 4. Parse the JSON payload:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - `next_action=continue`: report the compact status line and stop.
    - `next_action=checkpoint`: invoke `/speckit.checkpoint [phase]` and stop.
 5. Do not emit a prose summary. Return only the compact status line plus the closeout payload fields.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Contract
 

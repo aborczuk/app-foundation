@@ -51,27 +51,16 @@ By the end of this command, `sketch.md` must make the following concrete enough 
 1. What capability or change surface this feature is implementing
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. What existing code/scripts/templates/artifacts are relevant
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. What should be reused unchanged
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. What should be extended or modified
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. What must be net-new
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. What the primary seams, interfaces, trust boundaries, and module boundaries are
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 7. What the direct and indirect **blast radius** is
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 8. What the construction path is — how the feature will actually be built
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 9. What feature-level design slices should become tasks
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 10. What constraints, risks, assumptions, and domain MUST rules tasking must preserve
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 11. What non-functional, operational, migration, rollback, and verification requirements must carry forward
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 12. What public symbols, contracts, and typed boundaries must exist before implementation begins
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 If these cannot be determined from the available artifacts and codebase context, stop and surface the gap rather than guessing.
 
@@ -191,17 +180,11 @@ This is not task decomposition. It is the **construction logic** that tasking mu
 Typical structure:
 
 1. establish or extend the core seam,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. define or refine interfaces/contracts,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. wire orchestration/integration path,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. add state/validation/guard behavior,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. attach observability/recovery/operator surfaces,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. validate end-to-end construction path.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 If the feature needs a different construction order, state it explicitly.
 
@@ -254,14 +237,11 @@ For each work type:
 Use the following repo discovery order:
 
 1. **Discovery first**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Use **CodeGraphContext** to identify relevant symbols, modules, import relationships, callers, callees, and dependency paths.
    - If remote repository context is needed, use GitHub search first.
 2. **Verification second**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Use type/diagnostic tooling as needed to verify exact types and impacted files.
 3. **Fallback last**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Use `rg` or direct file inspection only if CodeGraphContext remains incomplete after a scoped refresh.
 
 Do not begin low-level design from raw intuition if codegraph discovery has not been used.
@@ -628,51 +608,28 @@ Fill `sketch.md` with the blueprint produced above.
 `sketch.md` must contain, at minimum, the following sections in this order:
 
 1. **Feature Solution Frame**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. **Solution Narrative**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. **Construction Strategy**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. **Acceptance Traceability**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. **Work-Type Classification**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. **Current-System Inventory**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 7. **Command / Script Surface Map**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 8. **CodeGraphContext Findings**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 9. **Blast Radius**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 10. **Reuse / Modify / Create Matrix**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 11. **Manifest Alignment Check**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 12. **Architecture Flow Delta**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 13. **Component and Boundary Design**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 14. **Interface, Symbol, and Contract Notes**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 15. **State / Lifecycle / Failure Model**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 16. **Non-Functional Design Implications**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 17. **Human-Task and Operator Boundaries**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 18. **Verification Strategy**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 19. **Domain Guardrails**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 20. **LLD Decision Log**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 21. **Design Gaps and Repo Contradictions**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 22. **Design-to-Tasking Contract**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 23. **Decomposition-Ready Design Slices**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 The document must be strong enough that:
 

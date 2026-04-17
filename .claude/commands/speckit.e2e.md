@@ -22,7 +22,6 @@ This command generates two artifacts for end-to-end testing of a feature:
 1. **`FEATURE_DIR/e2e.md`** — a structured E2E test plan with per-user-story sections and a final full-feature section
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. **`scripts/e2e_<feature-slug>.sh`** — an executable pipeline script that runs the E2E tests
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 The generated pipeline is **automation-first with human-assisted checkpoints only by exception**:
 - Use automated checks (dry-run, log parsing, DB queries, API checks) whenever a deterministic oracle exists.
@@ -32,17 +31,14 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. **Load design documents**: Read from FEATURE_DIR:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Required**: spec.md (user stories), plan.md (tech stack, architecture, entrypoints)
    - **Required**: tasks.md (phases, checkpoints — needed to understand what each story delivers)
    - **Optional**: data-model.md (entities, DB tables), contracts/ (API specs, config schema), quickstart.md (integration scenarios)
    - If tasks.md does not exist, **STOP** and suggest running `/speckit.solution` first.
 
 3. **Analyze the feature for E2E test requirements**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    For each user story (from spec.md + tasks.md), identify:
    - **What observable behavior does this story produce?** (from the phase checkpoint in tasks.md)
@@ -59,7 +55,6 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
    - **Common blockers**: Known issues that could prevent E2E from passing (from quickstart.md or research.md)
 
 4. **Generate `FEATURE_DIR/e2e.md`**: Pre-scaffold the E2E test plan from template:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    ```bash
     uv run python .specify/scripts/pipeline-scaffold.py speckit.e2e --feature-dir $FEATURE_DIR \
@@ -76,7 +71,6 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
    - Common Blockers section
 
 5. **Generate `scripts/e2e_<feature-slug>.sh`**: Pre-scaffold the E2E execution script from template:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    ```bash
     uv run python .specify/scripts/pipeline-scaffold.py speckit.e2e --feature-dir $FEATURE_DIR \
@@ -140,14 +134,12 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
    Make the script executable: `chmod +x scripts/e2e_<slug>.sh`
 
 6. **If an existing E2E script or e2e.md already exists**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Read the existing artifacts first
    - **Ask the user**: "Existing E2E artifacts found. Should I regenerate from scratch or update the existing ones?"
    - If updating: preserve any manual customizations the user added, extend with new sections
    - If regenerating: replace entirely based on current design documents
 
 7. **Report**: Output summary:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Path to generated e2e.md
    - Path to generated script
    - Number of E2E sections (per-story + final)
@@ -156,7 +148,6 @@ The generated pipeline is **automation-first with human-assisted checkpoints onl
    - Suggested first run: `scripts/e2e_<slug>.sh preflight <config>`
 
 8. **Emit pipeline event**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    
    Emit `e2e_generated` to `.speckit/pipeline-ledger.jsonl`:
    ```json

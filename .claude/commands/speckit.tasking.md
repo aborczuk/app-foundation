@@ -17,13 +17,9 @@ Generate `tasks.md` from an approved sketch blueprint and finalize downstream ex
 1. task decomposition,
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. estimate/breakdown subprocess loop,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. deterministic format gate,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. HUD generation,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. acceptance-test generation.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 This phase must consume `sketch.md` as an **authoritative design-to-tasking contract**, not as loose inspiration.
 

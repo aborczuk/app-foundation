@@ -44,17 +44,11 @@ A passing `solutionreview` means:
 1. `sketch.md` is complete enough that `/speckit.tasking` does not need to invent major structure
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. `sketch.md` is consistent with `spec.md` and `plan.md`
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. the proposed solution is grounded in actual repo surfaces, not abstract intent
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. touched files, symbols, seams, and boundaries are specific enough for decomposition
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. manifest/pipeline/runtime implications are explicit where relevant
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. human-task boundaries, verification intent, and domain MUST rules are explicit
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 7. no CRITICAL design ambiguity remains that would likely produce bad tasks or implementation drift
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 If any of these fail materially, tasking must be blocked.
 
@@ -119,51 +113,28 @@ Verify that `sketch.md` contains all required sections.
 At minimum, require:
 
 1. **Feature Solution Frame**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. **Solution Narrative**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. **Construction Strategy**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. **Acceptance Traceability**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. **Work-Type Classification**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. **Current-System Inventory**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 7. **Command / Script Surface Map**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 8. **CodeGraphContext Findings**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 9. **Blast Radius**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 10. **Reuse / Modify / Create Matrix**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 11. **Manifest Alignment Check**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 12. **Architecture Flow Delta**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 13. **Component and Boundary Design**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 14. **Interface, Symbol, and Contract Notes**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 15. **State / Lifecycle / Failure Model**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 16. **Non-Functional Design Implications**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 17. **Human-Task and Operator Boundaries**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 18. **Verification Strategy**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 19. **Domain Guardrails**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 20. **LLD Decision Log**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 21. **Design Gaps and Repo Contradictions**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 22. **Design-to-Tasking Contract**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 23. **Decomposition-Ready Design Slices**
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 If a required section is missing, empty, or clearly placeholder-level, raise at least HIGH severity; use CRITICAL if the missing section blocks meaningful task decomposition.
 

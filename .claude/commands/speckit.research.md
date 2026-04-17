@@ -38,7 +38,6 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
    - The scaffold uses `.specify/templates/research-template-compact.md`, which is the compact research template for this command.
 
 2. **Run one bounded research pass in the main agent**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Do **not** spawn sub-agents.
    - Use the cached FR list once for all queries and keep each result set capped.
    - Keep outputs in tables, not prose.
@@ -76,13 +75,11 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
      - Whether it requires a custom server or not
 
 3. **Synthesize and write `research.md`** with all required sections pre-structured:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - The compact scaffold already exists from step 1.
    - Fill the existing tables and bullet lists with the capped results from step 2.
    - Keep the content concise and table-driven.
 
 4. **Completion gate**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Verify `research.md` contains all five required sections with substantive content.
    - If a section is thin, run one targeted follow-up search, then stop once that section is good enough.
    - Do **not** keep searching for marginal additions once each section has at least one solid candidate set.
@@ -90,7 +87,6 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
      - `No relevant code repositories found after searching: [list of queries run]`.
 
 5. **Emit pipeline event**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Emit `research_completed` to `.speckit/pipeline-ledger.jsonl`:
    ```json
@@ -98,7 +94,6 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
    ```
 
 6. **Report** to user: what was found in each section, which FRs are covered by existing
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    sources, and which FRs will require net-new code. Then suggest running `/speckit.plan`.
 
 ## Local Validation

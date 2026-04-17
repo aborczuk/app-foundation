@@ -28,7 +28,6 @@ Follow this execution flow:
    **IMPORTANT**: The user might require less or more principles than the ones used in the template. If a number is specified, respect that - follow the general template. You will update the doc accordingly.
 
 2. Collect/derive values for placeholders:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If user input (conversation) supplies a value, use it.
    - Otherwise infer from existing repo context (README, docs, prior constitution versions if embedded).
    - For governance dates: `RATIFICATION_DATE` is the original adoption date (if unknown ask or mark TODO), `LAST_AMENDED_DATE` is today if changes are made, otherwise keep previous.
@@ -39,14 +38,12 @@ Follow this execution flow:
    - If version bump type ambiguous, propose reasoning before finalizing.
 
 3. Draft the updated constitution content:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Replace every placeholder with concrete text (no bracketed tokens left except intentionally retained template slots that the project has chosen not to define yet—explicitly justify any left).
    - Preserve heading hierarchy and comments can be removed once replaced unless they still add clarifying guidance.
    - Ensure each Principle section: succinct name line, paragraph (or bullet list) capturing non‑negotiable rules, explicit rationale if not obvious.
    - Ensure Governance section lists amendment procedure, versioning policy, and compliance review expectations.
 
 4. Consistency propagation checklist (convert prior checklist into active validations):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Read `.specify/templates/plan-template.md` and ensure any "Constitution Check" or rules align with updated principles.
    - Read `.specify/templates/spec-template.md` for scope/requirements alignment—update if constitution adds/removes mandatory sections or constraints.
    - Read `.specify/templates/tasks-template.md` and ensure task categorization reflects new or removed principle-driven task types (e.g., observability, versioning, testing discipline).
@@ -54,7 +51,6 @@ Follow this execution flow:
    - Read any runtime guidance docs (e.g., `README.md`, `docs/quickstart.md`, or agent-specific guidance files if present). Update references to principles changed.
 
 5. Produce a Sync Impact Report and **append** it to `constitution-changelog.md` (repo root)
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    as a new top-level `## X.Y.Z (YYYY-MM-DD)` Markdown section (newest entry at the top,
    below the file header). Do NOT embed the report in `constitution.md` itself.
    The entry MUST include:
@@ -66,18 +62,15 @@ Follow this execution flow:
    - Follow-up TODOs if any placeholders intentionally deferred.
 
 6. Validation before final output:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - No remaining unexplained bracket tokens.
    - Version line matches report.
    - Dates ISO format YYYY-MM-DD.
    - Principles are declarative, testable, and free of vague language ("should" → replace with MUST/SHOULD rationale where appropriate).
 
 7. Write the completed constitution back to `constitution.md` (overwrite). Do NOT include the
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    Sync Impact Report in this file — it lives in `constitution-changelog.md` only.
 
 8. Output a final summary to the user with:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - New version and bump rationale.
    - Any files flagged for manual follow-up.
    - Suggested commit message (e.g., `docs: amend constitution to vX.Y.Z (principle additions + governance update)`).

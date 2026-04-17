@@ -163,7 +163,7 @@
 - [X] T042 [P] Wire the Python docstring validator into CI so changed Python files are checked in GitHub Actions as well as in the editor hook — `.github/workflows/ci.yml`
 - [X] T043 [P] Remove the route-tree scaffold/template/generator/artifact layer and keep the progressive-load documentation in the router or tool itself — `.specify/scripts/python/generate_route_tree.py`
 - [X] T044 [P] Swap the repo source-of-truth docs so `AGENTS.md` carries the operational instructions and `CLAUDE.md` becomes the pointer back to `AGENTS.md` — `AGENTS.md`
-- [ ] T045 [P] Carry the feature purpose into every step in the Speckit command templates so the workflow intent stays visible as execution progresses — `.claude/commands/speckit.*.md`
+- [X] T045 [P] Keep a single feature-purpose reminder in each Speckit command template and remove duplicate step-level copies so the workflow intent stays visible without repetition — `.claude/commands/speckit.*.md`
 
 ---
 

@@ -28,7 +28,6 @@ Use this when you need a change done **now** without running the full specify â†
    - `tasks.md` is never a hard gate for add-to-backlog intake; missing feature-local tasks automatically route to the universal backlog.
 
 2. **Load context**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Required**: `plan.md` â€” tech stack, architecture, module boundaries, file structure
    - **Required**: `spec.md` â€” user stories and scope boundaries
    - **If exists**: `specs/001-auto-options-trader/behavior-map.md` â€” runtime behavior map
@@ -37,7 +36,6 @@ Use this when you need a change done **now** without running the full specify â†
    - **Current tasks**: If present, read `tasks.md` to understand existing task IDs, phases, and placement; if absent, continue with the universal backlog fallback
 
 3. **Architectural fit check** â€” this is a hard gate:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Does the change fit within the existing architecture as defined in `plan.md` and `spec.md`?
    - Where exactly does it land: which module, file, and layer?
    - Does it respect the behavior map (no undocumented runtime behavior changes)?
@@ -53,13 +51,11 @@ Use this when you need a change done **now** without running the full specify â†
    **If the request is ambiguous**: ask a clarifying question before proceeding. Do NOT assume.
 
 4. **Scope sync gate (new scope only)**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If `SCOPE_EXPANDS=true`, run `/speckit.specify --update-current-spec "$ARGUMENTS"` before writing tasks.
    - Confirm `spec.md` and `checklists/requirements.md` reflect the new scope and contain no unresolved `[NEEDS CLARIFICATION]` markers.
    - Re-load `spec.md` after the sync and ensure the new task request is now in-scope.
 
 5. **Write task(s) to tasks.md** using the format rules from `/speckit.solution`:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Read tasks.md and find the highest existing task ID (e.g., T050).
    - Assign the next sequential ID (e.g., T051).
    - Use the standard checklist format: `- [ ] T0XX [USn?] Description with exact file path`
@@ -71,11 +67,9 @@ Use this when you need a change done **now** without running the full specify â†
    - Map the user story label if applicable.
 
 6. **Run `/speckit.estimate`** on the updated tasks.md.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Estimate owns the breakdown loop: if any task scores 8 or 13 it will automatically invoke `/speckit.breakdown` and re-estimate until all tasks are â‰¤5 points.
 
 7. **Determine next-phase handoff command** (deterministic triage output):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Select exactly one next command based on triage + estimate outcomes:
      - **Route to `/speckit.specify`** when `SCOPE_EXPANDS=true` or the request now represents net-new product scope.
      - **Route to `/speckit.plan`** when architecture fit failed (already blocked in step 3).
@@ -89,7 +83,6 @@ Use this when you need a change done **now** without running the full specify â†
      - `/speckit.implement` -> `e2e_generated`
 
 8. **Commit planning artifacts**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If `SCOPE_EXPANDS=true`, stage `spec.md`, `checklists/requirements.md`, `tasks.md`, and `estimates.md`.
    - If `SCOPE_EXPANDS=false`, stage only `tasks.md` and `estimates.md`.
    - Do not stage source files â€” implementation has not run yet.
@@ -102,7 +95,6 @@ Use this when you need a change done **now** without running the full specify â†
      ```
 
 9. **Emit pipeline events for readiness projection**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Append `backlog_registered` to `.speckit/pipeline-ledger.jsonl` if missing.
    - Build projected prerequisite chain in canonical order:
      - `backlog_registered`
@@ -139,7 +131,6 @@ Use this when you need a change done **now** without running the full specify â†
      ```
 
 10. **Prompt for next steps**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Ask: "Tasks written and committed. Next step: run `NEXT_COMMAND`."
    - If `SCOPE_EXPANDS=true`, also report that spec sync was completed automatically via `/speckit.specify --update-current-spec`.
 

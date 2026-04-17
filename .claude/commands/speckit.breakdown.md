@@ -36,17 +36,14 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
    - If either file is missing, abort with a clear error and the appropriate next command.
 
 2. **Load context**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - `estimates.md` — parse the Warnings section to identify flagged task IDs (8 or 13 pts)
    - `tasks.md` — load the full task list
    - `plan.md` — for module boundaries and tech context
    - `data-model.md` (if present) — for entity-level breakdown guidance
 
 3. **Identify tasks to break down**: Extract all task IDs that appear in the estimates.md Warnings section (scored 8 or 13). If none are found, report "No tasks require breakdown" and stop.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 4. **For each flagged task**, design a breakdown:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    **Split rules**:
    - Each original task becomes exactly 2 or 3 sub-tasks — no more.
@@ -66,7 +63,6 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
    - The original task ID is retired; do NOT keep it as a parent task.
 
 5. **Rewrite tasks.md**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Replace each flagged task with its sub-tasks (using `a`, `b`, `c` suffixes).
    - Do NOT renumber other tasks — keep all existing task IDs stable.
    - Do NOT modify any task that was not flagged.
@@ -78,11 +74,9 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
      ```
 
 6. **Update the Parallel Examples and Dependencies sections** in tasks.md:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Replace any mention of the original task ID with the appropriate sub-task IDs.
 
 7. **Write a breakdown summary** to stdout:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Which tasks were split and into what sub-tasks
    - Updated task count (original count → new count)
    - Suggested next step: `/speckit.estimate` (to re-score and verify ≤5 pts)

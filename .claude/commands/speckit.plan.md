@@ -27,18 +27,15 @@ Run these steps first; only load expanded guidance when a gate fails or the user
 1. Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse `FEATURE_SPEC`, `IMPL_PLAN`, `FEATURE_DIR`, and `BRANCH`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Derive `FEATURE_DIR="$(dirname "$FEATURE_SPEC")"` and run deterministic gates:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - `uv run python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
     - `uv run python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json`
     - `uv run python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --json`
     - `uv run python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json`
     - `uv run python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
 3. Scaffold plan artifacts immediately:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - `uv run python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
    - This creates `plan.md`, `data-model.md`, and `quickstart.md` from the manifest templates.
 4. Fill the scaffolded artifacts using `spec.md`, `research.md`, and repo context with this mandatory read hierarchy:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - First, run the read helpers (entrypoint):
       - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
       - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
@@ -46,9 +43,7 @@ Run these steps first; only load expanded guidance when a gate fails or the user
     - After the seam is anchored, run discovery checks (`codegraph` caller/callee/import blast radius).
    - Do not start with broad `codegraph` or grep sweeps unless helper-driven reads fail to locate the target.
 5. Emit `plan_started`, then let the existing driver-backed flow continue to `/speckit.planreview`. If open feasibility questions remain, continue to `/speckit.feasibilityspike`. Emit `plan_approved` only after those sub-processes complete successfully.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. On any non-zero gate result, route by reason code using `docs/governance/gate-reason-codes.yaml`.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Expanded Guidance (Load On Demand)
 

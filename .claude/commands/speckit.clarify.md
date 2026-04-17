@@ -31,7 +31,6 @@ Execution steps:
    - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 2. Load the current spec file. Perform a structured ambiguity & coverage scan using this taxonomy. For each category, mark status: Clear / Partial / Missing. Produce an internal coverage map used for prioritization (do not output raw map unless no questions will be asked).
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    Functional Scope & Behavior:
    - Core user goals & success criteria
@@ -92,7 +91,6 @@ Execution steps:
    - Information is better deferred to planning phase (note internally)
 
 3. Generate (internally) a prioritized queue of candidate clarification questions. Do NOT output them all at once. Apply these constraints:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - Each question must be answerable with EITHER:
        - A short multiple‑choice selection (2–5 distinct, mutually exclusive options), OR
        - A one-word / short‑phrase answer (explicitly constrain: "Answer in <=5 words").
@@ -105,7 +103,6 @@ Execution steps:
     - If local DB lifecycle/risk/financial mutations exist, include at least one high-priority clarification covering transaction boundaries, rollback/no-partial-write behavior, and retry/idempotency expectations (unless already explicit).
 
 4. Sequential questioning loop (interactive):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - Present EXACTLY ONE question at a time.
     - For multiple‑choice questions:
        - **Analyze all options** and determine the **most suitable option** based on:
@@ -141,7 +138,6 @@ Execution steps:
     - If no valid questions exist at start, immediately report no critical ambiguities.
 
 5. Integration after EACH accepted answer (incremental update approach):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - Maintain in-memory representation of the spec (loaded once at start) plus the raw file contents.
     - For the first integrated answer in this session:
        - Ensure a `## Clarifications` section exists (create it just after the highest-level contextual/overview section per the spec template if missing).
@@ -162,7 +158,6 @@ Execution steps:
     - Keep each inserted clarification minimal and testable (avoid narrative drift).
 
 6. Validation (performed after EACH write plus final pass):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Clarifications session contains exactly one bullet per accepted answer (no duplicates).
    - No duplicate questions asked in this session.
    - Updated sections contain no lingering vague placeholders the new answer was meant to resolve.
@@ -171,10 +166,8 @@ Execution steps:
    - Terminology consistency: same canonical term used across all updated sections.
 
 7. Write the updated spec back to `FEATURE_SPEC`.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 8. **Final ask-alignment pass (required)**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    - Run one final pass checking the updated spec against the original ask/context captured at the start of this clarify run:
      - Prefer explicit `$ARGUMENTS` intent when provided.
@@ -183,7 +176,6 @@ Execution steps:
    - If drift is found, correct the spec and re-run Validation (Step 6) before continuing.
 
 9. **Emit pipeline event**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    
    Emit `spec_clarified` to `.speckit/pipeline-ledger.jsonl`:
    ```json
@@ -191,7 +183,6 @@ Execution steps:
    ```
 
 10. Report completion (after questioning loop ends or early termination):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Number of questions asked & answered.
    - Path to updated spec.
    - Sections touched (list names).

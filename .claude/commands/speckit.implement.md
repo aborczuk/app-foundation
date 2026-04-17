@@ -15,27 +15,18 @@ You **MUST** consider the user input before proceeding (if not empty).
 Use `.specify/command-manifest.yaml` as the command registry source of truth. Run these steps first; only load expanded guidance when a gate fails or the user asks for detail.
 
 1. Resolve `FEATURE_DIR` and `AVAILABLE_DOCS` with `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks`.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Run `uv run python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 3. If hard blocks report missing `e2e.md`/E2E script or `estimates.md`, stop and route to `/speckit.e2e` or `/speckit.estimate` respectively.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 4. If `checklists.incomplete_total > 0`, pause and ask before continuing.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 5. Load `tasks.md`, `plan.md`, and any optional context docs listed in the implement playbook.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 6. Run `uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json`.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 7. Execute tasks in order, using the task gate and ledger flow defined below.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Expanded Guidance (Load On Demand)
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 1a. **Deterministic pre-implementation gate (MANDATORY)**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Run:
      ```bash
       uv run python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json
@@ -57,7 +48,6 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - If all checklists are complete, continue directly to step 3.
 
 3. Load and analyze the implementation context:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **REQUIRED**: Read tasks.md for the complete task list and execution plan
    - **REQUIRED**: Read plan.md for tech stack, architecture, and file structure
    - **IF EXISTS**: Read data-model.md for entities and relationships
@@ -66,7 +56,6 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - **IF EXISTS**: Read quickstart.md for integration scenarios
 
 4. **Project setup verification (deterministic)**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Run:
      ```bash
       uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json
@@ -75,7 +64,6 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - Treat JSON output as authoritative for created/updated ignore files and warnings (including eslint config ignore coverage warnings).
 
 5. Parse tasks.md structure and extract:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Task phases**: Setup, Tests, Core, Integration, Polish
    - **Task dependencies**: Sequential vs parallel execution rules
    - **Task details**: ID, description, file paths, parallel markers [P]
@@ -83,9 +71,7 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - **Execution flow**: Order and dependency requirements
 
 5.5 **Task Scaffolding, Read Hierarchy & Discovery Gate (MANDATORY before coding each task)**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    1. Run deterministic preflight:
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       ```bash
        uv run python scripts/speckit_implement_gate.py task-preflight \
         --feature-dir "$FEATURE_DIR" \
@@ -93,14 +79,11 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
         --json
       ```
    2. If preflight exits non-zero, **STOP** and route by reason:
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - `missing_hud` → run `/speckit.estimate`
       - `task_not_found_in_tasks_md` or `missing_tasks_md` → run `/speckit.tasking` or `/speckit.solution`
       - `missing_feature_dir` → re-run prerequisite setup
    3. Scope containment remains mandatory: do not introduce endpoints/env vars/auth/contracts/entities/dependencies not present in current spec artifacts.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    4. Apply mandatory read hierarchy before any edits:
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Run helper entrypoints first:
         - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
         - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
@@ -113,21 +96,15 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
       - Run `discovery checks` third:
         - `codegraph` caller/callee/import blast-radius queries only after the exact seam is anchored by helper output.
    5. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 6. Execute implementation following the task plan:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Codebase MCP tools (use when connected)** — see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST follow this order per task: `helper-driven read (read-code/read-markdown; semantic+exact) -> discovery checks (codegraph blast radius) -> type verification (codebase-lsp get_type/get_diagnostics)`. Do not mark a task `[X]` while known type errors remain in files the task owns.
    - **Phase-by-phase execution**: Complete each phase before moving to the next
    - **Per-story RED step (MANDATORY at the start of each User Story phase — before any task code)**:
      1. Write the failing story-level acceptance test derived from the "Independent Test Criteria" in tasks.md for this story. This is a pytest case (or equivalent) targeting the story's observable outcome — not a unit test.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      2. Run it. It MUST fail. If it passes before any implementation: **STOP** — the test is not testing the right thing or the story is already implemented. Investigate before proceeding.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      3. Commit the failing test: `T0XX-story-N-red: failing acceptance test for [story goal]`
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      4. All `[H]` human tasks for this story MUST be completed and verified before the task loop begins (GREEN phase). The acceptance test can be written before `[H]` tasks exist — it will fail regardless. But no implementation task may start until all `[H]` tasks for this story are closed.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Respect dependencies**: Run tasks in strict listed order
    - **Parallel execution (MANDATORY)**: Even tasks marked `[P]` MUST run with standard process (single commits etc) for full 1:1 traceability
    - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
@@ -135,13 +112,9 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - **Task checkmark timing (MANDATORY)**: Keep a task `[ ]` until `task_closed` is appended in the ledger. Only then mark the task `[X]` in tasks.md. Do NOT pre-mark completed work before offline QA closes the task.
    - **`[H]` human task execution**: `[H]` tasks run in parallel with implementation tasks for the same story — they do NOT block code tasks from starting. However, no implementation task that depends on the `[H]` result (e.g., requires the webhook URL to exist) may proceed until `human_action_verified` is logged. The story phase as a whole cannot close until all `[H]` tasks are `task_closed`.
      1. Read the task's runbook HUD at `.speckit/tasks/T0XX.md`.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      2. Present the runbook to the human; they complete it asynchronously.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      3. When the human signals completion, run the verification command from the HUD. If it fails: **STOP** — do not unblock dependent implementation tasks until it passes.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      4. Append `human_action_started`, `human_action_verified`, `task_closed` to the task ledger and mark `[X]` in tasks.md.
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Task ledger logging (MANDATORY)**: Log every transition to `.speckit/task-ledger.jsonl` via `uv run python scripts/task_ledger.py append ...` using immutable events:
      - `task_started`
      - `discovery_completed` (Phase 1: Recon)
@@ -179,11 +152,8 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
 
    After task validation (while still `[ ]`):
    1. Stage task-owned files only and commit (`T0XX <short task description>`). Keep `tasks.md` unchanged in this commit.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    2. Append `commit_created` and `offline_qa_started` to the task ledger.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    3. Run deterministic handoff wrapper:
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       ```bash
        uv run python scripts/speckit_offline_qa_handoff.py \
         --feature-id "<feature_id>" \
@@ -198,13 +168,9 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
         - result: `.speckit/offline-qa/<feature_id>_<task_id>_attempt_<n>.result.json`
       - Exit code semantics: `0=PASS`, `1=FIX_REQUIRED`, `2=invalid/missing payload`.
     4. On `PASS`: invoke `/speckit.closeout` (or `uv run python scripts/speckit_closeout_task.py ...`) with the commit SHA and QA run id. The closeout path appends the canonical ledger events, marks `[X]` in `tasks.md`, and returns a compact next-action payload.
-       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    5. On `FIX_REQUIRED`: append `offline_qa_failed`, append `fix_started`/`fix_completed`, then re-run the handoff.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    6. Do not start another task for the same agent until the current task has `task_closed`.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    7. After `task_closed`, run `scripts/cgc_safe_index.sh <files changed by this task>` scoped to changed files only.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    **Per-phase push + CI QA gate (MANDATORY)**:
    - Task commits remain local until the phase is complete and checkpoint layers pass.
@@ -214,13 +180,9 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    **Phase checkpoint gate (MANDATORY — deterministic)**:
 
    1. Run Layer 1 inline checkpoint verification by executing the software and collecting evidence.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    2. Run Layer 2 with `/speckit.checkpoint Phase [N]`.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    3. For story phases, run Layer 3 with `/speckit.e2e-run [USn]` (or `/speckit.e2e-run full` at final closeout).
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    4. Evaluate gate closure with:
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       ```bash
        uv run python scripts/speckit_implement_gate.py phase-gate \
         --feature-dir "$FEATURE_DIR" \
@@ -232,10 +194,8 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
         --json
       ```
    5. If the command exits non-zero: the phase is NOT complete. Fix and re-run gates.
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 7. Implementation execution rules:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Setup first**: Initialize project structure, dependencies, configuration
    - **Tests before code**: If you need to write tests for contracts, entities, and integration scenarios
    - **Core development**: Implement models, services, CLI commands, endpoints
@@ -243,7 +203,6 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - **Polish and validation**: Unit tests, performance optimization, documentation
 
 8. Progress tracking and error handling:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Report progress after each completed task
    - **Default to compact checkpoint updates** (do not re-narrate the full protocol every task). Use:
      - `T0XX | status=<in_progress|blocked|closed> | gates=<preflight,start,evidence,offline_qa> | tests=<pass|fail> | commit=<sha|none> | next=<single action>`
@@ -260,7 +219,6 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - Suggest next steps if implementation cannot proceed
 
 9. Completion validation:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Verify all required tasks are completed
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
@@ -274,7 +232,6 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - When a user story reaches its hard stop, return only the compact status line and the checkpoint result; do not emit a prose summary before yielding control back to the user.
 
 10. **Retrospective: Estimate vs Actual** (if FEATURE_DIR/estimates.md exists):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
     - For each completed task, assess actual complexity relative to the fibonacci estimate:
       - **Accurate**: Actual effort matched the estimate (within +-1 fibonacci step)
       - **Underestimated**: Actual effort exceeded the estimate by 2+ fibonacci steps — note why

@@ -338,6 +338,14 @@ commands:
     - .specify/scripts/bash/check-prerequisites.sh
     artifacts: []
     emits: []
+  speckit.retro:
+    description: Generate a retrospective for the current feature
+    mode: legacy
+    scripts:
+    - .specify/scripts/bash/check-prerequisites.sh
+    artifacts:
+      - output_path: "${FEATURE_DIR}/retro.md"
+        template: "retro-template.md"
   speckit.addtobacklog:
     description: Classify ad-hoc work against the current feature first, then route
       it to the current feature or universal backlog, with architectural fit check,

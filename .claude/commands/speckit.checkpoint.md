@@ -18,24 +18,20 @@ This command is a **validation gate** — it verifies that the software actually
 1. **From `/speckit.implement`**: Called automatically after all tasks in a phase are marked `[X]`. The phase number is passed as the argument.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. **Manually**: Run `/speckit.checkpoint [phase]` to validate a specific phase (e.g., `/speckit.checkpoint Phase 3`).
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ## Outline
 
 1. **Locate the feature and tasks file**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
    - Read tasks.md from FEATURE_DIR.
    - Read plan.md from FEATURE_DIR (for tech stack context — how to run the software, what entrypoints exist).
 
 2. **Determine which phase to validate**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If user input specifies a phase (e.g., "Phase 3", "3", "US1"): validate that specific phase.
    - If user input is empty or "next": find the first phase where all tasks are `[X]` but the checkpoint has not been validated yet. If all phases are validated, report that and stop.
    - If user input is "all": validate all phases with completed tasks, in order.
 
 3. **Parse the checkpoint**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Locate the `**Checkpoint**:` line at the end of the target phase in tasks.md.
    - Extract the checkpoint text — this describes the **observable behavior** that MUST be true.
    - Parse the checkpoint into discrete, verifiable claims. For example:
@@ -45,20 +41,17 @@ This command is a **validation gate** — it verifies that the software actually
    - If no checkpoint line exists for the phase, report this as an error and stop.
 
 4. **Verify all phase tasks are complete**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Check that every task in the target phase is marked `[X]`.
    - Check that all `[H]` tasks in the phase have `human_action_verified` in the task ledger.
    - If any tasks are `[ ]` or any `[H]` tasks are unverified, report which and **STOP** — the checkpoint cannot be validated until all tasks are done.
 
 4a. **Run story acceptance tests (MANDATORY for User Story phases)**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - For each User Story in the phase, locate the failing acceptance test committed during the per-story RED step (test file committed as `T0XX-story-N-red: ...`).
    - Run all story acceptance tests for the phase.
    - Every story acceptance test MUST pass. If any fail: **STOP** — the story goal is not met. Do not proceed to the phase observable behavior check until all story tests are green.
    - Report pass/fail per story with test output as evidence.
 
 5. **Identify external dependencies**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Analyze the checkpoint claims for external dependencies:
      - Database servers (PostgreSQL, MySQL, Redis, etc.)
      - API gateways or third-party services
@@ -76,18 +69,14 @@ This command is a **validation gate** — it verifies that the software actually
      - If human says to skip: log that the checkpoint was **SKIPPED (external dependency)** and report this clearly — the phase is NOT fully validated
 
 6. **Run the software**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Determine the appropriate execution method from plan.md and tasks.md:
      - Look for `--dry-run` flags or equivalent safe modes
      - Look for CLI entrypoints (e.g., `uv run csp-trader --config config.yaml --dry-run`)
      - Look for test commands that exercise integration (not just unit tests)
    - **Execution priority** (try in order):
      1. Run with `--dry-run` or equivalent safe mode if available
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
      2. Run the entrypoint and capture output (with a timeout — max 30 seconds unless the checkpoint requires longer)
-        - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       3. Run smoke-test imports (`uv run python -c "from module import Class"`) for each module touched in the phase
-         - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Capture ALL output: stdout, stderr, log files, and exit code
    - If the application requires a running process (not a one-shot command), start it in the background, wait for it to produce output, then terminate it gracefully
    - **Async process management guard** (mandatory when asyncio/event loops/background workers are involved):
@@ -105,7 +94,6 @@ This command is a **validation gate** — it verifies that the software actually
      - Treat swallowed persistence errors or partial-commit evidence as automatic checkpoint failures.
 
 7. **Validate each checkpoint claim**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - For each discrete claim parsed in step 3, check the captured output/logs/state for evidence:
      - **PASS**: Evidence found that the behavior occurs (log entry, output text, DB state, exit code)
      - **FAIL**: Expected behavior absent or contradicted by error output
@@ -127,7 +115,6 @@ This command is a **validation gate** — it verifies that the software actually
      ```
 
 8. **Report result and determine next action**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    - **If ALL claims PASS**:
      - Report: "Checkpoint PASSED for Phase [N]"
@@ -158,7 +145,6 @@ This command is a **validation gate** — it verifies that the software actually
      - If human skips: log as SKIPPED
 
 9. **Log the checkpoint result**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Append checkpoint validation status to the end of the phase section in tasks.md (as a comment or note) so future runs know which checkpoints have been validated:
 
      ```markdown

@@ -16,9 +16,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. Use shell quoting per CLAUDE.md "Shell Script Compatibility".
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 1. From the executed script, extract the path to **tasks**.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 1. Get the Git remote by running:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ```bash
 git config --get remote.origin.url
@@ -28,7 +26,6 @@ git config --get remote.origin.url
 > ONLY PROCEED TO NEXT STEPS IF THE REMOTE IS A GITHUB URL
 
 1. For each task in the list, use the GitHub MCP server to create a new issue in the repository that is representative of the Git remote.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 > [!CAUTION]
 > UNDER NO CIRCUMSTANCES EVER CREATE ISSUES IN REPOSITORIES THAT DO NOT MATCH THE REMOTE URL

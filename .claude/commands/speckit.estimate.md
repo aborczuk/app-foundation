@@ -33,17 +33,14 @@ Execution steps:
    - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 2. Load context:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - **Required**: tasks.md, plan.md (for project structure and tech context)
    - **Load if present**: data-model.md, contracts/*, research.md
    - **Load if present**: FEATURE_DIR/estimates.md (previous estimation run for this feature, if re-running)
 
 3. Parse all tasks from tasks.md. For each task, extract:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Task ID, description, file path(s), phase, story label, parallel marker
 
 4. **Evaluate each task against the codebase**. For each task, assess these dimensions:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    **Code complexity** (primary driver):
    - Does the target file already exist? If so, how large/complex is it?
@@ -65,7 +62,6 @@ Execution steps:
    - Does the task involve error handling for poorly documented external behavior?
 
 5. **Produce solution sketch for 3+ point tasks**: For each task estimated at 3 or more points, produce a solution sketch while the codebase context is loaded. Record per task:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Which existing symbols will be modified and how (name + intended change)
    - Which new symbols will be created, in which files, with what signatures
    - How the pieces compose to satisfy the task's goal
@@ -75,7 +71,6 @@ Execution steps:
    For 1–2 point tasks: record `sketch: trivial` — no sketch required.
 
 5b. **Assign fibonacci points** per task using this calibration:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    | Points | Meaning | Examples |
    |--------|---------|---------|
@@ -93,23 +88,19 @@ Execution steps:
    - Tasks marked [P] (parallel) should generally score lower than sequential tasks in the same phase, since they are scoped to be independent.
 
 6. **Generate estimates.md** in FEATURE_DIR by pre-scaffolding from template:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
     1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.estimate --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
-       - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.estimate owns
       - Copies `.specify/templates/estimates-template.md` to `$FEATURE_DIR/estimates.md`
       - Pre-structures the file with table headers and sections ready to fill
 
    2. The estimates.md is now scaffolded with:
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
       - Per-Task Estimates table (Task ID | Points | Description | Rationale)
       - Per-task Solution Sketch sections for 3+ point tasks (Modify/Create/Composition/Test/Domains)
       - Phase Totals table (Phase | Points | Task Count | Parallel Tasks)
       - Warnings section (8/13-point flags, no-parallel phases, high-uncertainty tasks)
 
 7. **Generate HUD files**: For each task, create `.speckit/tasks/T0XX.md` if it does not exist, or update it if this task's estimate changed from a previous run. Skip tasks whose HUD exists and whose estimate is unchanged.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
    ```markdown
    # HUD: [TaskID] — [Description]
@@ -149,9 +140,7 @@ Execution steps:
    **System**: [name of external system — e.g. n8n, AWS Console, ClickUp]
    **Steps**:
    1. [Exact step]
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    2. [Exact step]
-      - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    **Verification command**: [shell command or automated check confirming completion]
 
    ## Functional Goal
@@ -167,14 +156,12 @@ Execution steps:
    HUDs are pre-computed — `speckit.implement` reads one small file per task, no large artifact re-reads.
 
 8. **Auto-breakdown loop** (mandatory — do not skip):
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If **any** task scored 8 or 13: immediately invoke `/speckit.breakdown` to split those tasks.
    - After breakdown completes, re-run `/speckit.estimate` on the updated tasks.md.
    - Repeat until no task scores 8 or 13.
    - Only proceed to step 9 when the Warnings section is clear of 8/13-point flags.
 
 9. **Emit pipeline event**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    
    Emit `estimation_completed` to `.speckit/pipeline-ledger.jsonl`:
    ```json
@@ -182,7 +169,6 @@ Execution steps:
    ```
 
 10. **Report completion**:
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - Path to estimates.md
    - Total story points and phase breakdown
    - Confirmation that no tasks score 8 or 13 (or list of remaining warnings if non-point warnings exist)
