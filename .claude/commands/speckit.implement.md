@@ -111,7 +111,7 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - **File-based coordination**: Tasks affecting the same files must run sequentially
    - **Task checkmark timing (MANDATORY)**: Keep a task `[ ]` until `task_closed` is appended in the ledger. Only then mark the task `[X]` in tasks.md. Do NOT pre-mark completed work before offline QA closes the task.
    - **`[H]` human task execution**: `[H]` tasks run in parallel with implementation tasks for the same story — they do NOT block code tasks from starting. However, no implementation task that depends on the `[H]` result (e.g., requires the webhook URL to exist) may proceed until `human_action_verified` is logged. The story phase as a whole cannot close until all `[H]` tasks are `task_closed`.
-     1. Read the task's runbook HUD at `.speckit/tasks/T0XX.md`.
+     1. Read the task's runbook HUD at `FEATURE_DIR/huds/T0XX.md`.
      2. Present the runbook to the human; they complete it asynchronously.
      3. When the human signals completion, run the verification command from the HUD. If it fails: **STOP** — do not unblock dependent implementation tasks until it passes.
      4. Append `human_action_started`, `human_action_verified`, `task_closed` to the task ledger and mark `[X]` in tasks.md.

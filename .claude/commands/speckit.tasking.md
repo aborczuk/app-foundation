@@ -188,12 +188,14 @@ If non-zero exit, fix and re-run before continuing.
 **Code task HUD**
 ```bash
 uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-code \
+  --feature-dir "$FEATURE_DIR" \
   TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
 ```
 
 **Human task HUD**
 ```bash
 uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-runbook \
+  --feature-dir "$FEATURE_DIR" \
   TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
 ```
 

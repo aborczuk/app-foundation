@@ -37,7 +37,7 @@ graph TD
 
     %% Tasking outputs after stabilization
     Tasking --> tasks_md[tasks.md]
-    Tasking --> huds[.speckit/tasks/*.md]
+    Tasking --> huds[FEATURE_DIR/huds/*.md]
     Tasking --> acceptance[.speckit/acceptance-tests/story-N.py]
     Tasking --> solution_approved[solution_approved]
 
