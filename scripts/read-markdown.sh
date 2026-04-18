@@ -5,6 +5,7 @@
 #
 # How to use:
 #   source scripts/read-markdown.sh
+#   read_markdown_headings <file>
 #   read_markdown_section <file> <section_heading>
 #
 # The Python entrypoint carries the detailed progressive-load contract.
@@ -31,6 +32,15 @@ read_markdown_section() {
     _run_read_markdown_entrypoint "$@"
 }
 
+read_markdown_headings() {
+    _run_read_markdown_entrypoint --headings "$@"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    read_markdown_section "$@"
+    if [[ "${1:-}" == "--headings" ]]; then
+        shift
+        read_markdown_headings "$@"
+    else
+        read_markdown_section "$@"
+    fi
 fi

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -136,6 +137,38 @@ def test_read_markdown_resolves_prefix_section_via_vector_hit(tmp_path: Path) ->
     assert rendered[0] == "5\t## Phase 9: Add-to-Backlog - Python Orchestration Migration"
 
 
+def test_read_markdown_lists_headings_for_discovery(tmp_path: Path) -> None:
+    markdown_file = tmp_path / "sample.md"
+    markdown_file.write_text(
+        "\n".join(
+            [
+                "# Title",
+                "## First",
+                "### Nested",
+                "## Second",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run_read_markdown(
+        tmp_path,
+        "--headings",
+        str(markdown_file),
+        env=_env_without_uv(),
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = [line for line in result.stdout.strip().splitlines() if line]
+    assert rendered == [
+        "1\t# Title",
+        "2\t## First",
+        "3\t### Nested",
+        "4\t## Second",
+    ]
+
+
 def test_read_markdown_reports_missing_section(tmp_path: Path) -> None:
     markdown_file = tmp_path / "sample.md"
     markdown_file.write_text("# Title\n\n## Existing\nContent\n", encoding="utf-8")
@@ -149,6 +182,10 @@ def test_read_markdown_reports_missing_section(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert f"ERROR: Section '## Missing' not found in {markdown_file}" in result.stderr
+    assert f"Use read_markdown_headings {markdown_file} to inspect headings." in result.stderr
+    assert "Available headings:" in result.stderr
+    assert "1\t# Title" in result.stderr
+    assert "3\t## Existing" in result.stderr
 
 
 def test_read_markdown_source_wrapper_still_exposes_function(tmp_path: Path) -> None:
@@ -171,3 +208,53 @@ def test_read_markdown_source_wrapper_still_exposes_function(tmp_path: Path) -> 
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[0].startswith("3\t## Existing")
+
+
+def test_read_markdown_source_wrapper_exposes_headings_function(tmp_path: Path) -> None:
+    markdown_file = tmp_path / "sample.md"
+    markdown_file.write_text("# Title\n\n## Existing\nBody\n", encoding="utf-8")
+    env = _env_without_uv()
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            f"source '{SCRIPT_PATH}' && read_markdown_headings '{markdown_file}'",
+        ],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["1\t# Title", "3\t## Existing"]
+
+
+def test_command_docs_share_the_compact_expanded_shape() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    expected_headings = [
+        "## User Input",
+        "## Compact Contract (Load First)",
+        "## Expanded Guidance (Load On Demand)",
+        "## Behavior rules",
+    ]
+    for rel_path in [
+        ".claude/commands/speckit.solution.md",
+        ".claude/commands/speckit.feasibilityspike.md",
+        ".claude/commands/speckit.tasking.md",
+    ]:
+        result = _run_read_markdown(
+            repo_root,
+            "--headings",
+            str(repo_root / rel_path),
+            env=_env_without_uv(),
+        )
+        assert result.returncode == 0, result.stderr
+        top_level_headings = [
+            line.split("\t", 1)[1]
+            for line in result.stdout.splitlines()
+            if re.match(r"^\d+\t##\s+", line)
+        ]
+        assert top_level_headings == expected_headings, rel_path

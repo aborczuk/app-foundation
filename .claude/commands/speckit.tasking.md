@@ -10,7 +10,7 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## Purpose
+## Compact Contract (Load First)
 
 Generate `tasks.md` from an approved sketch blueprint and finalize downstream execution artifacts in this order:
 
@@ -23,7 +23,7 @@ Generate `tasks.md` from an approved sketch blueprint and finalize downstream ex
 
 This phase must consume `sketch.md` as an **authoritative design-to-tasking contract**, not as loose inspiration.
 
-## Outline
+## Expanded Guidance (Load On Demand)
 
 ### 1. Setup
 
