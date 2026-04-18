@@ -152,3 +152,6 @@ Full-file reads for large code files are disallowed unless the user explicitly r
 ### Token efficiency
 
 After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
+
+### Healing and improvment
+- Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
