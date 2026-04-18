@@ -12,7 +12,7 @@
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 - [ ] T003 [P] Implement ledger-authoritative current-step resolution so the driver does not trust stale mirrors over the pipeline ledger — `scripts/pipeline_driver_state.py:resolve_current_step`
-- [ ] T004 [P] Add validation-before-emit guard rails so phase completion events can only be appended after deterministic output validation passes — `scripts/pipeline_driver.py:run_phase`
+- [ ] T004 [P] Add deterministic gate dispatch so every command consults its phase gate before proceeding, then keep validate-before-emit guard rails so phase completion events can only be appended after deterministic output validation passes — `scripts/pipeline_driver.py:run_phase`
 
 **Checkpoint**: The orchestration spine resolves state deterministically and cannot emit before validation.
 

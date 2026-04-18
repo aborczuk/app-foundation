@@ -37,3 +37,4 @@
 {"actor": "codex", "estimate_points": 45, "event": "estimation_completed", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-18T03:11:03.871575Z"}
 {"actor": "codex", "event": "tasking_completed", "feature_id": "023", "phase": "solution", "story_count": 3, "task_count": 18, "timestamp_utc": "2026-04-18T03:11:07.421814Z"}
 {"actor": "codex", "estimate_points": 45, "event": "solution_approved", "feature_id": "023", "phase": "solution", "story_count": 3, "task_count": 18, "timestamp_utc": "2026-04-18T03:11:14.238386Z"}
+{"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-18T03:25:07.079170Z"}

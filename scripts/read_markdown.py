@@ -110,6 +110,20 @@ def _resolve_breadcrumb_tail(item: dict[str, object]) -> str | None:
     return None
 
 
+def _resolve_breadcrumb_depth(item: dict[str, object]) -> int:
+    """Resolve the breadcrumb depth from a vector hit payload."""
+    breadcrumb = item.get("breadcrumb")
+    if isinstance(breadcrumb, list):
+        return len(breadcrumb)
+
+    content = item.get("content")
+    if isinstance(content, dict):
+        nested = content.get("breadcrumb")
+        if isinstance(nested, list):
+            return len(nested)
+    return 0
+
+
 def _normalize_heading_text(text: str) -> str:
     """Normalize heading text for fuzzy comparisons."""
     return re.sub(r"\s+", " ", text.strip().lstrip("#").strip()).rstrip(":").lower()
@@ -151,6 +165,44 @@ def _section_matches_query(section: str, candidate: str | None) -> bool:
         or candidate_norm.startswith(f"{section_norm} -")
         or candidate_norm.startswith(f"{section_norm} ")
     )
+
+
+def _score_markdown_match(
+    section: str,
+    heading: str | None,
+    breadcrumb_tail: str | None,
+    *,
+    breadcrumb_depth: int = 0,
+) -> int | None:
+    """Score a markdown hit so more specific same-file matches win."""
+    if not _section_matches_query(section, heading) and not _section_matches_query(section, breadcrumb_tail):
+        return None
+
+    section_norm = _normalize_heading_text(section)
+    heading_norm = _normalize_heading_text(heading or "")
+    breadcrumb_norm = _normalize_heading_text(breadcrumb_tail or "")
+
+    score = 0
+    if heading_norm == section_norm:
+        score = 100
+    elif breadcrumb_norm == section_norm:
+        score = 98
+    elif heading_norm.startswith(section_norm):
+        score = 88
+    elif breadcrumb_norm.startswith(section_norm):
+        score = 86
+    elif section_norm.startswith(heading_norm) and heading_norm:
+        score = 72
+    elif section_norm.startswith(breadcrumb_norm) and breadcrumb_norm:
+        score = 70
+    elif section_norm in heading_norm:
+        score = 60
+    elif section_norm in breadcrumb_norm:
+        score = 58
+    else:
+        score = 50
+
+    return score + min(max(breadcrumb_depth, 0), 10)
 
 
 def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
@@ -196,6 +248,8 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
     if not isinstance(payload, list):
         return None
 
+    best_match: tuple[int, int, int] | None = None
+
     for raw_item in payload:
         if not isinstance(raw_item, dict):
             continue
@@ -210,24 +264,34 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
 
         heading = _resolve_heading(raw_item)
         breadcrumb_tail = _resolve_breadcrumb_tail(raw_item)
-        if not _section_matches_query(section, heading) and not _section_matches_query(section, breadcrumb_tail):
+        score = _score_markdown_match(
+            section,
+            heading,
+            breadcrumb_tail,
+            breadcrumb_depth=_resolve_breadcrumb_depth(raw_item),
+        )
+        if score is None:
             continue
-
         line = _resolve_line(raw_item)
         if line is not None:
-            return line
+            candidate_match = (score, _resolve_breadcrumb_depth(raw_item), -line)
+            if best_match is None or candidate_match > best_match:
+                best_match = candidate_match
+
+    if best_match is not None:
+        return -best_match[2]
 
     return None
 
 
 def _fallback_heading_line_num(target_file: Path, section: str) -> int | None:
-    """Fall back to exact heading matching when vector lookup is unavailable."""
+    """Fall back to matching any markdown heading level when vector lookup is unavailable."""
     with target_file.open(encoding="utf-8") as handle:
         for index, line in enumerate(handle, start=1):
             stripped = line.rstrip("\n")
-            if not stripped.startswith("## "):
+            if not re.match(r"^(#{1,6})\s+.+$", stripped):
                 continue
-            heading = stripped[3:]
+            heading = stripped.lstrip("#").strip()
             if _section_matches_query(section, heading):
                 return index
     return None

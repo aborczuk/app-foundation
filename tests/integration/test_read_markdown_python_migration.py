@@ -99,6 +99,33 @@ def test_read_markdown_resolves_section_and_prints_50_line_window(tmp_path: Path
     assert rendered[-1] == "54\tline-49"
 
 
+def test_read_markdown_resolves_nested_section_via_fallback(tmp_path: Path) -> None:
+    markdown_file = tmp_path / "sample.md"
+    lines = [
+        "# Doc Title",
+        "",
+        "## Parent Section",
+        "intro",
+        "### Nested Section",
+        "nested-line-1",
+        "nested-line-2",
+        "nested-line-3",
+    ]
+    markdown_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_read_markdown(
+        tmp_path,
+        str(markdown_file),
+        "Nested Section",
+        env=_env_without_uv(),
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = [line for line in result.stdout.strip().splitlines() if line]
+    assert rendered[0] == "5\t### Nested Section"
+    assert rendered[1] == "6\tnested-line-1"
+
+
 def test_read_markdown_resolves_prefix_section_via_vector_hit(tmp_path: Path) -> None:
     markdown_file = tmp_path / "sample.md"
     lines = [
@@ -135,6 +162,57 @@ def test_read_markdown_resolves_prefix_section_via_vector_hit(tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
     rendered = [line for line in result.stdout.strip().splitlines() if line]
     assert rendered[0] == "5\t## Phase 9: Add-to-Backlog - Python Orchestration Migration"
+
+
+def test_read_markdown_prefers_exact_vector_heading_over_prefix_match(tmp_path: Path) -> None:
+    markdown_file = tmp_path / "sample.md"
+    markdown_file.write_text(
+        "\n".join(
+            [
+                "# Doc Title",
+                "",
+                "## Phase 9",
+                "exact-line",
+                "## Phase 9: Add-to-Backlog - Python Orchestration Migration",
+                "prefix-line",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(markdown_file),
+                "line_start": 5,
+                "heading": "Phase 9: Add-to-Backlog - Python Orchestration Migration",
+                "breadcrumb": [
+                    "Specs",
+                    "Phase 9: Add-to-Backlog - Python Orchestration Migration",
+                ],
+                "score": 0.97,
+            },
+            {
+                "file_path": str(markdown_file),
+                "line_start": 3,
+                "heading": "Phase 9",
+                "breadcrumb": ["Specs", "Phase 9"],
+                "score": 0.95,
+            },
+        ]
+    )
+
+    result = _run_read_markdown(
+        tmp_path,
+        str(markdown_file),
+        "Phase 9",
+        env=_env_with_fake_uv(tmp_path, payload),
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = [line for line in result.stdout.strip().splitlines() if line]
+    assert rendered[0] == "3\t## Phase 9"
 
 
 def test_read_markdown_lists_headings_for_discovery(tmp_path: Path) -> None:
