@@ -27,3 +27,8 @@
 {"actor": "codex", "details": "Tasks, HUDs, and acceptance tests generated for 020-codebase-vector-index.", "event": "tasking_completed", "feature_id": "020", "phase": "solution", "story_count": 4, "task_count": 22, "timestamp_utc": "2026-04-14T23:30:33.903808Z"}
 {"actor": "codex", "estimate_points": 62, "event": "solution_approved", "feature_id": "020", "phase": "solution", "story_count": 4, "task_count": 22, "timestamp_utc": "2026-04-14T23:53:21.509360Z"}
 {"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "020", "phase": "solution", "timestamp_utc": "2026-04-14T23:53:24.029002Z"}
+{"actor": "codex", "details": "reconstructed after rebase from existing 023 spec artifacts", "event": "backlog_registered", "feature_id": "023", "phase": "spec", "timestamp_utc": "2026-04-18T01:41:27.688022Z"}
+{"actor": "codex", "details": "reconstructed after rebase from existing 023 research artifact", "event": "research_completed", "feature_id": "023", "phase": "research", "timestamp_utc": "2026-04-18T01:41:27.698059Z"}
+{"actor": "codex", "details": "plan artifacts generated and architecture direction established", "event": "plan_started", "feature_id": "023", "phase": "plan", "timestamp_utc": "2026-04-18T01:41:31.419339Z"}
+{"actor": "codex", "details": "planreview pass: no open feasibility questions", "event": "planreview_completed", "feature_id": "023", "fq_count": 0, "phase": "plan", "questions_asked": 0, "timestamp_utc": "2026-04-18T01:42:51.823710Z"}
+{"actor": "codex", "details": "plan approved after planreview; spike not required", "event": "plan_approved", "feasibility_required": "false", "feature_id": "023", "phase": "plan", "timestamp_utc": "2026-04-18T01:42:51.832743Z"}
