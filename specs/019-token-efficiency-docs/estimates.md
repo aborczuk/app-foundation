@@ -11,7 +11,7 @@
 | Task ID | Points | Description | Rationale |
 |---------|--------|-------------|-----------|
 | T000 | 1 | Record External Ingress + Runtime Readiness Gate as N/A (CLI-only feature) in specs/019-token-efficiency-docs/tasks.md | Bounded single-scope change using existing patterns. |
-| T001 | 3 | Build initial command-to-script coverage inventory from command-manifest.yaml and .specify/command-manifest.yaml into docs/governance/command-script-coverage.md:coverage_matrix | Touches orchestration boundaries and deterministic control-flow contracts. |
+| T001 | 3 | Build initial command-to-script coverage inventory from command-manifest.yaml and command-manifest.yaml into docs/governance/command-script-coverage.md:coverage_matrix | Touches orchestration boundaries and deterministic control-flow contracts. |
 | T002 | 3 | Create orchestrator module skeletons in scripts/pipeline_driver.py:main, scripts/pipeline_driver_state.py:resolve_phase_state, scripts/pipeline_driver_contracts.py:parse_step_result | Touches orchestration boundaries and deterministic control-flow contracts. |
 | T003 | 2 | Create test module skeletons in tests/unit/test_pipeline_driver.py, tests/integration/test_pipeline_driver_feature_flow.py, tests/contract/test_pipeline_driver_contract.py | Deterministic regression coverage for route and contract behavior. |
 | T004 | 3 | Implement manifest route loader and mode normalization in scripts/pipeline_driver_contracts.py:load_driver_routes | Touches orchestration boundaries and deterministic control-flow contracts. |
@@ -30,7 +30,7 @@
 | T017 | 3 | Implement command-to-script allowlist dispatch from command-manifest.yaml in scripts/pipeline_driver.py:resolve_step_mapping | Touches orchestration boundaries and deterministic control-flow contracts. |
 | T018 | 3 | Implement legacy fallback for non-driver-managed phases in scripts/pipeline_driver.py:route_legacy_step | Touches orchestration boundaries and deterministic control-flow contracts. |
 | T019 | 3 | Implement post-LLM artifact validation before success event append in scripts/pipeline_driver.py:validate_generated_artifact | Touches orchestration boundaries and deterministic control-flow contracts. |
-| T020 | 3 | Update routing metadata and driver-managed flags in command-manifest.yaml:commands and .specify/command-manifest.yaml:commands | Touches orchestration boundaries and deterministic control-flow contracts. |
+| T020 | 3 | Update routing metadata and driver-managed flags in command-manifest.yaml:commands and command-manifest.yaml:commands | Touches orchestration boundaries and deterministic control-flow contracts. |
 | T021 | 3 | Add contract tests for canonical result envelope (`exit_code` 0/1/2) in tests/contract/test_pipeline_driver_contract.py:test_step_result_schema | Deterministic regression coverage for route and contract behavior. |
 | T022 | 3 | Add runtime-failure verbose-rerun integration test in tests/integration/test_pipeline_driver_feature_flow.py:test_runtime_failure_verbose_rerun using shared harness fixture and sidecar assertions | Deterministic regression coverage for route and contract behavior. |
 | T023 | 3 | Implement canonical envelope parsing + schema-version compatibility in scripts/pipeline_driver_contracts.py:parse_step_result and define shared route/error contract constants consumed by deterministic handlers | Touches orchestration boundaries and deterministic control-flow contracts. |
@@ -210,7 +210,7 @@
 
 ### T020 — Solution Sketch
 
-**Modify**: `command-manifest.yaml:commands and .specify/command-manifest.yaml:commands` — add deterministic behavior required by task scope.
+**Modify**: `command-manifest.yaml:commands and command-manifest.yaml:commands` — add deterministic behavior required by task scope.
 **Create**: `none` unless task scope explicitly requires a new helper or module.
 **Reuse**: in-repo manifest/ledger/gate primitives where applicable; net-new logic only for orchestration glue.
 **Composition**: keep a single manifest-allowlisted route path with exit-code-first control flow.
@@ -396,4 +396,4 @@
 
 - No 8/13-point tasks detected; `/speckit.breakdown` not required.
 - Refresh scoped codegraph index before implementation for newly introduced symbols.
-- Keep command-manifest and `.specify/command-manifest.yaml` mirrors synchronized.
+- Keep command-manifest and `command-manifest.yaml` mirrors synchronized.

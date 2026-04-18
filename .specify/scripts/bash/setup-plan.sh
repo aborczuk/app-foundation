@@ -1,18 +1,69 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -e
 
+# Parse command line arguments
+JSON_MODE=false
+FORCE_OVERWRITE=false
+ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --json) 
+            JSON_MODE=true 
+            ;;
+        --force)
+            FORCE_OVERWRITE=true
+            ;;
+        --help|-h) 
+            echo "Usage: $0 [--json] [--force]"
+            echo "  --json    Output results in JSON format"
+            echo "  --force   Overwrite existing plan.md with the template"
+            echo "  --help    Show this help message"
+            exit 0 
+            ;;
+        *) 
+            ARGS+=("$arg") 
+            ;;
+    esac
+done
+
+# Get script directory and load common functions
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(CDPATH="" cd "$SCRIPT_DIR/../../.." && pwd)"
-ENTRYPOINT="$REPO_ROOT/.specify/scripts/python/setup_plan.py"
+source "$SCRIPT_DIR/common.sh"
 
-if [[ ! -f "$ENTRYPOINT" ]]; then
-    echo "ERROR: Missing Python setup-plan entrypoint at $ENTRYPOINT" >&2
-    exit 1
+# Get all paths and variables from common functions
+eval $(get_feature_paths)
+
+# Check if we're on a proper feature branch (only for git repos)
+check_feature_branch "$CURRENT_BRANCH" "$HAS_GIT" || exit 1
+
+# Ensure the feature directory exists
+mkdir -p "$FEATURE_DIR"
+
+# Copy plan template if it exists
+TEMPLATE="$REPO_ROOT/.specify/templates/plan-template.md"
+if [[ -f "$IMPL_PLAN" && "$FORCE_OVERWRITE" != "true" ]]; then
+    echo "Plan file already exists at $IMPL_PLAN; preserving existing file"
+elif [[ -f "$TEMPLATE" ]]; then
+    cp "$TEMPLATE" "$IMPL_PLAN"
+    echo "Copied plan template to $IMPL_PLAN"
+else
+    echo "Warning: Plan template not found at $TEMPLATE"
+    # Create a basic plan file if template doesn't exist and file does not already exist.
+    if [[ ! -f "$IMPL_PLAN" ]]; then
+        touch "$IMPL_PLAN"
+    fi
 fi
 
-if command -v uv >/dev/null 2>&1; then
-    exec uv run --no-sync python "$ENTRYPOINT" "$@"
+# Output results
+if $JSON_MODE; then
+    printf '{"FEATURE_SPEC":"%s","IMPL_PLAN":"%s","SPECS_DIR":"%s","BRANCH":"%s","HAS_GIT":"%s"}\n' \
+        "$FEATURE_SPEC" "$IMPL_PLAN" "$FEATURE_DIR" "$CURRENT_BRANCH" "$HAS_GIT"
 else
-    exec python3 "$ENTRYPOINT" "$@"
+    echo "FEATURE_SPEC: $FEATURE_SPEC"
+    echo "IMPL_PLAN: $IMPL_PLAN" 
+    echo "SPECS_DIR: $FEATURE_DIR"
+    echo "BRANCH: $CURRENT_BRANCH"
+    echo "HAS_GIT: $HAS_GIT"
 fi

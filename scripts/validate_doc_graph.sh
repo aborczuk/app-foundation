@@ -78,9 +78,10 @@ main() {
   assert_exists "catalog.yaml"
   run_command_coverage_validator
 
-  # Phase 5 (T041): Anti-regression guard for mirror manifest removal
-  assert_not_exists "command-manifest.yaml" \
-    "root mirror manifest removed and not reintroduced (.specify/command-manifest.yaml is canonical)"
+  # Phase 5 follow-up: command manifest is canonical at repo root.
+  assert_exists "command-manifest.yaml"
+  assert_not_exists ".specify/command-manifest.yaml" \
+    "legacy manifest path removed and not reintroduced"
 
   # NOTE: Trading-specific check removed for app-foundation template
   # (no hardcoded behavior-map target for feature 001 in commands/templates)

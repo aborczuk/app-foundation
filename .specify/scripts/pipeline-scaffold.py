@@ -42,7 +42,7 @@ def main():
 
     # Locate manifest and template directory
     repo_root = Path(__file__).parent.parent.parent
-    manifest_path = repo_root / ".specify" / "command-manifest.yaml"
+    manifest_path = repo_root / "command-manifest.yaml"
     template_dir = repo_root / ".specify" / "templates"
 
     if not manifest_path.exists():

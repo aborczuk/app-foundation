@@ -24,7 +24,7 @@ Assemble pieces from multiple repositories to cover all FRs. Each row = one repo
 |---------------------|----------------------|-------------|-------|
 | local: app-foundation | `scripts/pipeline_ledger.py` | FR-005, FR-010, FR-012, FR-013, FR-017, FR-019 (partial) | Existing feature-level state/event validation logic; primary base for orchestrator event guarantees. |
 | local: app-foundation | `scripts/task_ledger.py` | FR-005, FR-012, FR-013, FR-015, FR-019 (partial) | Task-scoped sequencing/idempotency behavior and auto-index hooks can be adapted for driver-level flow control. |
-| local: app-foundation | `command-manifest.yaml`, `.specify/command-manifest.yaml` | FR-006, FR-009, FR-015 | Existing allowlist/event declaration model is directly reusable as driver routing source of truth. |
+| local: app-foundation | `command-manifest.yaml`, `command-manifest.yaml` | FR-006, FR-009, FR-015 | Existing allowlist/event declaration model is directly reusable as driver routing source of truth. |
 | local: app-foundation | `scripts/speckit_gate_status.py`, `scripts/speckit_implement_gate.py`, `scripts/speckit_tasks_gate.py` | FR-002, FR-003, FR-010, FR-016, FR-017 | Existing deterministic gate envelope conventions and reason-code style should be normalized into one schema contract. |
 | pytransitions/transitions | `transitions/core.py` | FR-001, FR-007, FR-011, FR-016 | Mature state-machine primitive for explicit phase transitions; useful for orchestrator transition graph. |
 | jd/tenacity | `tenacity/__init__.py` (retry primitives) | FR-013, FR-018, FR-019 | Reusable retry/backoff policy wrapper for deterministic command execution and transient-failure handling. |

@@ -20,7 +20,7 @@
 **External Ingress + Runtime Readiness Gate**: N/A (CLI-only feature; no inbound webhook or HTTP endpoint introduced).
 
 - [X] T000 Record External Ingress + Runtime Readiness Gate as N/A (CLI-only feature) in specs/019-token-efficiency-docs/tasks.md
-- [X] T001 Build initial command-to-script coverage inventory from command-manifest.yaml and .specify/command-manifest.yaml into docs/governance/command-script-coverage.md:coverage_matrix
+- [X] T001 Build initial command-to-script coverage inventory from command-manifest.yaml and command-manifest.yaml into docs/governance/command-script-coverage.md:coverage_matrix
 - [X] T002 Create orchestrator module skeletons in scripts/pipeline_driver.py:main, scripts/pipeline_driver_state.py:resolve_phase_state, scripts/pipeline_driver_contracts.py:parse_step_result
 - [X] T003 [P] Create test module skeletons in tests/unit/test_pipeline_driver.py, tests/integration/test_pipeline_driver_feature_flow.py, tests/contract/test_pipeline_driver_contract.py
 
@@ -66,10 +66,7 @@
 - [X] T017 [US1] Implement command-to-script allowlist dispatch from command-manifest.yaml in scripts/pipeline_driver.py:resolve_step_mapping
 - [X] T018 [US1] Implement legacy fallback for non-driver-managed phases in scripts/pipeline_driver.py:route_legacy_step
 - [X] T019 [US1] Implement post-LLM artifact validation before success event append in scripts/pipeline_driver.py:validate_generated_artifact
-- [X] T020 [US1] Update routing metadata and driver-managed flags in command-manifest.yaml:commands and .specify/command-manifest.yaml:commands
-- [X] T045 [US1] Wire generative handoff execution adapter in scripts/pipeline_driver.py:main to call an LLM handoff runner and capture generated artifact output metadata
-- [X] T046 [US1] Invoke post-generation artifact validation in scripts/pipeline_driver.py:main via validate_generated_artifact before returning success for generative routes
-- [X] T047 [US1] Append success event and phase advancement for validated generative outputs in scripts/pipeline_driver.py:main using scripts/pipeline_ledger.py event contracts
+- [X] T020 [US1] Update routing metadata and driver-managed flags in command-manifest.yaml:commands and command-manifest.yaml:commands
 
 **Checkpoint**: Deterministic and generative routes are both enforced with explicit mapping rules.
 
@@ -122,7 +119,7 @@
 - [X] T037 [US3] Extend manifest validation invariants for coverage enforcement in scripts/pipeline_ledger.py:cmd_validate_manifest
 - [X] T038 [US3] Document migration/rollback and coverage ownership policy in docs/governance/command-script-coverage.md and specs/019-token-efficiency-docs/research.md
 - [X] T039 [US3] Add explicit scaffold invocation for solution review in .claude/commands/speckit.solutionreview.md (`pipeline-scaffold.py speckit.solutionreview`) and update docs/governance/command-script-coverage.md
-- [X] T040 [US3] Remove root mirror manifest command-manifest.yaml and repoint all repository references to .specify/command-manifest.yaml as canonical
+- [X] T040 [US3] Remove root mirror manifest command-manifest.yaml and repoint all repository references to command-manifest.yaml as canonical
 - [X] T041 [P] [US3] Add anti-regression guard in scripts/validate_doc_graph.sh:run_validators (or dedicated script) to fail when command-manifest.yaml mirror is reintroduced or referenced
 
 **Checkpoint**: Mixed-mode migration is supported and uncovered command mappings cannot pass gates silently.
@@ -137,10 +134,6 @@
 - [X] T042 [P] Run task-format and plan gates on finalized artifacts via scripts/speckit_tasks_gate.py and scripts/speckit_gate_status.py
 - [X] T043 Run dry-run orchestration scenario and capture evidence in scripts/e2e_020.sh and specs/019-token-efficiency-docs/quickstart.md
 - [X] T044 [P] Run lint/type checks for touched workflow files in scripts/pipeline_driver.py, scripts/pipeline_driver_contracts.py, scripts/validate_command_script_coverage.py
-- [X] T048 Add preflight branch-sync stale-contract guard in scripts/speckit_implement_gate.py:cmd_task_preflight (with reason-code mapping in docs/governance/gate-reason-codes.yaml) so `.implement` blocks when target task exists on `main` but not current feature branch
-- [X] T049 Wire add-to-backlog pipeline event emission by updating .claude/commands/speckit.addtobacklog.md and .specify/command-manifest.yaml so `/speckit.addtobacklog` emits `backlog_registered` via scripts/pipeline_ledger.py
-- [X] T050 Route add-to-backlog triage outcomes to the appropriate downstream phase by estimate/scope in .claude/commands/speckit.addtobacklog.md (specify/plan/solution/implement handoff guidance)
-- [X] T051 Project and emit prerequisite pipeline events from /speckit.addtobacklog so ledger readiness matches selected `NEXT_COMMAND` in .claude/commands/speckit.addtobacklog.md and .specify/command-manifest.yaml
 
 **Checkpoint**: Task format and plan gates pass; E2E script validates all 45 tests (US1/US2/US3); lint and type checks clean.
 <!-- Checkpoint validated: PASS | 2026-04-10 | All Phase 6 tasks complete: T042 gate PASS, T043 E2E PASS (45 tests), T044 pyright 0 errors -->

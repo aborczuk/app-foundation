@@ -17,7 +17,7 @@ End-to-end information already existed, but it was split:
 - State machine diagram: `constitution-workflow.md` and `.claude/constitution-workflow.md`
 - Command ownership matrix: `docs/governance/command-script-coverage.md`
 - Command behavior contracts: `.claude/commands/speckit.*.md`
-- Artifact/event registry: `.specify/command-manifest.yaml` (mirror: `command-manifest.yaml`)
+- Artifact/event registry: `command-manifest.yaml` (mirror: `command-manifest.yaml`)
 
 ## System Of Record
 
@@ -26,7 +26,7 @@ End-to-end information already existed, but it was split:
 | Pipeline step order and prerequisites | `constitution.md` |
 | State transitions diagram | `constitution-workflow.md` |
 | Per-command behavior contract | `.claude/commands/speckit.<step>.md` |
-| Artifact + template + emitted event registration | `.specify/command-manifest.yaml` |
+| Artifact + template + emitted event registration | `command-manifest.yaml` |
 | Manifest mirror | `command-manifest.yaml` |
 | Template files | `.specify/templates/` |
 | Template scaffolding engine | `.specify/scripts/pipeline-scaffold.py` |
@@ -63,7 +63,7 @@ For exact matrix and event semantics, use `constitution.md`.
 
 ## Artifact Generation Model
 
-Artifact registration lives in `.specify/command-manifest.yaml`:
+Artifact registration lives in `command-manifest.yaml`:
 
 - each command declares `artifacts`
 - each artifact declares `output_path` and `template` (if templated)
@@ -94,7 +94,7 @@ If you change command behavior:
 
 If you change command outputs/events:
 
-- `.specify/command-manifest.yaml`
+- `command-manifest.yaml`
 - `command-manifest.yaml` (mirror)
 - templates under `.specify/templates/`
 

@@ -164,12 +164,8 @@ assert_no_orphan_processes() {
 }
 
 assert_manifest_state_safety() {
-  local canonical_manifest="$REPO_ROOT/.specify/command-manifest.yaml"
-  local mirror_manifest="$REPO_ROOT/command-manifest.yaml"
+  local canonical_manifest="$REPO_ROOT/command-manifest.yaml"
   [ -f "$canonical_manifest" ] || fail "Missing canonical manifest: $canonical_manifest"
-  if [ -f "$mirror_manifest" ] && ! cmp -s "$canonical_manifest" "$mirror_manifest"; then
-    fail "state_drift_detected: command-manifest mirror diverges from canonical .specify/command-manifest.yaml"
-  fi
 }
 
 validate_ledgers() {

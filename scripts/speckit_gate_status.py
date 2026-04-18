@@ -30,6 +30,11 @@ class ChecklistStatus:
         return "PASS" if self.incomplete == 0 else "FAIL"
 
 
+def _resolve_manifest_path(repo_root: Path) -> Path:
+    """Resolve canonical command manifest path at repository root."""
+    return repo_root / "command-manifest.yaml"
+
+
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -198,7 +203,7 @@ def validate_command_coverage(feature_dir: Path) -> dict[str, Any]:
         reasons (list): Details on coverage gaps
     """
 
-    manifest_path = Path(__file__).resolve().parent.parent / ".specify" / "command-manifest.yaml"
+    manifest_path = _resolve_manifest_path(Path(__file__).resolve().parent.parent)
 
     if not manifest_path.exists():
         return {

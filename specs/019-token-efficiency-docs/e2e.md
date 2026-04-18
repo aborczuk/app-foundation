@@ -8,7 +8,7 @@ This pipeline validates end-to-end deterministic orchestration for feature `019-
 
 - Python `3.12+`, `uv`, and `git` are installed and available in `PATH`.
 - Feature artifacts exist: `spec.md`, `plan.md`, `tasks.md`, `estimates.md`, and this `e2e.md`.
-- Repository root has `.specify/command-manifest.yaml`; mirror drift checks are enforced against `command-manifest.yaml` when present.
+- Repository root has `command-manifest.yaml`; mirror drift checks are enforced against `command-manifest.yaml` when present.
 - Run standalone `uv` commands with `UV_CACHE_DIR=/tmp/uv-cache`; for the E2E script itself, override with `E2E_UV_CACHE_DIR=/tmp/uv-cache` when needed.
 - Optional config file path may be passed to the script; when provided, the script copies it to a temp file and never mutates the live source.
 
@@ -175,6 +175,6 @@ scripts/e2e_019_token_efficiency_docs.sh verify
 
 - **Missing uv cache permissions**: Symptom: `Failed to initialize cache ... Operation not permitted`. Fix: set `E2E_UV_CACHE_DIR=/tmp/uv-cache` for script runs and `UV_CACHE_DIR=/tmp/uv-cache` for standalone `uv` commands.
 - **Implement gate still blocked**: Symptom: `speckit_gate_status --mode implement` returns `ok: false`. Fix: regenerate missing artifacts and re-run preflight.
-- **Manifest drift**: Symptom: canonical/mirror mismatch failure. Fix: reconcile updates to `.specify/command-manifest.yaml` and any mirror references.
+- **Manifest drift**: Symptom: canonical/mirror mismatch failure. Fix: reconcile updates to `command-manifest.yaml` and any mirror references.
 - **Lifecycle warnings in logs**: Symptom: `event loop is already running` or pending-task destruction warnings. Fix: resolve async teardown before rerunning.
 - **Lock residue**: Symptom: `.speckit/locks/019*.lock` remains after section completion. Fix: clear stale owner state via deterministic lock-handling path and rerun.
