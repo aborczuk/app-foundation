@@ -404,7 +404,7 @@ def test_normalize_driver_mode_rejects_unknown_value() -> None:
 
 
 def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> None:
-    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path = tmp_path / "command-manifest.yaml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         "\n".join(
@@ -729,7 +729,7 @@ def test_handoff_contract_requires_all_fields() -> None:
 
 
 def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None:
-    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path = tmp_path / "command-manifest.yaml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         "\n".join(
@@ -762,7 +762,7 @@ def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None
 
 
 def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None:
-    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path = tmp_path / "command-manifest.yaml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         "\n".join(
@@ -799,7 +799,7 @@ def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None
 
 
 def test_resolve_step_mapping_fallback_legacy_when_missing(tmp_path: Path) -> None:
-    manifest_path = tmp_path / ".specify" / "command-manifest.yaml"
+    manifest_path = tmp_path / "command-manifest.yaml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text("commands: {}\n", encoding="utf-8")
 
@@ -962,9 +962,9 @@ def test_run_generative_handoff_returns_handoff_when_runner_not_configured(tmp_p
 
 
 def test_resolve_step_mapping_uses_real_manifest() -> None:
-    """Verify manifest routing works with actual .specify/command-manifest.yaml."""
+    """Verify manifest routing works with actual command-manifest.yaml."""
     # This test validates that key commands are registered with driver metadata
-    manifest_path = Path(__file__).resolve().parents[2] / ".specify" / "command-manifest.yaml"
+    manifest_path = Path(__file__).resolve().parents[2] / "command-manifest.yaml"
 
     if not manifest_path.exists():
         pytest.skip("manifest file not found")
@@ -1012,10 +1012,10 @@ def test_manifest_governance_guard(tmp_path: Path) -> None:
     Verifies:
     1. Manifest version changes are tracked with timestamps
     2. Version/timestamp coupling detects governance drift
-    3. Mirror manifests cannot diverge from canonical without detected invariant violation
+    3. Alternate manifest copies cannot diverge from canonical without detected invariant violation
     """
     # Create canonical manifest with version and timestamp
-    canonical_manifest = tmp_path / ".specify" / "command-manifest.yaml"
+    canonical_manifest = tmp_path / "command-manifest.yaml"
     canonical_manifest.parent.mkdir(parents=True, exist_ok=True)
     canonical_manifest.write_text(
         """version: "1.0.0"
@@ -1027,8 +1027,9 @@ commands:
         encoding="utf-8",
     )
 
-    # Create mirror manifest (simulating split control plane scenario)
-    mirror_manifest = tmp_path / "command-manifest.yaml"
+    # Create alternate copy (simulating stale split-control-plane file)
+    mirror_manifest = tmp_path / "legacy" / "command-manifest.yaml"
+    mirror_manifest.parent.mkdir(parents=True, exist_ok=True)
     mirror_manifest.write_text(
         """version: "1.0.0"
 last_updated: "2026-04-10T12:00:00Z"

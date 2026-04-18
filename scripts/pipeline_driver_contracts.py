@@ -55,6 +55,12 @@ ARTIFACT_VALIDATION_REASONS: set[str] = {
 }
 
 
+def _resolve_default_manifest_path() -> Path:
+    """Return the canonical manifest path at repository root."""
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / "command-manifest.yaml"
+
+
 def _require_mapping(value: Any) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("step result envelope must be a JSON object")
@@ -184,7 +190,7 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
     resolved_manifest_path = (
         Path(manifest_path).resolve()
         if manifest_path is not None
-        else (Path(__file__).resolve().parent.parent / ".specify" / "command-manifest.yaml")
+        else _resolve_default_manifest_path()
     )
     if not resolved_manifest_path.exists():
         raise FileNotFoundError(f"manifest not found: {resolved_manifest_path}")

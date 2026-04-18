@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Python entrypoint for markdown section reads with vector-first anchoring.
+"""Python entrypoint for markdown discovery and bounded section reads with vector-first anchoring.
 
 Markdown file read-efficiency contract:
 - Use this helper for markdown files over 100 lines.
 - Prefer the helper over raw file reads so the read stays bounded.
-- Resolve the target section semantically first, then fall back to exact
-  heading matching if the vector hit is unavailable or ambiguous.
+- List markdown headings first when you need discovery, then resolve the target
+  section semantically before falling back to exact heading matching.
 - The companion shell entrypoint is ``scripts/read-markdown.sh``; source it
   when you need the shell function form.
 - If you need only the smallest bounded window, pass the specific section
@@ -13,11 +13,13 @@ Markdown file read-efficiency contract:
 
 How to use:
 1. Source ``scripts/read-markdown.sh`` or invoke the Python entrypoint.
-2. Call ``read_markdown_section <file> <section_heading>``.
-3. Let the helper anchor the section and print only the relevant window.
+2. Call ``read_markdown_headings <file>`` when you need discovery.
+3. Call ``read_markdown_section <file> <section_heading>`` once you know the exact heading.
+4. Let the helper anchor the section and print only the relevant window.
 
 Validation:
-- If the section does not resolve, the helper prints a clear not-found error.
+- If the section does not resolve, the helper prints a clear not-found error
+  and shows nearby headings.
 - If the file is large, the helper keeps the read window bounded.
 """
 
@@ -111,6 +113,28 @@ def _resolve_breadcrumb_tail(item: dict[str, object]) -> str | None:
 def _normalize_heading_text(text: str) -> str:
     """Normalize heading text for fuzzy comparisons."""
     return re.sub(r"\s+", " ", text.strip().lstrip("#").strip()).rstrip(":").lower()
+
+
+def _markdown_heading_lines(target_file: Path) -> list[tuple[int, str]]:
+    """Collect markdown heading lines in file order."""
+    headings: list[tuple[int, str]] = []
+    heading_pattern = re.compile(r"^(#{1,6})\s+.+$")
+    with target_file.open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle, start=1):
+            stripped = line.rstrip("\n")
+            if heading_pattern.match(stripped):
+                headings.append((index, stripped))
+    return headings
+
+
+def _format_heading_hint(headings: list[tuple[int, str]], *, limit: int = 8) -> str:
+    """Render a compact heading hint for not-found errors."""
+    if not headings:
+        return "no markdown headings found"
+    rendered = [f"{line}\t{heading}" for line, heading in headings[:limit]]
+    if len(headings) > limit:
+        rendered.append("...")
+    return "; ".join(rendered)
 
 
 def _section_matches_query(section: str, candidate: str | None) -> bool:
@@ -229,7 +253,15 @@ def read_markdown_section(file_path: str, section: str) -> int:
         line_num = _fallback_heading_line_num(resolved_file, section)
 
     if line_num is None:
-        print(f"ERROR: Section '## {section}' not found in {file_path}", file=sys.stderr)
+        heading_hint = _format_heading_hint(_markdown_heading_lines(resolved_file))
+        print(
+            (
+                f"ERROR: Section '## {section}' not found in {file_path}. "
+                f"Use read_markdown_headings {file_path} to inspect headings. "
+                f"Available headings: {heading_hint}"
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     window_size = 50
@@ -241,8 +273,28 @@ def read_markdown_section(file_path: str, section: str) -> int:
     return 0
 
 
+def read_markdown_headings(file_path: str) -> int:
+    """Render the markdown headings discovery list for a file."""
+    if not file_path:
+        print("ERROR: read_markdown_headings requires one argument: <file>", file=sys.stderr)
+        return 1
+
+    target_file = Path(file_path)
+    if not target_file.is_file():
+        print(f"ERROR: File not found: {file_path}", file=sys.stderr)
+        return 1
+
+    resolved_file = target_file.resolve()
+    for line_num, heading in _markdown_heading_lines(resolved_file):
+        print(f"{line_num}\t{heading}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     """CLI entrypoint compatible with read-markdown.sh wrapper semantics."""
+    if len(argv) > 0 and argv[0] == "--headings":
+        file_path = argv[1] if len(argv) > 1 else ""
+        return read_markdown_headings(file_path)
     file_path = argv[0] if len(argv) > 0 else ""
     section = argv[1] if len(argv) > 1 else ""
     return read_markdown_section(file_path, section)

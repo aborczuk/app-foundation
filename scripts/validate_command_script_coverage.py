@@ -119,12 +119,7 @@ def validate_command_script_coverage(
     scaffold_script_path: Path,
     bash_scripts_dir: Path,
 ) -> dict[str, Any]:
-    """Validate command coverage from canonical manifest.
-
-    NOTE (Phase 5): mirror_manifest_path parameter is deprecated.
-    All validation uses canonical manifest only (.specify/command-manifest.yaml).
-    Mirror manifest (root command-manifest.yaml) is no longer maintained.
-    """
+    """Validate command coverage from the canonical command manifest."""
     manifest = _load_manifest(canonical_manifest_path)
     report = build_coverage_report(
         manifest,
@@ -134,14 +129,9 @@ def validate_command_script_coverage(
 
     reasons = list(report["reasons"])
 
-    # Mirror manifest check is deprecated (Phase 5)
-    # Log deprecation warning if mirror is still present
-    if mirror_manifest_path is not None and mirror_manifest_path.exists():
-        reasons.append("deprecated_mirror_manifest_present")
-
     payload = {
         "canonical_manifest": str(canonical_manifest_path),
-        "mirror_manifest": str(mirror_manifest_path),
+        "mirror_manifest": str(mirror_manifest_path) if mirror_manifest_path else None,
         "scaffold_script": str(scaffold_script_path),
         "bash_scripts_dir": str(bash_scripts_dir),
         "covered_commands": report["covered_commands"],
@@ -156,13 +146,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--canonical-manifest",
-        default=".specify/command-manifest.yaml",
+        default="command-manifest.yaml",
         help="Path to canonical manifest.",
     )
     parser.add_argument(
         "--mirror-manifest",
-        default="command-manifest.yaml",
-        help="Path to mirror manifest.",
+        default="",
+        help="Optional legacy mirror manifest path (not used for validation).",
     )
     parser.add_argument(
         "--scaffold-script",
@@ -183,7 +173,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     payload = validate_command_script_coverage(
         canonical_manifest_path=Path(args.canonical_manifest).resolve(),
-        mirror_manifest_path=Path(args.mirror_manifest).resolve(),
+        mirror_manifest_path=(
+            Path(args.mirror_manifest).resolve() if args.mirror_manifest else None
+        ),
         scaffold_script_path=Path(args.scaffold_script).resolve(),
         bash_scripts_dir=Path(args.bash_scripts_dir).resolve(),
     )
@@ -203,4 +195,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

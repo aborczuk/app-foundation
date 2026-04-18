@@ -77,7 +77,7 @@ def _write_manifest_route(
 
 
 def test_deterministic_route_success(driver_flow_harness) -> None:
-    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "plan_step.py"
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -121,7 +121,7 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
 
 
 def test_deterministic_route_blocked(driver_flow_harness) -> None:
-    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "planreview_gate.py"
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -170,7 +170,7 @@ def test_deterministic_route_blocked(driver_flow_harness) -> None:
 
 def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
     """Runtime error (exit code 2) triggers verbose rerun with sidecar persistence."""
-    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "sketch_timeout.py"
     sidecar_dir = driver_flow_harness.feature_dir / ".speckit" / "failures"
     sidecar_dir.mkdir(parents=True, exist_ok=True)
@@ -247,7 +247,7 @@ def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
 
 def test_dry_run_does_not_mutate_ledgers_or_artifacts(driver_flow_harness) -> None:
     """Dry-run mode resolves phase state but does not emit ledger events or persist artifacts."""
-    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "plan_generator.py"
     artifact_path = driver_flow_harness.feature_dir / "plan.md"
 
@@ -307,7 +307,7 @@ def test_approval_breakpoint_blocks_without_token(driver_flow_harness) -> None:
     # Implementation in T030.
 
     # For now, verify the fixture supports breakpoint setup
-    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "migration_step.py"
 
     correlation_id = pipeline_driver.build_correlation_id(
@@ -358,7 +358,7 @@ def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
     # After approval token is obtained, workflow can resume and complete the step.
     # Placeholder for full flow validation in T030.
 
-    manifest_path = driver_flow_harness.feature_dir / ".specify" / "command-manifest.yaml"
+    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
     script_path = driver_flow_harness.feature_dir / "scripts" / "apply_migration.py"
 
     correlation_id = pipeline_driver.build_correlation_id(
@@ -496,14 +496,13 @@ commands:
   speckit.uncovered:
     description: "Intentionally uncovered command (no driver metadata)"
 """
-    specify_dir = driver_flow_harness.feature_dir.parent / ".specify"
-    specify_dir.mkdir(parents=True, exist_ok=True)
-    (specify_dir / "command-manifest.yaml").write_text(
+    repo_root = driver_flow_harness.feature_dir.parent
+    (repo_root / "command-manifest.yaml").write_text(
         manifest_yaml, encoding="utf-8"
     )
 
     # Test 1: Load manifest with mixed modes
-    routes = pipeline_driver_contracts.load_driver_routes(specify_dir / "command-manifest.yaml")
+    routes = pipeline_driver_contracts.load_driver_routes(repo_root / "command-manifest.yaml")
 
     # Driver-managed command should be marked as such
     assert routes["speckit.plan"]["driver_managed"] is True

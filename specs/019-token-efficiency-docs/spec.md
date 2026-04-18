@@ -131,7 +131,7 @@ flowchart TD
 **Adopted dependencies**:
 - Existing speckit deterministic gate scripts (`speckit_gate_status.py`, `speckit_spec_gate.py`, `speckit_plan_gate.py`, `speckit_tasks_gate.py`, `speckit_implement_gate.py`) for phase checks.
 - Existing ledger tooling (`pipeline_ledger.py`, `task_ledger.py`) for authoritative event validation and append operations.
-- Command manifest governance files (`.specify/command-manifest.yaml`, `command-manifest.yaml`) as script/event mapping source of truth.
+- Command manifest governance files (`command-manifest.yaml`, `command-manifest.yaml`) as script/event mapping source of truth.
 
 **Out of scope**:
 - Replacing narrative quality of LLM-generated specs/plans with template-only automation.

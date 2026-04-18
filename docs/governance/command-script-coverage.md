@@ -23,14 +23,14 @@
 
 | Command | Canonical Manifest Entry | Mirror Parity (`command-manifest.yaml`) | Scaffold Path | Template/Artifact Target |
 |---|---|---|---|---|
-| `speckit.specify` | `.specify/command-manifest.yaml:commands.speckit.specify` | required (`cmp -s` must pass) | `.specify/scripts/bash/create-new-feature.sh` + `pipeline-scaffold.py speckit.specify` | `spec-template.md` + `requirements-checklist-template.md` |
-| `speckit.plan` | `.specify/command-manifest.yaml:commands.speckit.plan` | required (`cmp -s` must pass) | `.specify/scripts/bash/setup-plan.sh` + `pipeline-scaffold.py speckit.plan` | `plan-template.md`, `data-model-template.md`, `quickstart-template.md` |
-| `speckit.sketch` | `.specify/command-manifest.yaml:commands.speckit.sketch` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.sketch` | `sketch-template.md` |
-| `speckit.solutionreview` | `.specify/command-manifest.yaml:commands.speckit.solutionreview` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.solutionreview` | `solutionreview-template.md` |
-| `speckit.tasking` | `.specify/command-manifest.yaml:commands.speckit.tasking` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking` | `tasks-template.md` |
-| `speckit.tasking.hud-code` | `.specify/command-manifest.yaml:commands.speckit.tasking.hud-code` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-code` | `hud-code-template.md` |
-| `speckit.tasking.hud-runbook` | `.specify/command-manifest.yaml:commands.speckit.tasking.hud-runbook` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-runbook` | `hud-runbook-template.md` |
-| `speckit.e2e` | `.specify/command-manifest.yaml:commands.speckit.e2e` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.e2e` | `e2e-template.md` + `e2e-script-template.sh` |
+| `speckit.specify` | `command-manifest.yaml:commands.speckit.specify` | required (`cmp -s` must pass) | `.specify/scripts/bash/create-new-feature.sh` + `pipeline-scaffold.py speckit.specify` | `spec-template.md` + `requirements-checklist-template.md` |
+| `speckit.plan` | `command-manifest.yaml:commands.speckit.plan` | required (`cmp -s` must pass) | `.specify/scripts/bash/setup-plan.sh` + `pipeline-scaffold.py speckit.plan` | `plan-template.md`, `data-model-template.md`, `quickstart-template.md` |
+| `speckit.sketch` | `command-manifest.yaml:commands.speckit.sketch` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.sketch` | `sketch-template.md` |
+| `speckit.solutionreview` | `command-manifest.yaml:commands.speckit.solutionreview` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.solutionreview` | `solutionreview-template.md` |
+| `speckit.tasking` | `command-manifest.yaml:commands.speckit.tasking` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking` | `tasks-template.md` |
+| `speckit.tasking.hud-code` | `command-manifest.yaml:commands.speckit.tasking.hud-code` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-code` | `hud-code-template.md` |
+| `speckit.tasking.hud-runbook` | `command-manifest.yaml:commands.speckit.tasking.hud-runbook` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-runbook` | `hud-runbook-template.md` |
+| `speckit.e2e` | `command-manifest.yaml:commands.speckit.e2e` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.e2e` | `e2e-template.md` + `e2e-script-template.sh` |
 
 Coverage notes:
 
@@ -40,7 +40,7 @@ Coverage notes:
 
 ## Manifest and Ledger Alignment
 
-- Canonical registry: `.specify/command-manifest.yaml`
+- Canonical registry: `command-manifest.yaml`
 - Mirror copy: `command-manifest.yaml` (deprecated; will be removed in Phase 5)
 - Event transition enforcement: `scripts/pipeline_ledger.py` (`ALLOWED_PIPELINE_TRANSITIONS`)
 - Manifest-schema enforcement: `python scripts/pipeline_ledger.py validate-manifest`
@@ -70,7 +70,7 @@ Incremental command migration from legacy to driver-managed modes requires deter
 
 **To migrate a command from legacy to driver-managed:**
 
-1. Update `.specify/command-manifest.yaml`:
+1. Update `command-manifest.yaml`:
    ```yaml
    commands:
      speckit.my_command:
@@ -94,7 +94,7 @@ Incremental command migration from legacy to driver-managed modes requires deter
 
 **To rollback a command migration:**
 
-1. Revert the command entry in `.specify/command-manifest.yaml` to legacy:
+1. Revert the command entry in `command-manifest.yaml` to legacy:
    ```yaml
    commands:
      speckit.my_command:
@@ -122,5 +122,5 @@ Incremental command migration from legacy to driver-managed modes requires deter
 
 **Mirror Manifest Deprecation:**
 - Root `command-manifest.yaml` will be removed in Phase 5 closeout
-- All tooling now uses `.specify/command-manifest.yaml` as canonical
+- All tooling now uses `command-manifest.yaml` as canonical
 - Anti-regression guards prevent reintroduction of mirror manifest

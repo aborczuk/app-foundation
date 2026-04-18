@@ -4,7 +4,7 @@
 
 1. **Can a step have a template but no per-step script file?**  
    **Today: yes, this exists.**  
-   Example: some commands in `.specify/command-manifest.yaml` declare a `template` without a
+   Example: some commands in `command-manifest.yaml` declare a `template` without a
    `scaffold_script` field. They are still scaffolded via the shared script:
    `python .specify/scripts/pipeline-scaffold.py ...`.
 
@@ -21,12 +21,12 @@
    - Template baseline:
      `.specify/templates/sketch-template.md` -> `.specify/templates/<new-step>-template.md`
    - Manifest registration (must update both):
-     `.specify/command-manifest.yaml` and `command-manifest.yaml`
+     `command-manifest.yaml` and `command-manifest.yaml`
 
 ## Required Files To Touch
 
 - `.claude/commands/speckit.<new-step>.md`
-- `.specify/command-manifest.yaml`
+- `command-manifest.yaml`
 - `command-manifest.yaml` (mirror copy)
 - `.specify/templates/<new-step>-template.md` (if step outputs templated artifacts)
 - `scripts/pipeline_ledger.py` (if new events or new transition edges are introduced)
@@ -43,7 +43,7 @@
    - If the step has templated outputs, include explicit script commands that scaffold them.
 
 3. **Add manifest command entry**
-   - In `.specify/command-manifest.yaml`, add `commands.speckit.<new-step>`.
+   - In `command-manifest.yaml`, add `commands.speckit.<new-step>`.
    - Define:
      - `description`
      - `artifacts` (`output_path`, `template`, optional `scaffold_script`)
@@ -87,7 +87,7 @@
 ## Minimal Skeleton Example
 
 ```yaml
-# .specify/command-manifest.yaml
+# command-manifest.yaml
 commands:
   speckit.mynewstep:
     description: "Do X"

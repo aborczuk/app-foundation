@@ -54,12 +54,13 @@ def _write_manifest(path: Path, *, include_plan_scaffold: bool = True) -> None:
 
 
 def test_validate_command_script_coverage_passes_with_required_scripts(tmp_path: Path) -> None:
-    canonical_manifest = tmp_path / ".specify" / "command-manifest.yaml"
-    mirror_manifest = tmp_path / "command-manifest.yaml"
+    canonical_manifest = tmp_path / "command-manifest.yaml"
+    mirror_manifest = tmp_path / "legacy" / "command-manifest.yaml"
     scaffold_script = tmp_path / ".specify" / "scripts" / "pipeline-scaffold.py"
     bash_scripts_dir = tmp_path / ".specify" / "scripts" / "bash"
 
     canonical_manifest.parent.mkdir(parents=True, exist_ok=True)
+    mirror_manifest.parent.mkdir(parents=True, exist_ok=True)
     scaffold_script.parent.mkdir(parents=True, exist_ok=True)
     bash_scripts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -81,12 +82,13 @@ def test_validate_command_script_coverage_passes_with_required_scripts(tmp_path:
 
 
 def test_validate_command_script_coverage_reports_missing_required_reference(tmp_path: Path) -> None:
-    canonical_manifest = tmp_path / ".specify" / "command-manifest.yaml"
-    mirror_manifest = tmp_path / "command-manifest.yaml"
+    canonical_manifest = tmp_path / "command-manifest.yaml"
+    mirror_manifest = tmp_path / "legacy" / "command-manifest.yaml"
     scaffold_script = tmp_path / ".specify" / "scripts" / "pipeline-scaffold.py"
     bash_scripts_dir = tmp_path / ".specify" / "scripts" / "bash"
 
     canonical_manifest.parent.mkdir(parents=True, exist_ok=True)
+    mirror_manifest.parent.mkdir(parents=True, exist_ok=True)
     scaffold_script.parent.mkdir(parents=True, exist_ok=True)
     bash_scripts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -106,4 +108,3 @@ def test_validate_command_script_coverage_reports_missing_required_reference(tmp
     uncovered = {item["command"]: item["reasons"] for item in payload["uncovered_commands"]}
     assert "speckit.plan" in uncovered
     assert "missing_required_scaffold_reference:setup-plan.sh" in uncovered["speckit.plan"]
-

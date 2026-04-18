@@ -32,13 +32,19 @@ DEFAULT_LEDGER = Path(".speckit/pipeline-ledger.jsonl")
 FEATURE_ID_RE = re.compile(r"^\d{3}$")
 
 
+def _resolve_manifest_path() -> Path:
+    """Resolve canonical command manifest path at repository root."""
+    repo_root = Path(__file__).parent.parent
+    return repo_root / "command-manifest.yaml"
+
+
 def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
     """Load valid events and required fields from command-manifest.yaml.
 
     Returns: (VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT)
     Falls back to hardcoded set if manifest is missing or unparseable.
     """
-    manifest_path = Path(__file__).parent.parent / ".specify" / "command-manifest.yaml"
+    manifest_path = _resolve_manifest_path()
 
     if not manifest_path.exists() or yaml is None:
         # Fallback to hardcoded values
@@ -427,7 +433,7 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
     if not yaml:
         fail("PyYAML is required to validate manifest. Install with: pip install pyyaml")
 
-    manifest_path = Path(__file__).parent.parent / ".specify" / "command-manifest.yaml"
+    manifest_path = _resolve_manifest_path()
     template_dir = Path(__file__).parent.parent / ".specify" / "templates"
 
     if not manifest_path.exists():
