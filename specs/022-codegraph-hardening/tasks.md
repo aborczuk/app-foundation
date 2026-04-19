@@ -101,7 +101,7 @@
 - [X] T019 [P] Fail fast on buffer-pool exhaustion and other memory-pressure failures in `src/mcp_codebase/health.py` and the safe-index path so the recovery hint is explicit instead of swallowing the error - `src/mcp_codebase/health.py:build_recovery_hint`
 - [X] T020 [P] Route query-only CodeGraph probes through `READ_ONLY` connections while keeping refresh and rebuild on the single `READ_WRITE` owner and add concurrency regression coverage for probe-vs-refresh contention - `src/mcp_codebase/server.py:get_graph_health`, `src/mcp_codebase/doctor.py:main`, `src/mcp_codebase/health.py:classify_graph_health`
 - [X] T021 [P] Make freshness invalidation edit-aware in `scripts/read-code.sh` and `scripts/cgc_safe_index.sh` so local working-tree edits mark the graph stale before stale symbol answers are served - `scripts/read-code.sh`, `scripts/cgc_safe_index.sh`
-- [ ] T022 [P] Update `specs/022-codegraph-hardening/quickstart.md` and operator notes with the doctor flow, safe recovery, and failure-mode guidance - `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
+- [X] T022 [P] Update `specs/022-codegraph-hardening/quickstart.md` and operator notes with the doctor flow, safe recovery, and failure-mode guidance - `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
 
 **Checkpoint**: The feature has a documented smoke path and the repo-level smoke gate remains usable.
 <!-- Checkpoint validated: PASS | 2026-04-14 | Doc graph smoke validation passes and the doctor flow is documented -->
