@@ -44,6 +44,42 @@ def _bootstrap_workspace(tmp_path: Path) -> Path:
     return repo_root
 
 
+def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _bootstrap_create_feature_workspace(tmp_path: Path) -> Path:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+
+    _git(repo_root, "init")
+    _git(repo_root, "checkout", "-b", "main")
+    _git(repo_root, "config", "user.name", "Specify Test User")
+    _git(repo_root, "config", "user.email", "specify@example.com")
+
+    (repo_root / ".specify").mkdir(parents=True, exist_ok=True)
+    _copy_tree(REPO_ROOT / ".specify" / "scripts", repo_root / ".specify" / "scripts")
+    _copy_tree(REPO_ROOT / ".specify" / "templates", repo_root / ".specify" / "templates")
+    _copy_tree(REPO_ROOT / "scripts", repo_root / "scripts")
+    (repo_root / "README.md").write_text("# Temp workspace\n", encoding="utf-8")
+    _git(repo_root, "add", ".")
+    _git(repo_root, "commit", "-m", "bootstrap workspace")
+    return repo_root
+
+
+def _attach_origin_main(repo_root: Path, remote_root: Path) -> None:
+    remote_root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "--bare"], cwd=remote_root, check=True, capture_output=True, text=True)
+    _git(repo_root, "remote", "add", "origin", str(remote_root))
+    _git(repo_root, "push", "-u", "origin", "main")
+
+
 def _run_shell(repo_root: Path, script_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(script_path), *args],
@@ -244,6 +280,112 @@ def test_setup_plan_branch_validation_parity(tmp_path: Path) -> None:
     _assert_parity(shell_result, shell_repo, python_result, python_repo)
     assert shell_result.returncode == 1
     assert "feature" in _normalize_text(shell_result.stderr, shell_repo).lower()
+
+
+def test_create_new_feature_blocks_dirty_main_parity(tmp_path: Path) -> None:
+    shell_repo = _bootstrap_create_feature_workspace(tmp_path / "shell")
+    python_repo = _bootstrap_create_feature_workspace(tmp_path / "python")
+
+    for repo_root in (shell_repo, python_repo):
+        (repo_root / "LOCAL_DIRTY.md").write_text("dirty main change\n", encoding="utf-8")
+
+    shell_result = _run_shell(
+        shell_repo,
+        shell_repo / ".specify" / "scripts" / "bash" / "create-new-feature.sh",
+        "--json",
+        "--short-name",
+        "bootstrap-parity",
+        "--base",
+        "main",
+        "Enforce clean main preflight",
+    )
+    python_result = _run_python(
+        python_repo,
+        python_repo / ".specify" / "scripts" / "python" / "create_new_feature.py",
+        "--json",
+        "--short-name",
+        "bootstrap-parity",
+        "--base",
+        "main",
+        "Enforce clean main preflight",
+    )
+
+    _assert_parity(shell_result, shell_repo, python_result, python_repo)
+    assert shell_result.returncode == 1
+    assert "Local 'main' has uncommitted changes." in _normalize_text(shell_result.stderr, shell_repo)
+
+
+def test_create_new_feature_blocks_dirty_non_main_before_switch_parity(tmp_path: Path) -> None:
+    shell_repo = _bootstrap_create_feature_workspace(tmp_path / "shell")
+    python_repo = _bootstrap_create_feature_workspace(tmp_path / "python")
+
+    for repo_root in (shell_repo, python_repo):
+        _git(repo_root, "checkout", "-b", "scratch")
+        (repo_root / "SCRATCH_DIRTY.md").write_text("dirty feature branch change\n", encoding="utf-8")
+
+    shell_result = _run_shell(
+        shell_repo,
+        shell_repo / ".specify" / "scripts" / "bash" / "create-new-feature.sh",
+        "--json",
+        "--short-name",
+        "bootstrap-parity",
+        "--base",
+        "main",
+        "Enforce branch-off-main preflight",
+    )
+    python_result = _run_python(
+        python_repo,
+        python_repo / ".specify" / "scripts" / "python" / "create_new_feature.py",
+        "--json",
+        "--short-name",
+        "bootstrap-parity",
+        "--base",
+        "main",
+        "Enforce branch-off-main preflight",
+    )
+
+    _assert_parity(shell_result, shell_repo, python_result, python_repo)
+    assert shell_result.returncode == 1
+    assert "with uncommitted changes." in _normalize_text(shell_result.stderr, shell_repo)
+    assert "To branch off main" in _normalize_text(shell_result.stderr, shell_repo)
+
+
+def test_create_new_feature_blocks_unpushed_main_parity(tmp_path: Path) -> None:
+    shell_repo = _bootstrap_create_feature_workspace(tmp_path / "shell")
+    python_repo = _bootstrap_create_feature_workspace(tmp_path / "python")
+
+    _attach_origin_main(shell_repo, tmp_path / "shell-remote.git")
+    _attach_origin_main(python_repo, tmp_path / "python-remote.git")
+
+    for repo_root in (shell_repo, python_repo):
+        (repo_root / "LOCAL_AHEAD.md").write_text("ahead commit\n", encoding="utf-8")
+        _git(repo_root, "add", "LOCAL_AHEAD.md")
+        _git(repo_root, "commit", "-m", "local ahead of origin/main")
+
+    shell_result = _run_shell(
+        shell_repo,
+        shell_repo / ".specify" / "scripts" / "bash" / "create-new-feature.sh",
+        "--json",
+        "--short-name",
+        "bootstrap-parity",
+        "--base",
+        "main",
+        "Enforce pushed main preflight",
+    )
+    python_result = _run_python(
+        python_repo,
+        python_repo / ".specify" / "scripts" / "python" / "create_new_feature.py",
+        "--json",
+        "--short-name",
+        "bootstrap-parity",
+        "--base",
+        "main",
+        "Enforce pushed main preflight",
+    )
+
+    _assert_parity(shell_result, shell_repo, python_result, python_repo)
+    assert shell_result.returncode == 1
+    assert "not pushed to origin/main" in _normalize_text(shell_result.stderr, shell_repo)
 
 
 def test_update_agent_context_parity(tmp_path: Path) -> None:
