@@ -120,6 +120,7 @@ class CodebaseLSPServer:
                 extra={
                     "run_id": server_ref._run_id,
                     "status": health.get("status"),
+                    "access_mode": health.get("access_mode"),
                     "recovery_hint_id": (
                         recovery_hint.get("id")
                         if isinstance(recovery_hint, dict)

@@ -7,7 +7,11 @@ import subprocess
 import time
 from pathlib import Path
 
-from src.mcp_codebase.health import GraphHealthStatus, classify_graph_health
+from src.mcp_codebase.health import (
+    GraphAccessMode,
+    GraphHealthStatus,
+    classify_graph_health,
+)
 
 
 def _seed_repo(
@@ -51,6 +55,7 @@ def test_classify_graph_health_returns_healthy_for_fresh_index(tmp_path: Path) -
     result = classify_graph_health(tmp_path)
 
     assert result.status is GraphHealthStatus.HEALTHY
+    assert result.access_mode is GraphAccessMode.READ_ONLY
     assert result.recovery_hint.id == "continue"
     assert "current" in result.detail.lower()
     assert result.latency_ms >= 0
@@ -68,6 +73,7 @@ def test_classify_graph_health_returns_stale_when_sources_are_newer(tmp_path: Pa
     result = classify_graph_health(tmp_path)
 
     assert result.status is GraphHealthStatus.STALE
+    assert result.access_mode is GraphAccessMode.READ_ONLY
     assert result.recovery_hint.id == "refresh-scoped-index"
     assert "changed after the indexed snapshot" in result.detail
     assert "safe_index" in result.recovery_hint.command
@@ -85,6 +91,7 @@ def test_classify_graph_health_returns_locked_for_lock_marker(tmp_path: Path) ->
     result = classify_graph_health(tmp_path)
 
     assert result.status is GraphHealthStatus.LOCKED
+    assert result.access_mode is GraphAccessMode.READ_ONLY
     assert result.recovery_hint.id == "retry-after-close"
     assert "lock marker" in result.detail
 
@@ -104,6 +111,7 @@ def test_classify_graph_health_returns_unavailable_for_unreadable_db(tmp_path: P
         db.chmod(0o644)
 
     assert result.status is GraphHealthStatus.UNAVAILABLE
+    assert result.access_mode is GraphAccessMode.READ_ONLY
     assert result.recovery_hint.id == "fallback-to-files"
     assert "not readable" in result.detail
 
@@ -119,6 +127,7 @@ def test_classify_graph_health_returns_memory_pressure_hint(tmp_path: Path) -> N
     result = classify_graph_health(tmp_path)
 
     assert result.status is GraphHealthStatus.UNAVAILABLE
+    assert result.access_mode is GraphAccessMode.READ_ONLY
     assert result.recovery_hint.id == "fail-fast-memory-pressure"
     assert "memory pressure" in result.detail.lower()
 
@@ -141,5 +150,28 @@ def test_classify_graph_health_returns_stale_for_edit_drift(tmp_path: Path) -> N
     result = classify_graph_health(tmp_path)
 
     assert result.status is GraphHealthStatus.STALE
+    assert result.access_mode is GraphAccessMode.READ_ONLY
     assert result.recovery_hint.id == "refresh-scoped-index"
     assert "working tree edits changed" in result.detail
+
+
+def test_classify_graph_health_stays_read_only_while_owner_marker_exists(tmp_path: Path) -> None:
+    now = time.time()
+    owner_pid_file = tmp_path / ".codegraphcontext" / "db" / "kuzudb.owner.pid"
+    _seed_repo(
+        tmp_path,
+        source_mtime=now - 120,
+        db_mtime=now - 30,
+        lock_marker=".codegraphcontext/db/kuzudb.lock",
+    )
+    owner_pid_file.parent.mkdir(parents=True, exist_ok=True)
+    owner_pid_file.write_text("12345\n", encoding="utf-8")
+
+    start = time.monotonic()
+    result = classify_graph_health(tmp_path)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.5
+    assert result.status is GraphHealthStatus.LOCKED
+    assert result.access_mode is GraphAccessMode.READ_ONLY
+    assert owner_pid_file.exists()

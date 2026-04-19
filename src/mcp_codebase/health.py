@@ -34,6 +34,13 @@ class GraphHealthStatus(str, Enum):
     UNAVAILABLE = "unavailable"
 
 
+class GraphAccessMode(str, Enum):
+    """Access-mode vocabulary for the probe vs refresh contract."""
+
+    READ_ONLY = "READ_ONLY"
+    READ_WRITE = "READ_WRITE"
+
+
 @dataclass(frozen=True)
 class GraphRecoveryHint:
     """Stable recovery guidance for both CLI and MCP adapters."""
@@ -50,6 +57,7 @@ class GraphHealthResult:
     """Canonical graph-health result."""
 
     status: GraphHealthStatus
+    access_mode: GraphAccessMode
     detail: str
     checked_at: str
     source: str
@@ -61,6 +69,7 @@ class GraphHealthResult:
 
         payload = asdict(self)
         payload["status"] = self.status.value
+        payload["access_mode"] = self.access_mode.value
         return payload
 
 
@@ -115,6 +124,7 @@ def classify_graph_health(project_root: Path) -> GraphHealthResult:
     latency_ms = round((monotonic() - start) * 1000.0, 1)
     return GraphHealthResult(
         status=status,
+        access_mode=GraphAccessMode.READ_ONLY,
         detail=detail,
         checked_at=checked_at,
         source="filesystem-freshness",

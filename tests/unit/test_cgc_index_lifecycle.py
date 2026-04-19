@@ -75,19 +75,19 @@ if [ "${1:-}" = "run" ] && [ "${3:-}" = "python" ] && [ "${4:-}" = "-m" ] && [ "
   case "${FAKE_UV_DOCTOR_STATUS:-healthy}" in
     healthy)
       cat <<'JSON'
-{"checked_at":"2026-04-19T00:00:00Z","detail":"healthy","latency_ms":1.0,"recovery_hint":{"action":"continue","command":"","id":"continue","preserves_last_good":true,"summary":"ok"},"source":"filesystem-freshness","status":"healthy"}
+{"access_mode":"READ_ONLY","checked_at":"2026-04-19T00:00:00Z","detail":"healthy","latency_ms":1.0,"recovery_hint":{"action":"continue","command":"","id":"continue","preserves_last_good":true,"summary":"ok"},"source":"filesystem-freshness","status":"healthy"}
 JSON
       exit 0
       ;;
     stale)
       cat <<'JSON'
-{"checked_at":"2026-04-19T00:00:00Z","detail":"stale","latency_ms":1.0,"recovery_hint":{"action":"refresh","command":"scripts/cgc_safe_index.sh .","id":"refresh-scoped-index","preserves_last_good":true,"summary":"stale"},"source":"filesystem-freshness","status":"stale"}
+{"access_mode":"READ_ONLY","checked_at":"2026-04-19T00:00:00Z","detail":"stale","latency_ms":1.0,"recovery_hint":{"action":"refresh","command":"scripts/cgc_safe_index.sh .","id":"refresh-scoped-index","preserves_last_good":true,"summary":"stale"},"source":"filesystem-freshness","status":"stale"}
 JSON
       exit 0
       ;;
     *)
       cat <<'JSON'
-{"checked_at":"2026-04-19T00:00:00Z","detail":"unavailable","latency_ms":1.0,"recovery_hint":{"action":"fallback","command":"scripts/read-code.sh <file> <symbol> --allow-fallback","id":"fallback-to-files","preserves_last_good":false,"summary":"fallback"},"source":"filesystem-freshness","status":"unavailable"}
+{"access_mode":"READ_ONLY","checked_at":"2026-04-19T00:00:00Z","detail":"unavailable","latency_ms":1.0,"recovery_hint":{"action":"fallback","command":"scripts/read-code.sh <file> <symbol> --allow-fallback","id":"fallback-to-files","preserves_last_good":false,"summary":"fallback"},"source":"filesystem-freshness","status":"unavailable"}
 JSON
       exit 0
       ;;
