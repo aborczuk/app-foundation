@@ -32,9 +32,4 @@
 {"actor": "codex", "details": "plan artifacts generated and architecture direction established", "event": "plan_started", "feature_id": "023", "phase": "plan", "timestamp_utc": "2026-04-18T01:41:31.419339Z"}
 {"actor": "codex", "details": "planreview pass: no open feasibility questions", "event": "planreview_completed", "feature_id": "023", "fq_count": 0, "phase": "plan", "questions_asked": 0, "timestamp_utc": "2026-04-18T01:42:51.823710Z"}
 {"actor": "codex", "details": "plan approved after planreview; spike not required", "event": "plan_approved", "feasibility_required": "false", "feature_id": "023", "phase": "plan", "timestamp_utc": "2026-04-18T01:42:51.832743Z"}
-{"actor": "codex", "event": "sketch_completed", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-18T03:04:44.107104Z"}
-{"actor": "codex", "critical_count": 0, "event": "solutionreview_completed", "feature_id": "023", "high_count": 0, "phase": "solution", "timestamp_utc": "2026-04-18T03:06:10.377443Z"}
-{"actor": "codex", "estimate_points": 45, "event": "estimation_completed", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-18T03:11:03.871575Z"}
-{"actor": "codex", "event": "tasking_completed", "feature_id": "023", "phase": "solution", "story_count": 3, "task_count": 18, "timestamp_utc": "2026-04-18T03:11:07.421814Z"}
-{"actor": "codex", "estimate_points": 45, "event": "solution_approved", "feature_id": "023", "phase": "solution", "story_count": 3, "task_count": 18, "timestamp_utc": "2026-04-18T03:11:14.238386Z"}
-{"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-18T03:25:07.079170Z"}
+{"acceptance_tests_written": 0, "actor": "codex", "details": "Repo-grounded sketch completed with codegraph seam checks", "event": "sketch_completed", "feature_id": "023", "phase": "solution", "tasks_sketched": 5, "timestamp_utc": "2026-04-19T02:33:09.854015Z"}

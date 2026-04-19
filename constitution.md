@@ -34,10 +34,6 @@ Never write new code or design custom architecture where an existing solution al
   Custom code carries a permanent maintenance, security, and testing burden. Prefer standard
   frameworks unless no viable option exists. Every build-custom decision MUST be explicitly
   justified against available alternatives.
-  - **No-server-first evaluation (MANDATORY)**: Before designing any custom service, evaluate
-    whether the feature's requirements can be met by wiring existing hosted services (GitHub
-    Actions, n8n community nodes, ClickUp automations, Zapier, Make.com) using only
-    tokens/credentials — no custom HTTP server required. This evaluation is performed in `/speckit.research`.
 
 ### III. Spec-First (NON-NEGOTIABLE)
 Every feature begins with a completed spec. No implementation begins before the spec is reviewed
@@ -45,12 +41,12 @@ and approved. The spec owns the WHAT. The plan owns the HOW. They must not contr
 
 Spec authoring rules and behavioral contract requirements are defined in `/speckit.specify`.
 
-### IV. Verification First (NON-NEGOTIABLE)
+### IV. Test Driven Verification First (NON-NEGOTIABLE)
 Changes to code or markdown-based process artifacts MUST be backed by deterministic verification
 before they are treated as complete. This includes command docs, templates, scaffold scripts,
 pipeline scripts, and feature code.
 
-- **Test-first workflow changes**: If a change alters a markdown process, command contract,
+- **Test-first workflow changes**:(Always test driven development) If a change alters a markdown process, command contract,
   template, scaffold, or deterministic gate, update or add the corresponding smoke test before
   relying on the change.
 - **Code changes require validation**: Changes to code MUST include the relevant automated test,
@@ -78,7 +74,6 @@ python scripts/speckit_tasks_gate.py validate-format --tasks-file <FEATURE_DIR/t
 python scripts/speckit_spec_gate.py <checklist-status|extract-clarifications|validate-clarification-questions> ...
 python scripts/speckit_plan_gate.py <research-prereq|spec-core-action|plan-sections|design-artifacts> ...
 ```
-`plan` verifies requirements checklist completeness. `implement` verifies `e2e.md`, matching E2E script, `estimates.md`, and checklist status summary.
 `speckit_implement_gate.py` verifies execution-time gates deterministically during `/speckit.implement`.
 `speckit_tasks_gate.py` verifies tasks checklist syntax and phase/story label consistency.
 `speckit_spec_gate.py` verifies specification checklist and clarification-question formatting.
