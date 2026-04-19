@@ -121,6 +121,7 @@ scripts/cgc_safe_index.sh src/mcp_codebase
 - If the doctor says `stale`, the current working tree changed after the last refresh; reindex only the scoped path that changed.
 - If the doctor says `locked`, prefer closing the stale owner cleanly before waiting for the safe-index wrapper to reclaim the lock.
 - If the doctor says `unavailable`, use the recovery hint text to distinguish unreadable files from memory-pressure failures.
+- Keep checkout state simple: avoid `git worktree`, detached HEADs, and scratch branches. Use `main` and explicit named branches from `main` only.
 
 ---
 
