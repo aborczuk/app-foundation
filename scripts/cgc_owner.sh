@@ -9,6 +9,10 @@ cgc_owner_lock_file() {
   printf '%s\n' "$CODEGRAPH_DB_DIR/${CGC_OWNER_DB_NAME:-kuzudb}.lock"
 }
 
+cgc_owner_last_error_file() {
+  printf '%s\n' "$CODEGRAPH_CONTEXT_DIR/last-index-error.txt"
+}
+
 cgc_owner_wait_seconds() {
   printf '%s\n' "${CGC_OWNER_WAIT_SECONDS:-15}"
 }
@@ -47,6 +51,10 @@ cgc_owner_pid_is_alive() {
 
 cgc_owner_clear_artifacts() {
   rm -f "$(cgc_owner_pid_file)" "$(cgc_owner_lock_file)"
+}
+
+cgc_owner_clear_last_error() {
+  rm -f "$(cgc_owner_last_error_file)"
 }
 
 cgc_owner_release() {
@@ -101,4 +109,33 @@ cgc_owner_claim() {
   printf '%s\n' "$$" > "$owner_file"
   printf '%s\n' "pid=$$ command=$0" > "$lock_file"
   trap cgc_owner_release EXIT INT TERM
+}
+
+cgc_owner_error_is_memory_pressure() {
+  local normalized_error
+
+  normalized_error="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized_error" in
+    *"buffer pool"*exhaust*|*"out of memory"*|*"memory pressure"*|*"memory exhausted"*|*"cannot allocate"*|*"allocation failed"*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+cgc_owner_record_last_error() {
+  local error_type exit_code error_detail error_file normalized_detail
+
+  error_type="${1:-unknown}"
+  exit_code="${2:-1}"
+  error_detail="${3:-}"
+  error_file="$(cgc_owner_last_error_file)"
+  normalized_detail="$(printf '%s' "$error_detail" | tr '\n' ' ' | tr -s ' ')"
+
+  {
+    printf 'type=%s\n' "$error_type"
+    printf 'exit_code=%s\n' "$exit_code"
+    printf 'detail=%s\n' "$normalized_detail"
+  } > "$error_file"
 }

@@ -37,7 +37,19 @@ set -euo pipefail
 printf '%s\\n' "$*" >> "$FAKE_UV_LOG"
 if [ "${1:-}" = "run" ] && [ "${3:-}" = "cgc" ] && [ "${4:-}" = "index" ]; then
   printf '%s\\n' "$*" >> "$FAKE_CGC_LOG"
-  exit 0
+  case "${FAKE_UV_MODE:-success}" in
+    success)
+      exit 0
+      ;;
+    memory-pressure)
+      echo "Kuzu buffer pool exhausted while indexing" >&2
+      exit 137
+      ;;
+    *)
+      echo "generic cgc index failure" >&2
+      exit 1
+      ;;
+  esac
 fi
 echo "unexpected uv invocation: $*" >&2
 exit 1
@@ -170,6 +182,43 @@ def test_safe_index_refuses_when_owner_stays_live_past_timeout(tmp_path: Path) -
     assert _read_text_or_empty(log_file) == ""
     assert owner_pid_file.exists()
     assert lock_file.exists()
+
+
+def test_safe_index_records_memory_pressure_and_health_reports_it(tmp_path: Path) -> None:
+    repo = _copy_script_repo(tmp_path)
+    bin_dir, log_file = _install_fake_uv(tmp_path)
+    owner_pid_file = repo / ".codegraphcontext" / "db" / "kuzudb.owner.pid"
+    lock_file = repo / ".codegraphcontext" / "db" / "kuzudb.lock"
+    last_error_file = repo / ".codegraphcontext" / "last-index-error.txt"
+
+    result = _run_script(
+        repo,
+        "cgc_safe_index.sh",
+        "src/mcp_codebase",
+        env={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "FAKE_UV_LOG": str(log_file),
+            "FAKE_CGC_LOG": str(log_file),
+            "FAKE_UV_MODE": "memory-pressure",
+            "CGC_OWNER_WAIT_SECONDS": "2",
+            "CGC_OWNER_POLL_SECONDS": "1",
+        },
+    )
+
+    assert result.returncode == 137, result.stderr
+    assert "memory pressure" in result.stderr.lower()
+    assert last_error_file.exists()
+    assert "memory-pressure" in last_error_file.read_text(encoding="utf-8")
+    assert not owner_pid_file.exists()
+    assert not lock_file.exists()
+
+    from src.mcp_codebase.health import GraphHealthStatus, classify_graph_health
+
+    health = classify_graph_health(repo)
+
+    assert health.status is GraphHealthStatus.UNAVAILABLE
+    assert health.recovery_hint.id == "fail-fast-memory-pressure"
+    assert "memory pressure" in health.detail.lower()
 
 
 def test_index_repo_reuses_safe_index_and_full_repo_opt_in(tmp_path: Path) -> None:

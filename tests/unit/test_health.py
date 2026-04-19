@@ -105,3 +105,18 @@ def test_classify_graph_health_returns_unavailable_for_unreadable_db(tmp_path: P
     assert result.status is GraphHealthStatus.UNAVAILABLE
     assert result.recovery_hint.id == "fallback-to-files"
     assert "not readable" in result.detail
+
+
+def test_classify_graph_health_returns_memory_pressure_hint(tmp_path: Path) -> None:
+    error_file = tmp_path / ".codegraphcontext" / "last-index-error.txt"
+    error_file.parent.mkdir(parents=True, exist_ok=True)
+    error_file.write_text(
+        "type=memory-pressure\nexit_code=137\ndetail=buffer pool exhausted while indexing\n",
+        encoding="utf-8",
+    )
+
+    result = classify_graph_health(tmp_path)
+
+    assert result.status is GraphHealthStatus.UNAVAILABLE
+    assert result.recovery_hint.id == "fail-fast-memory-pressure"
+    assert "memory pressure" in result.detail.lower()

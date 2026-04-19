@@ -90,6 +90,7 @@ _LOCK_MARKERS = (
     ".codegraphcontext/db/.lock",
     ".codegraphcontext/.lock",
 )
+_LAST_INDEX_ERROR_FILE = ".codegraphcontext/last-index-error.txt"
 
 
 def classify_graph_health(project_root: Path) -> GraphHealthResult:
@@ -97,7 +98,12 @@ def classify_graph_health(project_root: Path) -> GraphHealthResult:
 
     start = monotonic()
     repo_root = project_root.resolve()
-    status, detail = _classify_state(repo_root)
+    last_index_error = _read_last_index_error(repo_root)
+    if last_index_error is not None:
+        # Keep last-failure context visible until a successful refresh clears it.
+        status, detail = last_index_error
+    else:
+        status, detail = _classify_state(repo_root)
     recovery_hint = build_recovery_hint(status, repo_root=repo_root, detail=detail)
     checked_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     latency_ms = round((monotonic() - start) * 1000.0, 1)
@@ -155,6 +161,18 @@ def build_recovery_hint(
             summary=(
                 "Graph access is blocked by a lock marker; close the stale "
                 "session or wait for the owner, then retry."
+            ),
+            command=f"scripts/cgc_safe_index.sh {repo_display}",
+            preserves_last_good=True,
+        )
+
+    if status is GraphHealthStatus.UNAVAILABLE and _is_memory_pressure_detail(detail):
+        return GraphRecoveryHint(
+            id="fail-fast-memory-pressure",
+            action="retry",
+            summary=(
+                "Memory pressure blocked indexing; free memory or reduce the "
+                "indexed scope before retrying."
             ),
             command=f"scripts/cgc_safe_index.sh {repo_display}",
             preserves_last_good=True,
@@ -229,6 +247,33 @@ def _classify_state(repo_root: Path) -> tuple[GraphHealthStatus, str]:
     )
 
 
+def _read_last_index_error(repo_root: Path) -> tuple[GraphHealthStatus, str] | None:
+    error_path = repo_root / _LAST_INDEX_ERROR_FILE
+    if not error_path.exists():
+        return None
+
+    try:
+        lines = error_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    fields: dict[str, str] = {}
+    for line in lines:
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        fields[key.strip()] = value.strip()
+
+    detail = fields.get("detail", "last index attempt failed")
+    if fields.get("type") == "memory-pressure":
+        return (
+            GraphHealthStatus.UNAVAILABLE,
+            f"last index attempt failed due to memory pressure: {detail}",
+        )
+
+    return GraphHealthStatus.UNAVAILABLE, detail
+
+
 def _first_existing_path(root: Path, candidates: Iterable[str]) -> Path | None:
     for relative in candidates:
         candidate = root / relative
@@ -270,3 +315,18 @@ def _latest_source_mtime(repo_root: Path) -> tuple[float | None, Path | None]:
             maybe_update(candidate)
 
     return latest_mtime, latest_path
+
+
+def _is_memory_pressure_detail(detail: str) -> bool:
+    normalized = detail.lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "buffer pool",
+            "out of memory",
+            "memory pressure",
+            "memory exhausted",
+            "cannot allocate",
+            "allocation failed",
+        )
+    )

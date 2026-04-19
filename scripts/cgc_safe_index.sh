@@ -108,10 +108,51 @@ fi
 
 cgc_owner_claim
 
+stdout_file="$(mktemp "${TMPDIR:-/tmp}/cgc-index-stdout-XXXXXX")"
+stderr_file="$(mktemp "${TMPDIR:-/tmp}/cgc-index-stderr-XXXXXX")"
+cleanup_temp_files() {
+  rm -f "$stdout_file" "$stderr_file"
+}
+trap 'cleanup_temp_files; cgc_owner_release' EXIT INT TERM
+
 if [ "$FORCE" -eq 1 ]; then
   echo "Running scoped force index for: $TARGET"
-  uv run --no-sync cgc index --force "$TARGET"
+  if uv run --no-sync cgc index --force "$TARGET" >"$stdout_file" 2>"$stderr_file"; then
+    cat "$stdout_file"
+    cat "$stderr_file" >&2
+    cgc_owner_clear_last_error
+    cleanup_temp_files
+  else
+    index_status=$?
+    stderr_text="$(cat "$stderr_file")"
+    if cgc_owner_error_is_memory_pressure "$stderr_text"; then
+      cgc_owner_record_last_error "memory-pressure" "$index_status" "$stderr_text"
+      echo "CodeGraph indexing failed due to memory pressure: $stderr_text" >&2
+    else
+      cgc_owner_clear_last_error
+      echo "CodeGraph indexing failed: $stderr_text" >&2
+    fi
+    cleanup_temp_files
+    exit "$index_status"
+  fi
 else
   echo "Running incremental index for: $TARGET"
-  uv run --no-sync cgc index "$TARGET"
+  if uv run --no-sync cgc index "$TARGET" >"$stdout_file" 2>"$stderr_file"; then
+    cat "$stdout_file"
+    cat "$stderr_file" >&2
+    cgc_owner_clear_last_error
+    cleanup_temp_files
+  else
+    index_status=$?
+    stderr_text="$(cat "$stderr_file")"
+    if cgc_owner_error_is_memory_pressure "$stderr_text"; then
+      cgc_owner_record_last_error "memory-pressure" "$index_status" "$stderr_text"
+      echo "CodeGraph indexing failed due to memory pressure: $stderr_text" >&2
+    else
+      cgc_owner_clear_last_error
+      echo "CodeGraph indexing failed: $stderr_text" >&2
+    fi
+    cleanup_temp_files
+    exit "$index_status"
+  fi
 fi
