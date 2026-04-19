@@ -209,6 +209,64 @@ resolve_base_ref() {
     return 1
 }
 
+# Enforce deterministic feature branching from a clean, synced local main.
+ensure_main_branch_ready() {
+    local base_ref="$1"
+    local current_branch
+    local ahead_count
+    local behind_count
+
+    if [ "$base_ref" != "main" ] && [ "$base_ref" != "origin/main" ]; then
+        return 0
+    fi
+
+    if ! git rev-parse --verify --quiet "main^{commit}" >/dev/null; then
+        >&2 echo "Error: Local 'main' branch is required for deterministic /speckit.specify branching."
+        >&2 echo "Create or fetch 'main', then retry (or pass --base <branch> intentionally)."
+        return 1
+    fi
+
+    current_branch="$(git branch --show-current 2>/dev/null || echo "")"
+    if [ "$current_branch" != "main" ]; then
+        if [ -n "$(git status --porcelain)" ]; then
+            >&2 echo "Error: You are on '$current_branch' with uncommitted changes."
+            >&2 echo "To branch off main, commit/stash/discard current changes first, then rerun /speckit.specify."
+            return 1
+        fi
+
+        if ! git switch main >/dev/null 2>&1; then
+            >&2 echo "Error: Failed to switch to 'main' before feature scaffolding."
+            >&2 echo "Switch to 'main' manually and rerun /speckit.specify."
+            return 1
+        fi
+    fi
+
+    if [ -n "$(git status --porcelain)" ]; then
+        >&2 echo "Error: Local 'main' has uncommitted changes."
+        >&2 echo "Should these be committed first? Commit/stash/discard them, then rerun /speckit.specify."
+        return 1
+    fi
+
+    if git rev-parse --verify --quiet "origin/main^{commit}" >/dev/null; then
+        ahead_count="$(git rev-list --count "origin/main..main" 2>/dev/null || echo "0")"
+        behind_count="$(git rev-list --count "main..origin/main" 2>/dev/null || echo "0")"
+
+        if [ "${ahead_count:-0}" -gt 0 ]; then
+            >&2 echo "Error: Local 'main' has ${ahead_count} commit(s) not pushed to origin/main."
+            >&2 echo "Should these be pushed first? Push main, then rerun /speckit.specify."
+            return 1
+        fi
+
+        if [ "${behind_count:-0}" -gt 0 ]; then
+            >&2 echo "Error: Local 'main' is ${behind_count} commit(s) behind origin/main."
+            >&2 echo "Pull/rebase main first so feature branches start from up-to-date main."
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
 # Resolve repository root. Prefer git information when available, but fall back
 # to searching for repository markers so the workflow still functions in repositories that
 # were initialised with --no-git.
@@ -339,6 +397,10 @@ if [ "$HAS_GIT" = true ]; then
             >&2 echo "Expected one of: main, origin/main, master, origin/master."
             >&2 echo "Use --base <branch> to select a specific base."
         fi
+        exit 1
+    fi
+
+    if ! ensure_main_branch_ready "$BASE_REF"; then
         exit 1
     fi
 

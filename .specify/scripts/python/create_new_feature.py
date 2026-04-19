@@ -14,25 +14,29 @@ from pathlib import Path
 def _usage(program: str) -> str:
     return "\n".join(
         [
-            f"Usage: {program} [--json] [--short-name <name>] [--number N] <feature_description>",
+            f"Usage: {program} [--json] [--short-name <name>] [--number N] [--base <branch>] <feature_description>",
             "",
             "Options:",
             "  --json              Output in JSON format",
             "  --short-name <name> Provide a custom short name (2-4 words) for the branch",
             "  --number N          Specify branch number manually (overrides auto-detection)",
+            "  --base <branch>     Create feature branch from this base (default: main)",
             "  --help, -h          Show this help message",
             "",
             "Examples:",
             f"  {program} 'Add user authentication system' --short-name 'user-auth'",
             f"  {program} 'Implement OAuth2 integration for API' --number 5",
+            f"  {program} 'Implement OAuth2 integration for API' --base main",
         ]
     )
 
 
-def _parse_args(argv: list[str], program: str) -> tuple[bool, str, str, str]:
+def _parse_args(argv: list[str], program: str) -> tuple[bool, str, str, str, str]:
+    """Parse CLI arguments for the create-feature flow."""
     json_mode = False
     short_name = ""
     branch_number = ""
+    base_branch = ""
     args: list[str] = []
 
     index = 0
@@ -52,6 +56,12 @@ def _parse_args(argv: list[str], program: str) -> tuple[bool, str, str, str]:
                 raise SystemExit(1)
             index += 1
             branch_number = argv[index]
+        elif arg == "--base":
+            if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+                print("Error: --base requires a value", file=sys.stderr)
+                raise SystemExit(1)
+            index += 1
+            base_branch = argv[index]
         elif arg in {"--help", "-h"}:
             print(_usage(program))
             raise SystemExit(0)
@@ -62,7 +72,7 @@ def _parse_args(argv: list[str], program: str) -> tuple[bool, str, str, str]:
     raw_feature_description = " ".join(args)
     if not raw_feature_description:
         print(
-            f"Usage: {program} [--json] [--short-name <name>] [--number N] <feature_description>",
+            f"Usage: {program} [--json] [--short-name <name>] [--number N] [--base <branch>] <feature_description>",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -70,7 +80,7 @@ def _parse_args(argv: list[str], program: str) -> tuple[bool, str, str, str]:
     if not feature_description:
         print("Error: Feature description cannot be empty or contain only whitespace", file=sys.stderr)
         raise SystemExit(1)
-    return json_mode, short_name, branch_number, feature_description
+    return json_mode, short_name, branch_number, base_branch, feature_description
 
 
 def _run_git(args: list[str], repo_root: Path, *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -81,6 +91,84 @@ def _run_git(args: list[str], repo_root: Path, *, check: bool = True) -> subproc
         capture_output=True,
         text=True,
     )
+
+
+def _resolve_base_ref(requested: str, repo_root: Path) -> str | None:
+    """Resolve a deterministic base ref for feature-branch creation."""
+    if requested:
+        direct = _run_git(["rev-parse", "--verify", "--quiet", f"{requested}^{{commit}}"], repo_root, check=False)
+        if direct.returncode == 0:
+            return requested
+        prefixed = _run_git(["rev-parse", "--verify", "--quiet", f"origin/{requested}^{{commit}}"], repo_root, check=False)
+        if prefixed.returncode == 0:
+            return f"origin/{requested}"
+        return None
+
+    for candidate in ("main", "origin/main", "master", "origin/master"):
+        resolved = _run_git(["rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}"], repo_root, check=False)
+        if resolved.returncode == 0:
+            return candidate
+    return None
+
+
+def _working_tree_dirty(repo_root: Path) -> bool:
+    """Return True when tracked or untracked changes are present."""
+    status = _run_git(["status", "--porcelain"], repo_root, check=False)
+    return bool(status.stdout.strip())
+
+
+def _count_rev_list(repo_root: Path, range_expr: str) -> int:
+    """Return commit count for a rev-list range expression."""
+    result = _run_git(["rev-list", "--count", range_expr], repo_root, check=False)
+    raw = (result.stdout or "").strip()
+    try:
+        return int(raw) if raw else 0
+    except ValueError:
+        return 0
+
+
+def _ensure_main_branch_ready(repo_root: Path, base_ref: str) -> int:
+    """Enforce clean and synced main before branching from main."""
+    if base_ref not in {"main", "origin/main"}:
+        return 0
+
+    has_main = _run_git(["rev-parse", "--verify", "--quiet", "main^{commit}"], repo_root, check=False)
+    if has_main.returncode != 0:
+        print("Error: Local 'main' branch is required for deterministic /speckit.specify branching.", file=sys.stderr)
+        print("Create or fetch 'main', then retry (or pass --base <branch> intentionally).", file=sys.stderr)
+        return 1
+
+    current_branch = (_run_git(["branch", "--show-current"], repo_root, check=False).stdout or "").strip()
+    if current_branch != "main":
+        if _working_tree_dirty(repo_root):
+            print(f"Error: You are on '{current_branch}' with uncommitted changes.", file=sys.stderr)
+            print("To branch off main, commit/stash/discard current changes first, then rerun /speckit.specify.", file=sys.stderr)
+            return 1
+        switch_result = _run_git(["switch", "main"], repo_root, check=False)
+        if switch_result.returncode != 0:
+            print("Error: Failed to switch to 'main' before feature scaffolding.", file=sys.stderr)
+            print("Switch to 'main' manually and rerun /speckit.specify.", file=sys.stderr)
+            return 1
+
+    if _working_tree_dirty(repo_root):
+        print("Error: Local 'main' has uncommitted changes.", file=sys.stderr)
+        print("Should these be committed first? Commit/stash/discard them, then rerun /speckit.specify.", file=sys.stderr)
+        return 1
+
+    has_origin_main = _run_git(["rev-parse", "--verify", "--quiet", "origin/main^{commit}"], repo_root, check=False)
+    if has_origin_main.returncode == 0:
+        ahead_count = _count_rev_list(repo_root, "origin/main..main")
+        behind_count = _count_rev_list(repo_root, "main..origin/main")
+        if ahead_count > 0:
+            print(f"Error: Local 'main' has {ahead_count} commit(s) not pushed to origin/main.", file=sys.stderr)
+            print("Should these be pushed first? Push main, then rerun /speckit.specify.", file=sys.stderr)
+            return 1
+        if behind_count > 0:
+            print(f"Error: Local 'main' is {behind_count} commit(s) behind origin/main.", file=sys.stderr)
+            print("Pull/rebase main first so feature branches start from up-to-date main.", file=sys.stderr)
+            return 1
+
+    return 0
 
 
 def _find_repo_root(start_dir: Path) -> Path | None:
@@ -256,8 +344,9 @@ def _is_permission_error(stderr_text: str) -> bool:
 
 
 def main(argv: list[str]) -> int:
+    """Create a feature branch/spec scaffold with deterministic base checks."""
     program = Path(sys.argv[0]).name
-    json_mode, short_name, branch_number, feature_description = _parse_args(argv, program)
+    json_mode, short_name, branch_number, base_branch, feature_description = _parse_args(argv, program)
 
     script_dir = Path(__file__).resolve().parent
     repo_root, has_git = _get_repo_root(script_dir)
@@ -296,8 +385,24 @@ def main(argv: list[str]) -> int:
         print(f"[specify] Truncated to: {branch_name} ({len(branch_name)} bytes)", file=sys.stderr)
 
     if has_git:
+        base_selection = base_branch or os.getenv("SPECIFY_BASE_BRANCH", "")
+        base_ref = _resolve_base_ref(base_selection, repo_root)
+        if base_ref is None:
+            if base_selection:
+                print(f"Error: Could not resolve base branch '{base_selection}'.", file=sys.stderr)
+                print("Provide a valid branch via --base <branch>.", file=sys.stderr)
+            else:
+                print("Error: Could not resolve a deterministic base branch.", file=sys.stderr)
+                print("Expected one of: main, origin/main, master, origin/master.", file=sys.stderr)
+                print("Use --base <branch> to select a specific base.", file=sys.stderr)
+            return 1
+
+        readiness_status = _ensure_main_branch_ready(repo_root, base_ref)
+        if readiness_status != 0:
+            return readiness_status
+
         try:
-            _run_git(["switch", "-c", branch_name], repo_root, check=True)
+            _run_git(["checkout", "-b", branch_name, base_ref], repo_root, check=True)
         except subprocess.CalledProcessError as exc:
             branch_create_error = re.sub(r"\s+", " ", (exc.stderr or "").strip())
 
@@ -321,9 +426,8 @@ def main(argv: list[str]) -> int:
                     print(f"[specify] git stderr: {branch_create_error}", file=sys.stderr)
                 return 1
 
-            print(f"Error: Failed to create git branch '{branch_name}'.", file=sys.stderr)
-            if branch_create_error:
-                print(f"[specify] git stderr: {branch_create_error}", file=sys.stderr)
+            print(f"Error: Failed to create git branch '{branch_name}' from '{base_ref}'.", file=sys.stderr)
+            print("Please ensure your working tree is clean and the base branch is valid.", file=sys.stderr)
             return 1
     else:
         print(f"[specify] Warning: Git repository not detected; skipped branch creation for {branch_name}", file=sys.stderr)
