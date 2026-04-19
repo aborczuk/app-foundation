@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -120,3 +121,25 @@ def test_classify_graph_health_returns_memory_pressure_hint(tmp_path: Path) -> N
     assert result.status is GraphHealthStatus.UNAVAILABLE
     assert result.recovery_hint.id == "fail-fast-memory-pressure"
     assert "memory pressure" in result.detail.lower()
+
+
+def test_classify_graph_health_returns_stale_for_edit_drift(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    source = tmp_path / "src" / "module.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    db = tmp_path / ".codegraphcontext" / "db" / "kuzudb"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.write_text("snapshot\n", encoding="utf-8")
+    marker = tmp_path / ".codegraphcontext" / "last-edit-signature.txt"
+    marker.write_text("", encoding="utf-8")
+
+    now = time.time()
+    os.utime(source, (now - 120, now - 120))
+    os.utime(db, (now - 30, now - 30))
+
+    result = classify_graph_health(tmp_path)
+
+    assert result.status is GraphHealthStatus.STALE
+    assert result.recovery_hint.id == "refresh-scoped-index"
+    assert "working tree edits changed" in result.detail

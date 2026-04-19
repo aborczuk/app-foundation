@@ -121,6 +121,7 @@ if [ "$FORCE" -eq 1 ]; then
     cat "$stdout_file"
     cat "$stderr_file" >&2
     cgc_owner_clear_last_error
+    cgc_owner_record_edit_signature
     cleanup_temp_files
   else
     index_status=$?
@@ -141,6 +142,7 @@ else
     cat "$stdout_file"
     cat "$stderr_file" >&2
     cgc_owner_clear_last_error
+    cgc_owner_record_edit_signature
     cleanup_temp_files
   else
     index_status=$?

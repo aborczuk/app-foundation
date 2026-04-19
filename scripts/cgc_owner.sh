@@ -13,6 +13,10 @@ cgc_owner_last_error_file() {
   printf '%s\n' "$CODEGRAPH_CONTEXT_DIR/last-index-error.txt"
 }
 
+cgc_owner_last_edit_signature_file() {
+  printf '%s\n' "$CODEGRAPH_CONTEXT_DIR/last-edit-signature.txt"
+}
+
 cgc_owner_wait_seconds() {
   printf '%s\n' "${CGC_OWNER_WAIT_SECONDS:-15}"
 }
@@ -55,6 +59,10 @@ cgc_owner_clear_artifacts() {
 
 cgc_owner_clear_last_error() {
   rm -f "$(cgc_owner_last_error_file)"
+}
+
+cgc_owner_clear_last_edit_signature() {
+  rm -f "$(cgc_owner_last_edit_signature_file)"
 }
 
 cgc_owner_release() {
@@ -138,4 +146,59 @@ cgc_owner_record_last_error() {
     printf 'exit_code=%s\n' "$exit_code"
     printf 'detail=%s\n' "$normalized_detail"
   } > "$error_file"
+}
+
+cgc_owner_current_edit_signature() {
+  local status_file marker_file current_signature
+
+  marker_file="$(cgc_owner_last_edit_signature_file)"
+  status_file="$(mktemp "${TMPDIR:-/tmp}/cgc-edit-status-XXXXXX")"
+
+  if ! git -C "$REPO_ROOT" status --porcelain --untracked-files=normal >"$status_file" 2>/dev/null; then
+    rm -f "$status_file"
+    return 0
+  fi
+
+  current_signature="$(
+    python3 - "$status_file" <<'PY'
+from pathlib import Path
+import sys
+
+ignored_prefixes = (
+    ".codegraphcontext/",
+    ".speckit/",
+    ".uv-cache/",
+    "logs/",
+    "shadow-runs/",
+)
+
+status_path = Path(sys.argv[1])
+lines = []
+for raw in status_path.read_text(encoding="utf-8").splitlines():
+    line = raw.strip()
+    if not line:
+        continue
+    path = line[3:] if len(line) > 3 else ""
+    if " -> " in path:
+        candidates = [part.strip() for part in path.split(" -> ")]
+    else:
+        candidates = [path.strip()]
+    if any(candidate.startswith(ignored_prefixes) for candidate in candidates if candidate):
+        continue
+    lines.append(line)
+
+print("\n".join(sorted(dict.fromkeys(lines))))
+PY
+  )"
+
+  rm -f "$status_file"
+  printf '%s\n' "$current_signature"
+}
+
+cgc_owner_record_edit_signature() {
+  local signature_file current_signature
+
+  signature_file="$(cgc_owner_last_edit_signature_file)"
+  current_signature="$(cgc_owner_current_edit_signature)"
+  printf '%s\n' "$current_signature" > "$signature_file"
 }

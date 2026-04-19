@@ -22,6 +22,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Iterable
 import os
+import subprocess
 
 
 class GraphHealthStatus(str, Enum):
@@ -90,6 +91,7 @@ _LOCK_MARKERS = (
     ".codegraphcontext/db/.lock",
     ".codegraphcontext/.lock",
 )
+_LAST_EDIT_SIGNATURE_FILE = ".codegraphcontext/last-edit-signature.txt"
 _LAST_INDEX_ERROR_FILE = ".codegraphcontext/last-index-error.txt"
 
 
@@ -104,6 +106,10 @@ def classify_graph_health(project_root: Path) -> GraphHealthResult:
         status, detail = last_index_error
     else:
         status, detail = _classify_state(repo_root)
+        if status is GraphHealthStatus.HEALTHY:
+            edit_drift = _read_edit_drift(repo_root)
+            if edit_drift is not None:
+                status, detail = edit_drift
     recovery_hint = build_recovery_hint(status, repo_root=repo_root, detail=detail)
     checked_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     latency_ms = round((monotonic() - start) * 1000.0, 1)
@@ -272,6 +278,94 @@ def _read_last_index_error(repo_root: Path) -> tuple[GraphHealthStatus, str] | N
         )
 
     return GraphHealthStatus.UNAVAILABLE, detail
+
+
+def _read_edit_drift(repo_root: Path) -> tuple[GraphHealthStatus, str] | None:
+    current_signature = _current_edit_signature(repo_root)
+    cached_signature = _read_cached_edit_signature(repo_root)
+
+    if current_signature == cached_signature:
+        return None
+
+    current_preview = _preview_edit_signature(current_signature)
+    cached_preview = _preview_edit_signature(cached_signature)
+    return (
+        GraphHealthStatus.STALE,
+        (
+            "working tree edits changed since the last indexed snapshot; "
+            f"current={current_preview or 'clean'}, cached={cached_preview or 'clean'}"
+        ),
+    )
+
+
+def _read_cached_edit_signature(repo_root: Path) -> str:
+    marker_path = repo_root / _LAST_EDIT_SIGNATURE_FILE
+    if not marker_path.exists():
+        return ""
+
+    try:
+        return marker_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _current_edit_signature(repo_root: Path) -> str:
+    if not repo_root.exists() or not repo_root.is_dir():
+        return ""
+
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return ""
+
+    lines: list[str] = []
+    for raw in proc.stdout.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        path = line[3:] if len(line) > 3 else ""
+        if " -> " in path:
+            candidates = [part.strip() for part in path.split(" -> ")]
+        else:
+            candidates = [path.strip()]
+        if any(_is_ignored_edit_path(candidate) for candidate in candidates if candidate):
+            continue
+        lines.append(line)
+
+    return "\n".join(sorted(dict.fromkeys(lines)))
+
+
+def _is_ignored_edit_path(relative_path: str) -> bool:
+    ignored_prefixes = (
+        ".codegraphcontext/",
+        ".speckit/",
+        ".uv-cache/",
+        "logs/",
+        "shadow-runs/",
+    )
+    normalized = relative_path.replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.startswith(ignored_prefixes)
+
+
+def _preview_edit_signature(signature: str) -> str:
+    if not signature:
+        return ""
+    first_line = signature.splitlines()[0].strip()
+    return first_line[:120]
 
 
 def _first_existing_path(root: Path, candidates: Iterable[str]) -> Path | None:

@@ -26,6 +26,7 @@ IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
 )
+LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-edit-signature.txt"
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,69 @@ def init_codegraph_env() -> None:
     os.environ.setdefault("IGNORE_DIRS", IGNORE_DIRS_DEFAULT)
 
 
+def codegraph_edit_signature_file(project_root: Path | None = None) -> Path:
+    """Return the cached edit-signature marker path."""
+
+    root = project_root or REPO_ROOT
+    return root / LAST_EDIT_SIGNATURE_FILE.name
+
+
+def codegraph_cached_edit_signature(project_root: Path | None = None) -> str:
+    """Read the cached edit signature if it exists."""
+
+    marker_file = codegraph_edit_signature_file(project_root)
+    if not marker_file.is_file():
+        return ""
+    try:
+        return marker_file.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
+    """Return the current non-ignored git status signature."""
+
+    root = project_root or REPO_ROOT
+    proc = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "status",
+            "--porcelain",
+            "--untracked-files=normal",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return ""
+
+    ignored_prefixes = (
+        ".codegraphcontext/",
+        ".speckit/",
+        ".uv-cache/",
+        "logs/",
+        "shadow-runs/",
+    )
+    lines: list[str] = []
+    for raw in proc.stdout.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        path = line[3:] if len(line) > 3 else ""
+        if " -> " in path:
+            candidates = [part.strip() for part in path.split(" -> ")]
+        else:
+            candidates = [path.strip()]
+        if any(candidate.startswith(ignored_prefixes) for candidate in candidates if candidate):
+            continue
+        lines.append(line)
+
+    return "\n".join(sorted(dict.fromkeys(lines)))
+
+
 def codegraph_health_status(project_root: Path | None = None) -> str:
     """Return codegraph health status string or probe-failed."""
     root = project_root or REPO_ROOT
@@ -106,6 +170,15 @@ def codegraph_health_status(project_root: Path | None = None) -> str:
     except json.JSONDecodeError:
         print("WARN: codegraph health probe returned non-JSON output", file=sys.stderr)
         return "probe-failed"
+    if status == "healthy":
+        current_signature = codegraph_current_edit_signature(root)
+        cached_signature = codegraph_cached_edit_signature(root)
+        if current_signature != cached_signature:
+            print(
+                f"WARN: local working-tree edits changed since the last graph refresh; marking codegraph stale for {root}",
+                file=sys.stderr,
+            )
+            return "stale"
     return status or "probe-failed"
 
 
