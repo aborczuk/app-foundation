@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CODEGRAPH_CONTEXT_DIR="$REPO_ROOT/.codegraphcontext"
 CODEGRAPH_DB_DIR="$CODEGRAPH_CONTEXT_DIR/db"
+source "$SCRIPT_DIR/cgc_owner.sh"
 
 mkdir -p "$CODEGRAPH_DB_DIR"
 REPO_UV_CACHE_DIR="${CGC_UV_CACHE_DIR:-$CODEGRAPH_CONTEXT_DIR/.uv-cache}"
@@ -32,4 +33,11 @@ if [ "${CGC_ALLOW_REPO_INDEX:-0}" != "1" ]; then
 fi
 
 cd "$REPO_ROOT"
+if cgc_owner_wait_for_release; then
+  :
+else
+  owner_guard_status=$?
+  exit "$owner_guard_status"
+fi
+
 CGC_ALLOW_REPO_INDEX=1 "$SCRIPT_DIR/cgc_safe_index.sh" "$REPO_ROOT"

@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CODEGRAPH_CONTEXT_DIR="$REPO_ROOT/.codegraphcontext"
 CODEGRAPH_DB_DIR="$CODEGRAPH_CONTEXT_DIR/db"
+source "$SCRIPT_DIR/cgc_owner.sh"
 
 IGNORE_DIRS_DEFAULT="node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs"
 
@@ -98,6 +99,15 @@ if [ "$FORCE" -eq 0 ] && is_repo_root_target "$TARGET_TRIMMED" && [ "${CGC_ALLOW
 fi
 
 cd "$REPO_ROOT"
+if cgc_owner_wait_for_release; then
+  :
+else
+  owner_guard_status=$?
+  exit "$owner_guard_status"
+fi
+
+cgc_owner_claim
+
 if [ "$FORCE" -eq 1 ]; then
   echo "Running scoped force index for: $TARGET"
   uv run --no-sync cgc index --force "$TARGET"
