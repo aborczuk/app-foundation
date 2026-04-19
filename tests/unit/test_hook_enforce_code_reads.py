@@ -44,6 +44,23 @@ def test_small_markdown_sed_reads_are_allowed(tmp_path: Path) -> None:
     assert stdout == ""
 
 
+def test_broad_root_find_is_denied() -> None:
+    stdout = _run_hook("find . -name '*.py'")
+
+    assert stdout
+    data = json.loads(stdout)
+    decision = data["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "Broad root-level file scans are denied" in decision["permissionDecisionReason"]
+    assert "read_code_context/read_code_window" in decision["permissionDecisionReason"]
+
+
+def test_scoped_find_is_allowed() -> None:
+    stdout = _run_hook("find src tests -name '*.py'")
+
+    assert stdout == ""
+
+
 def test_settings_prioritize_code_doc_read_hook() -> None:
     settings = json.loads(Path(".claude/settings.json").read_text(encoding="utf-8"))
     bash_hooks = settings["hooks"]["PreToolUse"][0]["hooks"]

@@ -68,6 +68,60 @@ def _emit_deny(reason: str) -> None:
     )
 
 
+def _extract_find_policy(command: str) -> tuple[bool, bool] | None:
+    """Return broad/root-find and code/doc-target booleans when command invokes find."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+
+    if not tokens:
+        return None
+
+    try:
+        find_idx = tokens.index("find")
+    except ValueError:
+        return None
+
+    args = tokens[find_idx + 1 :]
+    if not args:
+        # `find` with no path defaults to current directory.
+        return True, True
+
+    path_tokens: list[str] = []
+    expr_tokens: list[str] = []
+    parsing_paths = True
+
+    for token in args:
+        if parsing_paths and not token.startswith("-") and token not in {"!", "(", ")"}:
+            path_tokens.append(token)
+            continue
+        parsing_paths = False
+        expr_tokens.append(token)
+
+    if not path_tokens:
+        path_tokens = ["."]
+
+    broad_root = any(token in {".", "./", "/"} for token in path_tokens)
+
+    code_doc_target = False
+    for idx, token in enumerate(expr_tokens):
+        if token in {"-name", "-iname"} and idx + 1 < len(expr_tokens):
+            pattern = expr_tokens[idx + 1].lower()
+            if any(pattern.endswith(ext) or pattern.endswith(f"*{ext}") for ext in CODE_EXTENSIONS | TEXT_EXTENSIONS):
+                code_doc_target = True
+
+    # `find . -type f` is still broad file inventory over the root.
+    if "-type" in expr_tokens and "f" in expr_tokens:
+        code_doc_target = True
+
+    if not code_doc_target and broad_root:
+        # No explicit filter still scans broadly enough to warrant a deny.
+        code_doc_target = True
+
+    return broad_root, code_doc_target
+
+
 def _extract_candidate_paths(command: str) -> list[str]:
     pattern = re.compile(r"([A-Za-z0-9_./-]+\.[A-Za-z0-9_]+)")
     return [m.group(1) for m in pattern.finditer(command)]
@@ -156,6 +210,17 @@ def main() -> int:
     command = payload.get("tool_input", {}).get("command", "").strip()
     if not command:
         return 0
+
+    find_policy = _extract_find_policy(command)
+    if find_policy is not None:
+        broad_root, code_doc_target = find_policy
+        if broad_root and code_doc_target:
+            _emit_deny(
+                "Broad root-level file scans are denied (for example `find . -name '*.py'`). "
+                "Use scripts/read-code.sh (read_code_context/read_code_window) for code reads, "
+                "or scope inventory to explicit directories (for example `find src tests -name '*.py'`)."
+            )
+            return 0
 
     helper_policy = _extract_read_code_policy(command)
     if helper_policy is not None:
