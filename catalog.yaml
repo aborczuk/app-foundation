@@ -39,20 +39,6 @@ components:
       FastAPI webhook intake for ClickUp events. Verifies HMAC signature,
       evaluates dispatch policy, deduplicates events, and forwards to n8n.
 
-  - name: mcp_trello
-    kind: Component
-    type: service
-    lifecycle: production
-    entrypoint: "uv run python -m src.mcp_trello"
-    spec: specs/007-mcp-trello-bridge/spec.md
-    behavior_map: specs/007-mcp-trello-bridge/behavior-map.md
-    runs_on: local
-    depends_on:
-      - trello-api
-    notes: >
-      FastMCP server exposing sync_tasks_to_trello tool. Syncs tasks.md phases
-      and tasks to Trello lists/cards with idempotent deduplication.
-
   - name: mcp_codebase
     kind: Component
     type: service
@@ -119,13 +105,6 @@ external_services:
     base_url: "https://api.clickup.com/api/v2"
     used_by: [clickup_control_plane, mcp_clickup]
     setup: specs/015-control-plane-dispatch/quickstart.md
-
-  - name: trello-api
-    type: project-management
-    auth: api-key-token
-    env_vars: [TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID]
-    used_by: [mcp_trello]
-    setup: specs/007-mcp-trello-bridge/quickstart.md
 
   - name: pyright
     type: language-server

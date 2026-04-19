@@ -27,7 +27,7 @@ Each phase should specify:
 - **Owned Artifacts** — which files it is responsible for producing or updating
 - **Template / Scaffold Source** — which template and scaffold mechanism define the initial artifact shape
 - **Context Extraction** — which deterministic scripts gather or normalize inputs before the LLM step
-- **LLM Synthesis Scope** — what interpretive or judgment-heavy work the LLM is responsible for
+- **LLM Action Scope** — what interpretive or judgment-heavy work the LLM is responsible for
 - **Validation** — which deterministic checks must pass before the phase is considered complete
 - **Events** — which ledger events the phase emits
 - **Handoffs** — which downstream phases are allowed to consume the result
@@ -61,36 +61,35 @@ Artifact contracts should be validated deterministically rather than enforced on
 
 Each phase should follow this sequence:
 
-1. **Orchestration**
+1. **Orchestration** (Deterministic)
    - Run prerequisites and hard-block gates
    - Resolve input/output paths
    - Decide whether the phase may proceed
 
-2. **Context Extraction**
-   - Run deterministic helper scripts
+2. **Context Extraction** (Deterministic, Generative if needed)
+   - Run deterministic helper functions
    - Gather and normalize repo, manifest, artifact, or codegraph facts
    - Reduce what the LLM must rediscover
 
-3. **Artifact Scaffolding**
+3. **Artifact Scaffolding** (Deterministic)
    - Generate the owned artifact(s) from the canonical template(s)
-   - Create the structural shell before synthesis
+   - Create the structural shell before LLM Action
 
-4. **LLM Synthesis**
-   - Perform the interpretive work only
+4. **LLM Action** (Generative)
    - Fill the scaffolded artifact using normalized inputs
    - Make architectural, design, sequencing, or review judgments as required by the phase
 
-5. **Artifact Validation**
+5. **Artifact Validation** (Deterministic)
    - Validate the generated artifact against its Artifact Contract
    - Fail if structure, required sections, or controlled vocabularies are invalid
 
-6. **Event Emission and Handoff**
+6. **Event Emission and Handoff** (Deterministic)
    - Emit the phase event(s)
    - Permit handoff only if validation passed
 
 Short form:
 
-**orchestrate -> extract -> scaffold -> synthesize -> validate -> emit/handoff**
+**orchestrate -> extract -> scaffold -> LLM Action -> validate -> emit/handoff**
 
 ---
 
