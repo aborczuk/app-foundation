@@ -56,6 +56,32 @@ The feature is healthy when both surfaces can start without lock contention or s
 
 ---
 
+## Doctor Flow
+
+Check graph readiness before trusting symbol answers:
+
+```bash
+scripts/cgc_doctor.sh
+scripts/cgc_doctor.sh --json
+```
+
+Doctor output is probe-only. It reports `access_mode: READ_ONLY` and one of four statuses:
+
+| Status | Meaning | Next step |
+|--------|---------|-----------|
+| `healthy` | The indexed snapshot matches the current tracked sources. | Continue browsing or run the feature smoke test. |
+| `stale` | Local edits are newer than the last indexed snapshot. | Run `scripts/cgc_safe_index.sh src/mcp_codebase` and retry. |
+| `locked` | A stale owner or lock marker is present. | Stop the stale owner, then rerun `scripts/cgc_safe_index.sh src/mcp_codebase`. |
+| `unavailable` | The snapshot is unreadable or the last index attempt failed. | Inspect `recovery_hint`, free memory if needed, and rerun the safe index wrapper. |
+
+If the doctor reports memory pressure, treat it as a fail-fast signal instead of retrying blindly:
+
+```bash
+scripts/cgc_safe_index.sh src/mcp_codebase
+```
+
+---
+
 ## Smoke Test
 
 Verify the graph hardening path is working:
@@ -85,6 +111,16 @@ scripts/cgc_safe_index.sh src/mcp_codebase
 | Stale UV cache path | `uv` tries to use a home-directory cache from an older workspace | Repoint `UV_CACHE_DIR` to `/Users/andreborczuk/app-foundation/.uv-cache`. |
 | Locked Kuzu DB | Doctor/health check reports `locked` | Stop the stale process, then rerun `scripts/cgc_safe_index.sh src/mcp_codebase`. |
 | Unhealthy graph snapshot | Browsing falls back to direct file reads | Refresh the graph with the safe index wrapper and rerun the smoke test. |
+
+---
+
+## Operator Notes
+
+- Treat `scripts/cgc_doctor.sh` as the first stop for health checks; it is a read-only probe and does not rebuild the graph.
+- Use `scripts/cgc_safe_index.sh src/mcp_codebase` for recovery, not as a routine browse command.
+- If the doctor says `stale`, the current working tree changed after the last refresh; reindex only the scoped path that changed.
+- If the doctor says `locked`, prefer closing the stale owner cleanly before waiting for the safe-index wrapper to reclaim the lock.
+- If the doctor says `unavailable`, use the recovery hint text to distinguish unreadable files from memory-pressure failures.
 
 ---
 
