@@ -100,7 +100,7 @@ Execution steps:
       - Phase Totals table (Phase | Points | Task Count | Parallel Tasks)
       - Warnings section (8/13-point flags, no-parallel phases, high-uncertainty tasks)
 
-7. **Generate HUD files**: For each task, create `.speckit/tasks/T0XX.md` if it does not exist, or update it if this task's estimate changed from a previous run. Skip tasks whose HUD exists and whose estimate is unchanged.
+7. **Generate HUD files**: For each task, create `${FEATURE_DIR}/huds/T0XX.md` if it does not exist, or update it if this task's estimate changed from a previous run. Skip tasks whose HUD exists and whose estimate is unchanged.
 
    ```markdown
    # HUD: [TaskID] — [Description]

@@ -77,9 +77,14 @@ def _task_exists_on_main(tasks_file: Path, task_id: str) -> bool | None:
 
 
 def _task_preflight(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    """Validate that implement-time artifacts exist before task execution begins."""
     feature_dir = Path(args.feature_dir).resolve()
     tasks_file = Path(args.tasks_file).resolve() if args.tasks_file else feature_dir / "tasks.md"
-    hud_path = Path(args.hud_path).resolve() if args.hud_path else Path(".speckit/tasks") / f"{args.task_id}.md"
+    hud_path = (
+        Path(args.hud_path).resolve()
+        if args.hud_path
+        else feature_dir / "huds" / f"{args.task_id}.md"
+    )
     hud_path = hud_path.resolve()
     reasons: list[str] = []
     task_present_in_tasks_file: bool | None = None

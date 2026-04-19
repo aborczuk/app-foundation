@@ -221,9 +221,9 @@ Choose one:
 
 ### New or Changed Public Symbols
 
-| Symbol | Exact Intended Signature | Layer / Module | Responsibility | Notes |
-|--------|---------------------------|----------------|----------------|------|
-| [symbol] | `[exact signature]` | [layer/module] | [responsibility] | [notes] |
+| Symbol | Change Type | Exact Intended Signature | Layer / Module | Responsibility | Notes |
+|--------|-------------|---------------------------|----------------|----------------|------|
+| [symbol] | [New / Changed / Preserved] | `[exact signature]` | [layer/module] | [responsibility] | [notes] |
 
 ### Ownership Boundaries
 
@@ -266,6 +266,25 @@ Choose one:
 | Concern | Design Implication | Affected Surface(s) | Notes |
 |---------|--------------------|---------------------|-------|
 | [Latency / throughput / concurrency / observability / security / rollout / config] | [implication] | [surfaces] | [notes] |
+
+---
+
+## Migration / Rollback Notes
+
+### Migration / Cutover Requirements
+
+- [Requirement 1]
+- [Requirement 2]
+
+### Rollback Triggers
+
+- [Trigger 1]
+- [Trigger 2]
+
+### Rollback Constraints
+
+- [Constraint 1]
+- [Constraint 2]
 
 ---
 
@@ -341,6 +360,13 @@ Choose one:
 
 ---
 
+## Out-of-Scope / Preserve-As-Is Boundaries
+
+- [Boundary or surface intentionally left unchanged]
+- [Boundary or surface tasking/implementation must not widen without rationale]
+
+---
+
 ## Design-to-Tasking Contract
 
 Tasking must follow these rules:
@@ -351,6 +377,8 @@ Tasking must follow these rules:
 - `file:symbol` annotations in tasks must trace back to symbol targets or symbol-creation notes in this sketch.
 - Acceptance artifacts must derive from the verification intent and acceptance traceability in this sketch.
 - Large-point tasks that require later breakdown must preserve the originating design slice and its safety invariants.
+- Tasking must preserve declared inter-slice dependencies unless an explicit rationale is recorded.
+- Tasking must not create tasks against surfaces explicitly marked preserve-as-is unless a rationale is recorded.
 
 ### Additional Tasking Notes
 
@@ -360,7 +388,7 @@ Tasking must follow these rules:
 
 ## Decomposition-Ready Design Slices
 
-### Slice [N]: [Slice Name]
+### Slice SK-01: [Slice Name]
 
 **Objective**  
 [What this slice accomplishes.]
@@ -392,10 +420,16 @@ Tasking must follow these rules:
 **Dependencies on Other Slices**  
 - [Dependency 1]
 
+**Primary Verification Intent**  
+[What downstream validation must prove for this slice.]
+
+**Operator Impact**  
+[None / Describe impact]
+
 **Likely Verification / Regression Concern**  
 [What downstream verification must pay special attention to.]
 
-_Add as many slices as needed._
+_Add as many slices as needed, using stable IDs (`SK-02`, `SK-03`, ...)._
 
 ---
 

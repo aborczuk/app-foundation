@@ -171,6 +171,24 @@ commands:
       required_fields:
       - task_count
       - story_count
+  speckit.tasking.hud-code:
+    description: Scaffold a code-task HUD artifact for a task in the active feature directory
+    mode: legacy
+    scripts:
+    - .specify/scripts/pipeline-scaffold.py
+    artifacts:
+    - output_path: ${FEATURE_DIR}/huds/${TASK_ID}.md
+      template: hud-code-template.md
+    emits: []
+  speckit.tasking.hud-runbook:
+    description: Scaffold a human-task runbook HUD artifact for a task in the active feature directory
+    mode: legacy
+    scripts:
+    - .specify/scripts/pipeline-scaffold.py
+    artifacts:
+    - output_path: ${FEATURE_DIR}/huds/${TASK_ID}.md
+      template: hud-runbook-template.md
+    emits: []
   speckit.sketch:
     description: Generate a pre-task low-level design blueprint (sketch.md) from plan/spec/codebase
       context
@@ -201,7 +219,7 @@ commands:
     artifacts:
     - output_path: ${FEATURE_DIR}/estimates.md
       template: estimates-template.md
-    - output_path: .speckit/tasks/${TASK_ID}.md
+    - output_path: ${FEATURE_DIR}/huds/${TASK_ID}.md
       template: hud-code-template.md
     emits:
     - event: estimation_completed

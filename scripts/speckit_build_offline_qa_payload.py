@@ -36,6 +36,11 @@ def _find_feature_dir(repo_root: Path, feature_id: str) -> Path:
     return matches[0]
 
 
+def _default_hud_path(feature_dir: Path, task_id: str) -> Path:
+    """Return the default HUD location for a task within a feature directory."""
+    return feature_dir / "huds" / f"{task_id}.md"
+
+
 def _task_context(tasks_file: Path, task_id: str) -> tuple[str, list[str]]:
     lines = tasks_file.read_text(encoding="utf-8").splitlines()
     task_idx = -1
@@ -215,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         if not tasks_file.exists():
             raise ValueError(f"tasks.md missing for feature {args.feature_id}")
 
-        hud_path = repo_root / ".speckit" / "tasks" / f"{args.task_id}.md"
+        hud_path = _default_hud_path(feature_dir, args.task_id)
         task_desc, acceptance = _task_context(tasks_file, args.task_id)
         quality_guards = _extract_quality_guards(hud_path)
         changed_files = _changed_files_from_head(repo_root)
