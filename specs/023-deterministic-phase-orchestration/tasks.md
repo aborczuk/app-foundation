@@ -25,7 +25,7 @@
 
 **Purpose**: Lock route/state/transition contracts before story-level behavior work.
 
-- [ ] T003 Harden route contract parsing and unknown-mode rejection in `scripts/pipeline_driver_contracts.py` — `scripts/pipeline_driver_contracts.py:load_driver_routes`
+- [X] T003 Harden route contract parsing and unknown-mode rejection in `scripts/pipeline_driver_contracts.py` — `scripts/pipeline_driver_contracts.py:load_driver_routes`
 - [ ] T004 Align step routing resolution to normalized route contracts in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:resolve_step_mapping`
 - [ ] T005 Make phase resolution ledger-authoritative with deterministic drift reasons in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:resolve_phase_state`
 
