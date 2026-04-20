@@ -72,6 +72,30 @@ Expected: `Doc graph validation PASSED.`
 
 ---
 
+## Validation Procedure
+
+Use the operator runbook below to verify the approval path and the failure-sidecar path before handing off to implementation.
+
+1. Dry-run the driver to confirm phase resolution is side-effect free:
+
+   ```bash
+   uv run python scripts/pipeline_driver.py --feature-id 023 --dry-run --json
+   ```
+
+   Expected: JSON includes `phase_state` and a deterministic `step_result`, with no ledger mutation.
+2. Verify the approval workflow with an explicit token:
+
+   ```bash
+   uv run python scripts/pipeline_driver.py --feature-id 023 --phase plan --approval-token phase:approved --json
+   ```
+
+   Expected: `ok=true`, `exit_code=0`, and a machine-readable `next_phase`.
+3. Verify the failure-sidecar workflow on a blocked or runtime-error path:
+
+   Run the driver against a guard-failing or invalid-envelope case, then confirm `debug_path` is populated and the sidecar JSON captures the failure while the ledger remains unchanged.
+
+---
+
 ## Operator Handoff
 
 The solution phase is a producer-vs-driver ownership boundary: `/speckit.solution` produces the `solution_approved` payload, and the pipeline driver records the event after the payload is accepted.

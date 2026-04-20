@@ -375,11 +375,11 @@ def test_append_pipeline_success_event_requires_validated_success(monkeypatch, t
     assert append_called["value"] is False
 
 
-def test_append_pipeline_success_event_is_idempotent_for_existing_event(
+def test_idempotent_terminal_event_retry(
     monkeypatch, tmp_path: Path
 ) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
-    ledger_path.write_text(
+    original_ledger = (
         json.dumps(
             {
                 "timestamp_utc": "2026-04-10T00:00:00Z",
@@ -390,7 +390,10 @@ def test_append_pipeline_success_event_is_idempotent_for_existing_event(
             },
             sort_keys=True,
         )
-        + "\n",
+        + "\n"
+    )
+    ledger_path.write_text(
+        original_ledger,
         encoding="utf-8",
     )
 
@@ -416,6 +419,7 @@ def test_append_pipeline_success_event_is_idempotent_for_existing_event(
     assert result["appended"] is False
     assert result["event"] == "plan_started"
     assert result["reason"] == "event_already_recorded"
+    assert ledger_path.read_text(encoding="utf-8") == original_ledger
 
 
 def test_build_correlation_id_uses_explicit_run_scope() -> None:
