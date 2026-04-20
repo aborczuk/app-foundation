@@ -1254,7 +1254,14 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
         pytest.skip("manifest file not found")
 
     # Test that generative commands are correctly identified
-    generative_commands = ["specify", "research", "plan", "planreview", "sketch"]
+    generative_commands = [
+        "specify",
+        "research",
+        "plan",
+        "planreview",
+        "sketch",
+        "solution",
+    ]
     for phase in generative_commands:
         result = pipeline_driver.resolve_step_mapping(
             phase,

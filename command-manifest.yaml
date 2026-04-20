@@ -268,7 +268,9 @@ commands:
   speckit.solution:
     description: "LLD solutioning phase \u2014 orchestrates sketch \u2192 solutionreview\
       \ \u2192 tasking \u2192 analyze loop"
-    mode: legacy
+    driver:
+      mode: generative
+      timeout_seconds: 180
     scripts:
     - scripts/pipeline_ledger.py
     artifacts: []
