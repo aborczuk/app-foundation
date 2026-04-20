@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import sys
 
 import pytest
 
@@ -432,12 +432,60 @@ def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> N
     assert routes["speckit.example"]["driver_managed"] is True
     assert routes["speckit.example"]["timeout_seconds"] == 30
     assert routes["speckit.example"]["emits"] == ["example_event"]
+    assert routes["speckit.example"]["emit_contracts"] == [
+        {"event": "example_event", "required_fields": []}
+    ]
     assert routes["speckit.example"]["script_path"] == str(
         (tmp_path / "scripts" / "example.sh").resolve()
     )
 
     assert routes["speckit.fallback"]["mode"] == "legacy"
     assert routes["speckit.fallback"]["driver_managed"] is False
+
+
+def test_load_driver_routes_rejects_conflicting_mode_definitions(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    mode: legacy",
+                "    driver:",
+                "      mode: deterministic",
+                "    emits: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="conflicting driver mode declarations"):
+        pipeline_driver_contracts.load_driver_routes(manifest_path)
+
+
+def test_load_driver_routes_rejects_blank_required_fields(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    mode: deterministic",
+                "    emits:",
+                "      - event: example_event",
+                "        required_fields:",
+                "          - \" \"",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="emit.required_fields entries must be non-empty strings"):
+        pipeline_driver_contracts.load_driver_routes(manifest_path)
 
 
 def test_acquire_feature_lock_blocks_active_other_owner(tmp_path: Path) -> None:
@@ -535,13 +583,37 @@ def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
 
     state = pipeline_driver_state.resolve_phase_state(
         "019",
-        pipeline_state={"phase": "setup", "blocked": False},
+        pipeline_state={"phase": "setup", "blocked": False, "drift_detected": False},
         ledger_path=ledger_path,
     )
     assert state["phase"] == "plan"
     assert state["last_event"] == "plan_started"
+    assert state["blocked"] is True
     assert state["drift_detected"] is True
-    assert "phase_hint_conflicts_with_ledger" in state["drift_reasons"]
+    assert state["drift_reasons"] == ["phase_hint_conflicts_with_ledger"]
+
+
+def test_resolve_phase_state_ignores_stale_blocked_flag(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
+        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
+        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "plan", "blocked": True, "drift_detected": True},
+        ledger_path=ledger_path,
+    )
+    assert state["phase"] == "plan"
+    assert state["blocked"] is False
+    assert state["drift_detected"] is False
+    assert state["drift_reasons"] == []
 
 
 def test_resolve_phase_state_falls_back_to_numeric_prefix_for_slug(tmp_path: Path) -> None:
@@ -618,7 +690,7 @@ def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> 
     )
     assert state["phase"] == "plan"
     assert state["drift_detected"] is True
-    assert "missing_artifact:plan.md" in state["drift_reasons"]
+    assert state["drift_reasons"] == ["missing_artifact:plan.md"]
     assert state["blocked"] is True
 
 
@@ -759,6 +831,10 @@ def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None
     assert result["route"]["mode"] == "deterministic"
     assert result["route"]["driver_managed"] is True
     assert result["route"]["timeout_seconds"] == 60
+    assert result["route"]["emits"] == ["plan_started"]
+    assert result["route"]["emit_contracts"] == [
+        {"event": "plan_started", "required_fields": []}
+    ]
 
 
 def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None:

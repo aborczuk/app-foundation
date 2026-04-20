@@ -345,7 +345,7 @@ def resolve_phase_state(
             if not artifact_path.exists():
                 drift_reasons.append(f"missing_artifact:{artifact_name}")
 
-    drift_detected = bool(drift_reasons) or bool(state.get("drift_detected", False))
+    drift_detected = bool(drift_reasons)
     return {
         "feature_id": feature_id,
         "ledger_feature_id": ledger_feature_id,
@@ -354,7 +354,7 @@ def resolve_phase_state(
         "ledger_event_count": event_count,
         "approved_plan": approved_plan,
         "approved_solution": approved_solution,
-        "blocked": bool(state.get("blocked", False)) or drift_detected,
+        "blocked": drift_detected,
         "drift_detected": drift_detected,
         "drift_reasons": sorted(set(drift_reasons)),
         "dry_run": bool(state.get("dry_run", False)),

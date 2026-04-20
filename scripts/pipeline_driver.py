@@ -404,13 +404,32 @@ def resolve_step_mapping(
             "reason": "command_not_in_manifest",
         }
 
+    normalized_route = dict(route)
+    if "emits" in normalized_route:
+        emits_value = normalized_route.get("emits", [])
+        if not isinstance(emits_value, list):
+            raise ValueError(f"route contract emits must be a list: {command_id}")
+        normalized_route["emits"] = list(emits_value)
+    if "emit_contracts" in normalized_route:
+        emit_contracts_value = normalized_route.get("emit_contracts", [])
+        if not isinstance(emit_contracts_value, list):
+            raise ValueError(f"route contract emit_contracts must be a list: {command_id}")
+        normalized_route["emit_contracts"] = [dict(contract) for contract in emit_contracts_value]
+
     # Determine routing based on mode
-    mode = route.get("mode")
+    mode = normalized_route.get("mode")
+    if not isinstance(mode, str) or not mode.strip():
+        raise ValueError(f"route contract missing mode: {command_id}")
+    mode = mode.strip().lower()
+    if mode not in {"deterministic", "generative", "legacy"}:
+        raise ValueError(f"unsupported route mode: {mode}")
+    normalized_route["mode"] = mode
+
     if mode == "deterministic":
         return {
             "type": "deterministic",
             "command_id": command_id,
-            "route": route,
+            "route": normalized_route,
         }
     elif mode == "generative":
         # Create handoff template for generative steps
