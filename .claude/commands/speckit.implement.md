@@ -280,6 +280,8 @@ The `quickstart.md` update should include only what a future reader/operator nee
 - how to run or exercise it
 - how to verify it
 - any important caveats
+- a link to the feature spec folder for deeper context
+- a link to `tasks.md` plus the relevant commit or PR trail for implementation details
 
 ### Decision log entry
 Use this format:

@@ -4,41 +4,29 @@ Get the planning and execution contract checks running locally in about 10 minut
 
 ---
 
-## Prerequisites
+## What This Feature Is
 
-- Python 3.12 + `uv`: `uv --version`
-- Git repository initialized: `git rev-parse --show-toplevel`
-- Feature artifacts present: `specs/023-deterministic-phase-orchestration/spec.md`
+Deterministic phase orchestration for feature `023` makes the pipeline driver validate phase outputs before any ledger event is emitted. The feature keeps permissioning, validation, and event emission separate so phase progression stays deterministic and auditable.
 
----
+## How It Runs
 
-## Installation
-
-### 1. Set up environment
+### 1. Set up the workspace
 
 ```bash
 cd /Users/andreborczuk/app-foundation
 uv sync
 ```
 
-### 2. Validate manifest wiring
+### 2. Confirm the repo wiring is ready
 
 ```bash
 uv run python scripts/pipeline_ledger.py validate-manifest
 uv run python scripts/validate_command_script_coverage.py --json
-```
 
-### 3. Validate plan gate readiness
-
-```bash
 uv run python scripts/speckit_gate_status.py --mode plan --feature-dir specs/023-deterministic-phase-orchestration --json
 ```
 
----
-
-## Run the Feature
-
-### 1. Resolve current phase without side effects
+### 3. Resolve the current phase without side effects
 
 ```bash
 uv run python scripts/pipeline_driver.py --feature-id 023 --dry-run --json
@@ -46,13 +34,19 @@ uv run python scripts/pipeline_driver.py --feature-id 023 --dry-run --json
 
 Expected: JSON payload with `phase_state` and deterministic `step_result`.
 
-### 2. (When permission is required) run with explicit approval token
+### 4. Run with an explicit approval token when execution is permitted
 
 ```bash
 uv run python scripts/pipeline_driver.py --feature-id 023 --phase plan --approval-token phase:approved --json
 ```
 
-Expected: valid step envelope; blocked/error outcomes are deterministic and machine-readable.
+Expected: valid step envelope; blocked or error outcomes are deterministic and machine-readable.
+
+## What Was Done
+
+This feature was completed in six phases: phase routing and state resolution, deterministic append and approval gating, command contract hardening, retry/drift handling, command-doc contract cleanup, and manifest routing plus final regression coverage.
+
+For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation and closeout trail, inspect commits `0592df6` and `1a199a8`.
 
 ---
 
@@ -74,7 +68,7 @@ Expected: `Doc graph validation PASSED.`
 
 ## Validation Procedure
 
-Use the operator runbook below to verify the approval path and the failure-sidecar path before handing off to implementation.
+Use the operator runbook below to verify the approval path and the failure-sidecar path when re-running the feature.
 
 1. Dry-run the driver to confirm phase resolution is side-effect free:
 
@@ -122,6 +116,6 @@ The solution phase is a producer-vs-driver ownership boundary: `/speckit.solutio
 
 ## Next Steps
 
-- Run `/speckit.planreview` to confirm there are no unresolved planning ambiguities.
-- If feasibility questions are introduced, run `/speckit.feasibilityspike`.
-- Continue to `/speckit.solution` after `plan_approved` is emitted.
+- Review [`tasks.md`](./tasks.md) for the task-by-task execution log.
+- Inspect commits `0592df6` and `1a199a8` for the implementation and closeout trail.
+- Re-run the smoke test and validation procedure if you change the driver, ledger, or manifest wiring.
