@@ -78,7 +78,7 @@
 
 - [X] T014 [US2] Require explicit approval token before side-effectful phase execution in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
 - [X] T015 [US2] Strengthen phase-state reconciliation and machine-readable drift reasons in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:resolve_phase_state`
-- [ ] T016 [US2] Tighten lock/retry sequencing around approval-gated execution in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:acquire_feature_lock`
+- [X] T016 [US2] Tighten lock/retry sequencing around approval-gated execution in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:acquire_feature_lock`
 
 ---
 
