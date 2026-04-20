@@ -32,3 +32,13 @@ def test_speckit_solution_doc_exposes_compact_and_expanded_headings() -> None:
         )
         == 0
     )
+
+
+def test_speckit_solution_doc_removes_direct_ledger_append_ownership() -> None:
+    """The solution doc should describe payload production, not direct ledger writes."""
+    doc_path = Path(__file__).resolve().parents[2] / ".claude" / "commands" / "speckit.solution.md"
+    doc_text = doc_path.read_text(encoding="utf-8")
+
+    assert "pipeline-ledger.jsonl" not in doc_text
+    assert "Produces the solution_approved payload" in doc_text
+    assert "The command doc describes the `solution_approved` payload only" in doc_text
