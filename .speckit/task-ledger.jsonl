@@ -705,3 +705,8 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "020", "task_id": "T017", "timestamp_utc": "2026-04-15T02:06:07.206073Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "020", "qa_run_id": "us3-qa-cc18e7e", "task_id": "T017", "timestamp_utc": "2026-04-15T02:06:07.243784Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "020", "task_id": "T017", "timestamp_utc": "2026-04-15T02:06:07.301479Z"}
+{"actor": "setup-a", "attempt": 1, "event": "task_started", "feature_id": "023", "task_id": "T001", "timestamp_utc": "2026-04-20T14:53:35.079136Z"}
+{"actor": "setup-a", "attempt": 1, "event": "discovery_completed", "feature_id": "023", "task_id": "T001", "timestamp_utc": "2026-04-20T14:53:35.140478Z"}
+{"actor": "setup-a", "attempt": 1, "event": "quality_guards_passed", "feature_id": "023", "task_id": "T001", "timestamp_utc": "2026-04-20T14:53:35.197233Z"}
+{"actor": "setup-a", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T001", "timestamp_utc": "2026-04-20T14:53:35.249527Z"}
+{"actor": "setup-a", "attempt": 1, "event": "tests_passed", "feature_id": "023", "task_id": "T001", "timestamp_utc": "2026-04-20T14:53:35.303603Z"}

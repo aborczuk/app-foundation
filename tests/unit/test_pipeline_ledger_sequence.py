@@ -58,14 +58,27 @@ def _new_solution_chain() -> list[dict[str, Any]]:
     ]
 
 
+def assert_transition_result(
+    events: list[dict[str, Any]],
+    *expected_error_fragments: str,
+) -> tuple[list[str], dict[str, Any]]:
+    """Validate a transition sequence and assert any expected error fragments."""
+    errors, state = pipeline_ledger.validate_sequence(events)
+    if expected_error_fragments:
+        for fragment in expected_error_fragments:
+            assert any(fragment in error for error in errors)
+    else:
+        assert errors == []
+    return errors, state
+
+
 def test_new_solution_sequence_passes() -> None:
     events = _base_prefix() + _new_solution_chain() + [
         _event("analysis_completed", critical_count=0),
         _event("e2e_generated", e2e_artifact="specs/019-token-efficiency-docs/e2e.md"),
         _event("feature_closed"),
     ]
-    errors, _ = pipeline_ledger.validate_sequence(events)
-    assert errors == []
+    errors, _ = assert_transition_result(events)
 
 
 def test_old_tasking_before_sketch_sequence_fails() -> None:
@@ -76,8 +89,7 @@ def test_old_tasking_before_sketch_sequence_fails() -> None:
         _event("solutionreview_completed", critical_count=0, high_count=0),
         _event("solution_approved", task_count=12, story_count=3, estimate_points=21),
     ]
-    errors, _ = pipeline_ledger.validate_sequence(events)
-    assert any("invalid pipeline transition" in err for err in errors)
+    errors, _ = assert_transition_result(events, "invalid pipeline transition")
 
 
 def test_pre_cutover_old_tasking_before_sketch_sequence_passes() -> None:
@@ -108,19 +120,16 @@ def test_pre_cutover_old_tasking_before_sketch_sequence_passes() -> None:
             estimate_points=21,
         ),
     ]
-    errors, _ = pipeline_ledger.validate_sequence(events)
-    assert errors == []
+    errors, _ = assert_transition_result(events)
 
 
 def test_solution_approved_before_analyze_is_allowed() -> None:
     events = _base_prefix() + _new_solution_chain()
-    errors, _ = pipeline_ledger.validate_sequence(events)
-    assert errors == []
+    errors, _ = assert_transition_result(events)
 
 
 def test_analysis_completed_requires_zero_critical_count() -> None:
     events = _base_prefix() + _new_solution_chain() + [
         _event("analysis_completed", critical_count=1),
     ]
-    errors, _ = pipeline_ledger.validate_sequence(events)
-    assert any("analysis_completed.critical_count must be 0" in err for err in errors)
+    errors, _ = assert_transition_result(events, "analysis_completed.critical_count must be 0")
