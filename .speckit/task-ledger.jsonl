@@ -819,3 +819,14 @@
 {"actor": "codex", "attempt": 1, "details": "Existing resolve_phase_state regression already covers stale hint reconciliation; aligning symbol name and assertions", "event": "discovery_completed", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:04:25.423391Z"}
 {"actor": "codex", "attempt": 1, "details": "T013 ledger-authority regression passed and implement evidence gate validated", "event": "quality_guards_passed", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:04:43.402716Z"}
 {"actor": "codex", "attempt": 1, "details": "Ledger state now overrides stale phase hints and records drift reasons", "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:04:46.123209Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:05:02.622441Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "f3bc074", "event": "commit_created", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:05:02.660854Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:05:02.696615Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "offline-qa-t013-20260420T160459Z", "task_id": "T013", "timestamp_utc": "2026-04-20T16:05:02.733796Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T013", "timestamp_utc": "2026-04-20T16:05:02.780304Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "023", "task_id": "T014", "timestamp_utc": "2026-04-20T16:07:31.361395Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "023", "task_id": "T014", "timestamp_utc": "2026-04-20T16:08:51.018461Z"}
+{"actor": "codex", "attempt": 1, "event": "lld_recorded", "feature_id": "023", "task_id": "T014", "timestamp_utc": "2026-04-20T16:08:51.026984Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "023", "task_id": "T014", "timestamp_utc": "2026-04-20T16:09:45.704343Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T014", "timestamp_utc": "2026-04-20T16:09:45.714710Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "023", "task_id": "T014", "timestamp_utc": "2026-04-20T16:09:45.723511Z"}

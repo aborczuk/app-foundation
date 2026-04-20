@@ -1293,11 +1293,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # 4. Resolve step mapping from manifest
     mapping = resolve_step_mapping(effective_phase, correlation_id=correlation_id)
+    mapping_type = mapping.get("type")
+
+    approval_breakpoint_config: dict[str, Any] | None = None
+    if effective_phase == "implement" and mapping_type in {"deterministic", "generative"}:
+        approval_breakpoint_config = {
+            "steps": {
+                effective_phase: {
+                    "enabled": True,
+                    "required_scope": "security_sensitive_migration",
+                }
+            }
+        }
 
     # 5. Check approval breakpoint before execution
     approval_result = enforce_approval_breakpoint(
         effective_phase,
         approval_token=args.approval_token,
+        breakpoint_config=approval_breakpoint_config,
         correlation_id=correlation_id,
     )
     if not approval_result.get("ok"):
@@ -1308,7 +1321,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     # 6. Dispatch based on mapping type
-    mapping_type = mapping.get("type")
 
     if mapping_type == "deterministic":
         route = mapping["route"]

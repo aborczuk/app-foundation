@@ -384,6 +384,15 @@ def test_approval_breakpoint_blocks_without_token(driver_flow_harness, monkeypat
     )
     script_path = driver_flow_harness.feature_dir / "scripts" / "migration_step.py"
     call_counts = {"run_step": 0, "append": 0}
+    expected_breakpoint_config = {
+        "steps": {
+            "implement": {
+                "enabled": True,
+                "required_scope": "security_sensitive_migration",
+            }
+        }
+    }
+    observed_breakpoint_configs: list[dict[str, object] | None] = []
 
     monkeypatch.setattr(
         pipeline_driver,
@@ -411,6 +420,9 @@ def test_approval_breakpoint_blocks_without_token(driver_flow_harness, monkeypat
         correlation_id: str | None = None,
     ) -> dict[str, object]:
         """Return a deterministic blocked result for missing or invalid approval."""
+        assert step_name == "implement"
+        assert breakpoint_config == expected_breakpoint_config
+        observed_breakpoint_configs.append(breakpoint_config)
         if not approval_token:
             reasons = ["breakpoint_scope:security_sensitive_migration"]
         elif approval_token.split(":", 1)[0] != "security_sensitive_migration":
@@ -469,6 +481,7 @@ def test_approval_breakpoint_blocks_without_token(driver_flow_harness, monkeypat
     assert denied_exit_code == 1
     assert invalid_exit_code == 1
     assert call_counts == {"run_step": 0, "append": 0}
+    assert observed_breakpoint_configs == [expected_breakpoint_config, expected_breakpoint_config]
 
 
 def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
