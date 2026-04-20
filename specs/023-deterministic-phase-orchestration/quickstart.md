@@ -92,7 +92,11 @@ Use the operator runbook below to verify the approval path and the failure-sidec
    Expected: `ok=true`, `exit_code=0`, and a machine-readable `next_phase`.
 3. Verify the failure-sidecar workflow on a blocked or runtime-error path:
 
-   Run the driver against a guard-failing or invalid-envelope case, then confirm `debug_path` is populated and the sidecar JSON captures the failure while the ledger remains unchanged.
+   ```bash
+   uv run pytest tests/unit/test_pipeline_driver.py -k "timeout_routes_runtime_failure or invalid_json_persists_runtime_sidecar" -q
+   ```
+
+   Expected: runtime-failure regressions pass and confirm `debug_path` is populated in the sidecar payload while the ledger remains unchanged.
 
 ---
 

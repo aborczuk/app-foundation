@@ -112,12 +112,12 @@
 
 **Purpose**: Final deterministic regression lock and explicit operator runbook boundary.
 
-- [ ] T024 Add mixed legacy/driver migration-path deterministic regression coverage in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
-- [ ] T025 Add duplicate terminal-event retry prevention coverage across driver and ledger seams in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_idempotent_terminal_event_retry`
+- [X] T024 Add mixed legacy/driver migration-path deterministic regression coverage in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
+- [X] T025 Add duplicate terminal-event retry prevention coverage across driver and ledger seams in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_idempotent_terminal_event_retry`
 - [ ] T026 [H] Execute and record operator dry-run/runbook verification for approval and failure-sidecar workflows in `specs/023-deterministic-phase-orchestration/quickstart.md` — `specs/023-deterministic-phase-orchestration/quickstart.md:## Validation Procedure`
-- [ ] T027 Add command-doc token-footprint measurement regression for `SC-004` in `tests/unit/test_validate_markdown_doc_shapes.py` — `tests/unit/test_validate_markdown_doc_shapes.py:test_command_doc_token_footprint_reduction`
-- [ ] T028 Add rollback and no-partial-write regression coverage for `FR-013` in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:test_append_rejects_partial_write_and_preserves_state`
-- [ ] T029 Add manifest-to-ledger validation routing so task-domain emits dispatch to the task ledger while pipeline emits stay pipeline-owned in `scripts/pipeline_ledger.py` — `scripts/pipeline_ledger.py:cmd_validate_manifest`
+- [X] T027 Add command-doc token-footprint measurement regression for `SC-004` in `tests/unit/test_validate_markdown_doc_shapes.py` — `tests/unit/test_validate_markdown_doc_shapes.py:test_command_doc_token_footprint_reduction`
+- [X] T028 Add rollback and no-partial-write regression coverage for `FR-013` in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:test_append_rejects_partial_write_and_preserves_state`
+- [X] T029 Add manifest-to-ledger validation routing so task-domain emits dispatch to the task ledger while pipeline emits stay pipeline-owned in `scripts/pipeline_ledger.py` — `scripts/pipeline_ledger.py:cmd_validate_manifest`
 
 ---
 
