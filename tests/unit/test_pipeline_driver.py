@@ -707,6 +707,33 @@ def test_acquire_feature_lock_replaces_stale_owner(tmp_path: Path) -> None:
     assert takeover["previous_owner"] == "worker-a"
 
 
+def test_acquire_feature_lock_reuses_same_owner_after_stale_expiry(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    now = datetime(2026, 4, 10, tzinfo=timezone.utc)
+
+    pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=30,
+        now_utc=now,
+    )
+
+    retry = pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=30,
+        now_utc=now + timedelta(seconds=60),
+    )
+
+    assert retry["acquired"] is True
+    assert retry["reused"] is True
+    assert retry["stale_replaced"] is False
+    assert retry["reason"] == "stale_lock_reused"
+    assert retry["previous_owner"] == "worker-a"
+
+
 def test_release_feature_lock_requires_owner_unless_stale(tmp_path: Path) -> None:
     lock_dir = tmp_path / "locks"
     now = datetime(2026, 4, 10, tzinfo=timezone.utc)
@@ -762,6 +789,15 @@ def test_resolve_phase_state_prefers_ledger_authority(tmp_path: Path) -> None:
     assert state["last_event"] == "plan_started"
     assert state["blocked"] is True
     assert state["drift_detected"] is True
+    assert state["drift_reason_codes"] == ["phase_hint_conflicts_with_ledger"]
+    assert state["drift_reason_details"] == [
+        {
+            "code": "phase_hint_conflicts_with_ledger",
+            "hinted_phase": "setup",
+            "derived_phase": "plan",
+            "last_event": "plan_started",
+        }
+    ]
     assert state["drift_reasons"] == ["phase_hint_conflicts_with_ledger"]
 
 

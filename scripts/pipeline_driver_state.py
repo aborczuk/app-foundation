@@ -194,6 +194,16 @@ def acquire_feature_lock(
 
     if stale:
         _write_lock_record(lock_path, new_record)
+        if existing_owner == owner:
+            return {
+                "acquired": True,
+                "reused": True,
+                "stale_replaced": False,
+                "reason": "stale_lock_reused",
+                "lock_path": str(lock_path),
+                "previous_owner": existing_owner,
+                "record": new_record,
+            }
         return {
             "acquired": True,
             "reused": False,
@@ -276,6 +286,7 @@ def resolve_phase_state(
 
     state = dict(pipeline_state or {})
     drift_reasons: list[str] = []
+    drift_reason_details: list[dict[str, Any]] = []
     last_event: str | None = None
     event_count = 0
     approved_plan = False
@@ -312,6 +323,7 @@ def resolve_phase_state(
             sequence_errors, feature_states = pipeline_ledger.validate_sequence(feature_events)
             if sequence_errors:
                 drift_reasons.append("ledger_sequence_invalid")
+                drift_reason_details.append({"code": "ledger_sequence_invalid"})
             feature_state = feature_states.get(ledger_feature_id)
             if feature_state is not None:
                 approved_plan = bool(getattr(feature_state, "approved_plan", False))
@@ -322,8 +334,10 @@ def resolve_phase_state(
                 last_event = raw_last_event
     except SystemExit:
         drift_reasons.append("ledger_read_failed")
+        drift_reason_details.append({"code": "ledger_read_failed"})
     except Exception:
         drift_reasons.append("ledger_read_failed")
+        drift_reason_details.append({"code": "ledger_read_failed"})
 
     derived_phase = EVENT_TO_PHASE.get(last_event or "", "unknown")
     hinted_phase = state.get("phase")
@@ -338,14 +352,30 @@ def resolve_phase_state(
             and last_event is not None
         ):
             drift_reasons.append("phase_hint_conflicts_with_ledger")
+            drift_reason_details.append(
+                {
+                    "code": "phase_hint_conflicts_with_ledger",
+                    "hinted_phase": hinted_phase,
+                    "derived_phase": derived_phase,
+                    "last_event": last_event,
+                }
+            )
 
     if resolved_feature_dir is not None and last_event in REQUIRED_ARTIFACTS_BY_EVENT:
         for artifact_name in REQUIRED_ARTIFACTS_BY_EVENT[last_event]:
             artifact_path = resolved_feature_dir / artifact_name
             if not artifact_path.exists():
                 drift_reasons.append(f"missing_artifact:{artifact_name}")
+                drift_reason_details.append(
+                    {
+                        "code": "missing_artifact",
+                        "artifact": artifact_name,
+                        "source_event": last_event,
+                    }
+                )
 
     drift_detected = bool(drift_reasons)
+    drift_reason_codes = sorted({detail["code"] for detail in drift_reason_details})
     return {
         "feature_id": feature_id,
         "ledger_feature_id": ledger_feature_id,
@@ -356,6 +386,8 @@ def resolve_phase_state(
         "approved_solution": approved_solution,
         "blocked": drift_detected,
         "drift_detected": drift_detected,
+        "drift_reason_codes": drift_reason_codes,
+        "drift_reason_details": drift_reason_details,
         "drift_reasons": sorted(set(drift_reasons)),
         "dry_run": bool(state.get("dry_run", False)),
     }
