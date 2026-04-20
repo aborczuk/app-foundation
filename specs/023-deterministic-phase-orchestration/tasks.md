@@ -101,7 +101,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] Normalize manifest route and emit contracts for `speckit.solution` driver ownership in `./command-manifest.yaml` — `command-manifest.yaml:commands.speckit.solution`
+- [X] T020 [US3] Normalize manifest route and emit contracts for `speckit.solution` driver ownership in `./command-manifest.yaml` — `command-manifest.yaml:commands.speckit.solution`
 - [ ] T021 [US3] Update producer-only contract language and remove implicit append ownership in `.claude/commands/speckit.solution.md` — `.claude/commands/speckit.solution.md:## Outline`
 - [ ] T022 [US3] Document producer-vs-driver ownership and migration-safe operator flow in `specs/023-deterministic-phase-orchestration/quickstart.md` — `specs/023-deterministic-phase-orchestration/quickstart.md:# Quickstart`
 - [ ] T023 [US3] Fail fast on unknown route modes and malformed step payload contracts in `scripts/pipeline_driver_contracts.py` — `scripts/pipeline_driver_contracts.py:parse_step_result`
