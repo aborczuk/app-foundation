@@ -45,15 +45,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T006 [P] [US1] Add unit tests for validate-before-emit and no-append-on-invalid-envelope behavior in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_append_pipeline_success_event_requires_validated_success`
-- [ ] T007 [P] [US1] Add integration regression for blocked validation with zero completion append in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked`
-- [ ] T008 [P] [US1] Add transition-map rejection coverage for invalid ordering before append in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:test_new_solution_sequence_passes`
+- [X] T006 [P] [US1] Add unit tests for validate-before-emit and no-append-on-invalid-envelope behavior in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_append_pipeline_success_event_requires_validated_success`
+- [X] T007 [P] [US1] Add integration regression for blocked validation with zero completion append in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked`
+- [X] T008 [P] [US1] Add transition-map rejection coverage for invalid ordering before append in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:test_new_solution_sequence_passes`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Harden deterministic envelope handling for malformed or partial step outputs in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
-- [ ] T010 [US1] Enforce success append only after validated gate pass and idempotent terminal protection in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:append_pipeline_success_event`
-- [ ] T011 [US1] Tighten transition validation and append-time guards for invalid predecessor events in `scripts/pipeline_ledger.py` — `scripts/pipeline_ledger.py:validate_sequence`
+- [X] T009 [US1] Harden deterministic envelope handling for malformed or partial step outputs in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
+- [X] T010 [US1] Enforce success append only after validated gate pass and idempotent terminal protection in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:append_pipeline_success_event`
+- [X] T011 [US1] Tighten transition validation and append-time guards for invalid predecessor events in `scripts/pipeline_ledger.py` — `scripts/pipeline_ledger.py:validate_sequence`
 
 ---
 
