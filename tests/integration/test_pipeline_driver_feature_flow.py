@@ -375,48 +375,100 @@ def test_dry_run_does_not_mutate_ledgers_or_artifacts(driver_flow_harness) -> No
     assert artifact_path.exists() is initial_artifact_exists
 
 
-def test_approval_breakpoint_blocks_without_token(driver_flow_harness) -> None:
-    """Approval breakpoint blocks step execution when human approval token not present."""
-    # Marker: This test validates that enforce_approval_breakpoint() would block
-    # when the approval token (stored in env var or file) is absent.
-    # Implementation in T030.
-
-    # For now, verify the fixture supports breakpoint setup
+def test_approval_breakpoint_blocks_without_token(driver_flow_harness, monkeypatch) -> None:
+    """Approval denial blocks execution and leaves the downstream path cold."""
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
         "speckit.implement",
         run_id="run-us2-breakpoint",
     )
+    script_path = driver_flow_harness.feature_dir / "scripts" / "migration_step.py"
+    call_counts = {"run_step": 0, "append": 0}
 
-    blocked_payload = {
-        "schema_version": "1.0.0",
-        "ok": False,
-        "exit_code": 1,
-        "correlation_id": correlation_id,
-        "gate": "approval_required",
-        "reasons": ["security_sensitive_migration"],
-    }
-    manifest_path, routes = build_feature_workspace(
-        driver_flow_harness,
-        command_id="speckit.implement",
-        script_name="migration_step.py",
-        emit_event="implementation_completed",
-        payload=blocked_payload,
-        exit_code=1,
-        timeout_seconds=30,
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "implement", "blocked": False},
     )
-    route = routes["speckit.implement"]
-
-    result = pipeline_driver.run_step(
-        [sys.executable, str(route["script_path"])],
-        timeout_seconds=route["timeout_seconds"],
-        correlation_id=correlation_id,
-        cwd=driver_flow_harness.feature_dir,
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "deterministic",
+            "command_id": "speckit.implement",
+            "route": {
+                "script_path": str(script_path),
+                "timeout_seconds": 30,
+            },
+        },
     )
 
-    # Verify breakpoint gate is present
-    assert result["gate"] == "approval_required"
-    assert "security_sensitive_migration" in result["reasons"]
+    def _fake_enforce_approval_breakpoint(
+        step_name: str,
+        *,
+        approval_token: str | None = None,
+        breakpoint_config: dict[str, object] | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, object]:
+        """Return a deterministic blocked result for missing or invalid approval."""
+        if not approval_token:
+            reasons = ["breakpoint_scope:security_sensitive_migration"]
+        elif approval_token.split(":", 1)[0] != "security_sensitive_migration":
+            reasons = ["approval_token_scope_mismatch"]
+        else:
+            return {"ok": True, "breakpoint_enforced": True, "approval_granted": True}
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id or "unknown",
+            "gate": "approval_required",
+            "reasons": reasons,
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    def _fake_run_step(*args, **kwargs):
+        """Record any unexpected downstream execution attempt."""
+        call_counts["run_step"] += 1
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": "implement",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+        }
+
+    def _fake_append_pipeline_success_event(**kwargs):
+        """Record any unexpected pipeline event append attempt."""
+        call_counts["append"] += 1
+        return {"ok": True, "appended": True, "event": "implementation_completed"}
+
+    monkeypatch.setattr(pipeline_driver, "enforce_approval_breakpoint", _fake_enforce_approval_breakpoint)
+    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+    monkeypatch.setattr(pipeline_driver, "append_pipeline_success_event", _fake_append_pipeline_success_event)
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    denied_exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "implement"])
+    invalid_exit_code = pipeline_driver.main(
+        [
+            "--feature-id",
+            "019",
+            "--phase",
+            "implement",
+            "--approval-token",
+            "wrong:token",
+        ]
+    )
+
+    assert denied_exit_code == 1
+    assert invalid_exit_code == 1
+    assert call_counts == {"run_step": 0, "append": 0}
 
 
 def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
