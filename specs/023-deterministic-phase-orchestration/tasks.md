@@ -71,7 +71,7 @@
 
 ### Tests for User Story 2
 
-- [ ] T012 [P] [US2] Add integration coverage for deny/invalid approval with zero side effects in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_blocks_without_token`
+- [X] T012 [P] [US2] Add integration coverage for deny/invalid approval with zero side effects in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_blocks_without_token`
 - [ ] T013 [P] [US2] Add unit drift-resolution coverage for ledger-vs-hint reconciliation paths in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_resolve_phase_state_prefers_ledger_authority`
 
 ### Implementation for User Story 2

@@ -738,7 +738,8 @@ def test_release_feature_lock_requires_owner_unless_stale(tmp_path: Path) -> Non
     assert owner_release["reason"] == "released_by_owner"
 
 
-def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
+def test_resolve_phase_state_prefers_ledger_authority(tmp_path: Path) -> None:
+    """Ledger state should override stale phase hints during reconciliation."""
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
@@ -755,6 +756,8 @@ def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
         pipeline_state={"phase": "setup", "blocked": False, "drift_detected": False},
         ledger_path=ledger_path,
     )
+    assert state["feature_id"] == "019"
+    assert state["ledger_feature_id"] == "019"
     assert state["phase"] == "plan"
     assert state["last_event"] == "plan_started"
     assert state["blocked"] is True
