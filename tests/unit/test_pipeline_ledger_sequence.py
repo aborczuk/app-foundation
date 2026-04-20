@@ -5,7 +5,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 
 def _load_pipeline_ledger_module():
@@ -79,6 +82,38 @@ def test_new_solution_sequence_passes() -> None:
         _event("feature_closed"),
     ]
     errors, _ = assert_transition_result(events)
+
+
+def test_append_rejects_invalid_order_before_mutation(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    args = SimpleNamespace(
+        file=str(ledger_path),
+        feature_id="019",
+        phase="closed",
+        event="feature_closed",
+        actor="codex",
+        timestamp_utc="2026-04-10T00:00:00Z",
+        fq_count=None,
+        questions_asked=None,
+        spike_artifact=None,
+        failed_fq=None,
+        feasibility_required=None,
+        task_count=None,
+        story_count=None,
+        estimate_points=None,
+        tasks_sketched=None,
+        acceptance_tests_written=None,
+        critical_count=None,
+        high_count=None,
+        e2e_artifact=None,
+        details=None,
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        pipeline_ledger.cmd_append(args)
+
+    assert excinfo.value.code == 1
+    assert not ledger_path.exists()
 
 
 def test_old_tasking_before_sketch_sequence_fails() -> None:

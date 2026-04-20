@@ -939,10 +939,12 @@ def append_pipeline_success_event(
     command_id: str | None,
     actor: str = "pipeline_driver",
     manifest_path: str | Path | None = None,
+    ledger_path: str | Path | None = None,
     timeout_seconds: int = 60,
 ) -> dict[str, Any]:
     """Append the manifest-declared success event for a completed step."""
     from pipeline_driver_contracts import load_driver_routes
+    from pipeline_ledger import read_events
 
     if not command_id:
         return {"ok": True, "appended": False, "event": None}
@@ -980,6 +982,29 @@ def append_pipeline_success_event(
 
     if not selected_event:
         return {"ok": True, "appended": False, "event": None}
+
+    ledger_file = (
+        Path(ledger_path)
+        if ledger_path is not None
+        else Path(__file__).resolve().parent.parent / ".speckit" / "pipeline-ledger.jsonl"
+    )
+    existing_events = read_events(ledger_file)
+    for existing_event in existing_events:
+        existing_feature_id = str(existing_event.get("feature_id", "")).strip()
+        existing_phase = str(existing_event.get("phase", "")).strip()
+        existing_name = str(existing_event.get("event", "")).strip()
+        if (
+            existing_feature_id == feature_id
+            and existing_phase == phase
+            and existing_name == selected_event
+        ):
+            # Retry-safe no-op: once the success event exists, keep the append idempotent.
+            return {
+                "ok": True,
+                "appended": False,
+                "event": selected_event,
+                "reason": "event_already_recorded",
+            }
 
     ledger_script = Path(__file__).resolve().parent / "pipeline_ledger.py"
     command = [

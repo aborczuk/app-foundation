@@ -280,6 +280,144 @@ def test_main_generative_route_errors_when_pipeline_event_append_fails(monkeypat
     assert exit_code == 2
 
 
+def test_append_pipeline_success_event_requires_validated_success(monkeypatch, tmp_path: Path) -> None:
+    artifact_path = tmp_path / "plan.md"
+    artifact_path.write_text("# Plan\n## Summary\nGenerated content\n", encoding="utf-8")
+
+    validation_calls: list[tuple[str, str, str | None]] = []
+    append_called = {"value": False}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": str(artifact_path),
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.plan",
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(artifact_path),
+                "completion_marker": "## Summary",
+            },
+        },
+    )
+
+    def _fake_validate_generated_artifact(
+        artifact_path_arg,
+        *,
+        correlation_id,
+        completion_marker=None,
+    ):
+        validation_calls.append((str(artifact_path_arg), correlation_id, completion_marker))
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "artifact_validation",
+            "reasons": ["artifact_not_created"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        _fake_validate_generated_artifact,
+    )
+
+    def _fake_append_pipeline_success_event(**kwargs):
+        append_called["value"] = True
+        return {"ok": True, "appended": True, "event": "plan_started"}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        _fake_append_pipeline_success_event,
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+
+    assert exit_code == 1
+    assert len(validation_calls) == 1
+    assert validation_calls[0][0] == str(artifact_path)
+    assert validation_calls[0][1].endswith(":plan")
+    assert validation_calls[0][2] == "## Summary"
+    assert append_called["value"] is False
+
+
+def test_append_pipeline_success_event_is_idempotent_for_existing_event(
+    monkeypatch, tmp_path: Path
+) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "timestamp_utc": "2026-04-10T00:00:00Z",
+                "feature_id": "019",
+                "phase": "plan",
+                "event": "plan_started",
+                "actor": "pipeline_driver",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        pipeline_driver_contracts,
+        "load_driver_routes",
+        lambda manifest_path=None: {
+            "speckit.plan": {
+                "emit_contracts": [{"event": "plan_started", "required_fields": []}],
+                "emits": ["plan_started"],
+            }
+        },
+    )
+
+    result = pipeline_driver.append_pipeline_success_event(
+        feature_id="019",
+        phase="plan",
+        command_id="speckit.plan",
+        ledger_path=ledger_path,
+    )
+
+    assert result["ok"] is True
+    assert result["appended"] is False
+    assert result["event"] == "plan_started"
+    assert result["reason"] == "event_already_recorded"
+
+
 def test_build_correlation_id_uses_explicit_run_scope() -> None:
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -389,6 +527,37 @@ def test_run_step_invalid_json_persists_runtime_sidecar(tmp_path: Path) -> None:
     sidecar_payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
     assert sidecar_payload["correlation_id"] == "run-019-invalid-json"
     assert sidecar_payload["rerun"]["exit_code"] in (0, 1, 2, None)
+
+
+def test_run_step_rejects_partial_step_result_envelope(tmp_path: Path) -> None:
+    correlation_id = "run-019-partial"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json; "
+            "print(json.dumps({"
+            "'schema_version':'1.0.0','ok':True,'exit_code':0,"
+            f"'correlation_id':'{correlation_id}'"
+            "}))"
+        ),
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+        sidecar_dir=tmp_path / "runtime-failures",
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["error_code"] == "invalid_step_result"
+    assert result["reasons"] == ["invalid_step_result"]
+    assert result["process_exit_code"] == 0
+    assert result["timed_out"] is False
+    assert result["debug_path"] is not None
+    assert Path(result["debug_path"]).exists()
 
 
 def test_normalize_driver_mode_aliases() -> None:

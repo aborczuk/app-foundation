@@ -752,3 +752,7 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "023", "task_id": "T005", "timestamp_utc": "2026-04-20T15:29:06.057176Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "offline-qa-t005-20260420T152909Z", "task_id": "T005", "timestamp_utc": "2026-04-20T15:29:14.731975Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T005", "timestamp_utc": "2026-04-20T15:29:14.778697Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "023", "task_id": "T006", "timestamp_utc": "2026-04-20T15:35:20.974345Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "023", "task_id": "T006", "timestamp_utc": "2026-04-20T15:35:23.142342Z"}
+{"actor": "codex", "attempt": 1, "details": "Phase 3 T006 unit+integration regressions passed and implement evidence gate validated", "event": "quality_guards_passed", "feature_id": "023", "task_id": "T006", "timestamp_utc": "2026-04-20T15:43:52.131529Z"}
+{"actor": "codex", "attempt": 1, "details": "Deterministic validate-before-emit and no-append-on-invalid-envelope behavior now enforced", "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T006", "timestamp_utc": "2026-04-20T15:43:56.599239Z"}
