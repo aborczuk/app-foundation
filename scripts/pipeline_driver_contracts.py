@@ -110,12 +110,16 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
         # Success: requires next_phase
         if next_phase is None:
             raise ValueError("exit_code=0 (success) requires next_phase field")
+        if ok is not True:
+            raise ValueError("exit_code=0 (success) requires ok=True")
     elif exit_code == 1:
         # Blocked: requires gate and reasons
         if not isinstance(gate, str) or not gate:
             raise ValueError("exit_code=1 (blocked) requires gate field (non-empty string)")
         if not isinstance(reasons, list) or not reasons:
             raise ValueError("exit_code=1 (blocked) requires reasons field (non-empty list)")
+        if ok is not False:
+            raise ValueError("exit_code=1 (blocked) requires ok=False")
 
         # Validate reason codes against registry
         validation_errors = validate_reason_codes(
@@ -130,6 +134,8 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
             raise ValueError("exit_code=2 (error) requires error_code field (non-empty string)")
         if not isinstance(debug_path, str) or not debug_path:
             raise ValueError("exit_code=2 (error) requires debug_path field (non-empty string)")
+        if ok is not False:
+            raise ValueError("exit_code=2 (error) requires ok=False")
 
     return {
         "schema_version": schema_version,

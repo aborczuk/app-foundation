@@ -159,6 +159,59 @@ def test_load_driver_routes_normalizes_mode_and_emit_contracts(tmp_path: Path) -
     assert routes["speckit.fallback"]["driver_managed"] is False
 
 
+def test_load_driver_routes_rejects_unknown_driver_mode(tmp_path: Path) -> None:
+    """Unknown driver modes should fail fast instead of silently falling back."""
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    driver:",
+                "      mode: unsupported-mode",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        contracts.load_driver_routes(manifest_path)
+    assert "unsupported driver mode" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "ok_value", "expected_message"),
+    [
+        (0, False, "exit_code=0 (success) requires ok=True"),
+        (1, True, "exit_code=1 (blocked) requires ok=False"),
+        (2, True, "exit_code=2 (error) requires ok=False"),
+    ],
+)
+def test_step_result_schema_rejects_mismatched_ok_and_exit_code(
+    exit_code: int, ok_value: bool, expected_message: str
+) -> None:
+    """Malformed step envelopes should fail when ok and exit_code disagree."""
+    payload: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "ok": ok_value,
+        "exit_code": exit_code,
+        "correlation_id": "019:plan:T001",
+    }
+    if exit_code == 0:
+        payload["next_phase"] = "sketch"
+    elif exit_code == 1:
+        payload["gate"] = "artifact_validation"
+        payload["reasons"] = ["artifact_empty_or_minimal"]
+    else:
+        payload["error_code"] = "script_timeout"
+        payload["debug_path"] = ".speckit/failures/019_T005_attempt_1.json"
+
+    with pytest.raises(ValueError) as exc_info:
+        contracts.parse_step_result(payload)
+    assert expected_message in str(exc_info.value)
+
+
 def test_step_result_schema_error_requires_error_code_and_debug_path() -> None:
     """Exit code 2 (error) requires error_code and debug_path fields."""
     parsed = contracts.parse_step_result(
