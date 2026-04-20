@@ -72,11 +72,11 @@
 ### Tests for User Story 2
 
 - [X] T012 [P] [US2] Add integration coverage for deny/invalid approval with zero side effects in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_blocks_without_token`
-- [ ] T013 [P] [US2] Add unit drift-resolution coverage for ledger-vs-hint reconciliation paths in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_resolve_phase_state_prefers_ledger_authority`
+- [X] T013 [P] [US2] Add unit drift-resolution coverage for ledger-vs-hint reconciliation paths in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_resolve_phase_state_prefers_ledger_authority`
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Require explicit approval token before side-effectful phase execution in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
+- [X] T014 [US2] Require explicit approval token before side-effectful phase execution in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
 - [ ] T015 [US2] Strengthen phase-state reconciliation and machine-readable drift reasons in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:resolve_phase_state`
 - [ ] T016 [US2] Tighten lock/retry sequencing around approval-gated execution in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:acquire_feature_lock`
 
