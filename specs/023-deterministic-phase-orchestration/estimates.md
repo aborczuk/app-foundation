@@ -1,165 +1,178 @@
 # Effort Estimate: Deterministic Phase Orchestration
 
+**Date**: 2026-04-19 | **Total Points**: 66 | **T-shirt Size**: L
+**Estimated by**: AI (`speckit.tasking` estimate loop)
+
+---
+
 ## Per-Task Estimates
 
 | Task ID | Points | Description | Rationale |
 |---------|--------|-------------|-----------|
-| T001 | 1 | Create `specs/023-deterministic-phase-orchestration/contracts/phase-execution-contract.md` with the producer / validator / emitter / handoff boundaries | Repo-process documentation only; no code-path changes |
-| T002 | 2 | Tighten routing and event-field notes in `command-manifest.yaml` and keep `.claude/commands/speckit.solution.md` aligned for the solution, solution-review, and tasking phases | Small cross-file contract alignment with an existing manifest shape |
-| T003 | 3 | Implement ledger-authoritative current-step resolution so the driver does not trust stale mirrors over the pipeline ledger | State resolution touches the orchestration boundary and needs deterministic failure handling |
-| T004 | 3 | Add validation-before-emit guard rails so phase completion events can only be appended after deterministic output validation passes | Introduces sequencing guarantees across driver and ledger surfaces |
-| T005 | 3 | Add regression coverage proving failed validation emits no phase completion event | Failure-path contract coverage across orchestration and ledger boundaries |
-| T006 | 3 | Add regression coverage proving a valid completion path emits exactly one phase event and returns a blocked result on validation failure | Similar boundary scope to T005, but with a separate success-path contract assertion |
-| T007 | 3 | Wire the orchestration flow to validate outputs before calling the ledger append path and to return deterministic blocked state on failure | Core driver control flow change with a non-trivial ordering guarantee |
-| T008 | 3 | Keep the ledger append path append-only from validated payloads and preserve idempotent retry behavior | Ledger sequencing and retry semantics are small in surface area but high risk |
-| T009 | 3 | Add approval/rejection regression tests for permissioned phase start and zero-side-effect rejection | Explicit permission-gate matrix across the driver start path |
-| T010 | 2 | Add a deterministic state-resolution test proving the current step comes from the ledger-authoritative source | Bounded unit coverage around a single state seam |
-| T011 | 3 | Thread explicit approval handling through the driver start path so rejected confirmation cannot launch the phase | Touches interactive start flow and control transfer between resolver and driver |
-| T012 | 2 | Keep state resolution and approval checks in the driver-state module so permissioned starts stay deterministic | Small follow-up change to the same state seam as T010 |
-| T013 | 2 | Add markdown smoke coverage that the command docs still expose the compact/expanded headings and producer-only wording | Pure documentation smoke with an existing helper seam |
-| T014 | 3 | Add contract coverage proving the manifest and command docs agree on the driver-owned solution/tasking handoff | Cross-file contract validation across docs and registry metadata |
-| T015 | 2 | Keep `.claude/commands/speckit.solution.md` and related command docs producer-only and aligned to the driver-owned handoff model | Doc-only alignment work across a small set of command files |
-| T016 | 2 | Keep the quickstart and manifest aligned with the solution-to-tasking contract so operators see the same flow the driver enforces | Documentation alignment across two artifact surfaces |
-| T017 | 3 | Add separate analysis-path regression coverage so post-solution drift remains distinct from solution completion | Distinct event-path regression with orchestration and reporting implications |
-| T018 | 2 | Update the phase contract validator so tasking and analyze handoffs continue to enforce the same boundary rules | Small validator update against an already-shaped contract seam |
+| T001 | 2 | Shared integration fixture seam | Existing test file seam; low uncertainty. |
+| T002 | 1 | Shared unit transition helper | Local helper-only change in one file. |
+| T003 | 3 | Route contract parsing hardening | Multi-branch normalization and error-path assertions. |
+| T004 | 2 | Step mapping alignment to normalized routes | Focused routing adaptation in one runtime seam. |
+| T005 | 3 | Ledger-authoritative phase-state resolution | Crosses state derivation and deterministic drift signaling. |
+| T006 | 2 | Unit validate-before-emit regression | Narrow assertions on existing driver unit harness. |
+| T007 | 2 | Integration blocked-validation no-append regression | One feature-flow path extension, known pattern. |
+| T008 | 2 | Transition-map rejection test coverage | Existing ledger sequence test pattern reuse. |
+| T009 | 5 | Deterministic run-step envelope hardening | Core orchestration seam with multiple failure envelope branches. |
+| T010 | 5 | Success-append idempotent gating | High-risk ledger mutation boundary across retry/success paths. |
+| T011 | 3 | Transition/append guard tightening | Sequence and append validation constraints across unit seams. |
+| T012 | 2 | Deny/invalid approval integration tests | Existing integration harness with additional cases. |
+| T013 | 2 | Drift reconciliation unit tests | Deterministic reason assertions in known unit file. |
+| T014 | 3 | Explicit approval enforcement in runtime path | Behavioral control-flow update in primary driver seam. |
+| T015 | 3 | Drift reason strengthening in phase-state resolver | Logic + deterministic reason-shape constraints in state seam. |
+| T016 | 2 | Lock/retry sequencing refinement | Focused control-path update with existing lock seam. |
+| T017 | 3 | Contract schema and mode-normalization tests | Contract-level assertions spanning route + schema contracts. |
+| T018 | 2 | Producer-only markdown shape regression | One test seam update with known pattern. |
+| T019 | 2 | Manifest/doc coverage regression | Existing coverage guard extension. |
+| T020 | 2 | Manifest `speckit.solution` contract normalization | YAML updates with bounded schema scope. |
+| T021 | 2 | Producer-only command contract wording updates | Deterministic command-doc contract edits in one file. |
+| T022 | 1 | Quickstart ownership clarification | Documentation-only refinement. |
+| T023 | 3 | Parse-step fail-fast contract enforcement | Error-contract handling across route and result parse logic. |
+| T024 | 3 | Mixed migration deterministic regression | Integration regression across legacy + driver-mode branches. |
+| T025 | 2 | Duplicate terminal-event retry prevention tests | Additional unit coverage in established seam. |
+| T026 | 1 | Human dry-run/runbook verification record | Manual operator verification task with doc update. |
+| T027 | 2 | Command-doc token-footprint measurement regression | Direct coverage for SC-004 measurement requirement. |
+| T028 | 3 | Rollback and no-partial-write regression coverage | Explicit FR-013 rollback / partial-write oracle. |
+| T029 | 3 | Manifest-to-ledger validation routing | Manifest emits gain ledger-domain routing so validation can dispatch to the correct existing ledger validator. |
 
 ---
 
-### T001 — sketch: trivial
-
-No detailed sketch required. This is a repo-process documentation update.
-
-### T002 — sketch: trivial
-
-No detailed sketch required. This is a small manifest / command-doc alignment change.
-
 ### T003 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver_state.py:resolve_current_step` and related state helpers to prefer the ledger over any local mirror.
+**Modify**: `scripts/pipeline_driver_contracts.py:load_driver_routes` to reject unknown modes and normalize emit contracts deterministically.
 **Create**: none.
-**Reuse**: the existing pipeline ledger read path and the current driver state resolution flow.
-**Composition**: the driver asks the ledger for the authoritative last event, derives the current step from that event, and refuses to advance when the ledger and any cached mirror diverge.
-**Failing test assertion**: the state-resolution test should fail until the resolver returns the ledger-derived step even when a stale cached step says otherwise.
-**Domains touched**: `.claude/domains/03_data_storage_persistence.md`, `.claude/domains/07_compute_orchestration.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`, `.claude/domains/17_code_patterns.md`
-
-### T004 — Solution Sketch
-
-**Modify**: `scripts/pipeline_driver.py:run_phase` and `scripts/pipeline_ledger.py:append` to enforce validate-before-emit ordering.
-**Create**: none.
-**Reuse**: the existing validation and append commands, plus the ledger event schema already declared in `command-manifest.yaml`.
-**Composition**: the driver produces artifacts, runs deterministic validation, and only then passes the validated payload into the ledger append path.
-**Failing test assertion**: the regression should fail until a validation failure leaves the ledger unchanged and a success path appends exactly one completion event.
-**Domains touched**: `.claude/domains/07_compute_orchestration.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`, `.claude/domains/17_code_patterns.md`
+**Reuse**: Existing route-normalization helpers and reason-code conventions.
+**Composition**: parse manifest route blocks, validate required keys, emit normalized driver route map.
+**Failing test assertion**: unknown route mode returns deterministic contract error instead of fallback success.
+**Domains touched**: command contracts, deterministic runtime.
 
 ### T005 — Solution Sketch
 
-**Modify**: the test suite under `tests/integration/test_pipeline_driver.py` to assert the blocked path does not emit a completion event.
-**Create**: a regression test function for the validation-failure path.
-**Reuse**: the current driver invocation fixture and the pipeline ledger assertion helpers.
-**Composition**: the test drives a failing artifact scenario through the orchestrator, then inspects the ledger to ensure the completion event never appears.
-**Failing test assertion**: the assertion should fail until a rejected validation leaves the ledger without the completion event.
-**Domains touched**: `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`
-
-### T006 — Solution Sketch
-
-**Modify**: the same integration suite to add the success-path assertion for a single emitted completion event.
-**Create**: a second regression test covering the valid-completion flow.
-**Reuse**: the same driver fixture and event-count assertion helpers used by T005.
-**Composition**: the test runs a valid phase context, confirms the validator passes, and then checks that the completion event appears once and only once.
-**Failing test assertion**: the assertion should fail until the happy path emits exactly one event and the failure path still blocks cleanly.
-**Domains touched**: `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`
-
-### T007 — Solution Sketch
-
-**Modify**: `scripts/pipeline_driver.py:run_phase` to order artifact generation, validation, and handoff deterministically.
+**Modify**: `scripts/pipeline_driver_state.py:resolve_phase_state` to prefer ledger truth over hints and emit machine-readable drift reasons.
 **Create**: none.
-**Reuse**: the existing command execution flow and the driver state resolver.
-**Composition**: the driver gathers artifacts, validates them, and only then hands a validated payload to the ledger append path.
-**Failing test assertion**: the new coverage should fail until the driver calls validation before the ledger append path and returns the blocked status on failure.
-**Domains touched**: `.claude/domains/07_compute_orchestration.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`
-
-### T008 — Solution Sketch
-
-**Modify**: `scripts/pipeline_ledger.py:append` and any supporting validation helpers to keep append behavior idempotent.
-**Create**: none.
-**Reuse**: the existing append command and event-shape validation code.
-**Composition**: validated payloads are appended once, duplicate retries are ignored or rejected deterministically, and the append path remains the only write seam.
-**Failing test assertion**: the retry behavior test should fail until repeated valid submissions do not create duplicate terminal events.
-**Domains touched**: `.claude/domains/03_data_storage_persistence.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`
+**Reuse**: Existing event-stream read + reconcile logic.
+**Composition**: derive current phase from ledger events, compare hints, add deterministic drift reason payload.
+**Failing test assertion**: stale hint cannot override ledger-derived phase resolution.
+**Domains touched**: state authority, retry/idempotency.
 
 ### T009 — Solution Sketch
 
-**Modify**: the integration tests around the phase start path to exercise approval and rejection.
-**Create**: regression tests for a rejected approval and an accepted approval.
-**Reuse**: the current-step resolver and the interactive permission-gate flow.
-**Composition**: the tests drive the resolver, simulate the human response, and assert zero side effects on rejection.
-**Failing test assertion**: the suite should fail until a rejection prevents phase execution and an approval allows it to begin.
-**Domains touched**: `.claude/domains/07_compute_orchestration.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`, `.claude/domains/13_identity_access_control.md`
+**Modify**: `scripts/pipeline_driver.py:run_step` envelope parsing branches.
+**Create**: none.
+**Reuse**: Existing runtime failure sidecar writer.
+**Composition**: normalize subprocess result, map invalid envelope/missing fields to deterministic blocked/error outcomes.
+**Failing test assertion**: malformed step output yields blocked/error envelope and no completion progression.
+**Domains touched**: runtime envelope, deterministic failure handling.
 
-### T010 — sketch: trivial
+### T010 — Solution Sketch
 
-No detailed sketch required. This is a focused unit test around the authoritative state source.
+**Modify**: `scripts/pipeline_driver.py:append_pipeline_success_event`.
+**Create**: none.
+**Reuse**: Existing manifest-derived emit contract and ledger append wrapper.
+**Composition**: require validated gate-pass precondition, guard duplicate terminal emission on retries, append only once.
+**Failing test assertion**: retry after terminal success does not duplicate completion event.
+**Domains touched**: ledger mutation safety, idempotency.
 
 ### T011 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver.py:start_phase` and any start-flow adapters so explicit approval is required before execution begins.
+**Modify**: `scripts/pipeline_ledger.py:validate_sequence` and append guard call sites.
 **Create**: none.
-**Reuse**: the state resolver and the existing driver entrypoint naming / phase progression contract.
-**Composition**: the driver resolves the current step, prompts for explicit approval, and aborts without side effects when approval is denied.
-**Failing test assertion**: the approval-flow test should fail until a rejected confirmation returns without starting the phase and an accepted confirmation proceeds.
-**Domains touched**: `.claude/domains/07_compute_orchestration.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/13_identity_access_control.md`, `.claude/domains/16_ops_governance.md`
-
-### T012 — sketch: trivial
-
-No detailed sketch required. This is a small follow-up to the state-resolution and approval seams.
-
-### T013 — sketch: trivial
-
-No detailed sketch required. This is a markdown smoke test plus producer-only wording check.
+**Reuse**: Current transition maps and event-shape validators.
+**Composition**: enforce predecessor requirements before append and preserve append-only guarantees.
+**Failing test assertion**: invalid predecessor transition is rejected before ledger mutation.
+**Domains touched**: governance state machine, append safety.
 
 ### T014 — Solution Sketch
 
-**Modify**: the validator and smoke-test coverage around `command-manifest.yaml` and `.claude/commands/speckit.solution.md`.
-**Create**: contract coverage that reads the command docs and manifest together.
-**Reuse**: the new markdown heading discovery flow and the compact / expanded command-doc shape already standardized in the repo.
-**Composition**: the test asserts that the manifest and command docs still describe the same driver-owned handoff contract and do not drift apart.
-**Failing test assertion**: the coverage should fail until the manifest and docs agree on the tasking handoff and producer-only wording.
-**Domains touched**: `.claude/domains/10_observability.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`, `.claude/domains/17_code_patterns.md`
+**Modify**: `scripts/pipeline_driver.py:run_step` approval branch.
+**Create**: none.
+**Reuse**: Existing permission token checks and gate reason codes.
+**Composition**: enforce explicit affirmative approval before command execution begins; denied/invalid exits are side-effect free.
+**Failing test assertion**: non-yes approval never executes phase command and emits no completion event.
+**Domains touched**: human approval gate, deterministic side-effect boundary.
 
-### T015 — sketch: trivial
+### T015 — Solution Sketch
 
-No detailed sketch required. This is a command-doc wording alignment task.
-
-### T016 — sketch: trivial
-
-No detailed sketch required. This is a quickstart / manifest alignment update.
+**Modify**: `scripts/pipeline_driver_state.py:resolve_phase_state`.
+**Create**: none.
+**Reuse**: drift flag structure used by feature-flow tests.
+**Composition**: classify drift causes deterministically and expose machine-readable reason values for downstream handling.
+**Failing test assertion**: unresolved reconciliation path yields explicit deterministic drift reason code.
+**Domains touched**: state reconciliation, observability.
 
 ### T017 — Solution Sketch
 
-**Modify**: the driver analysis path and the regression coverage that keeps analysis distinct from solution completion.
-**Create**: a dedicated integration test for the post-solution analysis event path.
-**Reuse**: the existing pipeline driver flow and the ledger append gate.
-**Composition**: the analysis path stays separate from completion, emits its own event contract, and reports drift without collapsing it into solution success.
-**Failing test assertion**: the test should fail until analysis is emitted through the separate path and no solution-completion event is reused for drift reporting.
-**Domains touched**: `.claude/domains/07_compute_orchestration.md`, `.claude/domains/10_observability.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`
+**Modify**: `tests/contract/test_pipeline_driver_contract.py` assertions on route mode + step-result schema.
+**Create**: none.
+**Reuse**: existing contract fixture loader.
+**Composition**: assert blocked schema requires gate/reasons and route mode normalization rejects invalid modes.
+**Failing test assertion**: contract parse accepts invalid blocked payload without reasons (expected fail before fix).
+**Domains touched**: contract verification, schema governance.
 
-### T018 — sketch: trivial
+### T023 — Solution Sketch
 
-No detailed sketch required. This is a focused validator update for the existing contract boundary.
+**Modify**: `scripts/pipeline_driver_contracts.py:parse_step_result`.
+**Create**: none.
+**Reuse**: existing deterministic reason code constants.
+**Composition**: strict parse/validate blocked/success envelopes; fail fast with deterministic reason codes.
+**Failing test assertion**: malformed payload cannot be treated as successful step result.
+**Domains touched**: command-result contract parsing, deterministic reasoning.
+
+### T024 — Solution Sketch
+
+**Modify**: `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`.
+**Create**: none.
+**Reuse**: existing migration-mode fixtures.
+**Composition**: exercise mixed legacy and driver routes across deterministic success/blocked paths.
+**Failing test assertion**: mixed migration path emits non-deterministic route behavior across repeated runs.
+**Domains touched**: migration compatibility, regression safety.
+
+### T027 — sketch: trivial
+
+Token-footprint measurement is a focused test/additional assertion in an existing markdown-doc-shape seam.
+
+### T028 — Solution Sketch
+
+**Modify**: `tests/unit/test_pipeline_ledger_sequence.py:test_append_rejects_partial_write_and_preserves_state` to assert partial writes do not persist or advance the phase state.
+**Create**: none.
+**Reuse**: Existing sequence validator and append guard behavior.
+**Composition**: simulate append failure or partial-write condition, then assert ledger state remains unchanged and no rollback ambiguity exists.
+**Failing test assertion**: append failure still mutates state or advances the feature sequence.
+**Domains touched**: storage integrity, governance state machine, testing.
+
+### T029 — Solution Sketch
+
+**Modify**: `scripts/pipeline_ledger.py:cmd_validate_manifest` to classify manifest emits by ledger domain and dispatch task events to the task-ledger validator path.
+**Create**: none.
+**Reuse**: Existing pipeline and task ledger validation rules plus manifest emit declarations.
+**Composition**: tag manifest emits with ledger ownership, validate pipeline emits against pipeline transitions, and validate task emits against task transitions without collapsing the two ledgers.
+**Failing test assertion**: task-domain manifest emits are rejected by the pipeline validator even though the task ledger already accepts them.
+**Domains touched**: governance routing, manifest validation, audit-trail separation.
+
+---
 
 ## Phase Totals
 
-| Phase | Tasks | Points |
-|-------|-------|--------|
-| Phase 1: Setup (Shared Infrastructure) | 2 | 3 |
-| Phase 2: Foundational (Blocking Prerequisites) | 2 | 6 |
-| Phase 3: User Story 1 - Deterministic Phase Completion | 4 | 12 |
-| Phase 4: User Story 2 - Permissioned Phase Start | 4 | 10 |
-| Phase 5: User Story 3 - Producer-Only Command Contracts | 4 | 9 |
-| Phase 6: Polish & Cross-Cutting Concerns | 2 | 5 |
-| Total | 18 | 45 |
+| Phase | Points | Task Count | Parallel Tasks |
+|-------|--------|------------|----------------|
+| Phase 1: Setup | 3 | 2 | 0 |
+| Phase 2: Foundational | 8 | 3 | 0 |
+| Phase 3: User Story 1 | 19 | 6 | 3 |
+| Phase 4: User Story 2 | 12 | 5 | 2 |
+| Phase 5: User Story 3 | 15 | 7 | 3 |
+| Phase 6: Polish | 14 | 6 | 4 |
+| **Total** | **71** | **29** | **12** |
+
+---
 
 ## Warnings
 
-- These estimates assume the current sketch stays stable and the driver-owned phase contract does not reopen major sequencing decisions.
-- If the manifest or ledger sequence changes again, the story points for the orchestration tasks may move up.
+- No tasks are scored 8 or 13; no breakdown required in this estimate loop.
+- Phases with no parallel opportunities: Phase 1, Phase 2 (expected due shared setup/foundational sequencing).
+- Higher-risk seams to monitor during implementation: T009, T010, T014 (primary driver/append control flow boundaries).
+- Higher-risk seams to monitor during implementation: T029 (manifest routing and ledger-domain dispatch boundary).
+- No uncovered async lifecycle guard, state-safety, or transaction-integrity gaps were identified from current task scope.

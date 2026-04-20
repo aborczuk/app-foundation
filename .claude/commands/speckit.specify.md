@@ -25,6 +25,9 @@ Given that feature description, do this:
    - Otherwise run in **default mode** (new feature branch/spec creation).
    - Strip the `--update-current-spec` flag from `$ARGUMENTS` before analysis.
    - If the remaining description is empty: ERROR "No feature description provided"
+   - Use the current checkout only.
+   - Do not create temp worktrees or alternate checkout paths.
+   - If the current checkout is dirty, stop and ask the user to commit, stash, or discard the changes first.
 
 2. **If in default mode, generate a concise short name** (2-4 words):
    - Extract the highest-signal keywords from the feature description.
@@ -41,6 +44,7 @@ Given that feature description, do this:
 
    b. Parse JSON output and treat it as authoritative for `BRANCH_NAME`, `FEATURE_DIR`, and `SPEC_FILE`.
    c. Run this script once per feature. For single quotes in args like "I'm Groot", escape as `'\''` or use double quotes.
+   d. Stay in the current checkout; do not route branch creation through temp worktrees or spare checkouts. If the checkout is dirty, abort and ask for commit/stash/discard before proceeding.
 
 4. **If in update mode (`--update-current-spec`) resolve existing spec paths**:
    - Run:
