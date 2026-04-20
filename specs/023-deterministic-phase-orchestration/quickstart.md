@@ -72,6 +72,16 @@ Expected: `Doc graph validation PASSED.`
 
 ---
 
+## Operator Handoff
+
+The solution phase is a producer-vs-driver ownership boundary: `/speckit.solution` produces the `solution_approved` payload, and the pipeline driver records the event after the payload is accepted.
+
+- Keep the command doc focused on payload production during migration-safe updates.
+- Do not hand-write `.speckit/pipeline-ledger.jsonl`; rerun `/speckit.solution` after manifest or command-doc changes instead.
+- After `plan_approved` is emitted, continue to `/speckit.solution`; after `solution_approved` is recorded, move on to `/speckit.e2e` or `/speckit.implement` as appropriate.
+
+---
+
 ## Common Issues
 
 | Issue | Symptom | Fix |
