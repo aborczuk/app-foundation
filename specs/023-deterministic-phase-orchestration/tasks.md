@@ -96,7 +96,7 @@
 ### Tests for User Story 3
 
 - [X] T017 [P] [US3] Add contract tests for route-mode normalization and emit-contract schema validity in `tests/contract/test_pipeline_driver_contract.py` — `tests/contract/test_pipeline_driver_contract.py:test_step_result_schema_blocked_requires_gate_and_reasons`
-- [ ] T018 [P] [US3] Add markdown/doc-shape regression for producer-only command contract wording in `tests/unit/test_validate_markdown_doc_shapes.py` — `tests/unit/test_validate_markdown_doc_shapes.py:test_validate_markdown_doc_shape_accepts_compact_expanded`
+- [X] T018 [P] [US3] Add markdown/doc-shape regression for producer-only command contract wording in `tests/unit/test_validate_markdown_doc_shapes.py` — `tests/unit/test_validate_markdown_doc_shapes.py:test_validate_markdown_doc_shape_accepts_compact_expanded`
 - [ ] T019 [P] [US3] Add command-script coverage regression for manifest/doc alignment in `tests/unit/test_validate_command_script_coverage.py` — `tests/unit/test_validate_command_script_coverage.py:test_validate_command_script_coverage_passes_with_required_scripts`
 
 ### Implementation for User Story 3

@@ -867,3 +867,8 @@
 {"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:03.408231Z"}
 {"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:03.417776Z"}
 {"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:03.426870Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "3df2124d9e5a1efb4e2c66c41f1163b8b10c9d61", "event": "commit_created", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:23.950598Z"}
+{"actor": "codex", "attempt": 2, "commit_sha": "3df2124d4ab59b0ad9b3aa12183c953c92fe1915", "details": "corrected commit sha after initial local append typo", "event": "commit_created", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:49.703333Z"}
+{"actor": "codex", "attempt": 2, "event": "offline_qa_started", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:55.833072Z"}
+{"actor": "codex", "attempt": 2, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "offline-qa-t018-20260420T163639Z", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:55.871015Z"}
+{"actor": "codex", "attempt": 2, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T018", "timestamp_utc": "2026-04-20T16:36:55.908875Z"}
