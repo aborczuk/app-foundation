@@ -144,3 +144,47 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
 
     assert calls == [[str(fake_script), str(scope_path)]]
 
+
+def test_codegraph_refresh_if_needed_skips_when_status_is_healthy(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: "healthy")
+    monkeypatch.setattr(read_code, "SCRIPT_DIR", tmp_path)
+
+    called = {"value": False}
+
+    def fake_run(*args, **kwargs):
+        called["value"] = True
+        return _completed(0)
+
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+
+    read_code.codegraph_refresh_if_needed(tmp_path / "src")
+
+    assert called["value"] is False
+
+
+def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeypatch, tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    calls: list[Path] = []
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: calls.append(file_path))
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_line_num",
+        lambda *args, **kwargs: read_code._VectorMatch(
+            line_num=1,
+            raw_score=0.9,
+            metadata_score=5.0,
+            exact_symbol_match=True,
+            symbol_type="function",
+            has_body=True,
+            has_docstring=False,
+            line_span=1,
+        ),
+    )
+    monkeypatch.setattr(read_code, "_resolve_line_num_strict", lambda *args, **kwargs: (0, 1))
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "1"])
+
+    assert exit_code == 0
+    assert calls == [code_file]
