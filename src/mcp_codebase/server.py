@@ -17,6 +17,7 @@ from src.mcp_codebase import config
 from src.mcp_codebase.diag_tool import get_diagnostics_impl
 from src.mcp_codebase.health import classify_graph_health
 from src.mcp_codebase.index import IndexScope, build_vector_index_service
+from src.mcp_codebase.index.config import DEFAULT_VECTOR_DB_PATH
 from src.mcp_codebase.index.service import VectorIndexService
 from src.mcp_codebase.pyright_client import PyrightClient
 from src.mcp_codebase.type_tool import get_type_impl
@@ -181,7 +182,7 @@ class CodebaseLSPServer:
 
         return IndexConfig(
             repo_root=self._project_root,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=DEFAULT_VECTOR_DB_PATH,
             embedding_model="local-default",
             exclude_patterns=load_exclude_patterns(),
         )

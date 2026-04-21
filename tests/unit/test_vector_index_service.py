@@ -42,7 +42,7 @@ Run the index and query the doctor.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=".codegraphcontext/global/db/vector-index",
             embedding_model="local-default",
         )
     )
@@ -93,7 +93,7 @@ esac
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=".codegraphcontext/global/db/vector-index",
             embedding_model="local-default",
         )
     )
@@ -133,7 +133,7 @@ def beta() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=".codegraphcontext/global/db/vector-index",
             embedding_model="local-default",
         )
     )
@@ -184,7 +184,7 @@ def current_name() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/db/vector-index",
+            db_path=".codegraphcontext/global/db/vector-index",
             embedding_model="local-default",
         )
     )

@@ -7,7 +7,7 @@ Get the local semantic index running in a repo checkout.
 ## What Exists Now
 
 This feature now ships a local Chroma-backed vector index with embeddings. It
-stores its data on disk under `.codegraphcontext/db/vector-index/`, so the
+stores its data on disk under `.codegraphcontext/global/db/vector-index/`, so the
 index stays tied to the repository checkout and does not require a remote
 database.
 
@@ -30,7 +30,7 @@ The main implementation pieces are:
 
 - Python 3.12 via `uv`: run `uv --version`
 - Repo dependencies installed: run `uv sync`
-- Local disk space for the index under `.codegraphcontext/db/`
+- Local disk space for the index under `.codegraphcontext/global/db/vector-index/`
 - A checked-out repo with `src/`, `tests/`, `specs/`, and `.claude/` content
 
 ---
@@ -43,16 +43,16 @@ The main implementation pieces are:
 uv sync
 ```
 
-### 2. Confirm the repo-local storage home exists
+### 2. Confirm the shared vector storage home exists
 
 ```bash
-mkdir -p .codegraphcontext/db
+mkdir -p .codegraphcontext/global/db/vector-index
 ```
 
 ### 3. Warm the local embedding/runtime path
 
 ```bash
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -c "import chromadb, fastembed, watchdog, markdown_it"
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap --skip-build
 ```
 
 ---
@@ -62,22 +62,24 @@ UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -c "import chromadb, fas
 The index is exposed through the existing `src/mcp_codebase` package. Expected entry points:
 
 ```bash
+# Ensure the local embedding model is available (and optionally build immediately)
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap --skip-build
+
 # Build or refresh the index
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer build
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . build
 
 # Build while excluding configured paths
 MCP_CODEBASE_INDEX_EXCLUDE_PATTERNS="docs/build/**" \
-  UV_CACHE_DIR=/tmp/app-foundation-uv-cache \
-  uv run python -m src.mcp_codebase.indexer --exclude-pattern docs/build/** build
+  uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . --exclude-pattern docs/build/** build
 
 # Check whether the active snapshot is stale relative to HEAD
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer status
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . status
 
 # Start watcher mode for incremental refresh
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer watch
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . watch
 
 # Query for context
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer query "webhook deduplication"
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . query "webhook deduplication"
 ```
 
 If the implementation is exposed as MCP tools only, the equivalent flow is to start the `codebase` MCP server and call the search/update/staleness tools from the agent runtime.
@@ -90,19 +92,19 @@ Use this as the normal local workflow:
 
 ```bash
 # Build the initial snapshot
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer build
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . build
 
 # Check freshness before trusting results
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer status
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . status
 
 # Query the index
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer query "webhook deduplication"
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . query "webhook deduplication"
 
 # Refresh a changed file or a short list of changed files
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer refresh src/mcp_codebase/index/service.py
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . refresh src/mcp_codebase/index/service.py
 
 # Keep the snapshot current while you edit
-UV_CACHE_DIR=/tmp/app-foundation-uv-cache uv run python -m src.mcp_codebase.indexer watch
+uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . watch
 ```
 
 The watcher listens for local edits and calls the incremental refresh path for
@@ -110,7 +112,7 @@ changed Python and markdown files. If you only need a one-off update, use
 `refresh`; if you want the snapshot to stay current while you work, use `watch`.
 
 You can inspect the stored snapshot directly on disk under
-`.codegraphcontext/db/vector-index/`:
+`.codegraphcontext/global/db/vector-index/`:
 
 - `active.json` records the active snapshot metadata
 - the active snapshot directory stores the Chroma collection and chunk data
@@ -182,7 +184,7 @@ The current test coverage for this workflow lives in:
 | Stale results after editing files | Query returns old line ranges | Confirm the watcher is running or invoke the manual refresh command. |
 | Stale snapshot after new commits | Status reports `is_stale: true` plus commit delta and age | Rebuild or refresh the index so `current_commit` matches the repository HEAD again. |
 | Configured paths still appear in results | Query returns files you intended to skip | Confirm `MCP_CODEBASE_INDEX_EXCLUDE_PATTERNS` or `--exclude-pattern` was supplied before the build or refresh. |
-| Index storage missing | Query reports no active snapshot | Rebuild the index from the repo root and verify `.codegraphcontext/db/vector-index/` exists. |
+| Index storage missing | Query reports no active snapshot | Rebuild the index from the repo root and verify `.codegraphcontext/global/db/vector-index/` exists. |
 | Embedding runtime unavailable | Refresh fails early | Confirm the local embedding package is installed and reachable in the `uv` environment. |
 
 ---

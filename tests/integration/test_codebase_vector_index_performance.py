@@ -59,7 +59,7 @@ Do not index this section.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
             exclude_patterns=("docs/build/**",),
         )
@@ -82,7 +82,7 @@ def test_index_build_and_refresh_meets_timing_budgets(tmp_path: Path) -> None:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -145,7 +145,7 @@ This is document {index}.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )

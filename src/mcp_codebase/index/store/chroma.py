@@ -13,7 +13,11 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Sequence
 
-from src.mcp_codebase.index.config import DEFAULT_EMBEDDING_MODEL_NAME, IndexConfig
+from src.mcp_codebase.index.config import (
+    DEFAULT_EMBEDDING_MODEL_NAME,
+    IndexConfig,
+    embedding_model_cache_path,
+)
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
 
 try:  # pragma: no cover - exercised in integration/runtime verification
@@ -97,6 +101,23 @@ class ChromaIndexStore:
     def embedding_cache_dir(self) -> Path:
         """Return the repo-local cache directory for embedding models."""
         return self._config.embedding_cache_dir
+
+    def ensure_embedding_model_local(self) -> dict[str, object]:
+        """Prime the configured embedding model cache and return local cache details."""
+        backend = self._ensure_embedding_backend()
+        # Trigger a real embedding pass so missing model weights are downloaded eagerly.
+        backend.embed_texts(["vector-index-bootstrap"])
+        model_cache_path = embedding_model_cache_path(self.embedding_cache_dir, backend.model_name)
+        if not model_cache_path.exists():
+            fallback_candidates = sorted(self.embedding_cache_dir.glob("models--*"))
+            if fallback_candidates:
+                model_cache_path = fallback_candidates[0]
+        return {
+            "embedding_model": backend.model_name,
+            "embedding_cache_dir": str(self.embedding_cache_dir),
+            "embedding_model_cache_path": str(model_cache_path),
+            "embedding_model_cache_present": model_cache_path.exists(),
+        }
 
     def write_snapshot(
         self,

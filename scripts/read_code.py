@@ -8,7 +8,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +16,8 @@ SCRIPT_DIR = SOURCE_PATH.parent
 REPO_ROOT = SCRIPT_DIR.parent
 CODEGRAPH_CONTEXT_DIR = REPO_ROOT / ".codegraphcontext"
 CODEGRAPH_DB_DIR = CODEGRAPH_CONTEXT_DIR / "db"
+VECTOR_DB_DIR = CODEGRAPH_CONTEXT_DIR / "global" / "db" / "vector-index"
+VECTOR_BOOTSTRAP_COMMAND = "uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap"
 
 CODE_FILE_LINE_THRESHOLD = 200
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
@@ -102,6 +103,15 @@ def _emit_vector_fallback_notice(
 
 def _command_exists(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def _is_repo_local_path(file_path: Path) -> bool:
+    """Return whether a target file resides under the repository root."""
+    try:
+        file_path.resolve().relative_to(REPO_ROOT)
+        return True
+    except ValueError:
+        return False
 
 
 def _coerce_line(value: object) -> int | None:
@@ -192,41 +202,38 @@ def codegraph_health_status(project_root: Path | None = None) -> str:
     if not _command_exists("uv"):
         print("WARN: codegraph health probe skipped because uv is not available", file=sys.stderr)
         return "unavailable"
-    stderr_path = Path(tempfile.mkstemp(prefix="codegraph-doctor.", suffix=".log")[1])
-    try:
-        proc = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--no-sync",
-                "python",
-                "-m",
-                "src.mcp_codebase.doctor",
-                "--json",
-                "--project-root",
-                str(root),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    finally:
-        try:
-            stderr_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+    proc = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "python",
+            "-m",
+            "src.mcp_codebase.doctor",
+            "--json",
+            "--project-root",
+            str(root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
-    if proc.returncode != 0:
+    payload = (proc.stdout or "").strip()
+    status = ""
+    if payload:
+        try:
+            status = str(json.loads(payload).get("status", ""))
+        except json.JSONDecodeError:
+            print("WARN: codegraph health probe returned non-JSON output", file=sys.stderr)
+            status = ""
+
+    if not status:
         doctor_err = (proc.stderr or "").strip()
         if doctor_err:
             print(f"WARN: codegraph health probe failed: {doctor_err}", file=sys.stderr)
         return "probe-failed"
 
-    try:
-        status = str(json.loads(proc.stdout or "{}").get("status", "unavailable"))
-    except json.JSONDecodeError:
-        print("WARN: codegraph health probe returned non-JSON output", file=sys.stderr)
-        return "probe-failed"
     if status == "healthy":
         current_signature = codegraph_current_edit_signature(root)
         cached_signature = codegraph_cached_edit_signature(root)
@@ -239,18 +246,40 @@ def codegraph_health_status(project_root: Path | None = None) -> str:
     return status or "probe-failed"
 
 
-def codegraph_refresh_if_needed(scope_path: Path | None = None) -> None:
-    """Refresh scoped codegraph index when health is stale/unavailable."""
+def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
+    """Refresh scoped codegraph index when stale; fail only for unavailable probe states."""
     path = scope_path or REPO_ROOT
     health_status = codegraph_health_status(REPO_ROOT)
-    if health_status in {"stale", "unavailable"}:
-        safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
-        if safe_index.is_file() and os.access(safe_index, os.X_OK):
-            print(
-                f"WARN: codegraph is {health_status}; refreshing scoped index for {path}",
-                file=sys.stderr,
-            )
-            subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
+    if health_status == "healthy":
+        return True
+    if health_status != "stale":
+        print(f"ERROR: codegraph preflight failed: status is {health_status}", file=sys.stderr)
+        return False
+
+    safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
+    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
+        print(f"ERROR: codegraph preflight failed: missing safe index script at {safe_index}", file=sys.stderr)
+        return False
+    print(
+        f"WARN: codegraph is stale; refreshing scoped index for {path}",
+        file=sys.stderr,
+    )
+    proc = subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            print(f"ERROR: codegraph refresh failed: {stderr.splitlines()[-1]}", file=sys.stderr)
+        else:
+            print(f"ERROR: codegraph refresh failed with exit code {proc.returncode}", file=sys.stderr)
+        return False
+
+    refreshed_status = codegraph_health_status(REPO_ROOT)
+    if refreshed_status in {"unavailable", "probe-failed", "locked"}:
+        print(f"ERROR: codegraph preflight failed after refresh: status is {refreshed_status}", file=sys.stderr)
+        return False
+    if refreshed_status == "stale":
+        print("WARN: codegraph remains stale after scoped refresh; continuing with bounded read", file=sys.stderr)
+    return True
 
 
 def vector_index_status(project_root: Path | None = None) -> str:
@@ -297,20 +326,25 @@ def vector_index_status(project_root: Path | None = None) -> str:
     return "healthy"
 
 
-def vector_refresh_if_needed(scope_path: Path | None = None) -> None:
-    """Run a targeted vector refresh when the local index is stale or missing."""
+def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
+    """Require a healthy vector index and refresh stale snapshots in-place."""
     path = scope_path or REPO_ROOT
     status = vector_index_status(REPO_ROOT)
-    if status not in {"stale", "missing", "unavailable", "probe-failed"}:
-        return
+    if status == "healthy":
+        return True
+    if status in {"missing", "unavailable", "probe-failed"}:
+        if status == "missing":
+            _set_vector_runtime_note(
+                f"index snapshot missing at {VECTOR_DB_DIR}; run `{VECTOR_BOOTSTRAP_COMMAND}`"
+            )
+        print(f"ERROR: vector preflight failed: status is {status}", file=sys.stderr)
+        return False
     if not _command_exists("uv"):
-        print("WARN: vector refresh skipped because uv is not available", file=sys.stderr)
-        return
+        _set_vector_runtime_note("uv is not available")
+        print("ERROR: vector preflight failed: uv is not available", file=sys.stderr)
+        return False
 
-    print(
-        f"WARN: vector index is {status}; refreshing targeted index for {path}",
-        file=sys.stderr,
-    )
+    print(f"WARN: vector index is stale; refreshing targeted index for {path}", file=sys.stderr)
     cmd = [
         "uv",
         "run",
@@ -332,13 +366,34 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> None:
             _set_vector_runtime_note(f"index refresh failed: {stderr.splitlines()[0]}")
         else:
             _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
+        print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
+        return False
+
+    refreshed_status = vector_index_status(REPO_ROOT)
+    if refreshed_status != "healthy":
+        _set_vector_runtime_note(f"index status after refresh is {refreshed_status}")
+        print(f"ERROR: vector preflight failed after refresh: status is {refreshed_status}", file=sys.stderr)
+        return False
+    return True
 
 
-def _refresh_indexes_for_read(file_path: Path) -> None:
-    """Run bounded freshness checks and targeted refreshes used by read-code commands."""
-    if codegraph_supports_file(file_path):
-        codegraph_refresh_if_needed(file_path.parent)
-    vector_refresh_if_needed(file_path)
+def _refresh_indexes_for_read(file_path: Path) -> bool:
+    """Run read preflight checks and require both codegraph/vector indexes to be healthy."""
+    if not _is_repo_local_path(file_path):
+        return True
+    if codegraph_supports_file(file_path) and not codegraph_refresh_if_needed(file_path.parent):
+        return False
+    if not vector_refresh_if_needed(file_path):
+        runtime_note = _consume_vector_runtime_note()
+        if runtime_note:
+            print(f"ERROR: {runtime_note}", file=sys.stderr)
+        print(
+            "ERROR: read-code preflight requires a healthy vector index; run "
+            f"`{VECTOR_BOOTSTRAP_COMMAND}`",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def codegraph_supports_file(file_path: Path) -> bool:
@@ -848,7 +903,8 @@ def read_code_context(argv: list[str]) -> int:
         print(f"ERROR: context_lines exceeds max ({READ_CODE_MAX_LINES}): {context}", file=sys.stderr)
         return 1
 
-    _refresh_indexes_for_read(file_path)
+    if not _refresh_indexes_for_read(file_path):
+        return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
     vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
@@ -967,7 +1023,8 @@ def read_code_window(argv: list[str]) -> int:
     vector_match = None
 
     if pattern:
-        _refresh_indexes_for_read(file_path)
+        if not _refresh_indexes_for_read(file_path):
+            return 1
         normalized_pattern = normalize_symbol_pattern(pattern)
         vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 

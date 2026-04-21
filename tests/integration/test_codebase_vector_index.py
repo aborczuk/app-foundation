@@ -49,7 +49,7 @@ Run the index and then query the doctor.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -105,7 +105,7 @@ Use the local index for governance lookups.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -140,7 +140,7 @@ def current_name() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -210,7 +210,7 @@ def generated_symbol() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
@@ -263,7 +263,7 @@ def stable_symbol() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/db/vector-index"),
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )

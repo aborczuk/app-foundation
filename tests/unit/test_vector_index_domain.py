@@ -93,7 +93,7 @@ def test_index_metadata_rejects_malformed_freshness_metadata() -> None:
 def test_index_config_normalizes_repo_relative_db_path() -> None:
     config = IndexConfig(
         repo_root=".",
-        db_path=".codegraphcontext/db/vector-index",
+        db_path=".codegraphcontext/global/db/vector-index",
         embedding_model="local-default",
         exclude_patterns=("generated/", "  docs/build  "),
     )

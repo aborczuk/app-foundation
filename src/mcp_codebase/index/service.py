@@ -149,6 +149,10 @@ class VectorIndexService:
         )
         return metadata.model_copy(update=updates)
 
+    def ensure_embedding_model_local(self) -> dict[str, object]:
+        """Prime and report the local embedding cache used by vector indexing."""
+        return self._store.ensure_embedding_model_local()
+
     def _collect_content_units(
         self,
         *,

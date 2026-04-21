@@ -9,6 +9,7 @@ from pathlib import Path
 
 from src.mcp_codebase import indexer
 from src.mcp_codebase.index import CodeSymbol, IndexConfig, IndexMetadata, IndexScope, QueryResult
+from src.mcp_codebase.index.config import DEFAULT_VECTOR_DB_PATH
 
 
 def test_indexer_query_routes_through_shared_service(monkeypatch, tmp_path, capsys) -> None:
@@ -120,7 +121,7 @@ def test_indexer_build_service_uses_cli_exclude_patterns(monkeypatch, tmp_path) 
 
     args = argparse.Namespace(
         repo_root=tmp_path,
-        db_path=Path(".codegraphcontext/db/vector-index"),
+        db_path=DEFAULT_VECTOR_DB_PATH,
         embedding_model="local-default",
         exclude_patterns=["docs/build/**", "generated/**"],
     )
@@ -184,3 +185,38 @@ def test_indexer_watch_parser_exposes_watch_mode(tmp_path) -> None:
     assert args.command == "watch"
     assert args.revision == "rev-watch"
     assert args.debounce_seconds == 0.25
+
+
+def test_indexer_bootstrap_primes_model_and_builds_index(monkeypatch, tmp_path, capsys) -> None:
+    """Bootstrap mode should warm the model cache and build a full snapshot."""
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.calls: list[tuple] = []
+
+        def ensure_embedding_model_local(self):
+            self.calls.append(("ensure_embedding_model_local",))
+            return {"embedding_model": "BAAI/bge-small-en-v1.5"}
+
+        def build_full_index(self, *, revision: str = "local", source_paths=None):
+            self.calls.append(("build", revision))
+            return IndexMetadata(
+                source_root=tmp_path,
+                indexed_commit=revision,
+                current_commit=revision,
+                indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+                entry_count=1,
+                is_stale=False,
+                stale_reason="",
+            )
+
+    fake_service = FakeService()
+    monkeypatch.setattr(indexer, "build_service", lambda args: fake_service)
+
+    exit_code = indexer.main(["--repo-root", str(tmp_path), "bootstrap", "--revision", "rev-bootstrap"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert fake_service.calls == [("ensure_embedding_model_local",), ("build", "rev-bootstrap")]
+    assert payload["embedding_model"] == "BAAI/bge-small-en-v1.5"
+    assert payload["index_metadata"]["indexed_commit"] == "rev-bootstrap"

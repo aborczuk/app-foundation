@@ -51,7 +51,7 @@ TEXT_EXTENSIONS = {
 }
 
 LINE_THRESHOLD = 200
-MAX_HELPER_LINES = 80
+MAX_HELPER_LINES = 110
 
 
 def _emit_deny(reason: str) -> None:

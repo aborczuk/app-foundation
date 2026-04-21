@@ -155,6 +155,8 @@ Use this workflow:
 2. The helper resolves semantic lookup first and then performs exact bounded reads.
 3. Run codegraph discovery checks for blast radius only after the seam is confirmed.
 4. Expand to additional windows only when needed to resolve ambiguity.
+5. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
+6. Read preflight is hard-fail for missing index DBs; do not continue on fallback warnings.
 
 Full-file reads for large code files are disallowed unless the user explicitly requests full contents.
 

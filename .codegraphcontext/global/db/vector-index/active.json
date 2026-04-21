@@ -1,0 +1,20 @@
+{
+  "code_symbol_count": 1963,
+  "collection_name": "codebase-vector-index-d68a11dd98ca422b8280492cc190073b",
+  "commits_behind_head": null,
+  "current_commit": "af26af75da579e8fb6301b15be9639b5fe52e270",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "entry_count": 5020,
+  "indexed_age_seconds": null,
+  "indexed_at": "2026-04-21T19:31:48.070388Z",
+  "indexed_commit": "af26af75da579e8fb6301b15be9639b5fe52e270",
+  "is_stale": false,
+  "markdown_section_count": 3057,
+  "scopes": [
+    "code",
+    "markdown"
+  ],
+  "snapshot_path": "/Users/andreborczuk/app-foundation/.codegraphcontext/global/db/vector-index/staging/5af3ed658b0842c2b221850537825d6d",
+  "source_root": "/Users/andreborczuk/app-foundation",
+  "stale_reason": ""
+}

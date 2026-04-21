@@ -57,35 +57,23 @@ def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkey
     assert status == "healthy"
 
 
-def test_vector_refresh_if_needed_runs_targeted_refresh_for_missing_index(monkeypatch, tmp_path: Path) -> None:
-    calls: list[tuple[list[str], dict[str, str]]] = []
-
+def test_vector_refresh_if_needed_fails_fast_for_missing_index(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(read_code, "vector_index_status", lambda project_root=None: "missing")
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
 
-    def fake_run(cmd, **kwargs):
-        calls.append((cmd, kwargs.get("env", {})))
+    called = {"value": False}
+
+    def fake_run(*args, **kwargs):
+        called["value"] = True
         return _completed(0, stdout='{"entry_count": 1}')
 
     monkeypatch.setattr(read_code.subprocess, "run", fake_run)
 
     target = tmp_path / "sample.py"
-    read_code.vector_refresh_if_needed(target)
+    result = read_code.vector_refresh_if_needed(target)
 
-    assert len(calls) == 1
-    cmd, env = calls[0]
-    assert cmd[:8] == [
-        "uv",
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "src.mcp_codebase.indexer",
-        "--repo-root",
-        str(read_code.REPO_ROOT),
-    ]
-    assert cmd[8:] == ["refresh", str(target)]
-    assert env.get("HF_HUB_OFFLINE") == "1"
+    assert result is False
+    assert called["value"] is False
 
 
 def test_vector_refresh_if_needed_skips_when_index_is_healthy(monkeypatch, tmp_path: Path) -> None:
@@ -100,9 +88,29 @@ def test_vector_refresh_if_needed_skips_when_index_is_healthy(monkeypatch, tmp_p
 
     monkeypatch.setattr(read_code.subprocess, "run", fake_run)
 
-    read_code.vector_refresh_if_needed(tmp_path / "sample.py")
+    result = read_code.vector_refresh_if_needed(tmp_path / "sample.py")
 
+    assert result is True
     assert called["value"] is False
+
+
+def test_vector_refresh_if_needed_refreshes_stale_index(monkeypatch, tmp_path: Path) -> None:
+    statuses = iter(["stale", "healthy"])
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    monkeypatch.setattr(read_code, "vector_index_status", lambda project_root=None: next(statuses))
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs.get("env", {})))
+        return _completed(0, stdout='{"entry_count": 1}')
+
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+
+    result = read_code.vector_refresh_if_needed(tmp_path / "sample.py")
+
+    assert result is True
+    assert len(calls) == 1
 
 
 def test_codegraph_health_status_reports_unavailable_without_uv(monkeypatch) -> None:
@@ -122,8 +130,22 @@ def test_codegraph_health_status_reports_unavailable_without_uv(monkeypatch) -> 
     assert called["value"] is False
 
 
+def test_codegraph_health_status_parses_nonhealthy_json_payload(monkeypatch) -> None:
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code.subprocess,
+        "run",
+        lambda *args, **kwargs: _completed(1, stdout='{"status":"stale"}\n', stderr="stale"),
+    )
+
+    status = read_code.codegraph_health_status()
+
+    assert status == "stale"
+
+
 def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: "stale")
+    statuses = iter(["stale", "healthy"])
+    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: next(statuses))
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
     fake_script = tmp_path / "cgc_safe_index.sh"
@@ -140,8 +162,9 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
     monkeypatch.setattr(read_code.subprocess, "run", fake_run)
 
     scope_path = tmp_path / "src"
-    read_code.codegraph_refresh_if_needed(scope_path)
+    result = read_code.codegraph_refresh_if_needed(scope_path)
 
+    assert result is True
     assert calls == [[str(fake_script), str(scope_path)]]
 
 
@@ -157,9 +180,18 @@ def test_codegraph_refresh_if_needed_skips_when_status_is_healthy(monkeypatch, t
 
     monkeypatch.setattr(read_code.subprocess, "run", fake_run)
 
-    read_code.codegraph_refresh_if_needed(tmp_path / "src")
+    result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
 
+    assert result is True
     assert called["value"] is False
+
+
+def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: "unavailable")
+
+    result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
+
+    assert result is False
 
 
 def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeypatch, tmp_path: Path) -> None:
@@ -167,7 +199,11 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
 
     calls: list[Path] = []
-    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: calls.append(file_path))
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda file_path: (calls.append(file_path), True)[1],
+    )
     monkeypatch.setattr(
         read_code,
         "_vector_find_line_num",
@@ -188,3 +224,13 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
 
     assert exit_code == 0
     assert calls == [code_file]
+
+
+def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: False)
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "1"])
+
+    assert exit_code == 1
