@@ -43,6 +43,63 @@ class _VectorMatch:
     line_span: int
 
 
+_VECTOR_RUNTIME_NOTE: str | None = None
+
+
+def _set_vector_runtime_note(note: str) -> None:
+    """Track why vector lookup could not be used for the current resolution attempt."""
+    global _VECTOR_RUNTIME_NOTE
+    if not _VECTOR_RUNTIME_NOTE:
+        _VECTOR_RUNTIME_NOTE = note
+
+
+def _clear_vector_runtime_note() -> None:
+    """Reset per-attempt vector runtime diagnostics."""
+    global _VECTOR_RUNTIME_NOTE
+    _VECTOR_RUNTIME_NOTE = None
+
+
+def _consume_vector_runtime_note() -> str | None:
+    """Return and clear the current vector runtime diagnostic note."""
+    global _VECTOR_RUNTIME_NOTE
+    note = _VECTOR_RUNTIME_NOTE
+    _VECTOR_RUNTIME_NOTE = None
+    return note
+
+
+def _emit_vector_fallback_notice(
+    *,
+    file_path: Path,
+    pattern: str,
+    vector_match: _VectorMatch | None,
+    resolved_line: int | None,
+) -> None:
+    """Emit explicit fallback messaging when semantic anchor selection is not used."""
+    if not pattern or vector_match is not None:
+        _consume_vector_runtime_note()
+        return
+
+    runtime_note = _consume_vector_runtime_note()
+    if resolved_line is not None:
+        if runtime_note:
+            print(
+                f"WARN: Vector semantic anchor unavailable ({runtime_note}); using strict/local anchor for '{pattern}' in {file_path}.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"WARN: Vector semantic anchor not found for '{pattern}' in {file_path}; using strict/local anchor.",
+                file=sys.stderr,
+            )
+        return
+
+    if runtime_note:
+        print(
+            f"WARN: Vector semantic anchor unavailable ({runtime_note}) for '{pattern}' in {file_path}.",
+            file=sys.stderr,
+        )
+
+
 def _command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
@@ -71,14 +128,12 @@ def init_codegraph_env() -> None:
 
 def codegraph_edit_signature_file(project_root: Path | None = None) -> Path:
     """Return the cached edit-signature marker path."""
-
     root = project_root or REPO_ROOT
     return root / LAST_EDIT_SIGNATURE_FILE.name
 
 
 def codegraph_cached_edit_signature(project_root: Path | None = None) -> str:
     """Read the cached edit signature if it exists."""
-
     marker_file = codegraph_edit_signature_file(project_root)
     if not marker_file.is_file():
         return ""
@@ -90,7 +145,6 @@ def codegraph_cached_edit_signature(project_root: Path | None = None) -> str:
 
 def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     """Return the current non-ignored git status signature."""
-
     root = project_root or REPO_ROOT
     proc = subprocess.run(
         [
@@ -487,7 +541,10 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
 
 
 def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
-    if not query or not scope or not _command_exists("uv"):
+    if not query or not scope:
+        return None
+    if not _command_exists("uv"):
+        _set_vector_runtime_note("uv is not available")
         return None
 
     cmd = [
@@ -508,13 +565,20 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
     ]
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
     if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"indexer query failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"indexer query failed with exit code {proc.returncode}")
         return None
 
     try:
         payload = json.loads(proc.stdout or "[]")
     except json.JSONDecodeError:
+        _set_vector_runtime_note("indexer query returned invalid JSON")
         return None
     if not isinstance(payload, list):
+        _set_vector_runtime_note("indexer query returned unexpected payload shape")
         return None
 
     target = file_path.resolve()
@@ -552,6 +616,7 @@ def _vector_find_line_num(
     normalized_pattern: str,
     scope: str,
 ) -> _VectorMatch | None:
+    _clear_vector_runtime_note()
     match = None
     if raw_pattern:
         match = _vector_query_line_num(file_path, raw_pattern, normalized_pattern, scope)
@@ -726,6 +791,13 @@ def read_code_context(argv: list[str]) -> int:
         elif line_num is None and allow_fallback:
             line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
+    _emit_vector_fallback_notice(
+        file_path=file_path,
+        pattern=pattern,
+        vector_match=vector_match,
+        resolved_line=line_num,
+    )
+
     if line_num is None:
         if strict_status == 2:
             print(
@@ -831,6 +903,13 @@ def read_code_window(argv: list[str]) -> int:
                 line_num = int(strict_line_num or 0)
             elif allow_fallback:
                 line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+        _emit_vector_fallback_notice(
+            file_path=file_path,
+            pattern=pattern,
+            vector_match=vector_match,
+            resolved_line=line_num,
+        )
 
         if line_num is None:
             if strict_status == 2:

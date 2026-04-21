@@ -135,6 +135,8 @@ def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) ->
 
     assert result.returncode == 0, result.stderr
     assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    assert "WARN: Vector semantic anchor unavailable (uv is not available)" in result.stderr
+    assert "using strict/local anchor" in result.stderr
 
 
 def test_read_code_context_requires_uv_only_when_no_local_anchor_exists(tmp_path: Path) -> None:
@@ -186,6 +188,8 @@ def test_read_code_context_uses_uv_branch_without_hud_fast_path(tmp_path: Path) 
 
     assert result.returncode == 0, result.stderr
     assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    assert "WARN: Vector semantic anchor not found" in result.stderr
+    assert "using strict/local anchor" in result.stderr
 
 
 def test_read_code_context_prefers_exact_symbol_vector_hit_over_header_block(tmp_path: Path) -> None:
