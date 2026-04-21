@@ -13,7 +13,7 @@ Make read-code easier and faster for agents by returning better anchor candidate
 
 ## Consumer & Context *(mandatory)*
 
-- **Primary consumer**: Agents and contributors using `scripts/read-code.sh` and `scripts/read_code.py`, after consulting `AGENTS.md` before attempting a large read.
+- **Primary consumer**: Agents and contributors using `scripts/read-code.sh` and `scripts/read_code.py`.
 - **Operational context**: Interactive code exploration and workflow command execution.
 - **Main pain point**: Too much trial-and-error around anchors and line-window reads.
 - **Why now**: Current flow creates avoidable retries and token waste during normal code reading.
@@ -28,12 +28,11 @@ An agent needs clear read rules before attempting large file reads.
 
 **Why this priority**: Missing rules create repeated command failures and wasted turns.
 
-**Independent test**: Verify an agent can discover and follow explicit read limits and modes before first code read attempt from `AGENTS.md`.
+**Independent test**: Verify an agent can discover and follow explicit read limits and modes before first code read attempt.
 
 **Acceptance Scenarios**:
 
-1. **Given** a file read request, **When** agent guidance is loaded, **Then** the documented limit and mode rules (including 80-line cap behavior) are explicit and actionable before the first attempt.
-2. **Given** the agent has not consulted the rules, **When** it attempts a large read, **Then** the documented guidance tells it to consult `AGENTS.md` first.
+1. **Given** a file read request, **When** agent guidance is loaded, **Then** the documented limit and mode rules (including 80-line cap behavior) are explicit and actionable, while also being dynamic based on variables for maintainability.
 2. **Given** a read attempt that violates limits, **When** the command rejects it, **Then** the error clearly points to the documented rule.
 
 ---
@@ -44,13 +43,12 @@ An agent wants multiple likely vector anchors with confidence so it can choose a
 
 **Why this priority**: Single forced anchors can be wrong and block progress.
 
-**Independent test**: Query for a symbol/pattern and verify output includes a bounded ranked candidate list, confidence values, and a documented way to ask for more.
+**Independent test**: Query for a symbol/pattern and verify output includes multiple candidates and confidence values.
 
 **Acceptance Scenarios**:
 
-1. **Given** a semantic query, **When** read-code resolves anchors, **Then** it returns the top ranked candidates, not only one, with confidence scores.
+1. **Given** a semantic query, **When** read-code resolves anchors, **Then** it returns top candidates (not only one) with confidence scores.
 2. **Given** low-confidence top candidate, **When** alternatives are present, **Then** the agent can continue with codegraph checks using returned candidate set.
-3. **Given** the first shortlist is insufficient, **When** the agent requests more candidates once, **Then** the command returns the next bounded batch rather than expanding indefinitely.
 
 ---
 
@@ -60,12 +58,11 @@ An agent may request the full indexed symbol body instead of a numeric window wh
 
 **Why this priority**: Full body is often the exact unit needed for understanding logic.
 
-**Independent test**: Resolve a symbol that has indexed body content and verify optional body-first output mode works and is documented.
+**Independent test**: Resolve a symbol that has indexed body content and verify optional body-first output mode works.
 
 **Acceptance Scenarios**:
 
-1. **Given** a confident symbol match with indexed body data, **When** body return is requested, **Then** the full symbol body is returned instead of a numeric window.
-2. **Given** the symbol body is available and confidence is high, **When** the agent reads the result, **Then** the docs explain that body return is the default path.
+1. **Given** a confident symbol match with indexed body data, **When** body return is requested, **Then** full symbol body is returned.
 2. **Given** body is unavailable, **When** body mode is requested, **Then** command falls back to current bounded line output with a clear note.
 
 ---
@@ -113,8 +110,8 @@ flowchart TD
 |------|------|-------------|------------|
 | Input | Query text | Symbol or semantic search text | Must be non-empty |
 | Input | Optional body mode | Request to return symbol body when available | Must be a valid supported option |
-| Input | top-k setting | Number of vector candidates to retrieve from the semantic index | Must be a bounded positive integer |
-| Output | Anchor candidates | Multiple ranked anchor results with confidence ratings | Deterministic ordering required, first shortlist capped at 5 |
+| Input | top-k setting | Number of vector candidates to return | Must be bounded positive integer |
+| Output | Anchor candidates | Multiple anchor results with confidence ratings | Deterministic ordering required |
 | Output | Symbol body (optional) | Full indexed body for selected symbol | Returned only when available and requested |
 | Output | Bounded line context | Numeric line window fallback | Must honor configured line cap |
 
@@ -127,7 +124,6 @@ flowchart TD
   - Multiple vector anchors with confidence.
   - Optional symbol-body return.
   - Expanded top-k to improve candidate recall.
-  - Documented one-time “ask for more” expansion for candidates.
 - **Out of scope (non-goals)**:
   - Full pipeline-driver redesign.
   - New dependency traversal framework inside read-code.
@@ -135,18 +131,12 @@ flowchart TD
 - **Constraints**:
   - Keep behavior backward-compatible for existing callers.
   - Preserve bounded read protections.
-  - Keep candidate output bounded even when retrieval fanout increases.
-  - First candidate shortlist is capped at 5 results; one bounded expansion is allowed.
 - **Dependencies / adopted tools**:
   - Existing vector index query path and symbol metadata.
   - Existing codegraph flow for downstream caller decisions.
 - **Assumptions**:
   - Indexed symbol records include confidence-comparable rank/score data.
   - Agents can consume candidate sets and choose follow-up checks.
-  - `AGENTS.md` is the authoritative place for read-code rules and must be consulted before large reads.
-  - Semantic retrieval expands from the current narrow default to a bounded default of 20 retrieved candidates, while returned anchor output remains capped at 5 candidates.
-  - The agent-facing docs explain that the agent may request one more bounded batch when the first shortlist is insufficient.
-  - Body-return mode is preferred whenever a confident symbol match exposes indexed body content; line-context fallback remains available when body content is missing.
 
 ---
 
@@ -154,19 +144,16 @@ flowchart TD
 
 ### Functional Requirements
 
-- **FR-001**: System MUST provide clear agent-readable documentation in `AGENTS.md` for read rules before attempt, including bounded read limits and mode selection guidance.
-- **FR-002**: System MUST return a bounded ranked list of multiple vector anchor candidates with confidence ratings for anchorable queries.
-- **FR-003**: System MUST support optional full symbol-body return when indexed body content exists and use it in preference to a numeric window when requested or when a confident symbol hit is available.
-- **FR-004**: System MUST increase vector `top_k` from the current narrow default to a bounded default of 20 to improve candidate recall.
-- **FR-005**: System MUST document a first shortlist of 5 candidates and a single bounded follow-up expansion path for when the shortlist is insufficient.
+- **FR-001**: System MUST provide clear agent-readable documentation for read rules before attempt, including bounded read limits.
+- **FR-002**: System MUST return multiple vector anchor candidates with confidence ratings for anchorable queries.
+- **FR-003**: System MUST support optional full symbol-body return when indexed body content exists.
+- **FR-004**: System MUST increase vector `top_k` from current narrow default to a larger bounded value to improve candidate recall.
 
 ### Key Entities *(include if feature involves data)*
 
 - **AnchorCandidate**: Candidate symbol/location with confidence score and ordering.
 - **ReadRuleSet**: Documented command constraints and usage limits.
 - **SymbolBodyPayload**: Indexed full body content for a symbol candidate.
-- **CandidateShortlist**: First bounded response set of anchor candidates exposed to the agent.
-- **CandidateExpansion**: One additional bounded batch of candidates that the agent may request if the shortlist is not enough.
 
 ---
 
@@ -178,7 +165,6 @@ flowchart TD
 - **SC-002**: Agent retries caused by failed first-anchor selection decrease by at least 30% in read-code workflow sampling.
 - **SC-003**: Body-return mode succeeds for at least 95% of symbols that have indexed body data.
 - **SC-004**: First-attempt read failures caused by undocumented rule violations decrease by at least 50%.
-- **SC-005**: The agent-facing documentation clearly states the 5-candidate shortlist and single bounded expansion rule in the first read-code guidance pass.
 
 ---
 
