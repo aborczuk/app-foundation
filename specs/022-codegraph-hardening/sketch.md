@@ -433,6 +433,8 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 
 - Tasking must decompose from the design slices below, not invent a new architecture.
 - Each task should preserve the domain/service/adapter split.
+- This hardening bundle should be split into separate backlog items for shared health state, adapter wiring, CLI doctor behavior, graceful shutdown / bounded timeout, stale-owner cleanup / lock reclamation, memory-failure handling, read-only routing, edit-aware freshness, and docs.
+- Tasks must split query-only probes onto `READ_ONLY` connections while keeping refresh and rebuild on the single `READ_WRITE` owner.
 - Tasks must keep the CLI doctor and MCP health tool aligned on the same shared result contract.
 - Tasks must not change existing `get_type` / `get_diagnostics` semantics unless the shared health seam requires a small integration hook.
 - Tasks must include verification for the read-only health path, the safe recovery path, and the smoke command.
@@ -448,6 +450,10 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 | MCP health adapter | `src/mcp_codebase/server.py` -> new `get_graph_health` tool | Register a new health tool that serializes the shared result contract | MCP integration test and logging assertion |
 | CLI doctor adapter | `src/mcp_codebase/doctor.py`, `scripts/cgc_doctor.sh` | Provide a direct operator command with deterministic exit codes and summary text | Subprocess / shell smoke test |
 | Safe refresh / rebuild integration | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | Keep recovery atomic, preserve the last known good snapshot, and surface hints cleanly | Failure-mode recovery test |
+| Graceful shutdown / bounded timeout | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | Detect a live owner, wait for a bounded shutdown window, and avoid recovery while the owner is still active | Regression test proving refresh waits instead of killing a live owner |
+| Stale-owner cleanup / lock reclamation | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | Reclaim lock markers and orphaned ownership only after the timeout proves the owner is stale | Regression test proving confirmed stale owners are cleaned up once the timeout elapses |
+| Memory-pressure fail-fast | `src/mcp_codebase/health.py`, `scripts/cgc_safe_index.sh` | Convert buffer-pool exhaustion into explicit recovery hints instead of swallowing the error | Regression test proving memory-pressure exits deterministically |
+| Read-only query routing / connection ownership | `src/mcp_codebase/server.py`, `src/mcp_codebase/doctor.py`, `src/mcp_codebase/health.py` | Route query-only probes through `READ_ONLY` connections and isolate writable ownership to refresh / rebuild paths | Concurrency regression proving probes do not contend with refresh operations |
 | Edit-aware freshness / invalidation | `scripts/read-code.sh`, `scripts/cgc_safe_index.sh` | Detect local working-tree edits, mark the graph stale, and patch before stale symbols are served | Regression test proving local edits invalidate cached graph answers |
 | Observability and reporting | `src/mcp_codebase/server.py`, `src/mcp_codebase/health.py` | Emit structured, parseable status and context for health checks | JSONL/logging assertions |
 | Documentation and runbook updates | `specs/022-codegraph-hardening/quickstart.md` and related notes | Show how to run the doctor flow and recover safely | Manual review plus command smoke check |

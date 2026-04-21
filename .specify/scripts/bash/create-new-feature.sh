@@ -409,6 +409,11 @@ if [ "$HAS_GIT" = true ]; then
         if git branch --list "$BRANCH_NAME" | grep -q .; then
             >&2 echo "Error: Branch '$BRANCH_NAME' already exists. Please use a different feature name or specify a different number with --number."
             exit 1
+        elif [ -n "$(git status --short)" ]; then
+            >&2 echo "Error: Current checkout has uncommitted changes."
+            >&2 echo "Hint: commit, stash, or discard the changes first, then rerun /speckit.specify from the same checkout."
+            >&2 echo "Hint: do not create temp worktrees or alternate checkouts for this flow."
+            exit 1
         else
             >&2 echo "Error: Failed to create git branch '$BRANCH_NAME' from '$BASE_REF'."
             >&2 echo "Please ensure your working tree is clean and the base branch is valid."

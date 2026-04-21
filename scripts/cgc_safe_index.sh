@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CODEGRAPH_CONTEXT_DIR="$REPO_ROOT/.codegraphcontext"
 CODEGRAPH_DB_DIR="$CODEGRAPH_CONTEXT_DIR/db"
+source "$SCRIPT_DIR/cgc_owner.sh"
 
 IGNORE_DIRS_DEFAULT="node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs"
 
@@ -98,10 +99,62 @@ if [ "$FORCE" -eq 0 ] && is_repo_root_target "$TARGET_TRIMMED" && [ "${CGC_ALLOW
 fi
 
 cd "$REPO_ROOT"
+if cgc_owner_wait_for_release; then
+  :
+else
+  owner_guard_status=$?
+  exit "$owner_guard_status"
+fi
+
+cgc_owner_claim
+
+stdout_file="$(mktemp "${TMPDIR:-/tmp}/cgc-index-stdout-XXXXXX")"
+stderr_file="$(mktemp "${TMPDIR:-/tmp}/cgc-index-stderr-XXXXXX")"
+cleanup_temp_files() {
+  rm -f "$stdout_file" "$stderr_file"
+}
+trap 'cleanup_temp_files; cgc_owner_release' EXIT INT TERM
+
 if [ "$FORCE" -eq 1 ]; then
   echo "Running scoped force index for: $TARGET"
-  uv run --no-sync cgc index --force "$TARGET"
+  if uv run --no-sync cgc index --force "$TARGET" >"$stdout_file" 2>"$stderr_file"; then
+    cat "$stdout_file"
+    cat "$stderr_file" >&2
+    cgc_owner_clear_last_error
+    cgc_owner_record_edit_signature
+    cleanup_temp_files
+  else
+    index_status=$?
+    stderr_text="$(cat "$stderr_file")"
+    if cgc_owner_error_is_memory_pressure "$stderr_text"; then
+      cgc_owner_record_last_error "memory-pressure" "$index_status" "$stderr_text"
+      echo "CodeGraph indexing failed due to memory pressure: $stderr_text" >&2
+    else
+      cgc_owner_clear_last_error
+      echo "CodeGraph indexing failed: $stderr_text" >&2
+    fi
+    cleanup_temp_files
+    exit "$index_status"
+  fi
 else
   echo "Running incremental index for: $TARGET"
-  uv run --no-sync cgc index "$TARGET"
+  if uv run --no-sync cgc index "$TARGET" >"$stdout_file" 2>"$stderr_file"; then
+    cat "$stdout_file"
+    cat "$stderr_file" >&2
+    cgc_owner_clear_last_error
+    cgc_owner_record_edit_signature
+    cleanup_temp_files
+  else
+    index_status=$?
+    stderr_text="$(cat "$stderr_file")"
+    if cgc_owner_error_is_memory_pressure "$stderr_text"; then
+      cgc_owner_record_last_error "memory-pressure" "$index_status" "$stderr_text"
+      echo "CodeGraph indexing failed due to memory pressure: $stderr_text" >&2
+    else
+      cgc_owner_clear_last_error
+      echo "CodeGraph indexing failed: $stderr_text" >&2
+    fi
+    cleanup_temp_files
+    exit "$index_status"
+  fi
 fi

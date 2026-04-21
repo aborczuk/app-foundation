@@ -36,6 +36,7 @@ def render_human(result: dict[str, object]) -> str:
         hint_command = str(recovery_hint.get("command", ""))
     lines = [
         f"status: {result.get('status')}",
+        f"access_mode: {result.get('access_mode')}",
         f"detail: {result.get('detail')}",
         f"recovery_hint: {recovery_hint.get('id') if isinstance(recovery_hint, dict) else ''}",
     ]

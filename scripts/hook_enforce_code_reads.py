@@ -87,7 +87,6 @@ def _extract_find_policy(command: str) -> tuple[bool, bool] | None:
     # This guard is intended for filesystem inventory via shell `find`.
     if find_idx > 0 and tokens[find_idx - 1].endswith("cgc"):
         return None
-
     args = tokens[find_idx + 1 :]
     if not args:
         # `find` with no path defaults to current directory.
