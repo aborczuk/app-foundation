@@ -41,3 +41,5 @@
 {"actor": "codex", "details": "solution artifacts settled via tasking+estimate loop", "estimate_points": 63, "event": "solution_approved", "feature_id": "023", "phase": "solution", "story_count": 3, "task_count": 26, "timestamp_utc": "2026-04-20T02:01:51.164584Z"}
 {"actor": "codex", "critical_count": 0, "details": "analyze completed: 1 high (SC-004 measurement coverage), 1 medium (FR-013 rollback specificity), 1 low ambiguity", "event": "analysis_completed", "feature_id": "023", "high_count": 1, "phase": "solution", "timestamp_utc": "2026-04-20T02:02:02.172726Z"}
 {"actor": "codex", "details": "generated local e2e plan and runner for feature 023", "e2e_artifact": "specs/023-deterministic-phase-orchestration/e2e.md", "event": "e2e_generated", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-20T14:21:10.904332Z"}
+{"actor": "codex", "event": "backlog_registered", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T02:44:48.513716Z"}
+{"actor": "codex", "event": "spec_clarified", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T14:24:56.822244Z"}

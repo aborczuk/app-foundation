@@ -52,6 +52,9 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 - Function docstrings or comments are mandatory for new or modified functions.
 - Keep them short, specific, and colocated with the function they describe.
 
+## Technology choices
+- all new code should be written in python so it is viable in codegraph. No bash or other direct shell scripting languages
+
 ## Operational Bootstrap
 
 ### Codebase MCP Toolkit
