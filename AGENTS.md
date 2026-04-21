@@ -10,6 +10,9 @@
 ## II. Reuse at Every Scale
 ## III. Spec and process-First (NON-NEGOTIABLE)
 ## IV. Test Driven Verification First (NON-NEGOTIABLE)
+- Integration tests must not rely only on fake/mocked backends for critical runtime paths.
+- For infrastructure-critical flows (for example `read-code`, vector index, and codegraph discovery), every mocked contract test must have at least one live-backend verification test.
+- Do not label tests as integration if they only stub external/runtime dependencies; mark those as contract/simulation tests and keep live verification separate.
 - For more details : 
 - **Core Principles & 16 Domains**: [constitution.md](file:///Users/andreborczuk/app-foundation/constitution.md)
 - **Command Definitions**: [.claude/commands/](file:///Users/andreborczuk/app-foundation/.claude/commands/)

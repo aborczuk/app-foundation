@@ -82,6 +82,17 @@ def test_agents_reading_instructions_prioritize_headings_and_help() -> None:
     assert "--help" in agents_text
 
 
+def test_agents_testing_fidelity_rules_require_live_backend_coverage() -> None:
+    """Keep AGENTS.md explicit that critical integration paths need live-backend checks."""
+    agents_text = Path(__file__).resolve().parents[2].joinpath("AGENTS.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Integration tests must not rely only on fake/mocked backends" in agents_text
+    assert "every mocked contract test must have at least one live-backend verification test" in agents_text
+    assert "Do not label tests as integration if they only stub external/runtime dependencies" in agents_text
+
+
 def test_agents_edit_instructions_require_batch_validation_loop() -> None:
     """Keep the edit workflow explicit about tests, LSP, and Ruff validation."""
     agents_text = Path(__file__).resolve().parents[2].joinpath("AGENTS.md").read_text(
