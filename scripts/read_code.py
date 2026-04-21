@@ -21,7 +21,7 @@ CODEGRAPH_DB_DIR = CODEGRAPH_CONTEXT_DIR / "db"
 CODE_FILE_LINE_THRESHOLD = 200
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
 READ_CODE_DEFAULT_WINDOW_LINES = 60
-READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
+READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "110") or "110")
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
