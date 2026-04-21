@@ -189,6 +189,9 @@ def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
 def codegraph_health_status(project_root: Path | None = None) -> str:
     """Return codegraph health status string or probe-failed."""
     root = project_root or REPO_ROOT
+    if not _command_exists("uv"):
+        print("WARN: codegraph health probe skipped because uv is not available", file=sys.stderr)
+        return "unavailable"
     stderr_path = Path(tempfile.mkstemp(prefix="codegraph-doctor.", suffix=".log")[1])
     try:
         proc = subprocess.run(
@@ -248,6 +251,94 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> None:
                 file=sys.stderr,
             )
             subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
+
+
+def vector_index_status(project_root: Path | None = None) -> str:
+    """Return vector index freshness state: healthy, stale, missing, unavailable, or probe-failed."""
+    root = project_root or REPO_ROOT
+    if not _command_exists("uv"):
+        _set_vector_runtime_note("uv is not available")
+        return "unavailable"
+
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(root),
+        "status",
+    ]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"index status probe failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"index status probe failed with exit code {proc.returncode}")
+        return "probe-failed"
+
+    payload = (proc.stdout or "").strip()
+    if payload in {"", "null"}:
+        return "missing"
+
+    try:
+        status_payload = json.loads(payload)
+    except json.JSONDecodeError:
+        _set_vector_runtime_note("index status probe returned non-JSON output")
+        return "probe-failed"
+    if not isinstance(status_payload, dict):
+        _set_vector_runtime_note("index status probe returned unexpected payload shape")
+        return "probe-failed"
+    if bool(status_payload.get("is_stale", False)):
+        return "stale"
+    return "healthy"
+
+
+def vector_refresh_if_needed(scope_path: Path | None = None) -> None:
+    """Run a targeted vector refresh when the local index is stale or missing."""
+    path = scope_path or REPO_ROOT
+    status = vector_index_status(REPO_ROOT)
+    if status not in {"stale", "missing", "unavailable", "probe-failed"}:
+        return
+    if not _command_exists("uv"):
+        print("WARN: vector refresh skipped because uv is not available", file=sys.stderr)
+        return
+
+    print(
+        f"WARN: vector index is {status}; refreshing targeted index for {path}",
+        file=sys.stderr,
+    )
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(REPO_ROOT),
+        "refresh",
+        str(path),
+    ]
+    env = os.environ.copy()
+    env.setdefault("HF_HUB_OFFLINE", "1")
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"index refresh failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
+
+
+def _refresh_indexes_for_read(file_path: Path) -> None:
+    """Run bounded freshness checks and targeted refreshes used by read-code commands."""
+    if codegraph_supports_file(file_path):
+        codegraph_refresh_if_needed(file_path.parent)
+    vector_refresh_if_needed(file_path)
 
 
 def codegraph_supports_file(file_path: Path) -> bool:
@@ -757,6 +848,7 @@ def read_code_context(argv: list[str]) -> int:
         print(f"ERROR: context_lines exceeds max ({READ_CODE_MAX_LINES}): {context}", file=sys.stderr)
         return 1
 
+    _refresh_indexes_for_read(file_path)
     normalized_pattern = normalize_symbol_pattern(pattern)
     vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
@@ -875,6 +967,7 @@ def read_code_window(argv: list[str]) -> int:
     vector_match = None
 
     if pattern:
+        _refresh_indexes_for_read(file_path)
         normalized_pattern = normalize_symbol_pattern(pattern)
         vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
