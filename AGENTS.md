@@ -140,7 +140,7 @@ For markdown files >100 lines, use `scripts/read-markdown.sh`; the detailed vect
 
 ### Code File Read Efficiency
 
-For any code file >200 lines, use `scripts/read-code.sh` to enforce symbol-first, windowed reads:
+For any code file >200 lines, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 110 lines is the max context_lines:
 ```bash
 source scripts/read-code.sh
 read_code_context <file> <symbol_or_pattern> [context_lines]

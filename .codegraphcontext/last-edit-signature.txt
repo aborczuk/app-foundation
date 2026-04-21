@@ -1,0 +1,7 @@
+?? .specify/templates/analysis-template.md
+?? tests/unit/test_agents_ledger_instructions.py
+?? tests/unit/test_speckit_analyze_command_doc.py
+M .claude/commands/speckit.analyze.md
+M AGENTS.md
+M command-manifest.yaml
+M scripts/read_code.py
