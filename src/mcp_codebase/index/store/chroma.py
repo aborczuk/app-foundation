@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import gc
-import logging
 import json
+import logging
 import re
 import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
 from time import monotonic
+from typing import Any, Sequence
 
-from src.mcp_codebase.index.config import IndexConfig
+from src.mcp_codebase.index.config import DEFAULT_EMBEDDING_MODEL_NAME, IndexConfig
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
 
 try:  # pragma: no cover - exercised in integration/runtime verification
@@ -28,8 +28,7 @@ try:  # pragma: no cover - exercised in integration/runtime verification
 except ImportError:  # pragma: no cover - handled with a clear runtime error
     TextEmbedding = None
 
-_DEFAULT_FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
-_EMBEDDING_MODEL_ALIASES = {"local-default": _DEFAULT_FASTEMBED_MODEL}
+_EMBEDDING_MODEL_ALIASES = {"local-default": DEFAULT_EMBEDDING_MODEL_NAME}
 _COSINE_COLLECTION_METADATA = {"hnsw:space": "cosine"}
 _NO_OP_TELEMETRY_IMPL = "src.mcp_codebase.index.telemetry.NoOpProductTelemetry"
 _MIN_QUERY_SCORE = 0.55
@@ -52,13 +51,14 @@ class _PreparedChunk:
 class _FastEmbedBackend:
     """Thin wrapper around fastembed so the store can own embedding lifecycle."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, *, cache_dir: Path) -> None:
         if TextEmbedding is None:
             raise RuntimeError(
                 "fastembed is required for the vector index; run `uv sync` after adding the dependency."
             )
         self._model_name = model_name
-        self._model = TextEmbedding(model_name=model_name)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self._model = TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
 
     @property
     def model_name(self) -> str:
@@ -92,6 +92,11 @@ class ChromaIndexStore:
     def embedding_model(self) -> str:
         """Return the resolved embedding model name."""
         return _resolve_embedding_model_name(self._config.embedding_model)
+
+    @property
+    def embedding_cache_dir(self) -> Path:
+        """Return the repo-local cache directory for embedding models."""
+        return self._config.embedding_cache_dir
 
     def write_snapshot(
         self,
@@ -385,7 +390,10 @@ class ChromaIndexStore:
 
     def _ensure_embedding_backend(self) -> _FastEmbedBackend:
         if self._embedding_backend is None:
-            self._embedding_backend = _FastEmbedBackend(self.embedding_model)
+            self._embedding_backend = _FastEmbedBackend(
+                self.embedding_model,
+                cache_dir=self.embedding_cache_dir,
+            )
         return self._embedding_backend
 
     def _open_collection(self, collection_dir: Path, collection_name: str, *, create: bool) -> Any:

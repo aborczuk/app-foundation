@@ -11,10 +11,17 @@ the edit path itself.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.mcp_codebase.index.config import DEFAULT_EMBEDDING_CACHE_DIR, DEFAULT_EMBEDDING_MODEL_NAME  # noqa: E402
 
 VECTOR_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown"}
 
@@ -64,9 +71,12 @@ def _collect_changed_paths(payload: dict) -> list[Path]:
     return sorted(resolved)
 
 
-def _run_refresh(command: list[str], label: str) -> None:
+def _run_refresh(command: list[str], label: str, *, env_overrides: dict[str, str] | None = None) -> None:
     """Run a refresh command and downgrade failures to warnings."""
-    proc = subprocess.run(command, capture_output=True, text=True)
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
+    proc = subprocess.run(command, capture_output=True, text=True, env=env)
     if proc.returncode == 0:
         return
 
@@ -83,6 +93,17 @@ def _refresh_codegraph(paths: Iterable[Path]) -> None:
         _run_refresh(["bash", str(script), str(path)], f"codegraph {path}")
 
 
+def _embedding_model_cache_dir(root: Path) -> Path:
+    """Return the repo-local cache directory used for fastembed models."""
+    return root / DEFAULT_EMBEDDING_CACHE_DIR
+
+
+def _embedding_model_cache_is_present(root: Path) -> bool:
+    """Check whether the local embedding model cache is already primed."""
+    model_cache_dir = _embedding_model_cache_dir(root) / f"models--{DEFAULT_EMBEDDING_MODEL_NAME.replace('/', '--')}"
+    return model_cache_dir.exists()
+
+
 def _refresh_vector(paths: Iterable[Path]) -> None:
     """Refresh vector embeddings only for file types the indexer can ingest."""
     vector_paths = [path for path in paths if path.suffix.lower() in VECTOR_SUFFIXES]
@@ -90,6 +111,14 @@ def _refresh_vector(paths: Iterable[Path]) -> None:
         return
 
     root = _repo_root()
+    if not _embedding_model_cache_is_present(root):
+        _emit_warning(
+            "vector index refresh skipped: embedding model cache for "
+            f"{DEFAULT_EMBEDDING_MODEL_NAME} is missing at {_embedding_model_cache_dir(root)}; "
+            "prime the local fastembed cache before edit-time refresh"
+        )
+        return
+
     command = [
         "uv",
         "run",
@@ -102,7 +131,7 @@ def _refresh_vector(paths: Iterable[Path]) -> None:
         "refresh",
         *[str(path) for path in vector_paths],
     ]
-    _run_refresh(command, "vector index")
+    _run_refresh(command, "vector index", env_overrides={"HF_HUB_OFFLINE": "1"})
 
 
 def main() -> int:
