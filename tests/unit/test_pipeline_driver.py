@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import sys
 
 import pytest
 
@@ -280,6 +280,148 @@ def test_main_generative_route_errors_when_pipeline_event_append_fails(monkeypat
     assert exit_code == 2
 
 
+def test_append_pipeline_success_event_requires_validated_success(monkeypatch, tmp_path: Path) -> None:
+    artifact_path = tmp_path / "plan.md"
+    artifact_path.write_text("# Plan\n## Summary\nGenerated content\n", encoding="utf-8")
+
+    validation_calls: list[tuple[str, str, str | None]] = []
+    append_called = {"value": False}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": str(artifact_path),
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.plan",
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(artifact_path),
+                "completion_marker": "## Summary",
+            },
+        },
+    )
+
+    def _fake_validate_generated_artifact(
+        artifact_path_arg,
+        *,
+        correlation_id,
+        completion_marker=None,
+    ):
+        validation_calls.append((str(artifact_path_arg), correlation_id, completion_marker))
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "artifact_validation",
+            "reasons": ["artifact_not_created"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        _fake_validate_generated_artifact,
+    )
+
+    def _fake_append_pipeline_success_event(**kwargs):
+        append_called["value"] = True
+        return {"ok": True, "appended": True, "event": "plan_started"}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        _fake_append_pipeline_success_event,
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+
+    assert exit_code == 1
+    assert len(validation_calls) == 1
+    assert validation_calls[0][0] == str(artifact_path)
+    assert validation_calls[0][1].endswith(":plan")
+    assert validation_calls[0][2] == "## Summary"
+    assert append_called["value"] is False
+
+
+def test_idempotent_terminal_event_retry(
+    monkeypatch, tmp_path: Path
+) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    original_ledger = (
+        json.dumps(
+            {
+                "timestamp_utc": "2026-04-10T00:00:00Z",
+                "feature_id": "019",
+                "phase": "plan",
+                "event": "plan_started",
+                "actor": "pipeline_driver",
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    ledger_path.write_text(
+        original_ledger,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        pipeline_driver_contracts,
+        "load_driver_routes",
+        lambda manifest_path=None: {
+            "speckit.plan": {
+                "emit_contracts": [{"event": "plan_started", "required_fields": []}],
+                "emits": ["plan_started"],
+            }
+        },
+    )
+
+    result = pipeline_driver.append_pipeline_success_event(
+        feature_id="019",
+        phase="plan",
+        command_id="speckit.plan",
+        ledger_path=ledger_path,
+    )
+
+    assert result["ok"] is True
+    assert result["appended"] is False
+    assert result["event"] == "plan_started"
+    assert result["reason"] == "event_already_recorded"
+    assert ledger_path.read_text(encoding="utf-8") == original_ledger
+
+
 def test_build_correlation_id_uses_explicit_run_scope() -> None:
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -391,6 +533,37 @@ def test_run_step_invalid_json_persists_runtime_sidecar(tmp_path: Path) -> None:
     assert sidecar_payload["rerun"]["exit_code"] in (0, 1, 2, None)
 
 
+def test_run_step_rejects_partial_step_result_envelope(tmp_path: Path) -> None:
+    correlation_id = "run-019-partial"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json; "
+            "print(json.dumps({"
+            "'schema_version':'1.0.0','ok':True,'exit_code':0,"
+            f"'correlation_id':'{correlation_id}'"
+            "}))"
+        ),
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+        sidecar_dir=tmp_path / "runtime-failures",
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["error_code"] == "invalid_step_result"
+    assert result["reasons"] == ["invalid_step_result"]
+    assert result["process_exit_code"] == 0
+    assert result["timed_out"] is False
+    assert result["debug_path"] is not None
+    assert Path(result["debug_path"]).exists()
+
+
 def test_normalize_driver_mode_aliases() -> None:
     assert pipeline_driver_contracts.normalize_driver_mode(None) == "legacy"
     assert pipeline_driver_contracts.normalize_driver_mode("script") == "deterministic"
@@ -432,12 +605,60 @@ def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> N
     assert routes["speckit.example"]["driver_managed"] is True
     assert routes["speckit.example"]["timeout_seconds"] == 30
     assert routes["speckit.example"]["emits"] == ["example_event"]
+    assert routes["speckit.example"]["emit_contracts"] == [
+        {"event": "example_event", "required_fields": []}
+    ]
     assert routes["speckit.example"]["script_path"] == str(
         (tmp_path / "scripts" / "example.sh").resolve()
     )
 
     assert routes["speckit.fallback"]["mode"] == "legacy"
     assert routes["speckit.fallback"]["driver_managed"] is False
+
+
+def test_load_driver_routes_rejects_conflicting_mode_definitions(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    mode: legacy",
+                "    driver:",
+                "      mode: deterministic",
+                "    emits: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="conflicting driver mode declarations"):
+        pipeline_driver_contracts.load_driver_routes(manifest_path)
+
+
+def test_load_driver_routes_rejects_blank_required_fields(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    mode: deterministic",
+                "    emits:",
+                "      - event: example_event",
+                "        required_fields:",
+                "          - \" \"",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="emit.required_fields entries must be non-empty strings"):
+        pipeline_driver_contracts.load_driver_routes(manifest_path)
 
 
 def test_acquire_feature_lock_blocks_active_other_owner(tmp_path: Path) -> None:
@@ -490,6 +711,33 @@ def test_acquire_feature_lock_replaces_stale_owner(tmp_path: Path) -> None:
     assert takeover["previous_owner"] == "worker-a"
 
 
+def test_acquire_feature_lock_reuses_same_owner_after_stale_expiry(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    now = datetime(2026, 4, 10, tzinfo=timezone.utc)
+
+    pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=30,
+        now_utc=now,
+    )
+
+    retry = pipeline_driver_state.acquire_feature_lock(
+        "019",
+        owner="worker-a",
+        locks_dir=lock_dir,
+        lease_seconds=30,
+        now_utc=now + timedelta(seconds=60),
+    )
+
+    assert retry["acquired"] is True
+    assert retry["reused"] is True
+    assert retry["stale_replaced"] is False
+    assert retry["reason"] == "stale_lock_reused"
+    assert retry["previous_owner"] == "worker-a"
+
+
 def test_release_feature_lock_requires_owner_unless_stale(tmp_path: Path) -> None:
     lock_dir = tmp_path / "locks"
     now = datetime(2026, 4, 10, tzinfo=timezone.utc)
@@ -521,7 +769,8 @@ def test_release_feature_lock_requires_owner_unless_stale(tmp_path: Path) -> Non
     assert owner_release["reason"] == "released_by_owner"
 
 
-def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
+def test_resolve_phase_state_prefers_ledger_authority(tmp_path: Path) -> None:
+    """Ledger state should override stale phase hints during reconciliation."""
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
@@ -535,13 +784,48 @@ def test_resolve_phase_state_is_ledger_authoritative(tmp_path: Path) -> None:
 
     state = pipeline_driver_state.resolve_phase_state(
         "019",
-        pipeline_state={"phase": "setup", "blocked": False},
+        pipeline_state={"phase": "setup", "blocked": False, "drift_detected": False},
+        ledger_path=ledger_path,
+    )
+    assert state["feature_id"] == "019"
+    assert state["ledger_feature_id"] == "019"
+    assert state["phase"] == "plan"
+    assert state["last_event"] == "plan_started"
+    assert state["blocked"] is True
+    assert state["drift_detected"] is True
+    assert state["drift_reason_codes"] == ["phase_hint_conflicts_with_ledger"]
+    assert state["drift_reason_details"] == [
+        {
+            "code": "phase_hint_conflicts_with_ledger",
+            "hinted_phase": "setup",
+            "derived_phase": "plan",
+            "last_event": "plan_started",
+        }
+    ]
+    assert state["drift_reasons"] == ["phase_hint_conflicts_with_ledger"]
+
+
+def test_resolve_phase_state_ignores_stale_blocked_flag(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
+        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
+        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "plan", "blocked": True, "drift_detected": True},
         ledger_path=ledger_path,
     )
     assert state["phase"] == "plan"
-    assert state["last_event"] == "plan_started"
-    assert state["drift_detected"] is True
-    assert "phase_hint_conflicts_with_ledger" in state["drift_reasons"]
+    assert state["blocked"] is False
+    assert state["drift_detected"] is False
+    assert state["drift_reasons"] == []
 
 
 def test_resolve_phase_state_falls_back_to_numeric_prefix_for_slug(tmp_path: Path) -> None:
@@ -618,7 +902,7 @@ def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> 
     )
     assert state["phase"] == "plan"
     assert state["drift_detected"] is True
-    assert "missing_artifact:plan.md" in state["drift_reasons"]
+    assert state["drift_reasons"] == ["missing_artifact:plan.md"]
     assert state["blocked"] is True
 
 
@@ -759,6 +1043,10 @@ def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None
     assert result["route"]["mode"] == "deterministic"
     assert result["route"]["driver_managed"] is True
     assert result["route"]["timeout_seconds"] == 60
+    assert result["route"]["emits"] == ["plan_started"]
+    assert result["route"]["emit_contracts"] == [
+        {"event": "plan_started", "required_fields": []}
+    ]
 
 
 def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None:
@@ -970,7 +1258,14 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
         pytest.skip("manifest file not found")
 
     # Test that generative commands are correctly identified
-    generative_commands = ["specify", "research", "plan", "planreview", "sketch"]
+    generative_commands = [
+        "specify",
+        "research",
+        "plan",
+        "planreview",
+        "sketch",
+        "solution",
+    ]
     for phase in generative_commands:
         result = pipeline_driver.resolve_step_mapping(
             phase,

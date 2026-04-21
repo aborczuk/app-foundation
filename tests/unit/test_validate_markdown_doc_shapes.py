@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import re
+import subprocess
 from pathlib import Path
 
 
@@ -21,6 +23,22 @@ def _load_script_module(module_name: str, script_name: str):
 validator = _load_script_module(
     "validate_markdown_doc_shapes", "validate_markdown_doc_shapes.py"
 )
+
+
+def _token_footprint(markdown_text: str) -> int:
+    """Count whitespace-delimited tokens in markdown text."""
+    return len(re.findall(r"\S+", markdown_text))
+
+
+def _read_git_blob(pathspec: str) -> str:
+    """Return the contents of a git blob from the current repository history."""
+    completed = subprocess.run(
+        ["git", "show", pathspec],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout
 
 
 def test_validate_markdown_doc_shape_accepts_compact_expanded(tmp_path: Path) -> None:
@@ -74,3 +92,24 @@ def test_validate_markdown_doc_shape_reports_legacy_mismatch(tmp_path: Path) -> 
     assert payload["ok"] is False
     assert payload["reasons"] == ["shape_mismatch"]
     assert payload["matched_shape"] is None
+
+
+def test_command_doc_token_footprint_reduction() -> None:
+    """The migrated solution command doc should stay smaller than the pre-trim baseline."""
+    repo_root = Path(__file__).resolve().parents[2]
+    solution_doc = repo_root / ".claude" / "commands" / "speckit.solution.md"
+
+    current_text = solution_doc.read_text(encoding="utf-8")
+    repeated_text = solution_doc.read_text(encoding="utf-8")
+    baseline_text = _read_git_blob("7c578d9:.claude/commands/speckit.plan.md")
+
+    current_tokens = _token_footprint(current_text)
+    repeated_tokens = _token_footprint(repeated_text)
+    baseline_tokens = _token_footprint(baseline_text)
+
+    payload = validator.validate_markdown_doc_shape(markdown_file=solution_doc)
+
+    assert payload["ok"] is True
+    assert payload["matched_shape"] == "compact_expanded"
+    assert current_tokens == repeated_tokens
+    assert current_tokens * 10 <= baseline_tokens * 7

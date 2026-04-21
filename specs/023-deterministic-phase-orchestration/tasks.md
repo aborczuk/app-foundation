@@ -1,127 +1,174 @@
 # Tasks: Deterministic Phase Orchestration
 
+**Input**: Design documents from `/specs/023-deterministic-phase-orchestration/`
+**Prerequisites**: `plan.md` (required), `spec.md` (required), `sketch.md` (required), `solutionreview.md` (required)
+
+**One-Line Purpose**: Pipeline operators run phase work through a deterministic orchestrator that validates outputs before any ledger event is emitted.
+
 ## Format: `[ID] [P?] [Story] Description — file:symbol`
+
+- `[P]`: Task can run in parallel (disjoint files, no incomplete dependency).
+- `[H]`: Human-required external/manual action (mutually exclusive with `[P]`).
+- `[USn]`: User story label required only in user-story phases.
+- Every task includes concrete `file:symbol` ownership.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 [P] Create the shared phase execution contract artifact so producer, validator, emitter, and handoff boundaries are explicit — `specs/023-deterministic-phase-orchestration/contracts/phase-execution-contract.md`
-- [ ] T002 [P] Tighten routing and event-field notes in `command-manifest.yaml` and keep `.claude/commands/speckit.solution.md` aligned for the solution, solution-review, and tasking phases so the driver-owned contract stays canonical — `command-manifest.yaml:speckit.solutionreview`
+**Purpose**: Establish deterministic test harness seams before behavior changes.
 
-**Checkpoint**: The phase contract and registry expectations are explicit before implementation starts.
+- [X] T001 Add shared feature-flow fixtures for deterministic ledger/manifest setup in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:build_feature_workspace`
+- [X] T002 Add shared unit helpers for transition assertions in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:assert_transition_result`
+
+---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-- [ ] T003 [P] Implement ledger-authoritative current-step resolution so the driver does not trust stale mirrors over the pipeline ledger — `scripts/pipeline_driver_state.py:resolve_current_step`
-- [ ] T004 [P] Add deterministic gate dispatch so every command consults its phase gate before proceeding, then keep validate-before-emit guard rails so phase completion events can only be appended after deterministic output validation passes — `scripts/pipeline_driver.py:run_phase`
+**Purpose**: Lock route/state/transition contracts before story-level behavior work.
 
-**Checkpoint**: The orchestration spine resolves state deterministically and cannot emit before validation.
+- [X] T003 Harden route contract parsing and unknown-mode rejection in `scripts/pipeline_driver_contracts.py` — `scripts/pipeline_driver_contracts.py:load_driver_routes`
+- [X] T004 Align step routing resolution to normalized route contracts in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:resolve_step_mapping`
+- [X] T005 Make phase resolution ledger-authoritative with deterministic drift reasons in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:resolve_phase_state`
 
-## Phase 3: User Story 1 - Deterministic Phase Completion (Priority: P1)
+---
 
-**Goal**: An operator runs phase execution and gets deterministic progression where phase events are emitted only after validation passes.
+## Phase 3: User Story 1 - Deterministic Phase Completion (Priority: P1) 🎯 MVP
+
+**Goal**: Completion events are emitted only after deterministic validation passes.
 
 **Independent Test**: Run a phase where validation fails and confirm no completion event is emitted, then run with valid artifacts and confirm the event is emitted once.
 
+| # | Given | When | Then |
+|---|-------|------|------|
+| 1 | valid phase context and valid produced artifacts | orchestrator executes phase flow | validation passes and the correct phase event is emitted |
+| 2 | produced artifacts fail deterministic validation | orchestrator reaches validation step | no completion event is emitted and deterministic blocked result is returned |
+| 3 | feature with no prior phase events | orchestration starts | first valid step resolves deterministically and completion is withheld until validation succeeds |
+
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Add regression coverage proving failed validation emits no phase completion event — `tests/integration/test_pipeline_driver.py:test_validate_before_emit`
-- [ ] T006 [P] [US1] Add regression coverage proving a valid completion path emits exactly one phase event and returns a blocked result on validation failure — `tests/integration/test_pipeline_driver.py:test_phase_completion_emits_once`
+- [X] T006 [P] [US1] Add unit tests for validate-before-emit and no-append-on-invalid-envelope behavior in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_append_pipeline_success_event_requires_validated_success`
+- [X] T007 [P] [US1] Add integration regression for blocked validation with zero completion append in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked`
+- [X] T008 [P] [US1] Add transition-map rejection coverage for invalid ordering before append in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:test_new_solution_sequence_passes`
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Wire the orchestration flow to validate outputs before calling the ledger append path and to return deterministic blocked state on failure — `scripts/pipeline_driver.py:run_phase`
-- [ ] T008 [US1] Keep the ledger append path append-only from validated payloads and preserve idempotent retry behavior — `scripts/pipeline_ledger.py:append`
+- [X] T009 [US1] Harden deterministic envelope handling for malformed or partial step outputs in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
+- [X] T010 [US1] Enforce success append only after validated gate pass and idempotent terminal protection in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:append_pipeline_success_event`
+- [X] T011 [US1] Tighten transition validation and append-time guards for invalid predecessor events in `scripts/pipeline_ledger.py` — `scripts/pipeline_ledger.py:validate_sequence`
 
-**Checkpoint**: Validation failure cannot produce a false-positive completion event.
+---
 
 ## Phase 4: User Story 2 - Permissioned Phase Start (Priority: P2)
 
-**Goal**: An operator or skill sees the resolved current step and must explicitly approve execution before orchestration starts the phase.
+**Goal**: Execution begins only after explicit approval and denied/invalid approvals create no side effects.
 
 **Independent Test**: Resolve a step with interactive confirmation, reject once and confirm no phase execution occurs, then approve and confirm phase execution begins.
 
+| # | Given | When | Then |
+|---|-------|------|------|
+| 1 | resolved current step | confirmation answer is `no` | orchestrator exits without phase execution or event emission |
+| 2 | resolved current step | confirmation answer is `yes` | orchestrator starts phase execution flow |
+| 3 | unauthorized or invalid permission response | confirmation is evaluated | deterministic permission failure response is returned |
+
 ### Tests for User Story 2
 
-- [ ] T009 [P] [US2] Add approval/rejection regression tests for permissioned phase start and zero-side-effect rejection — `tests/integration/test_pipeline_driver.py:test_permissioned_phase_start`
-- [ ] T010 [P] [US2] Add a deterministic state-resolution test proving the current step comes from the ledger-authoritative source — `tests/unit/test_pipeline_driver_state.py:test_resolve_current_step_ledger_authoritative`
+- [X] T012 [P] [US2] Add integration coverage for deny/invalid approval with zero side effects in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_blocks_without_token`
+- [X] T013 [P] [US2] Add unit drift-resolution coverage for ledger-vs-hint reconciliation paths in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_resolve_phase_state_prefers_ledger_authority`
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] Thread explicit approval handling through the driver start path so rejected confirmation cannot launch the phase — `scripts/pipeline_driver.py:start_phase`
-- [ ] T012 [US2] Keep state resolution and approval checks in the driver-state module so permissioned starts stay deterministic — `scripts/pipeline_driver_state.py:resolve_current_step`
+- [X] T014 [US2] Require explicit approval token before side-effectful phase execution in `scripts/pipeline_driver.py` — `scripts/pipeline_driver.py:run_step`
+- [X] T015 [US2] Strengthen phase-state reconciliation and machine-readable drift reasons in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:resolve_phase_state`
+- [X] T016 [US2] Tighten lock/retry sequencing around approval-gated execution in `scripts/pipeline_driver_state.py` — `scripts/pipeline_driver_state.py:acquire_feature_lock`
 
-**Checkpoint**: Rejected approval has zero side effects and approved execution starts cleanly.
+---
 
 ## Phase 5: User Story 3 - Producer-Only Command Contracts (Priority: P3)
 
-**Goal**: Command docs produce phase artifacts and completion payloads only, while orchestration, validation, and event emission are handled by the deterministic driver contract.
+**Goal**: Command docs emit producer payload contracts only; orchestration/validation/emission remain driver-owned.
 
 **Independent Test**: Execute a migrated command flow where command docs return completion payload only and verify validation and event emission are performed by orchestration components.
 
+| # | Given | When | Then |
+|---|-------|------|------|
+| 1 | phase command execution | command-level output is produced | output contains artifact and completion payload data without direct ledger mutation responsibilities |
+| 2 | phase orchestration after command completion | deterministic checks pass | orchestrator emits events and routes handoff |
+
 ### Tests for User Story 3
 
-- [ ] T013 [P] [US3] Add markdown smoke coverage that the command docs still expose the compact/expanded headings and producer-only wording — `tests/unit/test_speckit_solution_command_doc.py:test_compact_expanded_shape`
-- [ ] T014 [P] [US3] Add contract coverage proving the manifest and command docs agree on the driver-owned solution/tasking handoff — `tests/unit/test_validate_markdown_doc_shapes.py:test_compact_expanded_shape`
+- [X] T017 [P] [US3] Add contract tests for route-mode normalization and emit-contract schema validity in `tests/contract/test_pipeline_driver_contract.py` — `tests/contract/test_pipeline_driver_contract.py:test_step_result_schema_blocked_requires_gate_and_reasons`
+- [X] T018 [P] [US3] Add markdown/doc-shape regression for producer-only command contract wording in `tests/unit/test_validate_markdown_doc_shapes.py` — `tests/unit/test_validate_markdown_doc_shapes.py:test_validate_markdown_doc_shape_accepts_compact_expanded`
+- [X] T019 [P] [US3] Add command-script coverage regression for manifest/doc alignment in `tests/unit/test_validate_command_script_coverage.py` — `tests/unit/test_validate_command_script_coverage.py:test_validate_command_script_coverage_passes_with_required_scripts`
 
 ### Implementation for User Story 3
 
-- [ ] T015 [US3] Keep `.claude/commands/speckit.solution.md` and related command docs producer-only and aligned to the driver-owned handoff model — `.claude/commands/speckit.solution.md`
-- [ ] T016 [US3] Keep the quickstart and manifest aligned with the solution-to-tasking contract so operators see the same flow the driver enforces — `specs/023-deterministic-phase-orchestration/quickstart.md`
+- [X] T020 [US3] Normalize manifest route and emit contracts for `speckit.solution` driver ownership in `./command-manifest.yaml` — `command-manifest.yaml:commands.speckit.solution`
+- [X] T021 [US3] Update producer-only contract language and remove implicit append ownership in `.claude/commands/speckit.solution.md` — `.claude/commands/speckit.solution.md:## Outline`
+- [X] T022 [US3] Document producer-vs-driver ownership and migration-safe operator flow in `specs/023-deterministic-phase-orchestration/quickstart.md` — `specs/023-deterministic-phase-orchestration/quickstart.md:# Quickstart`
+- [X] T023 [US3] Fail fast on unknown route modes and malformed step payload contracts in `scripts/pipeline_driver_contracts.py` — `scripts/pipeline_driver_contracts.py:parse_step_result`
 
-**Checkpoint**: Command docs no longer imply direct ledger writes and the driver remains the source of truth.
+---
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T017 [P] Add separate analysis-path regression coverage so post-solution drift remains distinct from solution completion — `tests/integration/test_pipeline_driver.py:test_post_solution_analysis`
-- [ ] T018 Update the phase contract validator so tasking and analyze handoffs continue to enforce the same boundary rules — `scripts/pipeline_driver_contracts.py:validate_phase_contract`
+**Purpose**: Final deterministic regression lock and explicit operator runbook boundary.
 
-**Checkpoint**: Drift analysis stays separate from solution completion and the contract boundary remains stable.
+- [X] T024 Add mixed legacy/driver migration-path deterministic regression coverage in `tests/integration/test_pipeline_driver_feature_flow.py` — `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
+- [X] T025 Add duplicate terminal-event retry prevention coverage across driver and ledger seams in `tests/unit/test_pipeline_driver.py` — `tests/unit/test_pipeline_driver.py:test_idempotent_terminal_event_retry`
+- [ ] T026 [H] Execute and record operator dry-run/runbook verification for approval and failure-sidecar workflows in `specs/023-deterministic-phase-orchestration/quickstart.md` — `specs/023-deterministic-phase-orchestration/quickstart.md:## Validation Procedure`
+- [X] T027 Add command-doc token-footprint measurement regression for `SC-004` in `tests/unit/test_validate_markdown_doc_shapes.py` — `tests/unit/test_validate_markdown_doc_shapes.py:test_command_doc_token_footprint_reduction`
+- [X] T028 Add rollback and no-partial-write regression coverage for `FR-013` in `tests/unit/test_pipeline_ledger_sequence.py` — `tests/unit/test_pipeline_ledger_sequence.py:test_append_rejects_partial_write_and_preserves_state`
+- [X] T029 Add manifest-to-ledger validation routing so task-domain emits dispatch to the task ledger while pipeline emits stay pipeline-owned in `scripts/pipeline_ledger.py` — `scripts/pipeline_ledger.py:cmd_validate_manifest`
+
+---
 
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
 
-1. Phase 1 establishes the contract and registry alignment.
-2. Phase 2 establishes the deterministic state and validation spine.
-3. Phase 3 depends on Phases 1-2 and proves deterministic completion.
-4. Phase 4 depends on Phases 1-2 and proves permissioned start behavior.
-5. Phase 5 depends on the command-doc and manifest contract staying aligned.
-6. Phase 6 can run after the three user stories are stable.
+- Phase 1 (Setup): No dependencies.
+- Phase 2 (Foundational): Depends on Phase 1.
+- Phase 3 (US1): Depends on Phase 2. Delivers MVP deterministic validate-before-emit boundary.
+- Phase 4 (US2): Depends on Phase 2 and leverages Phase 3 execution envelope hardening.
+- Phase 5 (US3): Depends on Phase 2 and aligns manifest/doc ownership against stable runtime seams.
+- Phase 6 (Polish): Depends on completion of Phases 3-5.
 
 ### User Story Dependencies
 
-1. US1 is the governance core and should land first.
-2. US2 can land in parallel with US1 once the state resolver is stable.
-3. US3 should land after the driver contract and command-doc shape are stable.
+- US1 (P1): No story dependency after foundational prerequisites.
+- US2 (P2): Depends on US1 runtime envelope/transition guarantees.
+- US3 (P3): Depends on US1 runtime behavior and US2 approval-state boundaries.
 
 ### Within Each User Story
 
-1. Write the failing test first.
-2. Implement the smallest deterministic change that makes the test pass.
-3. Add or update smoke coverage for the affected command docs or contract file.
+- Tests should fail before implementation changes.
+- Route/state contract updates precede dependent integration assertions.
+- Manifest and command-doc contract tasks ship together to avoid drift windows.
 
 ### Parallel Opportunities
 
-1. T005 and T006 can run in parallel once the test seam is identified.
-2. T009 and T010 can run in parallel after the state-resolution seam is stable.
-3. T013 and T014 can run in parallel with the docs and validator update.
+- T006, T007, and T008 can run in parallel after foundational prerequisites.
+- T012 and T013 can run in parallel before US2 implementation tasks.
+- T017, T018, and T019 can run in parallel before US3 implementation tasks.
+- T024, T025, T027, and T028 can run in parallel after the story phases complete.
+
+---
 
 ## Implementation Strategy
 
 ### MVP First (User Story 1 Only)
 
-1. Lock down validation-before-emit sequencing.
-2. Prove no false-positive completion event can be emitted.
-3. Confirm idempotent retry behavior stays deterministic.
+1. Complete Phase 1 and Phase 2.
+2. Complete Phase 3 and validate deterministic no-emit-on-failed-validation behavior.
+3. Run targeted regression tests before progressing to US2/US3.
 
 ### Incremental Delivery
 
-1. Add permissioned phase-start behavior after the completion gate is stable.
-2. Tighten command-doc contracts after the orchestration spine is deterministic.
-3. Finish with quickstart and analyzer separation polish.
+1. Ship US1 deterministic completion boundary.
+2. Add US2 permission gate and ledger-authoritative state safeguards.
+3. Finish US3 producer-only contract normalization and cross-cutting regression lock.
 
 ### Parallel Team Strategy
 
-1. One thread can own driver/state behavior.
-2. One thread can own command-doc and manifest alignment.
-3. One thread can own regression and smoke-test coverage.
+1. Engineer A: Driver/ledger runtime seams (T009-T016, T024-T025).
+2. Engineer B: Manifest/contracts/docs + contract/doc-shape regressions (T017-T023).
+3. Operator: Run human verification task T026 after automated regressions pass.

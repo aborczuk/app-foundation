@@ -1,0 +1,25 @@
+# Default .cgcignore patterns
+# Lines starting with # are comments; blank lines are ignored.
+# Patterns follow .gitignore syntax.
+
+node_modules/
+venv/
+.venv/
+env/
+.env/
+dist/
+build/
+target/
+out/
+.git/
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.tox/
+.mypy_cache/
+.pytest_cache/
+coverage/
+.next/

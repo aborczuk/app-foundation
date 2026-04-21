@@ -1,4 +1,4 @@
-"""Contract-level skeleton tests for step-result envelope parsing."""
+"""Contract-level tests for step-result envelopes and manifest routing."""
 
 from __future__ import annotations
 
@@ -108,6 +108,108 @@ def test_step_result_schema_blocked_requires_gate_and_reasons() -> None:
     assert parsed["ok"] is False
     assert parsed["gate"] == "artifact_validation"
     assert parsed["reasons"] == ["artifact_empty_or_minimal"]
+
+
+def test_normalize_driver_mode_aliases() -> None:
+    """Route-mode aliases normalize to canonical driver labels."""
+    assert contracts.normalize_driver_mode(None) == "legacy"
+    assert contracts.normalize_driver_mode("script") == "deterministic"
+    assert contracts.normalize_driver_mode("template") == "generative"
+    assert contracts.normalize_driver_mode("passthrough") == "legacy"
+
+
+def test_load_driver_routes_normalizes_mode_and_emit_contracts(tmp_path: Path) -> None:
+    """Manifest routes preserve normalized mode and trimmed emit contracts."""
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    driver:",
+                "      mode: template",
+                "      script_path: scripts/example.sh",
+                "      timeout_seconds: 30",
+                "    emits:",
+                "      - event: example_event",
+                "        required_fields:",
+                "          - \" commit_sha \"",
+                "          - \"qa_run_id\"",
+                "  speckit.fallback:",
+                "    description: \"fallback\"",
+                "    emits: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    routes = contracts.load_driver_routes(manifest_path)
+    assert routes["speckit.example"]["mode"] == "generative"
+    assert routes["speckit.example"]["driver_managed"] is True
+    assert routes["speckit.example"]["timeout_seconds"] == 30
+    assert routes["speckit.example"]["emits"] == ["example_event"]
+    assert routes["speckit.example"]["emit_contracts"] == [
+        {"event": "example_event", "required_fields": ["commit_sha", "qa_run_id"]}
+    ]
+    assert routes["speckit.example"]["script_path"] == str(
+        (tmp_path / "scripts" / "example.sh").resolve()
+    )
+    assert routes["speckit.fallback"]["mode"] == "legacy"
+    assert routes["speckit.fallback"]["driver_managed"] is False
+
+
+def test_load_driver_routes_rejects_unknown_driver_mode(tmp_path: Path) -> None:
+    """Unknown driver modes should fail fast instead of silently falling back."""
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example\"",
+                "    driver:",
+                "      mode: unsupported-mode",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        contracts.load_driver_routes(manifest_path)
+    assert "unsupported driver mode" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "ok_value", "expected_message"),
+    [
+        (0, False, "exit_code=0 (success) requires ok=True"),
+        (1, True, "exit_code=1 (blocked) requires ok=False"),
+        (2, True, "exit_code=2 (error) requires ok=False"),
+    ],
+)
+def test_step_result_schema_rejects_mismatched_ok_and_exit_code(
+    exit_code: int, ok_value: bool, expected_message: str
+) -> None:
+    """Malformed step envelopes should fail when ok and exit_code disagree."""
+    payload: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "ok": ok_value,
+        "exit_code": exit_code,
+        "correlation_id": "019:plan:T001",
+    }
+    if exit_code == 0:
+        payload["next_phase"] = "sketch"
+    elif exit_code == 1:
+        payload["gate"] = "artifact_validation"
+        payload["reasons"] = ["artifact_empty_or_minimal"]
+    else:
+        payload["error_code"] = "script_timeout"
+        payload["debug_path"] = ".speckit/failures/019_T005_attempt_1.json"
+
+    with pytest.raises(ValueError) as exc_info:
+        contracts.parse_step_result(payload)
+    assert expected_message in str(exc_info.value)
 
 
 def test_step_result_schema_error_requires_error_code_and_debug_path() -> None:

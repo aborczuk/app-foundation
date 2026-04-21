@@ -1,5 +1,5 @@
 ---
-description: LLD solutioning phase. Orchestrates sketch -> solutionreview -> tasking -> analyze. Emits solution_approved before analyze.
+description: LLD solutioning phase. Orchestrates sketch -> solutionreview -> tasking -> analyze. Produces the solution_approved payload before analyze.
 model: opus
 handoffs:
   - label: Begin Implementation
@@ -31,7 +31,7 @@ Top-level LLD phase for sketch-first planning. Run these steps first; only load 
 3. Auto-invoke `/speckit.sketch`.
 4. Auto-invoke `/speckit.solutionreview`.
 5. Auto-invoke `/speckit.tasking`.
-6. Emit `solution_approved` to `.speckit/pipeline-ledger.jsonl`.
+6. Produce the `solution_approved` payload for pipeline orchestration.
 7. Auto-invoke `/speckit.analyze` as the post-solution drift gate.
 
 ## Expanded Guidance (Load On Demand)
@@ -79,9 +79,9 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse 
 - Run deterministic tasks format gate.
 - Generate HUDs and acceptance tests only after stabilization.
 
-### 6. Emit `solution_approved`
+### 6. Produce `solution_approved`
 
-Emit `solution_approved` to `.speckit/pipeline-ledger.jsonl`:
+The command doc describes the `solution_approved` payload only. The pipeline driver records the event after the payload is accepted:
 
 ```json
 {"event":"solution_approved","feature_id":"NNN","phase":"solution","task_count":N,"story_count":N,"estimate_points":N,"actor":"<agent-id>","timestamp_utc":"..."}
@@ -103,4 +103,5 @@ Emit `solution_approved` to `.speckit/pipeline-ledger.jsonl`:
 - Hard-block on unresolved Open Feasibility Questions.
 - Enforce phase read hierarchy: `helper-driven read (semantic+exact) -> discovery checks` before any design claim grounded in repo context.
 - Do not emit `solution_approved` before sketch review and tasking stabilization complete.
+- Do not claim direct ledger append ownership in the command doc; `solution_approved` is produced for orchestration, not written here.
 - `solution_approved` is solution-phase completion; analysis remains a separate post-solution gate event.

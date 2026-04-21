@@ -231,7 +231,70 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - Report final status as a compact status line with completed-work and E2E result fields; do not emit a prose summary
    - When a user story reaches its hard stop, return only the compact status line and the checkpoint result; do not emit a prose summary before yielding control back to the user.
 
-10. **Retrospective: Estimate vs Actual** (if FEATURE_DIR/estimates.md exists):
+
+# Documentation Step
+
+## Purpose
+
+Capture the implementation outcome in durable documentation.
+
+This skill updates:
+
+- `quickstart.md`
+- the feature decision log
+- the relevant GitHub reference link
+
+## Inputs
+
+- the active feature context
+- the implementation or design change that was completed
+- the relevant GitHub URL:
+  - commit
+  - pull request
+  - issue
+  - discussion
+  - or repo path link
+
+## Execution
+
+1. Load the current `quickstart.md` (or create if doesnt exist for current spec folder)
+2. Add or update the section that future readers should use to:
+   - understand the feature quickly
+   - run or verify it
+   - find important operational or testing notes
+3. Load the decision log for the feature if it exists in quickstart.md.
+4. Append a concise decision-log entry that records:
+   - what changed
+   - why it changed
+   - what was decided
+   - what artifact or behavior was updated
+   - the GitHub link
+5. Preserve existing structure and formatting.
+6. Keep the documentation concise and future-reader-focused.
+
+## Output requirements
+
+### Quickstart update
+The `quickstart.md` update should include only what a future reader/operator needs:
+- what this feature does
+- how to run or exercise it
+- how to verify it
+- any important caveats
+- a link to the feature spec folder for deeper context
+- a link to `tasks.md` plus the relevant commit or PR trail for implementation details
+
+### Decision log entry
+Use this format:
+
+```md
+- **[DATE]** — [short decision title]  
+  **Decision:** [what was decided or documented]  
+  **Why:** [brief rationale]  
+  **Updated:** `[artifact-or-surface]`  
+  **GitHub:** [link]
+```
+
+11. **Retrospective: Estimate vs Actual** (if FEATURE_DIR/estimates.md exists):
     - For each completed task, assess actual complexity relative to the fibonacci estimate:
       - **Accurate**: Actual effort matched the estimate (within +-1 fibonacci step)
       - **Underestimated**: Actual effort exceeded the estimate by 2+ fibonacci steps — note why

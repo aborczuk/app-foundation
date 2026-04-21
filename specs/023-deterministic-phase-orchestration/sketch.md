@@ -1,156 +1,52 @@
-# Sketch Blueprint - Deterministic Phase Orchestration
+# Sketch Blueprint — Deterministic Phase Orchestration
 
-_Date: 2026-04-17_
-_Feature: `023-deterministic-phase-orchestration`_
-_Source Plan: `plan.md`_
-_Artifact: `sketch.md`_
+_Date: 2026-04-20_
+_Feature ID: 023_
+_Feature Name: Deterministic Phase Orchestration_
+
+---
 
 ## Feature Solution Frame
 
 ### Core Capability
 
-Move phase execution to a deterministic orchestration contract where the pipeline driver is the execution entrypoint, command docs produce artifacts and completion payloads only, and phase events are emitted only after deterministic validation passes.
+Move phase execution into a deterministic driver contract where route selection, runtime envelope validation, and pipeline event append behavior are machine-enforced instead of doc-driven.
 
-### Current -> Target Transition
+### Current → Target Transition
 
-Today the repo already has a pipeline driver, ledger helpers, state resolution helpers, and manifest-driven routing. The remaining problem is contract drift: command docs still carry orchestration-heavy wording, and the plan/task boundary needs to make it explicit that validation, event append, and handoff are driver-owned deterministic steps. The target state keeps the existing script-first spine, but tightens the contract so `speckit.*` command docs become producer-only artifact emitters and the driver becomes the sole phase executor for automated flows.
+Current state mixes legacy command-doc orchestration with partial driver routing and sequence validation. Target state keeps command docs producer-oriented while `pipeline_driver.py` + `pipeline_driver_state.py` + `pipeline_ledger.py` own execution routing, state authority, and validate-before-emit guarantees.
 
 ### Dominant Execution Model
 
-Deterministic CLI orchestration with explicit permission gating, validate-before-emit sequencing, and a ledger-authoritative phase state model. Command docs and templates define artifact shape; the driver decides whether a phase can advance.
+Deterministic orchestrator model: `orchestrate -> extract -> scaffold -> LLM Action -> validate -> emit/handoff`, with explicit approval and structured exit semantics.
 
 ### Main Design Pressures
 
-- Human approval before irreversible phase side effects
-- Validate before emit, every time
-- Producer-only command contracts
-- Ledger-authoritative state resolution with advisory mirrors only
-- No direct ledger file reads in command docs or templates
-- Keep the solution token-efficient by reducing duplicated workflow prose
+- Preserve existing Speckit command surfaces while tightening deterministic enforcement.
+- Keep pipeline ledger as source-of-truth without introducing conflicting local mirrors.
+- Maintain backward compatibility for legacy transitions while enforcing new sequence rules.
 
 ---
 
 ## Solution Narrative
 
-This feature codifies a single phase-execution contract that spans the pipeline driver, command docs, ledger helpers, and the handoff between sketch, solution review, tasking, and analyze. The pipeline driver owns orchestration, state resolution, permission gating, deterministic validation, and event append mechanics. Command docs are treated as producer-only contracts: they gather context, synthesize artifacts, and return completion payloads, but they do not append ledger events directly. The final solution keeps the current manifest-driven routing model, preserves the pipeline ledger as the authoritative state source, and makes validate-before-emit the invariant that downstream phases rely on.
-
-The sketch also preserves the repo's governance posture: no new external runtime is required, no new server is introduced, and the existing command manifest remains the route registry for automation. The main implementation pressure is to keep the solution phase compact enough that the command docs remain readable while still encoding the deterministic boundaries needed for the rest of the pipeline.
+This sketch keeps the approved plan thesis intact: the driver is the execution authority, command docs remain production contracts, and event emission is downstream of deterministic validation. Implementation centers on strengthening existing scripts rather than introducing a new framework. The design slices split work across routing/state logic, transition validation, contract normalization, and regression verification so tasking can proceed without inventing architecture.
 
 ---
 
 ## Construction Strategy
 
-1. Normalize the solution-phase contract in `specs/023-deterministic-phase-orchestration/contracts/phase-execution-contract.md` so it clearly separates producer output, deterministic validation, event append, and handoff.
-2. Keep `scripts/pipeline_driver.py` as the canonical automated phase executor and refine its state-resolution and validate-before-emit flow rather than introducing a second orchestrator.
-3. Preserve `scripts/pipeline_ledger.py` as the only append path for phase events and keep append mechanics behind deterministic validation.
-4. Update command docs so they are producer-only and point to the driver-owned execution model instead of embedding direct ledger instructions.
-5. Keep `command-manifest.yaml` aligned with the driver-owned phase contract and any emitted event field expectations.
-6. Add deterministic tests for permission rejection, validate-before-emit ordering, ledger-authoritative state resolution, and idempotent retry behavior.
-7. Update `quickstart.md` and related notes so the run path is visible to operators and future tasking stays aligned.
+1. Stabilize the routing contract from manifest to driver mode resolution (`legacy` vs `generative` vs deterministic envelope expectations).
+2. Reinforce state authority and sequencing invariants (`resolve_phase_state`, `validate_sequence`, append rules).
+3. Tighten success-event append behavior so event emission occurs only on validated success paths.
+4. Align command docs and manifest language with producer-only contracts and driver-owned orchestration.
+5. Lock behavior with integration/unit coverage over approval, sequencing, and migration-path regressions.
 
 ### Construction Notes
 
-- Keep orchestration logic in scripts, not prompt prose.
-- Treat the driver and ledger as the trust boundary for progression.
-- Prefer small, additive changes to the existing pipeline contract over new workflow infrastructure.
-
----
-
-## Command / Script Surface Map
-
-| Name | Owning File / Script / Template | Pipeline Role | Classification | Inputs | Outputs / Artifacts | Events | Extension Seam | Planned Change |
-|------|---------------------------------|---------------|----------------|--------|----------------------|--------|----------------|----------------|
-| `uv run python scripts/pipeline_driver.py --feature-id <FEATURE_ID> [--phase <PHASE>]` | `scripts/pipeline_driver.py` | Canonical automated phase executor | Deterministic | Feature id, phase, repo context | Phase progression result, handoff payload, validation status | `plan_started`, `plan_approved`, `solution_approved`, post-solution analysis output | Keep orchestration driver-owned and deterministic | Modify |
-| `scripts/pipeline_driver_state.py` | `scripts/pipeline_driver_state.py` | Resolve current step and phase state | Deterministic | Ledger state, feature context | Current step / state resolution | None directly | Keep ledger-authoritative state resolution | Modify minimally |
-| `scripts/pipeline_ledger.py` | `scripts/pipeline_ledger.py` | Append and validate phase events | Deterministic | Event payloads, feature id, actor | JSONL ledger append / validation result | Phase events | Preserve as the only append path | Reuse |
-| `scripts/pipeline_driver_contracts.py` | `scripts/pipeline_driver_contracts.py` | Validate phase contract boundaries | Deterministic | Phase contract payloads, manifest data | Contract validation result | None directly | Add contract checks for producer-only docs and validate-before-emit | Modify |
-| `command-manifest.yaml` | repo root manifest | Route registry for phase commands | Declarative | Command IDs, artifact contracts, event contracts | Command routing metadata | Manifest-declared events | Keep canonical registry aligned to driver behavior | Modify if contract fields need tightening |
-| `.claude/commands/speckit.solution.md` | command doc | Solution-phase orchestration guide | Human-facing / hybrid | Repo context, feature artifacts | Sketch, review, tasking, analyze handoff instructions | `solution_approved` emitted elsewhere | Remove direct event-emitter phrasing from producer docs | Modify |
-| `specs/023-deterministic-phase-orchestration/contracts/phase-execution-contract.md` | contract artifact | Shared phase execution contract | Declarative | Plan, sketch, tasking inputs | Contractual boundary for implementation | No direct events | The main reference for tasking slices | Create / refine |
-| `scripts/speckit_gate_status.py` | `scripts/speckit_gate_status.py` | Deterministic entry gate | Deterministic | Feature dir, mode | Gate status JSON | None | Keep as preflight check for solution and implement | Reuse |
-
----
-
-## Manifest Alignment Check
-
-| Affected Command / Phase | Existing Manifest Coverage? | New Artifact Needed? | New Event / Field Needed? | Handoff / Event Flow Impact | Status |
-|--------------------------|-----------------------------|----------------------|---------------------------|-----------------------------|--------|
-| `speckit.solution` | Yes | `contracts/phase-execution-contract.md` | No new event type | Solution phase must remain producer-only at the command-doc level | Aligned |
-| `speckit.planreview` | Yes | No | No | Plan review remains a feasibility gate, not an emitter | Aligned |
-| `speckit.tasking` | Yes | `tasks.md` and estimate artifacts | No new event type | Task generation must consume the approved sketch contract | Aligned |
-| `speckit.analyze` | Yes | Analysis report | `analysis_completed` stays separate | Post-solution drift analysis remains its own gate | Aligned |
-| `command-manifest.yaml` | Yes | Possibly updated event field docs | Only if contract validation requires tighter fields | Keep the registry as the source of truth for routing | Watch |
-
-### Manifest Alignment Notes
-
-- No new workflow command is required for this feature.
-- The manifest may need tighter contract wording, but the command IDs stay stable.
-- Any manifest edits should mirror the driver-owned execution flow rather than reintroduce prompt-owned event emission.
-
----
-
-## Architecture Flow Delta
-
-- **Architecture Flow refined**
-
-### Delta Summary
-
-The plan-level flow remains correct, but this sketch makes the execution seam explicit: the driver resolves state, gets permission, runs command synthesis, validates outputs, appends events only after pass, and then emits handoff. The command docs sit entirely on the producer side of the boundary.
-
-### Added / Refined Nodes, Edges, or Boundaries
-
-| Change | Why Needed at LLD Level | Must Preserve in Tasking / Implementation |
-|--------|--------------------------|-------------------------------------------|
-| Driver-owned state resolution | Ensures one authoritative current-step result | No duplicate state engines |
-| Driver-owned validation gate | Prevents false-positive completion | No event append before pass |
-| Ledger append as the only terminal event write path | Keeps audit behavior deterministic | No direct JSONL writes from command docs |
-| Producer-only command docs | Reduces duplicated workflow prose and token overhead | Command docs synthesize artifacts, not events |
-| Separate analyze gate | Keeps drift detection distinct from solution completion | Do not merge analysis into solution completion |
-
----
-
-## Component and Boundary Design
-
-| Component / Boundary | Responsibility | Owning or Likely Touched File(s) | Likely Touched Symbol(s) | Reuse / Modify / Create | Inbound Dependencies | Outbound Dependencies |
-|----------------------|----------------|----------------------------------|--------------------------|-------------------------|---------------------|----------------------|
-| Phase execution contract | Defines producer, validator, emitter, and handoff boundaries | `specs/023-deterministic-phase-orchestration/contracts/phase-execution-contract.md` | N/A | Create / refine | Plan, research, feature context | Tasking, implementation, review |
-| Driver orchestration spine | Resolves state, gates permission, runs validation, and appends events | `scripts/pipeline_driver.py` | core orchestration helpers | Modify | Feature context, ledger state, manifest metadata | `pipeline_ledger.py`, handoff payloads |
-| Phase state resolver | Computes current step and guards stale or divergent state | `scripts/pipeline_driver_state.py` | state helpers | Modify minimally | Ledger state, feature id | Driver orchestration |
-| Event append path | Appends phase events after validation passes | `scripts/pipeline_ledger.py` | append helpers | Reuse | Validated payloads, actor | Pipeline ledger JSONL |
-| Command docs | Producer-only artifact and completion payload contract | `.claude/commands/speckit.solution.md` and related docs | outline sections | Modify | Feature artifacts, plan, research | Sketch, tasking, analyze handoff |
-| Manifest registry | Declares command routing and artifact contracts | `command-manifest.yaml` | command entries | Modify if needed | Repository governance model | Driver and speckit workflows |
-
-### Control Flow Notes
-
-- Validation must complete before any event append is attempted.
-- Event append must complete before handoff is treated as successful.
-- Permission rejection must stop execution without side effects.
-- The analyze phase stays separate from solution completion.
-
----
-
-## Design-to-Tasking Contract
-
-- Tasking must decompose from the design slices below, not invent a new orchestration model.
-- Each task should preserve the driver / validator / ledger split.
-- Tasks must keep command docs producer-only and avoid direct ledger append instructions.
-- Tasks must preserve ledger-authoritative current-step resolution and idempotent retries.
-- Tasks must include verification for permission rejection, validate-before-emit ordering, and separate analyze behavior.
-- Tasks must include a smoke path for the command docs so the compact and expanded headings remain stable.
-
----
-
-## Decomposition-Ready Design Slices
-
-| Slice | Files / Symbols | What Tasking Should Build | Verification Intent |
-|-------|-----------------|---------------------------|---------------------|
-| Driver orchestration and permission gate | `scripts/pipeline_driver.py` | Keep the canonical orchestration spine, current-step resolution, and explicit approval gate deterministic | Unit/integration tests for permission rejection and successful start |
-| Validate-before-emit sequencing | `scripts/pipeline_driver.py`, `scripts/pipeline_ledger.py` | Ensure events are appended only after validation passes | Failure-mode tests proving no event append on validation fail |
-| Ledger-authoritative phase state | `scripts/pipeline_driver_state.py` | Treat the ledger as the source of truth and mirrors as advisory only | Tests for stale/advisory divergence handling |
-| Producer-only command docs | `.claude/commands/speckit.solution.md`, related command docs | Remove direct event-emitter language from command docs and keep them artifact-focused | Markdown smoke test for compact/expanded headings and producer-only wording |
-| Contract artifact and routing alignment | `specs/023-deterministic-phase-orchestration/contracts/phase-execution-contract.md`, `command-manifest.yaml` | Encode the phase execution contract and keep manifest routing aligned to the driver | Contract review plus deterministic gate check |
-| Post-solution drift analysis | `scripts/pipeline_driver.py`, `scripts/pipeline_driver_contracts.py` | Keep analyze separate from solution completion and make drift visible | Tests for separate analysis event / reporting |
-| Quickstart and operator notes | `specs/023-deterministic-phase-orchestration/quickstart.md` | Document the canonical flow for operators and maintainers | Manual review plus smoke verification |
+- Prioritize state/routing correctness before doc wording polish.
+- Keep contract and manifest edits in the same slice to avoid drift windows.
+- Treat codegraph relationship sparsity as a discovery constraint and avoid speculative dependency claims.
 
 ---
 
@@ -158,11 +54,560 @@ The plan-level flow remains correct, but this sketch makes the execution seam ex
 
 | Story / Requirement / Constraint | Design Element(s) That Satisfy It | Reuse / Modify / Create | Verification / Migration Note |
 |----------------------------------|-----------------------------------|-------------------------|-------------------------------|
-| User Story 1 - Deterministic Phase Completion | Driver orchestration spine, validate-before-emit gate, pipeline ledger append path | Modify / Reuse | Validation fail must never emit a completion event |
-| User Story 2 - Permissioned Phase Start | Current-step resolver and explicit approval gate | Modify / Reuse | Rejected approval must have zero side effects |
-| User Story 3 - Producer-Only Command Contracts | `speckit.solution` and related docs, phase execution contract | Modify / Create | Command docs must stop implying direct ledger writes |
-| FR-001 / FR-007 / FR-009 | Driver flow and deterministic validation | Modify | Event emission only after pass |
-| FR-002 / FR-003 / FR-004 / FR-005 | State resolver and approval gate | Modify | Deterministic permission failure and no-op rejection |
-| FR-006 / FR-010 / FR-011 | Producer-only docs, handoff discipline, retry idempotency | Modify | No duplicate terminal outcomes |
-| FR-012 / FR-013 / FR-014 | Ledger-authoritative state, partial-write safety, driver entrypoint naming | Modify / Create | No stale mirror authority and no partial-write acceptance |
+| FR-001 / FR-007 / FR-008 / FR-009 | `run_step`, `append_pipeline_success_event`, `validate_sequence` | Modify | Add regression checks for validate-before-emit, no completion append on validation failure, and success append behavior. |
+| FR-002 / FR-012 | `resolve_phase_state` ledger-derived phase resolution | Modify | Unit tests must prove ledger-authoritative phase derivation and drift flags. |
+| FR-003 / FR-004 / FR-005 | Approval breakpoint path in driver execution flow | Modify | Integration tests must cover deny path and invalid token path with zero side effects. |
+| FR-006 | Producer-only command contract wording + manifest event contracts | Modify | Doc-shape and manifest-contract tests enforce ownership boundaries. |
+| FR-010 / FR-011 | Handoff and idempotent retries in driver runtime envelope | Modify | Verify no duplicate terminal event outcomes across retries/replays. |
+| FR-013 / FR-014 | `cmd_append` validation + driver entrypoint as canonical orchestrator | Reuse + Modify | Validate partial-write rejection and transition correctness in ledger tests. |
 
+---
+
+## Work-Type Classification
+
+- **Work profile**: software + workflow + governance-doc alignment
+- **Primary implementation surface**: `scripts/` orchestration and ledger modules
+- **Secondary surfaces**: `.claude/commands/`, `command-manifest.yaml`, tests
+- **Human boundary impact**: moderate (approval gate and operator-visible status lines)
+
+---
+
+## Current-System Inventory
+
+- `scripts/pipeline_driver.py` already has deterministic step envelope and runtime failure sidecar handling.
+- `scripts/pipeline_driver_state.py` already derives phase from ledger events and detects drift.
+- `scripts/pipeline_ledger.py` already validates event shape and transition sequence.
+- `scripts/pipeline_driver_contracts.py` already normalizes manifest driver routes and emit contracts.
+- `specs/023-deterministic-phase-orchestration/plan.md` already locks architecture decisions this sketch must preserve.
+
+---
+
+## Command / Script Surface Map
+
+| Surface | Role in Solution | Change Type | Notes |
+|---------|------------------|-------------|-------|
+| `scripts/pipeline_driver.py` | Driver execution, runtime envelope, success event append | Modify | Center of phase orchestration hardening. |
+| `scripts/pipeline_driver_state.py` | Phase-state authority and drift detection | Modify | Must remain ledger-authoritative. |
+| `scripts/pipeline_ledger.py` | Sequence validation and append guardrails | Modify | Enforces transition state machine. |
+| `scripts/pipeline_driver_contracts.py` | Manifest route/contract normalization | Modify | Prevents contract drift between docs and runtime. |
+| `command-manifest.yaml` | Canonical command artifacts/events/mode declarations | Modify | Must stay source-of-truth for emit contracts. |
+| `.claude/commands/speckit.solution.md` | Producer-oriented phase contract text | Modify | Keep orchestration ownership out of command-doc logic. |
+
+---
+
+## CodeGraphContext Findings
+
+### Seed Symbols
+
+- `scripts/pipeline_driver.py:run_step`
+- `scripts/pipeline_driver_state.py:resolve_phase_state`
+- `scripts/pipeline_ledger.py:validate_sequence`
+- `scripts/pipeline_driver_contracts.py:load_driver_routes`
+- `scripts/pipeline_driver.py:resolve_step_mapping`
+- `scripts/pipeline_driver_contracts.py:parse_step_result`
+
+### Primary Implementation Surfaces
+
+- `scripts/pipeline_driver.py`
+- `scripts/pipeline_driver_state.py`
+- `scripts/pipeline_ledger.py`
+- `scripts/pipeline_driver_contracts.py`
+
+### Secondary Affected Surfaces
+
+- `command-manifest.yaml`
+- `.claude/commands/speckit.solution.md`
+- `scripts/speckit_gate_status.py`
+- `tests/unit/test_pipeline_driver.py`
+- `tests/integration/test_pipeline_driver_feature_flow.py`
+- `tests/unit/test_pipeline_ledger_sequence.py`
+- `tests/contract/test_pipeline_driver_contract.py`
+- `tests/unit/test_validate_command_script_coverage.py`
+- `tests/unit/test_validate_markdown_doc_shapes.py`
+
+### Caller / Callee / Dependency Notes
+
+- CodeGraph caller/callee checks were re-run in default per-repo context (no manual `--context` override).
+- `cgc analyze callers run_step --file scripts/pipeline_driver.py` resolves to `main`; `calls run_step` resolves `_execute_command`, `handle_runtime_failure`, and `parse_step_result`.
+- `cgc analyze callers load_driver_routes --file scripts/pipeline_driver_contracts.py` resolves `resolve_step_mapping`, `append_pipeline_success_event`, and `validate_command_coverage`.
+- `cgc analyze callers/calls validate_sequence` and `read_events` surface mixed call graphs due shared symbol names across `pipeline_ledger.py` and `task_ledger.py`; bounded reads are used to disambiguate ownership.
+- `cgc analyze deps` returned no dependency graph entries for targeted script modules, so import/dependency claims are bounded-read anchored.
+
+### Missing Seams or Contradictions
+
+- CodeGraph dependency mode currently returns empty results for script modules in this feature seam.
+- Shared symbol names (`validate_sequence`, `read_events`, `cmd_append`) across pipeline/task ledgers introduce cross-file ambiguity in global caller listings.
+- No contradiction observed between plan decisions and currently visible runtime seams.
+
+---
+
+## Blast Radius
+
+### Direct Implementation Surfaces
+
+- `scripts/pipeline_driver.py:run_step`
+- `scripts/pipeline_driver.py:append_pipeline_success_event`
+- `scripts/pipeline_driver.py:resolve_step_mapping`
+- `scripts/pipeline_driver_state.py:resolve_phase_state`
+- `scripts/pipeline_ledger.py:validate_sequence`
+- `scripts/pipeline_ledger.py:cmd_append`
+- `scripts/pipeline_driver_contracts.py:load_driver_routes`
+- `scripts/pipeline_driver_contracts.py:parse_step_result`
+
+### Indirect Affected Surfaces
+
+- `command-manifest.yaml` route mode and emit contracts
+- `.claude/commands/speckit.solution.md` producer-only guidance
+- `scripts/speckit_gate_status.py:validate_command_coverage`
+- Feature quickstart and sketch/tasking handoff docs
+- Regression harnesses under `tests/unit/`, `tests/integration/`, and `tests/contract/` for driver/ledger/doc-shape stability
+
+### Regression-Sensitive Neighbors
+
+- `scripts/pipeline_driver.py:run_generative_handoff`
+- `scripts/pipeline_driver.py:route_legacy_step`
+- `scripts/pipeline_driver.py:validate_coverage_for_migration`
+- `scripts/pipeline_driver_state.py:acquire_feature_lock`
+- `scripts/pipeline_ledger.py:validate_event_shape`
+- `scripts/pipeline_driver_contracts.py:validate_reason_codes`
+
+### Rollout / Compatibility Impact
+
+- Legacy transition compatibility must remain for pre-cutover timestamps while blocking invalid new-order events.
+- Driver-managed and legacy-managed commands must continue coexisting until migration scope is complete.
+
+### Operator / Runbook / Deployment Impact
+
+- Operators continue using `pipeline_driver.py --dry-run --json` for deterministic phase visibility.
+- Runtime failure sidecars under `.speckit/runtime-failures` remain the debug path for exit-code violations/timeouts.
+
+---
+
+## Reuse / Modify / Create Matrix
+
+### Reuse Unchanged
+
+- Existing pipeline ledger file format and append-only storage model.
+- Existing manifest-driven command registry model.
+
+### Modify / Extend Existing
+
+- Driver step execution and success-event append path.
+- Phase-state reconciliation and drift detection logic.
+- Event transition validation and required-field enforcement.
+- Command-doc wording for producer-only contracts.
+
+### Compose from Existing Pieces
+
+- Driver + state resolver + ledger validator + manifest route loader combined as one deterministic contract.
+
+### Create Net-New
+
+- None required for core architecture. Only feature artifact updates under `specs/023-...` as needed.
+
+### Reuse Rationale
+
+Reusing current scripts keeps behavior close to existing tested seams and avoids introducing a second orchestration framework with duplicate risk and governance overhead.
+
+---
+
+## Manifest Alignment Check
+
+- Command involved: `speckit.sketch`
+- Expected artifact path: `${FEATURE_DIR}/sketch.md`
+- Expected event: `sketch_completed`
+
+### Manifest Alignment Notes
+
+- Manifest already declares `speckit.sketch` as generative driver mode with `sketch.md` scaffold artifact.
+- No manifest mismatch found for the sketch phase contract.
+
+---
+
+## Architecture Flow Delta
+
+### Delta Summary
+
+- Clarifies that runtime failure sidecar generation is part of deterministic execution posture.
+- Clarifies that success-event append is derived from manifest emit contracts, not hardcoded command assumptions.
+- Clarifies that phase-state authority remains ledger-first even when feature-dir artifacts exist.
+
+### Added / Refined Nodes, Edges, or Boundaries
+
+- Refined node: `append_pipeline_success_event` as post-step success append boundary.
+- Refined edge: `load_driver_routes -> emit_contracts -> ledger append command`.
+- Refined boundary: runtime failure path writes deterministic debug sidecar instead of opaque failures.
+
+---
+
+## Component and Boundary Design
+
+- **Driver runtime (`pipeline_driver.py`)**: Executes phase step, normalizes envelopes, handles runtime-failure debug persistence.
+- **State authority (`pipeline_driver_state.py`)**: Resolves phase from ledger history and guards drift/lock behavior.
+- **Ledger contract (`pipeline_ledger.py`)**: Validates event shape/order and enforces allowed transitions.
+- **Route contract (`pipeline_driver_contracts.py`)**: Normalizes manifest route data into driver-usable contracts.
+
+### Control Flow Notes
+
+- Driver resolves route/mode from manifest before execution.
+- Successful execution only appends a completion event through validated contract path.
+- Invalid runtime envelopes route to deterministic failure payload + sidecar path.
+
+### Data Flow Notes
+
+- Manifest route metadata feeds driver route selection and emit event contract.
+- Ledger event stream feeds phase-state resolution and transition validation.
+
+---
+
+## Interface, Symbol, and Contract Notes
+
+### Public Interfaces and Contracts
+
+- `pipeline_driver.py` CLI entrypoint and step result envelope.
+- `pipeline_ledger.py append|validate|assert-phase-complete` CLI contracts.
+- `pipeline_driver_contracts.load_driver_routes` route contract for command IDs.
+
+### New or Changed Public Symbols
+
+- No net-new public symbol is required by this sketch.
+- Existing symbols expected to change behavior/coverage:
+  - `scripts/pipeline_driver.py:run_step`
+  - `scripts/pipeline_driver.py:append_pipeline_success_event`
+  - `scripts/pipeline_driver_state.py:resolve_phase_state`
+  - `scripts/pipeline_ledger.py:validate_sequence`
+
+### Ownership Boundaries
+
+- Driver owns orchestration execution and exit-envelope interpretation.
+- Ledger owns event sequence validation and append acceptance.
+- Command docs own artifact-production guidance only, not event append mechanics.
+
+---
+
+## State / Lifecycle / Failure Model
+
+### State Authority
+
+- Pipeline ledger is source-of-truth for last event and approval state.
+- Feature-dir artifacts are consistency signals, not phase authority.
+- Drift flags are raised when hints/artifacts disagree with ledger sequence.
+
+### Lifecycle / State Transitions
+
+- Plan-approved state is prerequisite for sketch/solution progression.
+- Sketch completion is an explicit event state, not implicit file presence.
+- Solution progression must preserve sequence constraints (including estimation/tasking gates).
+
+### Retry / Replay / Ordering / Cancellation
+
+- Event append path remains append-only with sequence validation.
+- Invalid/duplicate ordering is rejected by ledger sequence checks.
+- Runtime step retries must preserve deterministic envelopes and avoid duplicate terminal outcomes.
+
+### Degraded Modes / Fallbacks / Recovery
+
+- Runtime command failures produce sidecar diagnostics under `.speckit/runtime-failures`.
+- Missing/invalid output envelopes map to deterministic failure reason codes.
+- Legacy transition compatibility remains bounded by cutover timestamp rules.
+
+---
+
+## Non-Functional Design Implications
+
+- **Security**: no new secrets path; runtime diagnostics must avoid secret leakage.
+- **Reliability**: deterministic exit-code and envelope checks reduce ambiguous failures.
+- **Observability**: sidecar diagnostics and structured status lines remain the operator debug channel.
+- **Performance**: no major runtime cost increase expected; route normalization is lightweight.
+- **Maintainability**: manifest-driven contracts reduce drift between docs and runtime behavior.
+
+---
+
+## Migration / Rollback Notes
+
+### Migration / Cutover Requirements
+
+- Preserve legacy route handling while migrating command IDs incrementally.
+- Keep transition compatibility rules until all pre-cutover patterns are retired.
+
+### Rollback Triggers
+
+- Any regression where denied approval causes side effects.
+- Any regression where completion events append without validation pass.
+
+### Rollback Constraints
+
+- Ledger events are append-only; rollback is forward-fix via new events/code.
+- Command-manifest and driver-contract changes must stay synchronized to rollback safely.
+
+---
+
+## Human-Task and Operator Boundaries
+
+- Human approval token remains explicit before side-effectful phase execution.
+- Operators may run dry-run first to inspect phase state before live execution.
+- Runtime failure investigation remains manual via generated sidecar diagnostics.
+
+---
+
+## Verification Strategy
+
+### Unit-Testable Seams
+
+- `resolve_phase_state` reconciliation and drift flagging.
+- `validate_sequence` transition and shape enforcement.
+- `load_driver_routes` mode normalization and emit-contract parsing.
+
+### Contract Verification Needs
+
+- Manifest emit contracts and driver append behavior stay aligned.
+- Command-doc shape tests confirm producer-only contract wording.
+
+### Integration / Reality-Check Paths
+
+- End-to-end driver feature-flow tests for allowed/blocked/error envelopes.
+- Approval deny path must show no side effects and deterministic reason codes.
+
+### Lifecycle / Retry / Duplicate Coverage Needs
+
+- Validate-before-emit ordering under failure and retry scenarios.
+- Duplicate/invalid transition attempts must remain blocked.
+
+### Deterministic Oracles (if known)
+
+- Exit envelope schema (`ok`, `exit_code`, `gate/reasons`, `next_phase`, `error_code/debug_path`).
+- Ledger append acceptance/rejection based on strict transition map.
+
+### Regression-Sensitive Areas
+
+- Driver route fallback between generative and legacy command modes.
+- Sequence transitions around sketch/solution/tasking/analysis phases.
+
+---
+
+## Domain Guardrails
+
+- **Security / identity boundaries**: no secrets in logs/artifacts; approval and actor attribution remain explicit.
+- **Ops governance**: pipeline ledger remains append-only and validated.
+- **Testing / resilience**: deterministic error envelopes and regression tests are mandatory before phase advancement.
+
+---
+
+## LLD Decision Log
+
+- Keep driver as orchestration authority and avoid embedding ledger semantics in command docs.
+- Treat codegraph relationship sparsity as a tooling limitation, not license to infer callers/callees.
+- Prioritize modifications to existing scripts over introducing a new orchestration layer.
+
+---
+
+## Design Gaps and Repo Contradictions
+
+### Missing Seams
+
+- CodeGraph caller/callee edges are available in default per-repo context for seeded symbols.
+- Scoped `--context scripts` lookups and module dependency (`cgc analyze deps`) remain sparse for this seam.
+
+### Unsupported Assumptions
+
+- Treat global caller listings for duplicated symbol names (`validate_sequence`, `read_events`, `cmd_append`) as ambiguous unless file-qualified and bounded-read anchored.
+
+### Plan vs Repo Contradictions
+
+- None identified in current bounded reads.
+
+### Blocking Design Issues
+
+- None.
+
+---
+
+## Out-of-Scope / Preserve-As-Is Boundaries
+
+- Do not redesign Speckit command taxonomy or add new phase types.
+- Preserve existing ledger file format and append-only semantics.
+- Do not introduce new external services or runtime infrastructure for this feature.
+
+---
+
+## Design-to-Tasking Contract
+
+Downstream `/speckit.tasking` must preserve:
+
+- Driver-owned validate-before-emit and success-append boundaries.
+- Ledger-authoritative phase-state resolution and transition enforcement.
+- Producer-only command-doc contract language (no direct event append instructions).
+
+Downstream `/speckit.tasking` may refine:
+
+- Exact sequencing of test-first slices inside each user story.
+- Fine-grained symbol ownership across `pipeline_driver*` and ledger contract modules.
+
+### Additional Tasking Notes
+
+- Include explicit tasks for contract/doc/manifest alignment in the same change slices.
+- Include regression tasks for approval rejection side effects and duplicate event prevention.
+
+---
+
+## Decomposition-Ready Design Slices
+
+### Slice SK-01: Driver execution envelope hardening
+
+- **Objective**: Ensure phase execution produces deterministic envelopes for success/blocked/error outcomes.
+- **Primary seam**: `scripts/pipeline_driver.py:run_step`
+- **Touched files**:
+  - `scripts/pipeline_driver.py`
+  - `tests/unit/test_pipeline_driver.py`
+  - `tests/integration/test_pipeline_driver_feature_flow.py`
+- **Touched symbols**:
+  - `scripts/pipeline_driver.py:run_step`
+  - `scripts/pipeline_driver.py:handle_runtime_failure`
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_success`
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_runtime_failure_verbose_rerun`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Exit codes outside allowed set must map to deterministic error envelope.
+  - Missing/invalid payload data must never advance phase.
+- **Dependencies**: None.
+- **Verification / regression concern**:
+  - Ensure runtime failures always generate debug sidecar path.
+  - Prevent false-success envelopes under malformed subprocess output.
+
+### Slice SK-02: Ledger-authoritative phase resolution
+
+- **Objective**: Keep phase state derived from ledger events with explicit drift reasons.
+- **Primary seam**: `scripts/pipeline_driver_state.py:resolve_phase_state`
+- **Touched files**:
+  - `scripts/pipeline_driver_state.py`
+  - `tests/unit/test_pipeline_driver.py`
+  - `tests/integration/test_pipeline_driver_feature_flow.py`
+- **Touched symbols**:
+  - `scripts/pipeline_driver_state.py:resolve_phase_state`
+  - `scripts/pipeline_driver_state.py:acquire_feature_lock`
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_resolve_phase_state_skeleton`
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_reconcile_and_retry_guards`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Ledger remains source-of-truth over hinted phase fields.
+  - Drift reasons must be deterministic and machine-readable.
+- **Dependencies**: SK-01.
+- **Verification / regression concern**:
+  - Reject state resolution paths that trust stale mirrors over ledger state.
+
+### Slice SK-03: Transition and append contract enforcement
+
+- **Objective**: Prevent invalid event ordering and append only validated transitions.
+- **Primary seam**: `scripts/pipeline_ledger.py:validate_sequence`
+- **Touched files**:
+  - `scripts/pipeline_ledger.py`
+  - `tests/unit/test_pipeline_ledger_sequence.py`
+  - `tests/unit/test_pipeline_driver.py`
+- **Touched symbols**:
+  - `scripts/pipeline_ledger.py:validate_sequence`
+  - `scripts/pipeline_ledger.py:cmd_append`
+  - `tests/unit/test_pipeline_ledger_sequence.py:test_new_solution_sequence_passes`
+  - `tests/unit/test_pipeline_ledger_sequence.py:test_analysis_completed_requires_zero_critical_count`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Transition map is authoritative for allowed predecessor events.
+  - `analysis_completed` emission requires `critical_count == 0`.
+- **Dependencies**: SK-02.
+- **Verification / regression concern**:
+  - Ensure invalid transitions never mutate ledger state.
+
+### Slice SK-04: Manifest route and emit-contract normalization
+
+- **Objective**: Keep runtime route/emit behavior fully driven by manifest contracts.
+- **Primary seam**: `scripts/pipeline_driver_contracts.py:load_driver_routes`
+- **Touched files**:
+  - `scripts/pipeline_driver_contracts.py`
+  - `command-manifest.yaml`
+  - `tests/contract/test_pipeline_driver_contract.py`
+  - `tests/unit/test_validate_command_script_coverage.py`
+- **Touched symbols**:
+  - `scripts/pipeline_driver_contracts.py:load_driver_routes`
+  - `scripts/pipeline_driver_contracts.py:normalize_driver_mode`
+  - `scripts/pipeline_driver_contracts.py:parse_step_result`
+  - `tests/unit/test_validate_command_script_coverage.py:test_validate_command_script_coverage_passes_with_required_scripts`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Unknown route modes must fail fast with deterministic error.
+  - Emit contract fields must remain schema-valid and synchronized with manifest.
+- **Dependencies**: SK-01.
+- **Verification / regression concern**:
+  - Guard against manifest/doc drift causing wrong route mode or event selection.
+
+### Slice SK-05: Producer-only command contract alignment
+
+- **Objective**: Keep command docs as producer contracts and remove implicit orchestration ownership.
+- **Primary seam**: `.claude/commands/speckit.solution.md`
+- **Touched files**:
+  - `.claude/commands/speckit.solution.md`
+  - `command-manifest.yaml`
+  - `specs/023-deterministic-phase-orchestration/quickstart.md`
+  - `tests/unit/test_validate_markdown_doc_shapes.py`
+- **Touched symbols**:
+  - `command-manifest.yaml:commands.speckit.solution`
+  - `tests/unit/test_validate_markdown_doc_shapes.py:test_validate_markdown_doc_shape_accepts_compact_expanded`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Command docs do not directly append ledger events.
+  - Driver ownership language remains explicit and consistent.
+- **Dependencies**: SK-04.
+- **Verification / regression concern**:
+  - Markdown/doc-shape tests catch contract wording regressions.
+
+### Slice SK-06: Regression and acceptance hardening
+
+- **Objective**: Encode deterministic oracles for sequencing, approval, and idempotency.
+- **Primary seam**: `tests/integration/test_pipeline_driver_feature_flow.py`
+- **Touched files**:
+  - `tests/integration/test_pipeline_driver_feature_flow.py`
+  - `tests/unit/test_pipeline_driver.py`
+  - `tests/unit/test_pipeline_ledger_sequence.py`
+  - `tests/contract/test_pipeline_driver_contract.py`
+  - `tests/unit/test_validate_markdown_doc_shapes.py`
+- **Touched symbols**:
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked`
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_blocks_without_token`
+  - `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
+  - `tests/contract/test_pipeline_driver_contract.py:test_step_result_schema_blocked_requires_gate_and_reasons`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - No completion append on failed validation.
+  - No side effects on denied approval.
+- **Dependencies**: SK-01 through SK-05.
+- **Verification / regression concern**:
+  - Ensure migration path remains deterministic across legacy and driver-managed commands.
+
+---
+
+## Sketch Completion Summary
+
+### Review Readiness
+
+- [x] Solution narrative complete
+- [x] Construction strategy complete
+- [x] Command / Script surface map complete
+- [x] Manifest alignment complete
+- [x] Design slices decomposition-ready
+- [x] No unresolved blocking design issue
+
+If any item is unchecked, sketch is not ready for `/speckit.solutionreview`.
+
+### Suggested Next Step
+
+- Run `/speckit.solutionreview`

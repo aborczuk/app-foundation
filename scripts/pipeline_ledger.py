@@ -14,6 +14,7 @@ Pipeline events bracket feature-level phases; task events bracket per-task imple
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -36,6 +37,18 @@ def _resolve_manifest_path() -> Path:
     """Resolve canonical command manifest path at repository root."""
     repo_root = Path(__file__).parent.parent
     return repo_root / "command-manifest.yaml"
+
+
+def _load_task_ledger_module():
+    """Load the sibling task ledger module for manifest routing checks."""
+    script_path = Path(__file__).parent / "task_ledger.py"
+    spec = importlib.util.spec_from_file_location("task_ledger", script_path)
+    if spec is None or spec.loader is None:
+        fail(f"Failed to load task ledger module: {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
@@ -446,6 +459,10 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
         fail(f"Failed to parse manifest: {e}")
 
     errors = []
+    task_ledger = _load_task_ledger_module()
+    task_event_names = getattr(task_ledger, "VALID_EVENTS", set())
+    if not isinstance(task_event_names, set):
+        fail("Task ledger module is missing VALID_EVENTS")
 
     # Check 1: All declared templates exist
     for cmd_name, cmd_def in manifest.get("commands", {}).items():
@@ -458,19 +475,20 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
                         f"Command '{cmd_name}': template missing: {template_name}"
                     )
 
-    # Check 2: All events are reachable in ALLOWED_PIPELINE_TRANSITIONS
+    # Check 2: Each declared emit resolves to either the pipeline or task ledger.
     declared_events = set()
     for cmd_def in manifest.get("commands", {}).values():
         for emit in cmd_def.get("emits", []):
             event = emit.get("event", "")
             if event:
                 declared_events.add(event)
-
-    for event in declared_events:
-        if event not in ALLOWED_PIPELINE_TRANSITIONS:
-            errors.append(
-                f"Event '{event}' declared in manifest but not in ALLOWED_PIPELINE_TRANSITIONS"
-            )
+                if event in ALLOWED_PIPELINE_TRANSITIONS:
+                    continue
+                if event in task_event_names:
+                    continue
+                errors.append(
+                    f"Event '{event}' declared in manifest but not in pipeline or task ledger transition rules"
+                )
 
     # Check 3: Manual events are also in ALLOWED_PIPELINE_TRANSITIONS
     for event in manifest.get("manual_events", {}):

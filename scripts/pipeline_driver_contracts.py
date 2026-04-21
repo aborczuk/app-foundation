@@ -110,12 +110,16 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
         # Success: requires next_phase
         if next_phase is None:
             raise ValueError("exit_code=0 (success) requires next_phase field")
+        if ok is not True:
+            raise ValueError("exit_code=0 (success) requires ok=True")
     elif exit_code == 1:
         # Blocked: requires gate and reasons
         if not isinstance(gate, str) or not gate:
             raise ValueError("exit_code=1 (blocked) requires gate field (non-empty string)")
         if not isinstance(reasons, list) or not reasons:
             raise ValueError("exit_code=1 (blocked) requires reasons field (non-empty list)")
+        if ok is not False:
+            raise ValueError("exit_code=1 (blocked) requires ok=False")
 
         # Validate reason codes against registry
         validation_errors = validate_reason_codes(
@@ -130,6 +134,8 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
             raise ValueError("exit_code=2 (error) requires error_code field (non-empty string)")
         if not isinstance(debug_path, str) or not debug_path:
             raise ValueError("exit_code=2 (error) requires debug_path field (non-empty string)")
+        if ok is not False:
+            raise ValueError("exit_code=2 (error) requires ok=False")
 
     return {
         "schema_version": schema_version,
@@ -186,6 +192,7 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
     - script_path: normalized absolute script path if declared
     - timeout_seconds: optional positive integer
     - emits: declared pipeline events for the command
+    - required_fields: trimmed, non-empty field names for each emit contract
     """
     resolved_manifest_path = (
         Path(manifest_path).resolve()
@@ -213,15 +220,24 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
         if not isinstance(driver_block, Mapping):
             raise ValueError(f"manifest driver block must be a mapping: {command_id}")
 
-        raw_mode = driver_block.get("mode", command_def.get("mode"))
-        mode = normalize_driver_mode(raw_mode)
+        driver_mode = driver_block.get("mode")
+        top_level_mode = command_def.get("mode")
+        if driver_mode is not None and top_level_mode is not None:
+            normalized_driver_mode = normalize_driver_mode(driver_mode)
+            normalized_top_level_mode = normalize_driver_mode(top_level_mode)
+            if normalized_driver_mode != normalized_top_level_mode:
+                raise ValueError(f"conflicting driver mode declarations: {command_id}")
+            mode = normalized_driver_mode
+        else:
+            raw_mode = driver_mode if driver_mode is not None else top_level_mode
+            mode = normalize_driver_mode(raw_mode)
 
         raw_script_path = driver_block.get("script_path", driver_block.get("script"))
         script_path = _normalize_script_path(resolved_manifest_path, raw_script_path)
 
         timeout_seconds = driver_block.get("timeout_seconds")
         if timeout_seconds is not None:
-            if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
+            if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
                 raise ValueError(f"timeout_seconds must be a positive integer: {command_id}")
 
         emits = command_def.get("emits", [])
@@ -233,20 +249,23 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
             if not isinstance(emit, Mapping):
                 raise ValueError(f"emit entry must be a mapping: {command_id}")
             event_name = emit.get("event")
-            if not isinstance(event_name, str) or not event_name:
+            if not isinstance(event_name, str) or not event_name.strip():
                 raise ValueError(f"emit.event must be a non-empty string: {command_id}")
-            emit_events.append(event_name)
+            normalized_event_name = event_name.strip()
+            emit_events.append(normalized_event_name)
             required_fields = emit.get("required_fields", [])
             if not isinstance(required_fields, list):
                 raise ValueError(f"emit.required_fields must be a list: {command_id}")
-            normalized_required = [
-                str(field).strip()
-                for field in required_fields
-                if isinstance(field, str) and str(field).strip()
-            ]
+            normalized_required: list[str] = []
+            for field in required_fields:
+                if not isinstance(field, str) or not field.strip():
+                    raise ValueError(
+                        f"emit.required_fields entries must be non-empty strings: {command_id}"
+                    )
+                normalized_required.append(field.strip())
             emit_contracts.append(
                 {
-                    "event": event_name,
+                    "event": normalized_event_name,
                     "required_fields": normalized_required,
                 }
             )

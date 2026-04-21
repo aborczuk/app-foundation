@@ -404,13 +404,32 @@ def resolve_step_mapping(
             "reason": "command_not_in_manifest",
         }
 
+    normalized_route = dict(route)
+    if "emits" in normalized_route:
+        emits_value = normalized_route.get("emits", [])
+        if not isinstance(emits_value, list):
+            raise ValueError(f"route contract emits must be a list: {command_id}")
+        normalized_route["emits"] = list(emits_value)
+    if "emit_contracts" in normalized_route:
+        emit_contracts_value = normalized_route.get("emit_contracts", [])
+        if not isinstance(emit_contracts_value, list):
+            raise ValueError(f"route contract emit_contracts must be a list: {command_id}")
+        normalized_route["emit_contracts"] = [dict(contract) for contract in emit_contracts_value]
+
     # Determine routing based on mode
-    mode = route.get("mode")
+    mode = normalized_route.get("mode")
+    if not isinstance(mode, str) or not mode.strip():
+        raise ValueError(f"route contract missing mode: {command_id}")
+    mode = mode.strip().lower()
+    if mode not in {"deterministic", "generative", "legacy"}:
+        raise ValueError(f"unsupported route mode: {mode}")
+    normalized_route["mode"] = mode
+
     if mode == "deterministic":
         return {
             "type": "deterministic",
             "command_id": command_id,
-            "route": route,
+            "route": normalized_route,
         }
     elif mode == "generative":
         # Create handoff template for generative steps
@@ -920,10 +939,12 @@ def append_pipeline_success_event(
     command_id: str | None,
     actor: str = "pipeline_driver",
     manifest_path: str | Path | None = None,
+    ledger_path: str | Path | None = None,
     timeout_seconds: int = 60,
 ) -> dict[str, Any]:
     """Append the manifest-declared success event for a completed step."""
     from pipeline_driver_contracts import load_driver_routes
+    from pipeline_ledger import read_events
 
     if not command_id:
         return {"ok": True, "appended": False, "event": None}
@@ -961,6 +982,29 @@ def append_pipeline_success_event(
 
     if not selected_event:
         return {"ok": True, "appended": False, "event": None}
+
+    ledger_file = (
+        Path(ledger_path)
+        if ledger_path is not None
+        else Path(__file__).resolve().parent.parent / ".speckit" / "pipeline-ledger.jsonl"
+    )
+    existing_events = read_events(ledger_file)
+    for existing_event in existing_events:
+        existing_feature_id = str(existing_event.get("feature_id", "")).strip()
+        existing_phase = str(existing_event.get("phase", "")).strip()
+        existing_name = str(existing_event.get("event", "")).strip()
+        if (
+            existing_feature_id == feature_id
+            and existing_phase == phase
+            and existing_name == selected_event
+        ):
+            # Retry-safe no-op: once the success event exists, keep the append idempotent.
+            return {
+                "ok": True,
+                "appended": False,
+                "event": selected_event,
+                "reason": "event_already_recorded",
+            }
 
     ledger_script = Path(__file__).resolve().parent / "pipeline_ledger.py"
     command = [
@@ -1249,11 +1293,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # 4. Resolve step mapping from manifest
     mapping = resolve_step_mapping(effective_phase, correlation_id=correlation_id)
+    mapping_type = mapping.get("type")
+
+    approval_breakpoint_config: dict[str, Any] | None = None
+    if effective_phase == "implement" and mapping_type in {"deterministic", "generative"}:
+        approval_breakpoint_config = {
+            "steps": {
+                effective_phase: {
+                    "enabled": True,
+                    "required_scope": "security_sensitive_migration",
+                }
+            }
+        }
 
     # 5. Check approval breakpoint before execution
     approval_result = enforce_approval_breakpoint(
         effective_phase,
         approval_token=args.approval_token,
+        breakpoint_config=approval_breakpoint_config,
         correlation_id=correlation_id,
     )
     if not approval_result.get("ok"):
@@ -1264,7 +1321,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     # 6. Dispatch based on mapping type
-    mapping_type = mapping.get("type")
 
     if mapping_type == "deterministic":
         route = mapping["route"]

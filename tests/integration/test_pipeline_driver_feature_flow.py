@@ -76,16 +76,42 @@ def _write_manifest_route(
     )
 
 
-def test_deterministic_route_success(driver_flow_harness) -> None:
+def build_feature_workspace(
+    driver_flow_harness,
+    *,
+    command_id: str,
+    script_name: str,
+    emit_event: str,
+    payload: dict[str, object],
+    exit_code: int = 0,
+    timeout_seconds: int = 30,
+) -> tuple[Path, dict[str, dict[str, object]]]:
+    """Create a deterministic one-command feature workspace for flow tests."""
     manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
-    script_path = driver_flow_harness.feature_dir / "scripts" / "plan_step.py"
+    script_path = driver_flow_harness.feature_dir / "scripts" / script_name
+    _write_step_script(script_path, payload=payload, exit_code=exit_code)
+    _write_manifest_route(
+        manifest_path,
+        command_id=command_id,
+        script_path=f"scripts/{script_name}",
+        timeout_seconds=timeout_seconds,
+        emit_event=emit_event,
+    )
+    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
+    return manifest_path, routes
+
+
+def test_deterministic_route_success(driver_flow_harness) -> None:
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
         "speckit.plan",
         run_id="run-us1-success",
     )
-    _write_step_script(
-        script_path,
+    manifest_path, routes = build_feature_workspace(
+        driver_flow_harness,
+        command_id="speckit.plan",
+        script_name="plan_step.py",
+        emit_event="plan_started",
         payload={
             "schema_version": "1.0.0",
             "ok": True,
@@ -94,14 +120,6 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
             "next_phase": "plan",
         },
     )
-    _write_manifest_route(
-        manifest_path,
-        command_id="speckit.plan",
-        script_path="scripts/plan_step.py",
-        emit_event="plan_started",
-    )
-
-    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
     route = routes["speckit.plan"]
     assert route["mode"] == "deterministic"
     assert route["driver_managed"] is True
@@ -121,15 +139,16 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
 
 
 def test_deterministic_route_blocked(driver_flow_harness) -> None:
-    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
-    script_path = driver_flow_harness.feature_dir / "scripts" / "planreview_gate.py"
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
         "speckit.planreview",
         run_id="run-us1-blocked",
     )
-    _write_step_script(
-        script_path,
+    manifest_path, routes = build_feature_workspace(
+        driver_flow_harness,
+        command_id="speckit.planreview",
+        script_name="planreview_gate.py",
+        emit_event="planreview_completed",
         payload={
             "schema_version": "1.0.0",
             "ok": False,
@@ -141,14 +160,6 @@ def test_deterministic_route_blocked(driver_flow_harness) -> None:
         },
         exit_code=1,
     )
-    _write_manifest_route(
-        manifest_path,
-        command_id="speckit.planreview",
-        script_path="scripts/planreview_gate.py",
-        emit_event="planreview_completed",
-    )
-
-    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
     route = routes["speckit.planreview"]
     assert route["mode"] == "deterministic"
     assert route["driver_managed"] is True
@@ -168,10 +179,88 @@ def test_deterministic_route_blocked(driver_flow_harness) -> None:
     assert result["timed_out"] is False
 
 
+def test_generative_route_blocks_without_completion_append(driver_flow_harness, monkeypatch) -> None:
+    feature_artifact = driver_flow_harness.feature_dir / "plan.md"
+    feature_artifact.write_text("# Plan\n## Summary\nGenerated content\n", encoding="utf-8")
+
+    append_called = {"value": False}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": str(feature_artifact),
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.plan",
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(feature_artifact),
+                "completion_marker": "## Summary",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": "run-test:speckit.plan",
+            "gate": "artifact_validation",
+            "reasons": ["artifact_not_created"],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        },
+    )
+
+    def _fake_append_pipeline_success_event(**kwargs):
+        append_called["value"] = True
+        return {"ok": True, "appended": True, "event": "plan_started"}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        _fake_append_pipeline_success_event,
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+
+    assert exit_code == 1
+    assert append_called["value"] is False
+
+
 def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
     """Runtime error (exit code 2) triggers verbose rerun with sidecar persistence."""
-    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
-    script_path = driver_flow_harness.feature_dir / "scripts" / "sketch_timeout.py"
     sidecar_dir = driver_flow_harness.feature_dir / ".speckit" / "failures"
     sidecar_dir.mkdir(parents=True, exist_ok=True)
 
@@ -190,12 +279,6 @@ def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
         "error_code": "script_timeout",
         "debug_path": str(sidecar_dir / "019_sketch_timeout_attempt_1.json"),
     }
-    _write_step_script(
-        script_path,
-        payload=error_payload,
-        exit_code=2,
-    )
-
     # Write sidecar diagnostics that would be persisted by handle_runtime_failure()
     sidecar_path = Path(error_payload["debug_path"])
     sidecar_path.write_text(
@@ -210,15 +293,15 @@ def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
         encoding="utf-8",
     )
 
-    _write_manifest_route(
-        manifest_path,
+    manifest_path, routes = build_feature_workspace(
+        driver_flow_harness,
         command_id="speckit.sketch",
-        script_path="scripts/sketch_timeout.py",
-        timeout_seconds=300,
+        script_name="sketch_timeout.py",
         emit_event="sketch_completed",
+        payload=error_payload,
+        exit_code=2,
+        timeout_seconds=300,
     )
-
-    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
     route = routes["speckit.sketch"]
     assert route["mode"] == "deterministic"
 
@@ -247,8 +330,6 @@ def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
 
 def test_dry_run_does_not_mutate_ledgers_or_artifacts(driver_flow_harness) -> None:
     """Dry-run mode resolves phase state but does not emit ledger events or persist artifacts."""
-    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
-    script_path = driver_flow_harness.feature_dir / "scripts" / "plan_generator.py"
     artifact_path = driver_flow_harness.feature_dir / "plan.md"
 
     correlation_id = pipeline_driver.build_correlation_id(
@@ -264,18 +345,13 @@ def test_dry_run_does_not_mutate_ledgers_or_artifacts(driver_flow_harness) -> No
         "correlation_id": correlation_id,
         "next_phase": "sketch",
     }
-    _write_step_script(
-        script_path,
-        payload=success_payload,
-        exit_code=0,
-    )
-
-    _write_manifest_route(
-        manifest_path,
+    manifest_path, routes = build_feature_workspace(
+        driver_flow_harness,
         command_id="speckit.plan",
-        script_path="scripts/plan_generator.py",
-        timeout_seconds=300,
+        script_name="plan_generator.py",
         emit_event="plan_approved",
+        payload=success_payload,
+        timeout_seconds=300,
     )
 
     # Record initial artifact state (should not exist)
@@ -284,7 +360,6 @@ def test_dry_run_does_not_mutate_ledgers_or_artifacts(driver_flow_harness) -> No
 
     # Execute with dry-run enabled (implementation detail for T029)
     # For now, just verify that run_step respects correlation_id for tracing
-    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
     route = routes["speckit.plan"]
 
     result = pipeline_driver.run_step(
@@ -300,66 +375,119 @@ def test_dry_run_does_not_mutate_ledgers_or_artifacts(driver_flow_harness) -> No
     assert artifact_path.exists() is initial_artifact_exists
 
 
-def test_approval_breakpoint_blocks_without_token(driver_flow_harness) -> None:
-    """Approval breakpoint blocks step execution when human approval token not present."""
-    # Marker: This test validates that enforce_approval_breakpoint() would block
-    # when the approval token (stored in env var or file) is absent.
-    # Implementation in T030.
-
-    # For now, verify the fixture supports breakpoint setup
-    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
-    script_path = driver_flow_harness.feature_dir / "scripts" / "migration_step.py"
-
+def test_approval_breakpoint_blocks_without_token(driver_flow_harness, monkeypatch) -> None:
+    """Approval denial blocks execution and leaves the downstream path cold."""
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
         "speckit.implement",
         run_id="run-us2-breakpoint",
     )
-
-    blocked_payload = {
-        "schema_version": "1.0.0",
-        "ok": False,
-        "exit_code": 1,
-        "correlation_id": correlation_id,
-        "gate": "approval_required",
-        "reasons": ["security_sensitive_migration"],
+    script_path = driver_flow_harness.feature_dir / "scripts" / "migration_step.py"
+    call_counts = {"run_step": 0, "append": 0}
+    expected_breakpoint_config = {
+        "steps": {
+            "implement": {
+                "enabled": True,
+                "required_scope": "security_sensitive_migration",
+            }
+        }
     }
-    _write_step_script(
-        script_path,
-        payload=blocked_payload,
-        exit_code=1,
+    observed_breakpoint_configs: list[dict[str, object] | None] = []
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "implement", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "deterministic",
+            "command_id": "speckit.implement",
+            "route": {
+                "script_path": str(script_path),
+                "timeout_seconds": 30,
+            },
+        },
     )
 
-    _write_manifest_route(
-        manifest_path,
-        command_id="speckit.implement",
-        script_path="scripts/migration_step.py",
-        timeout_seconds=30,
-        emit_event="implementation_completed",
+    def _fake_enforce_approval_breakpoint(
+        step_name: str,
+        *,
+        approval_token: str | None = None,
+        breakpoint_config: dict[str, object] | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, object]:
+        """Return a deterministic blocked result for missing or invalid approval."""
+        assert step_name == "implement"
+        assert breakpoint_config == expected_breakpoint_config
+        observed_breakpoint_configs.append(breakpoint_config)
+        if not approval_token:
+            reasons = ["breakpoint_scope:security_sensitive_migration"]
+        elif approval_token.split(":", 1)[0] != "security_sensitive_migration":
+            reasons = ["approval_token_scope_mismatch"]
+        else:
+            return {"ok": True, "breakpoint_enforced": True, "approval_granted": True}
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id or "unknown",
+            "gate": "approval_required",
+            "reasons": reasons,
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    def _fake_run_step(*args, **kwargs):
+        """Record any unexpected downstream execution attempt."""
+        call_counts["run_step"] += 1
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": "implement",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+        }
+
+    def _fake_append_pipeline_success_event(**kwargs):
+        """Record any unexpected pipeline event append attempt."""
+        call_counts["append"] += 1
+        return {"ok": True, "appended": True, "event": "implementation_completed"}
+
+    monkeypatch.setattr(pipeline_driver, "enforce_approval_breakpoint", _fake_enforce_approval_breakpoint)
+    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+    monkeypatch.setattr(pipeline_driver, "append_pipeline_success_event", _fake_append_pipeline_success_event)
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    denied_exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "implement"])
+    invalid_exit_code = pipeline_driver.main(
+        [
+            "--feature-id",
+            "019",
+            "--phase",
+            "implement",
+            "--approval-token",
+            "wrong:token",
+        ]
     )
 
-    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
-    route = routes["speckit.implement"]
-
-    result = pipeline_driver.run_step(
-        [sys.executable, str(route["script_path"])],
-        timeout_seconds=route["timeout_seconds"],
-        correlation_id=correlation_id,
-        cwd=driver_flow_harness.feature_dir,
-    )
-
-    # Verify breakpoint gate is present
-    assert result["gate"] == "approval_required"
-    assert "security_sensitive_migration" in result["reasons"]
+    assert denied_exit_code == 1
+    assert invalid_exit_code == 1
+    assert call_counts == {"run_step": 0, "append": 0}
+    assert observed_breakpoint_configs == [expected_breakpoint_config, expected_breakpoint_config]
 
 
 def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
     """Approval breakpoint resumes execution after human approval token verified."""
     # After approval token is obtained, workflow can resume and complete the step.
     # Placeholder for full flow validation in T030.
-
-    manifest_path = driver_flow_harness.feature_dir / "command-manifest.yaml"
-    script_path = driver_flow_harness.feature_dir / "scripts" / "apply_migration.py"
 
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -374,21 +502,14 @@ def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
         "correlation_id": correlation_id,
         "next_phase": "validate",
     }
-    _write_step_script(
-        script_path,
-        payload=success_payload,
-        exit_code=0,
-    )
-
-    _write_manifest_route(
-        manifest_path,
+    manifest_path, routes = build_feature_workspace(
+        driver_flow_harness,
         command_id="speckit.implement",
-        script_path="scripts/apply_migration.py",
-        timeout_seconds=60,
+        script_name="apply_migration.py",
         emit_event="implementation_completed",
+        payload=success_payload,
+        timeout_seconds=60,
     )
-
-    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
     route = routes["speckit.implement"]
 
     result = pipeline_driver.run_step(
