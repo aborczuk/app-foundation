@@ -278,8 +278,9 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
         print(f"ERROR: codegraph preflight failed after refresh: status is {refreshed_status}", file=sys.stderr)
         return False
     if refreshed_status == "stale":
-        print("WARN: codegraph remains stale after scoped refresh; continuing with bounded read", file=sys.stderr)
-    return True
+        print("ERROR: codegraph preflight failed after refresh: status is stale", file=sys.stderr)
+        return False
+    return refreshed_status == "healthy"
 
 
 def vector_index_status(project_root: Path | None = None) -> str:
@@ -1019,7 +1020,7 @@ def read_code_window(argv: list[str]) -> int:
         print(f"ERROR: line_count exceeds max ({READ_CODE_MAX_LINES}): {line_count}", file=sys.stderr)
         return 1
 
-    use_hud_fast_path = hud_flag or os.environ.get("SPECKIT_HUD_DIRECT_READ", "0") == "1"
+    use_hud_fast_path = hud_flag
     vector_match = None
 
     if pattern:

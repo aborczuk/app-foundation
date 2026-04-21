@@ -137,13 +137,13 @@ Treat every generated shell script as macOS-first. Apply all three rules uncondi
 
 ### Markdown File Read Efficiency
 
-For markdown files >100 lines, use `scripts/read-markdown.sh`; the detailed vector-first anchoring and how-to live in `scripts/read_markdown.sh` and `scripts/read_markdown.py`.
+For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first anchoring and how-to live in `scripts/read_markdown.sh` and `scripts/read_markdown.py`.
 - When the exact heading is not already known, run `read_markdown_headings` first, then `read_markdown_section` with the exact heading title.
 - Prefer `--help` once for unfamiliar helper scripts before trialing flags.
 
 ### Code File Read Efficiency
 
-For any code file >200 lines, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 110 lines is the max context_lines:
+For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 110 lines is the max context_lines:
 ```bash
 source scripts/read-code.sh
 read_code_context <file> <symbol_or_pattern> [context_lines]
@@ -156,9 +156,9 @@ Use this workflow:
 3. Run codegraph discovery checks for blast radius only after the seam is confirmed.
 4. Expand to additional windows only when needed to resolve ambiguity.
 5. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
-6. Read preflight is hard-fail for missing index DBs; do not continue on fallback warnings.
+6. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
 
-Full-file reads for large code files are disallowed unless the user explicitly requests full contents.
+Full-file reads are disallowed unless the user explicitly requests full contents.
 
 ### Token efficiency
 
@@ -175,7 +175,7 @@ After each pipeline command or long running command, report if there were large 
 - Use scripted transforms for repetitive mechanical edits across many files.
 - Reread source only when a diff, failing test, or validation gate gives a specific question to answer.
 - After each edit batch, run a validation loop before starting the next batch.
-- Validation loop: targeted tests for the touched behavior, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` on the touched Python paths when applicable.
+- Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` on the touched Python paths when applicable.
 - Do not advance past an edit batch until its validation loop passes or the failure is understood and intentionally deferred.
 - Verify once after the patch set is complete as a final end-to-end pass, not instead of batch-level validation.
 - Treat a completed edit as the basic unit of work: keep the patch set coherent, verify it, then hand it off as one synced change.
@@ -188,6 +188,7 @@ After each pipeline command or long running command, report if there were large 
 - Do not split one logical edit across multiple unsynced handoffs unless the user explicitly wants an intermediate checkpoint.
 - Edit-done checklist:
   - targeted tests for the touched behavior
+  - tests run through `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`
   - `codebase-lsp` diagnostics for touched Python files
   - `uv run ruff check` on touched Python paths when applicable
   - `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin

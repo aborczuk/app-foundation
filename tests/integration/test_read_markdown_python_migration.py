@@ -310,8 +310,9 @@ def test_read_markdown_source_wrapper_exposes_headings_function(tmp_path: Path) 
     assert result.stdout.splitlines() == ["1\t# Title", "3\t## Existing"]
 
 
-def test_command_docs_share_the_compact_expanded_shape() -> None:
+def test_command_docs_share_the_compact_expanded_shape(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
+    env = _env_with_fake_uv(tmp_path, json.dumps({"is_stale": False}))
     expected_headings = [
         "## User Input",
         "## Compact Contract (Load First)",
@@ -327,7 +328,7 @@ def test_command_docs_share_the_compact_expanded_shape() -> None:
             repo_root,
             "--headings",
             str(repo_root / rel_path),
-            env=_env_without_uv(),
+            env=env,
         )
         assert result.returncode == 0, result.stderr
         top_level_headings = [

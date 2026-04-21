@@ -123,6 +123,7 @@ ipython_config.py
 
 # Speckit runtime artifacts
 .speckit/offline-qa/
+.speckit/test-logs/
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.

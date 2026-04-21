@@ -17,12 +17,17 @@
           {
             "type": "command",
             "command": "python3 scripts/hook_enforce_code_reads.py",
-            "statusMessage": "Enforcing large code/doc read policy..."
+            "statusMessage": "Enforcing helper-only code/doc read policy..."
           },
           {
             "type": "command",
             "command": "python3 -c \"\nimport json, sys, re\ndata = json.load(sys.stdin)\ncmd = data.get('tool_input', {}).get('command', '').strip()\nfor m in re.finditer(r'(?<![a-zA-Z0-9_])(grep|rg)(\\\\s|$)', cmd):\n    pos = m.start()\n    before = cmd[:pos].rstrip()\n    if not before.endswith('|'):\n        print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'Use the Grep tool instead of grep/rg in Bash. This enforces token-efficient search and consistent tool usage.'}}))\n        break\n\"",
             "statusMessage": "Checking for grep usage..."
+          },
+          {
+            "type": "command",
+            "command": "python3 scripts/hook_enforce_pytest_guard.py",
+            "statusMessage": "Enforcing guarded pytest execution..."
           },
           {
             "type": "command",

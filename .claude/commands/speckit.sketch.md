@@ -51,8 +51,8 @@ Sketch must be grounded in the actual repository, not inferred from plan text al
 Use this discovery order:
 
 1. Use the project’s bounded read helpers for direct inspection:
-   - use `scripts/read-code.sh` for large code files
-   - use `scripts/read-markdown.sh` for large markdown artifacts
+   - use `scripts/read-code.sh` for code files
+   - use `scripts/read-markdown.sh` for markdown artifacts
 
 2. Use **CodeGraphContext** first to identify the relevant modules, symbols, callers, callees, import relationships, and likely touched surfaces.
 
