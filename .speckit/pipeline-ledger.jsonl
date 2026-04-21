@@ -43,3 +43,13 @@
 {"actor": "codex", "details": "generated local e2e plan and runner for feature 023", "e2e_artifact": "specs/023-deterministic-phase-orchestration/e2e.md", "event": "e2e_generated", "feature_id": "023", "phase": "solution", "timestamp_utc": "2026-04-20T14:21:10.904332Z"}
 {"actor": "codex", "event": "backlog_registered", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T02:44:48.513716Z"}
 {"actor": "codex", "event": "spec_clarified", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T14:24:56.822244Z"}
+{"actor": "codex", "details": "Research artifact completed for read-code anchor output simplification", "event": "research_completed", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T14:50:50.577398Z"}
+{"actor": "codex", "details": "Plan artifacts scaffolded and filled for read-code anchor output simplification", "event": "plan_started", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T14:50:54.933257Z"}
+{"actor": "codex", "details": "Plan review completed with two deferred feasibility questions on body-first threshold and output shape", "event": "planreview_completed", "feature_id": "025", "fq_count": 2, "phase": "", "questions_asked": 0, "timestamp_utc": "2026-04-21T14:55:27.611400Z"}
+{"actor": "codex", "details": "Plan approved after resolving body-first response contract; no feasibility spike required", "event": "plan_approved", "feasibility_required": "false", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T15:48:23.694159Z"}
+{"acceptance_tests_written": 0, "actor": "codex", "details": "Sketch completed with three design slices for anchor output simplification", "event": "sketch_completed", "feature_id": "025", "phase": "", "tasks_sketched": 3, "timestamp_utc": "2026-04-21T16:02:35.043488Z"}
+{"actor": "codex", "critical_count": 0, "details": "Solution review passed with one low-severity note already resolved in sketch", "event": "solutionreview_completed", "feature_id": "025", "high_count": 0, "phase": "", "timestamp_utc": "2026-04-21T16:02:38.136316Z"}
+{"actor": "codex", "estimate_points": 26, "event": "estimation_completed", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-21T16:08:55.539304Z"}
+{"actor": "codex", "event": "tasking_completed", "feature_id": "025", "phase": "", "story_count": 3, "task_count": 14, "timestamp_utc": "2026-04-21T16:10:26.493654Z"}
+{"actor": "codex", "estimate_points": 26, "event": "solution_approved", "feature_id": "025", "phase": "", "story_count": 3, "task_count": 14, "timestamp_utc": "2026-04-21T17:16:43.713970Z"}
+{"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "025", "high_count": 0, "phase": "", "timestamp_utc": "2026-04-21T17:16:48.598861Z"}

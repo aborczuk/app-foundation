@@ -27,9 +27,9 @@ Each skill documents ledger usage in its own command file (`.claude/commands/spe
 Never read `.speckit/*-ledger.jsonl` files directly. All access routes through script subcommands only:
 
 - **Pipeline Ledger** (`.speckit/pipeline-ledger.jsonl`) — feature-level phase transitions:
-  - **Check if a phase is complete**: `uv run python scripts/pipeline_ledger.py assert-phase-complete --feature-id <FEATURE_ID> --phase <PHASE_NAME>`
+  - **Check if a phase is complete**: `uv run python scripts/pipeline_ledger.py assert-phase-complete --feature-id <FEATURE_ID> --event <EVENT_NAME>`
   - **Record a phase event**: `uv run python scripts/pipeline_ledger.py append --feature-id <FEATURE_ID> --event <EVENT_NAME> --actor <ACTOR>`
-  - **Validate ledger syntax**: `uv run python scripts/pipeline_ledger.py validate --feature-id <FEATURE_ID>`
+  - **Validate ledger syntax**: `uv run python scripts/pipeline_ledger.py validate`
   - **Other queries**: Run `uv run python scripts/pipeline_ledger.py --help` to see all subcommands and valid event types.
 - **Task Ledger** (`.speckit/task-ledger.jsonl`) — per-task execution events:
   - **Check if a task can start**: `uv run python scripts/task_ledger.py assert-can-start --file .speckit/task-ledger.jsonl --tasks-file <TASKS_FILE> --feature-id <FEATURE_ID> --task-id <TASK_ID> --actor <ACTOR>`
