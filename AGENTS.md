@@ -112,7 +112,7 @@ For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first an
 
 ### Code File Read Efficiency
 
-For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 125 lines is the max context_lines:
+For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 125 lines is the max context_lines budget:
 ```bash
 source scripts/read-code.sh
 read_code_symbols <file>
@@ -126,6 +126,7 @@ Use this workflow:
 1. Invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
 2. Use one of those exact symbols with `read_code_context` / `read_code_window` for seam anchoring.
 3. The helper resolves semantic lookup first and then performs exact bounded reads.
+   - `read_code_context` applies a fixed asymmetric split: small pre-anchor context and larger post-anchor context
 4. Run codegraph discovery checks for blast radius only after the seam is confirmed.
 5. Expand to additional windows only when needed to resolve ambiguity.
 6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
@@ -134,6 +135,20 @@ Use this workflow:
    - stale + overlap with requested scope => synchronous scoped refresh, then proceed/fail
    - stale + no overlap => warning remains visible, background scoped refresh starts, read proceeds
    - missing/unavailable/probe-failed => hard fail with remediation
+
+### Read-Code Rules
+
+Use the shortlist/body contract when reading code with the helper.
+
+- `read_code_context` defaults to resolved anchor + bounded window output (no shortlist by default).
+- The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
+- Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
+- `read_code_symbols` has repeat-call enforcement for unchanged files; one symbol dump per file should be enough for most seams.
+- If a true second symbol dump is required, use `read_code_symbols <file> --allow-repeat` and state why before doing it.
+- `context_lines` is a total context budget with a fixed small-before/larger-after split.
+- The confidence cutoff for inline body output is `90/100` when `--inline-body` is requested.
+- A non-top candidate body should only be returned through the bounded follow-up helper path.
+- Keep the shell wrapper, Python helper, and docs aligned with the same contract when the behavior changes.
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
 
@@ -182,4 +197,3 @@ After each pipeline command or long running command, report if there were large 
 
 ### Healing and improvment
 - Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
-

@@ -2,6 +2,8 @@
 
 # read-code.sh shell wrapper: keeps function-based usage source-compatible
 # while delegating orchestration logic to the Python entrypoint.
+# The Python usage text documents the top-5 shortlist, the 90/100 body cutoff,
+# and the bounded follow-up helper contract.
 
 set -e
 

@@ -105,7 +105,7 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
         "context",
         str(code_file),
         "run_pipeline",
-        "2",
+        "3",
         "--hud-symbol",
         env=_env_without_uv(),
     )
@@ -115,11 +115,15 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
     assert any(line.endswith("\tdef run_pipeline():") for line in lines)
     assert any(line.endswith("\t    step = 1") for line in lines)
     assert any(line.endswith("\t    return step") for line in lines)
+    assert not any(line.endswith("\t    return 1") for line in lines)
 
 
 def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
-    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    lines = [f"value_{idx} = {idx}" for idx in range(1, 231)]
+    lines[99] = "def run_pipeline():"
+    lines[100] = "    return 1"
+    code_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     result = _run_read_code(
         tmp_path,
@@ -132,7 +136,29 @@ def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    numbered_rows: list[tuple[int, str]] = []
+    for row in result.stdout.splitlines():
+        parts = row.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        prefix = parts[0].strip()
+        if not prefix.isdigit():
+            continue
+        numbered_rows.append((int(prefix), parts[1]))
+
+    anchor_line = next(
+        (line_num for line_num, text in numbered_rows if text == "def run_pipeline():"),
+        None,
+    )
+    assert anchor_line == 100
+    assert anchor_line is not None
+    before_count = sum(1 for line_num, _ in numbered_rows if line_num < anchor_line)
+    after_count = sum(1 for line_num, _ in numbered_rows if line_num > anchor_line)
+    assert before_count > 0
+    assert after_count > 0
+    assert before_count < after_count
+    assert before_count + after_count == 125
+    assert len(numbered_rows) == 126
 
 
 def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) -> None:
@@ -209,6 +235,120 @@ def test_read_code_context_uses_uv_branch_without_hud_fast_path(tmp_path: Path) 
     assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
     assert "WARN: Vector semantic anchor not found" in result.stderr
     assert "using strict/local anchor" in result.stderr
+
+
+def test_read_code_context_hides_shortlist_by_default_and_supports_candidate_stepping(tmp_path: Path) -> None:
+    code_file = tmp_path / "uv_sample.py"
+    code_file.write_text(
+        "\n".join(
+            [
+                "def helper():",
+                "    return 0",
+                "",
+                "def run_pipeline():",
+                "    return 1",
+                "",
+                "def after():",
+                "    return 2",
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(code_file),
+                "line_start": 4,
+                "line_end": 5,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "run_pipeline",
+                "qualified_name": "sample.run_pipeline",
+                "signature": "def run_pipeline():",
+                "docstring": "Run the pipeline.",
+                "body": "def run_pipeline():\n    return 1",
+                "preview": "def run_pipeline():",
+                "symbol_type": "function",
+                "score": 1.0,
+                "distance": 0.0,
+            },
+            {
+                "file_path": str(code_file),
+                "line_start": 1,
+                "line_end": 2,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "helper",
+                "qualified_name": "sample.helper",
+                "signature": "def helper():",
+                "docstring": "Helper.",
+                "body": "def helper():\n    return 0",
+                "preview": "def helper():",
+                "symbol_type": "function",
+                "score": 0.6,
+                "distance": 0.4,
+            },
+        ]
+    )
+
+    default_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert default_result.returncode == 0, default_result.stderr
+    assert "# shortlist for: run_pipeline" not in default_result.stdout
+    assert "# body" not in default_result.stdout
+
+    shortlist_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        "--show-shortlist",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert shortlist_result.returncode == 0, shortlist_result.stderr
+    assert "# shortlist for: run_pipeline" in shortlist_result.stdout
+
+    inline_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        "--inline-body",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert inline_result.returncode == 0, inline_result.stderr
+    assert "# shortlist for: run_pipeline" not in inline_result.stdout
+    assert "# body" in inline_result.stdout
+    assert any(line.endswith("\tdef run_pipeline():") for line in inline_result.stdout.splitlines())
+    assert any(line.endswith("\t    return 1") for line in inline_result.stdout.splitlines())
+
+    next_candidate_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        "--next-candidate",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert next_candidate_result.returncode == 0, next_candidate_result.stderr
+    assert any(line.endswith("\tdef helper():") for line in next_candidate_result.stdout.splitlines())
+    assert not any(line.endswith("\tdef run_pipeline():") for line in next_candidate_result.stdout.splitlines())
 
 
 def test_read_code_context_prefers_exact_symbol_vector_hit_over_header_block(tmp_path: Path) -> None:
@@ -405,6 +545,61 @@ def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> N
     assert lines[0].startswith("# line_start")
     assert any("\ttarget\tdef target():" in line for line in lines[1:])
     assert any("\tother\tdef other():" in line for line in lines[1:])
+
+
+def test_read_code_symbols_repeat_guard_requires_explicit_override(tmp_path: Path) -> None:
+    code_file = tmp_path / "source_sample.py"
+    code_file.write_text(
+        "def target():\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(code_file),
+                "line_start": 1,
+                "line_end": 2,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "target",
+                "qualified_name": "source_sample.target",
+                "signature": "def target():",
+                "docstring": "",
+                "body": "def target():\n    return 1\n",
+                "preview": "def target():",
+                "symbol_type": "function",
+            }
+        ]
+    )
+    env = _env_with_fake_uv(tmp_path, payload)
+    env["SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS"] = "900"
+
+    first_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        env=env,
+    )
+    second_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        env=env,
+    )
+    override_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        "--allow-repeat",
+        env=env,
+    )
+
+    assert first_result.returncode == 0, first_result.stderr
+    assert second_result.returncode == 1
+    assert "repeat guard" in second_result.stderr
+    assert "--allow-repeat" in second_result.stderr
+    assert override_result.returncode == 0, override_result.stderr
 
 
 def test_read_code_yaml_symbols_and_context_flow(tmp_path: Path) -> None:

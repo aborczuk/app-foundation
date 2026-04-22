@@ -51,6 +51,24 @@ def _vector_probe(
     )
 
 
+def _vector_match(line_num: int, signature: str) -> object:
+    """Build a minimal ranked vector match for helper selection tests."""
+    return read_code._VectorMatch(
+        line_num=line_num,
+        raw_score=1.0,
+        metadata_score=10.0,
+        confidence=100,
+        exact_symbol_match=True,
+        symbol_type="function",
+        has_body=True,
+        has_docstring=False,
+        line_span=1,
+        body=f"{signature}\n    pass",
+        preview=signature,
+        signature=signature,
+    )
+
+
 def test_vector_index_status_reports_missing_for_null_payload(monkeypatch) -> None:
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
     monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0, stdout="null\n"))
@@ -588,6 +606,83 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
     assert calls == [code_file]
 
 
+def test_split_context_window_biases_post_anchor_budget() -> None:
+    pre_lines, post_lines = read_code._split_context_window(125)
+    expected_pre = min(
+        max(1, int(125 * read_code.READ_CODE_CONTEXT_PRE_FRACTION)),
+        read_code.READ_CODE_CONTEXT_PRE_CAP,
+        124,
+    )
+    assert pre_lines == expected_pre
+    assert post_lines == 125 - expected_pre
+
+    pre_lines_small, post_lines_small = read_code._split_context_window(3)
+    assert pre_lines_small == 1
+    assert post_lines_small == 2
+
+
+def test_select_vector_candidate_rejects_out_of_range_index() -> None:
+    candidates = [_vector_match(10, "def run_pipeline():"), _vector_match(20, "def helper():")]
+    selected, error = read_code._select_vector_candidate(candidates, 4)
+    assert selected is None
+    assert error == "candidate index 4 is out of range (available: 0..1)"
+
+
+def test_select_vector_candidate_returns_requested_index() -> None:
+    candidates = [_vector_match(10, "def run_pipeline():"), _vector_match(20, "def helper():")]
+    selected, error = read_code._select_vector_candidate(candidates, 1)
+    assert error is None
+    assert selected is not None
+    assert selected.line_num == 20
+
+
+def test_read_code_context_applies_asymmetric_window_bounds(monkeypatch, tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("\n".join(f"value_{idx} = {idx}" for idx in range(1, 231)) + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: [])
+    monkeypatch.setattr(read_code, "_resolve_line_num_strict", lambda *args, **kwargs: (0, 100))
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
+
+    bounds: dict[str, int] = {}
+
+    def fake_render(file_path: Path, start: int, end: int) -> None:
+        bounds["start"] = start
+        bounds["end"] = end
+
+    monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "125"])
+
+    assert exit_code == 0
+    expected_pre = min(
+        max(1, int(125 * read_code.READ_CODE_CONTEXT_PRE_FRACTION)),
+        read_code.READ_CODE_CONTEXT_PRE_CAP,
+        124,
+    )
+    assert bounds == {"start": 100 - expected_pre, "end": 100 + (125 - expected_pre)}
+
+
+def test_read_code_context_returns_error_for_out_of_range_candidate_index(monkeypatch, tmp_path: Path, capsys) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [_vector_match(1, "def run_pipeline():"), _vector_match(5, "def helper():")],
+    )
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "--candidate-index", "9"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "candidate index 9 is out of range (available: 0..1)" in captured.err
+    assert "--show-shortlist" in captured.err
+
+
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
@@ -631,6 +726,69 @@ def test_read_code_symbols_runs_preflight_and_renders_rows(monkeypatch, tmp_path
     assert calls == [code_file]
     assert "symbol_name" in captured.out
     assert "run_pipeline" in captured.out
+
+
+def test_read_code_symbols_repeat_guard_blocks_unchanged_file(monkeypatch, tmp_path: Path, capsys) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_list_code_symbols",
+        lambda file_path: [
+            {
+                "symbol_name": "run_pipeline",
+                "symbol_type": "function",
+                "line_start": 1,
+                "line_end": 2,
+                "signature": "def run_pipeline():",
+                "qualified_name": "sample.run_pipeline",
+                "body": "def run_pipeline():\n    return 1\n",
+            }
+        ],
+    )
+    monkeypatch.setattr(read_code, "READ_CODE_SYMBOLS_USAGE_FILE", tmp_path / "symbols-usage.json")
+    monkeypatch.setattr(read_code, "READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS", 900)
+
+    first_exit = read_code.read_code_symbols([str(code_file)])
+    second_exit = read_code.read_code_symbols([str(code_file)])
+    captured = capsys.readouterr()
+
+    assert first_exit == 0
+    assert second_exit == 1
+    assert "repeat guard" in captured.err
+    assert "--allow-repeat" in captured.err
+
+
+def test_read_code_symbols_repeat_guard_allows_override(monkeypatch, tmp_path: Path, capsys) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_list_code_symbols",
+        lambda file_path: [
+            {
+                "symbol_name": "run_pipeline",
+                "symbol_type": "function",
+                "line_start": 1,
+                "line_end": 2,
+                "signature": "def run_pipeline():",
+                "qualified_name": "sample.run_pipeline",
+                "body": "def run_pipeline():\n    return 1\n",
+            }
+        ],
+    )
+    monkeypatch.setattr(read_code, "READ_CODE_SYMBOLS_USAGE_FILE", tmp_path / "symbols-usage.json")
+    monkeypatch.setattr(read_code, "READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS", 900)
+
+    first_exit = read_code.read_code_symbols([str(code_file)])
+    override_exit = read_code.read_code_symbols([str(code_file), "--allow-repeat"])
+    captured = capsys.readouterr()
+
+    assert first_exit == 0
+    assert override_exit == 0
+    assert "repeat guard" not in captured.err
 
 
 def test_read_code_symbols_returns_error_when_vector_symbols_missing(

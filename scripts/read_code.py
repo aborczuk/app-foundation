@@ -24,11 +24,17 @@ CODE_FILE_LINE_THRESHOLD = 200
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
 READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "125") or "125")
+READ_CODE_CONTEXT_PRE_FRACTION = 0.1
+READ_CODE_CONTEXT_PRE_CAP = 25
+READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS = int(
+    os.environ.get("SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS", "900") or "900"
+)
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
 )
 LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-edit-signature.txt"
+READ_CODE_SYMBOLS_USAGE_FILE = CODEGRAPH_DB_DIR / "read-code-symbols-usage.json"
 CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_ATTEMPTS", "2") or "2")
 CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
     os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
@@ -42,11 +48,15 @@ class _VectorMatch:
     line_num: int
     raw_score: float
     metadata_score: float
+    confidence: int
     exact_symbol_match: bool
     symbol_type: str
     has_body: bool
     has_docstring: bool
     line_span: int
+    body: str
+    preview: str
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -1007,8 +1017,31 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
     return score, exact_symbol_match
 
 
-def _vector_anchor_rank(match: _VectorMatch) -> tuple[int, int, int, int, float, float, int, int]:
+def _candidate_confidence(
+    raw_score: float,
+    metadata_score: float,
+    *,
+    exact_symbol_match: bool,
+    has_body: bool,
+    has_docstring: bool,
+    line_span: int,
+) -> int:
+    """Normalize vector signal into a stable 0-100 confidence score."""
+    score = raw_score * 50.0
+    score += min(metadata_score, 20.0) * 2.5
+    if exact_symbol_match:
+        score += 10.0
+    if has_body:
+        score += 7.0
+    if has_docstring:
+        score += 4.0
+    score -= min(float(line_span), 10.0)
+    return max(0, min(100, int(round(score))))
+
+
+def _vector_anchor_rank(match: _VectorMatch) -> tuple[int, int, int, int, int, float, float, int, int]:
     return (
+        match.confidence,
         1 if match.exact_symbol_match else 0,
         1 if match.symbol_type in {"function", "method", "class"} else 0,
         1 if match.has_body else 0,
@@ -1027,24 +1060,45 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
 
     raw_score = _candidate_raw_score(item)
     metadata_score, exact_symbol_match = _candidate_metadata_score(item, query, normalized_query)
+    body = _candidate_text(item, "body")
+    preview = _candidate_text(item, "preview")
+    signature = _candidate_text(item, "signature")
+    has_docstring = bool(_candidate_text(item, "docstring"))
+    line_span = max(0, (_candidate_int(item, "line_end") or 0) - line_num)
     return _VectorMatch(
         line_num=line_num,
         raw_score=raw_score,
         metadata_score=metadata_score,
+        confidence=_candidate_confidence(
+            raw_score,
+            metadata_score,
+            exact_symbol_match=exact_symbol_match,
+            has_body=bool(body),
+            has_docstring=has_docstring,
+            line_span=line_span,
+        ),
         exact_symbol_match=exact_symbol_match,
         symbol_type=_candidate_text(item, "symbol_type"),
-        has_body=bool(_candidate_text(item, "body")),
-        has_docstring=bool(_candidate_text(item, "docstring")),
-        line_span=max(0, (_candidate_int(item, "line_end") or 0) - line_num),
+        has_body=bool(body),
+        has_docstring=has_docstring,
+        line_span=line_span,
+        body=body,
+        preview=preview,
+        signature=signature,
     )
 
 
-def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
+def _vector_query_candidates(
+    file_path: Path,
+    query: str,
+    normalized_query: str,
+    scope: str,
+) -> list[_VectorMatch]:
     if not query or not scope:
-        return None
+        return []
     if not _command_exists("uv"):
         _set_vector_runtime_note("uv is not available")
-        return None
+        return []
 
     cmd = [
         "uv",
@@ -1060,7 +1114,7 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
         "--scope",
         scope,
         "--top-k",
-        "5",
+        "20",
     ]
     proc = subprocess.run(
         cmd,
@@ -1075,19 +1129,19 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
             _set_vector_runtime_note(f"indexer query failed: {stderr.splitlines()[0]}")
         else:
             _set_vector_runtime_note(f"indexer query failed with exit code {proc.returncode}")
-        return None
+        return []
 
     try:
         payload = json.loads(proc.stdout or "[]")
     except json.JSONDecodeError:
         _set_vector_runtime_note("indexer query returned invalid JSON")
-        return None
+        return []
     if not isinstance(payload, list):
         _set_vector_runtime_note("indexer query returned unexpected payload shape")
-        return None
+        return []
 
     target = file_path.resolve()
-    best_match: _VectorMatch | None = None
+    matches: list[_VectorMatch] = []
     for item in payload:
         if not isinstance(item, dict):
             continue
@@ -1102,17 +1156,14 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
         match = _vector_match_for_item(item, query, normalized_query)
         if match is None:
             continue
+        matches.append(match)
 
-        if best_match is None:
-            best_match = match
-            continue
+    return sorted(matches, key=_vector_anchor_rank, reverse=True)[:5]
 
-        best_tuple = _vector_anchor_rank(best_match)
-        candidate_tuple = _vector_anchor_rank(match)
-        if candidate_tuple > best_tuple:
-            best_match = match
 
-    return best_match
+def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
+    candidates = _vector_query_candidates(file_path, query, normalized_query, scope)
+    return candidates[0] if candidates else None
 
 
 def _vector_find_line_num(
@@ -1132,6 +1183,22 @@ def _vector_find_line_num(
     ):
         match = _vector_query_line_num(file_path, normalized_pattern, normalized_pattern, scope)
     return match
+
+
+def _vector_find_candidates(
+    file_path: Path,
+    raw_pattern: str,
+    normalized_pattern: str,
+    scope: str,
+) -> list[_VectorMatch]:
+    """Return the bounded shortlist for a query using raw and normalized probes."""
+    _clear_vector_runtime_note()
+    candidates: list[_VectorMatch] = []
+    if raw_pattern:
+        candidates = _vector_query_candidates(file_path, raw_pattern, normalized_pattern, scope)
+    if not candidates and normalized_pattern and normalized_pattern != raw_pattern:
+        candidates = _vector_query_candidates(file_path, normalized_pattern, normalized_pattern, scope)
+    return candidates
 
 
 def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
@@ -1264,6 +1331,17 @@ def _render_numbered_window(file_path: Path, start: int, end: int) -> None:
             print(f"{idx:6}\t{line.rstrip()}")
 
 
+def _split_context_window(context_lines: int) -> tuple[int, int]:
+    """Split context budget into a small pre-window and larger post-window."""
+    if context_lines <= 1:
+        return 0, context_lines
+
+    pre_lines = max(1, int(context_lines * READ_CODE_CONTEXT_PRE_FRACTION))
+    pre_lines = min(pre_lines, READ_CODE_CONTEXT_PRE_CAP, context_lines - 1)
+    post_lines = context_lines - pre_lines
+    return pre_lines, post_lines
+
+
 def _render_symbol_listing(symbols: list[dict[str, object]]) -> None:
     """Render a deterministic symbol list for agent anchor selection."""
     for symbol in symbols:
@@ -1291,18 +1369,168 @@ def _render_symbol_listing(symbols: list[dict[str, object]]) -> None:
         )
 
 
+def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> None:
+    """Render a bounded shortlist of ranked vector candidates."""
+    if not candidates:
+        return
+    print(f"# shortlist for: {query}")
+    print(
+        "# confidence\tline\tname\ttype\tbody\tdocstring\traw\tmetadata"
+    )
+    for candidate in candidates[:5]:
+        print(
+            "\t".join(
+                [
+                    f"{candidate.confidence:3}",
+                    f"{candidate.line_num:6}",
+                    candidate.signature or candidate.preview or "",
+                    candidate.symbol_type or "symbol",
+                    "yes" if candidate.has_body else "no",
+                    "yes" if candidate.has_docstring else "no",
+                    f"{candidate.raw_score:.3f}",
+                    f"{candidate.metadata_score:.3f}",
+                ]
+            )
+        )
+
+
+def _render_candidate_body(candidate: _VectorMatch) -> None:
+    """Render an indexed symbol body when confidence clears the body-first threshold."""
+    if not candidate.body:
+        return
+    print("# body")
+    print(candidate.body.rstrip())
+
+
+def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | None:
+    """Return a non-top shortlist candidate body through a bounded lookup."""
+    if index < 0 or index >= len(candidates):
+        return None
+    candidate = candidates[index]
+    if not candidate.body:
+        return None
+    return candidate.body
+
+
+def _load_symbols_usage_state() -> dict[str, dict[str, object]]:
+    """Load persisted read_code_symbols usage telemetry for repeat-call guarding."""
+    if not READ_CODE_SYMBOLS_USAGE_FILE.is_file():
+        return {}
+    try:
+        payload = json.loads(READ_CODE_SYMBOLS_USAGE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, dict[str, object]] = {}
+    for key, value in payload.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            normalized[key] = value
+    return normalized
+
+
+def _persist_symbols_usage_state(state: dict[str, dict[str, object]]) -> None:
+    """Persist read_code_symbols usage telemetry without failing the read path."""
+    try:
+        READ_CODE_SYMBOLS_USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        READ_CODE_SYMBOLS_USAGE_FILE.write_text(
+            json.dumps(state, ensure_ascii=True, sort_keys=True),
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
+def _check_symbols_repeat_guard(file_path: Path, *, allow_repeat: bool) -> tuple[bool, str]:
+    """Enforce a cooldown on repeated symbol dumps for unchanged files."""
+    if allow_repeat or READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS <= 0:
+        return False, ""
+    try:
+        stat = file_path.stat()
+    except OSError:
+        return False, ""
+    current_mtime_ns = int(stat.st_mtime_ns)
+    current_size = int(stat.st_size)
+    now = time.time()
+    key = str(file_path.resolve())
+    state = _load_symbols_usage_state()
+    entry = state.get(key)
+    if isinstance(entry, dict):
+        recorded_mtime_raw = entry.get("mtime_ns")
+        recorded_size_raw = entry.get("size")
+        recorded_ts_raw = entry.get("last_called_ts")
+        recorded_mtime_ns = (
+            int(recorded_mtime_raw)
+            if isinstance(recorded_mtime_raw, (int, float))
+            else -1
+        )
+        recorded_size = (
+            int(recorded_size_raw)
+            if isinstance(recorded_size_raw, (int, float))
+            else -1
+        )
+        recorded_ts = (
+            float(recorded_ts_raw)
+            if isinstance(recorded_ts_raw, (int, float))
+            else 0.0
+        )
+        elapsed = now - recorded_ts
+        if (
+            recorded_mtime_ns == current_mtime_ns
+            and recorded_size == current_size
+            and elapsed >= 0
+            and elapsed < READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS
+        ):
+            remaining = int(READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS - elapsed)
+            return (
+                True,
+                (
+                    f"read_code_symbols repeat guard: {file_path} was listed {int(elapsed)}s ago and is unchanged; "
+                    f"use read_code_context/read_code_window or pass --allow-repeat (cooldown remaining: {remaining}s)."
+                ),
+            )
+    state[key] = {
+        "mtime_ns": current_mtime_ns,
+        "size": current_size,
+        "last_called_ts": now,
+    }
+    _persist_symbols_usage_state(state)
+    return False, ""
+
+
+def _select_vector_candidate(candidates: list[_VectorMatch], index: int) -> tuple[_VectorMatch | None, str | None]:
+    """Select a ranked candidate index while returning actionable selection errors."""
+    if index < 0:
+        return None, f"candidate index must be >= 0: {index}"
+    if not candidates:
+        if index == 0:
+            return None, None
+        return None, "no ranked candidates available for requested candidate index"
+    if index >= len(candidates):
+        return None, f"candidate index {index} is out of range (available: 0..{len(candidates) - 1})"
+    return candidates[index], None
+
+
 def read_code_symbols(argv: list[str]) -> int:
     """List deterministic file symbols before choosing an anchor for context/window reads."""
     if len(argv) < 1:
         print("ERROR: read_code_symbols requires: <file_path>", file=sys.stderr)
         return 1
-    if len(argv) > 1:
-        print(f"ERROR: Unexpected argument(s) for symbols mode: {' '.join(argv[1:])}", file=sys.stderr)
+    allow_repeat = False
+    for token in argv[1:]:
+        if token == "--allow-repeat":
+            allow_repeat = True
+            continue
+        print(f"ERROR: Unexpected argument(s) for symbols mode: {token}", file=sys.stderr)
         return 1
 
     file_path = Path(argv[0])
     if not file_path.is_file():
         print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    repeat_blocked, repeat_message = _check_symbols_repeat_guard(file_path, allow_repeat=allow_repeat)
+    if repeat_blocked:
+        print(f"ERROR: {repeat_message}", file=sys.stderr)
         return 1
     if not _refresh_indexes_for_read(file_path):
         return 1
@@ -1324,7 +1552,7 @@ def read_code_symbols(argv: list[str]) -> int:
 
 
 def read_code_context(argv: list[str]) -> int:
-    """Resolve an anchor from symbol/pattern and print bounded numbered context."""
+    """Resolve an anchor and print bounded context with post-anchor bias."""
     if len(argv) < 2:
         print(
             "ERROR: read_code_context requires: <file_path> <symbol_or_pattern> [context_lines]",
@@ -1339,18 +1567,45 @@ def read_code_context(argv: list[str]) -> int:
     context = READ_CODE_DEFAULT_CONTEXT_LINES
     context_set = False
     allow_fallback = False
+    show_shortlist = False
+    inline_body = False
+    candidate_index = 0
+    expect_candidate_index = False
 
     for token in extra:
-        if token == "--hud-symbol":
+        if expect_candidate_index:
+            if not token.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {token}", file=sys.stderr)
+                return 1
+            candidate_index = int(token, 10)
+            expect_candidate_index = False
+        elif token == "--hud-symbol":
             continue
         elif token == "--allow-fallback":
             allow_fallback = True
+        elif token == "--show-shortlist":
+            show_shortlist = True
+        elif token == "--inline-body":
+            inline_body = True
+        elif token == "--next-candidate":
+            candidate_index += 1
+        elif token == "--candidate-index":
+            expect_candidate_index = True
+        elif token.startswith("--candidate-index="):
+            _, _, value = token.partition("=")
+            if not value.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
+                return 1
+            candidate_index = int(value, 10)
         elif token.isdigit() and not context_set:
             context = int(token, 10)
             context_set = True
         else:
             print(f"ERROR: Unexpected argument for context mode: {token}", file=sys.stderr)
             return 1
+    if expect_candidate_index:
+        print("ERROR: --candidate-index requires a value", file=sys.stderr)
+        return 1
 
     file_path = Path(file_arg)
     if not file_path.is_file():
@@ -1367,7 +1622,13 @@ def read_code_context(argv: list[str]) -> int:
     if not _refresh_indexes_for_read(file_path):
         return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
-    vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+    vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+    if candidate_error is not None:
+        print(f"ERROR: {candidate_error}", file=sys.stderr)
+        if vector_candidates:
+            print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+        return 1
 
     strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
     line_num: int | None = None
@@ -1391,18 +1652,41 @@ def read_code_context(argv: list[str]) -> int:
                 skip_preflight_refresh=True,
             ):
                 return 1
-            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
-            if vector_match is not None:
-                line_num = vector_match.line_num
+            refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+            if refreshed_candidates:
+                vector_candidates = refreshed_candidates
+                vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+                if candidate_error is not None:
+                    print(f"ERROR: {candidate_error}", file=sys.stderr)
+                    print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+                    return 1
+                if vector_match is not None:
+                    line_num = vector_match.line_num
         else:
-            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
-            if vector_match is not None:
-                line_num = vector_match.line_num
+            refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+            if refreshed_candidates:
+                vector_candidates = refreshed_candidates
+                vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+                if candidate_error is not None:
+                    print(f"ERROR: {candidate_error}", file=sys.stderr)
+                    print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+                    return 1
+                if vector_match is not None:
+                    line_num = vector_match.line_num
 
         if line_num is None and strict_status == 0:
             line_num = strict_line_num
         elif line_num is None and allow_fallback:
             line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+    if line_num is not None and not vector_candidates:
+        vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+        if vector_candidates and vector_match is None:
+            vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+            if candidate_error is not None:
+                print(f"ERROR: {candidate_error}", file=sys.stderr)
+                print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+                return 1
 
     _emit_vector_fallback_notice(
         file_path=file_path,
@@ -1428,8 +1712,16 @@ def read_code_context(argv: list[str]) -> int:
         print(f"ERROR: Pattern not found after one bounded fallback: {pattern} in {file_arg}", file=sys.stderr)
         return 1
 
-    start = max(1, line_num - context)
-    end = line_num + context
+    if vector_candidates and show_shortlist:
+        _render_candidate_shortlist(vector_candidates, pattern)
+        if inline_body and vector_match is not None and vector_match.confidence >= 90:
+            _render_candidate_body(vector_match)
+    elif inline_body and vector_match is not None and vector_match.confidence >= 90:
+        _render_candidate_body(vector_match)
+
+    pre_lines, post_lines = _split_context_window(context)
+    start = max(1, line_num - pre_lines)
+    end = line_num + post_lines
     _render_numbered_window(file_path, start, end)
     return 0
 
@@ -1563,14 +1855,17 @@ def read_code_window(argv: list[str]) -> int:
 def _print_usage() -> None:
     print("Usage:")
     print(
-        f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback]"
+        f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
+    )
+    print(
+        "                   (default output is resolved anchor + bounded window; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
     )
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
-    print("  read_code_symbols <file_path>")
+    print("  read_code_symbols <file_path> [--allow-repeat]")
     print(
-        "                   (for large files, HUD current-line fast-path may omit symbol when --hud-symbol is set)"
+        "                   (bounded follow-up helper may return a non-top candidate body without widening scope)"
     )
 
 
