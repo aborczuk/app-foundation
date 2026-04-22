@@ -1,2 +1,1 @@
- M scripts/edit_code.py
- M tests/unit/test_edit_code.py
+ M AGENTS.md

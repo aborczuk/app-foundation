@@ -1,20 +1,20 @@
 {
-  "code_symbol_count": 2018,
-  "collection_name": "codebase-vector-index-d765646937ad486da57345b6a63c2652",
+  "code_symbol_count": 2026,
+  "collection_name": "codebase-vector-index-836c21fc0be041609930302e79ac2796",
   "commits_behind_head": null,
-  "current_commit": "6357ec2363f16ea028a23bf2813b0cbb5439f13b",
+  "current_commit": "1753b0f8a27ed819d85e8cb5c7d53a23670a2494",
   "embedding_model": "BAAI/bge-small-en-v1.5",
-  "entry_count": 5075,
+  "entry_count": 5081,
   "indexed_age_seconds": null,
-  "indexed_at": "2026-04-22T02:13:45.375466Z",
-  "indexed_commit": "6357ec2363f16ea028a23bf2813b0cbb5439f13b",
+  "indexed_at": "2026-04-22T14:30:10.555014Z",
+  "indexed_commit": "1753b0f8a27ed819d85e8cb5c7d53a23670a2494",
   "is_stale": false,
-  "markdown_section_count": 3057,
+  "markdown_section_count": 3055,
   "scopes": [
     "code",
     "markdown"
   ],
-  "snapshot_path": "/Users/andreborczuk/app-foundation/.codegraphcontext/global/db/vector-index/staging/440ffa9468654fd2ac1c82535563d027",
+  "snapshot_path": "/Users/andreborczuk/app-foundation/.codegraphcontext/global/db/vector-index/staging/0722a503e1754964a41533e80df36e01",
   "source_root": "/Users/andreborczuk/app-foundation",
   "stale_reason": ""
 }
