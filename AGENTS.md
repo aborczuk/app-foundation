@@ -146,17 +146,21 @@ For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first an
 For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 110 lines is the max context_lines:
 ```bash
 source scripts/read-code.sh
+read_code_symbols <file>
 read_code_context <file> <symbol_or_pattern> [context_lines]
 ```
-Example: `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 110`
+Examples:
+- `read_code_symbols src/clickup_control_plane/webhook_auth.py`
+- `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 110`
 
 Use this workflow:
-1. Invoke `read_code_context` / `read_code_window` first for code seam anchoring.
-2. The helper resolves semantic lookup first and then performs exact bounded reads.
-3. Run codegraph discovery checks for blast radius only after the seam is confirmed.
-4. Expand to additional windows only when needed to resolve ambiguity.
-5. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
-6. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
+1. Invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
+2. Use one of those exact symbols with `read_code_context` / `read_code_window` for seam anchoring.
+3. The helper resolves semantic lookup first and then performs exact bounded reads.
+4. Run codegraph discovery checks for blast radius only after the seam is confirmed.
+5. Expand to additional windows only when needed to resolve ambiguity.
+6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
+7. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
 
@@ -170,10 +174,14 @@ After each pipeline command or long running command, report if there were large 
 ### Edit Efficiency
 
 - Read the exact seam once before editing.
-- Batch related edits together instead of reopening unchanged source after every patch.
+- Work seam-by-seam: finish one seam before starting another.
+- Default to one-file edit batches: complete one file’s coherent change + validation loop before moving to the next file.
+- Prefer one high-quality seam read per active file (function/class level) and derive the full file edit plan from that snapshot.
+- Apply one consolidated patch per file when possible instead of many tiny hunks.
+- For multi-file work, prepare edits from initial seam reads, apply file-by-file, then run one targeted validation pass for the batch.
 - Use `apply_patch` for small local edits.
-- Use scripted transforms for repetitive mechanical edits across many files.
-- Reread source only when a diff, failing test, or validation gate gives a specific question to answer.
+- Use scripted transforms for repetitive mechanical edits across many files; do not hand-edit the same mechanical change file-by-file.
+- Reread only on concrete signals: patch failure, failing tests/lint/LSP diagnostics, or explicit ambiguity from the diff.
 - After each edit batch, run a validation loop before starting the next batch.
 - Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` on the touched Python paths when applicable.
 - Do not advance past an edit batch until its validation loop passes or the failure is understood and intentionally deferred.

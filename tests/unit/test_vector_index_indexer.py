@@ -76,6 +76,41 @@ def test_indexer_query_routes_through_shared_service(monkeypatch, tmp_path, caps
     assert "\"rank\": 1" in capsys.readouterr().out
 
 
+def test_indexer_list_file_symbols_routes_through_shared_service(monkeypatch, tmp_path, capsys) -> None:
+    """The CLI should route file-symbol listing through the shared service."""
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.calls: list[tuple] = []
+
+        def list_file_code_symbols(self, file_path: str):
+            self.calls.append(("list-file-symbols", file_path))
+            return [
+                CodeSymbol(
+                    symbol_name="run_pipeline",
+                    qualified_name="run_pipeline",
+                    file_path=Path(file_path),
+                    line_start=1,
+                    line_end=3,
+                    signature="def run_pipeline():",
+                    docstring="",
+                    preview="def run_pipeline():",
+                    body="def run_pipeline():\n    return 1\n",
+                )
+            ]
+
+    fake_service = FakeService()
+    monkeypatch.setattr(indexer, "build_service", lambda args: fake_service)
+
+    exit_code = indexer.main(["--repo-root", str(tmp_path), "list-file-symbols", "src/example.py"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert fake_service.calls == [("list-file-symbols", "src/example.py")]
+    assert payload[0]["symbol_name"] == "run_pipeline"
+    assert payload[0]["line_start"] == 1
+
+
 def test_indexer_status_reports_snapshot_freshness(monkeypatch, tmp_path, capsys) -> None:
     """The CLI should surface status freshness metadata from the shared service."""
 

@@ -143,9 +143,67 @@ def test_codegraph_health_status_parses_nonhealthy_json_payload(monkeypatch) -> 
     assert status == "stale"
 
 
+def test_codegraph_health_probe_returns_detail_and_recovery_command(monkeypatch) -> None:
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code.subprocess,
+        "run",
+        lambda *args, **kwargs: _completed(
+            0,
+            stdout=(
+                '{"status":"locked","detail":"lock marker present at .codegraphcontext/db/kuzudb.lock",'
+                '"recovery_hint":{"command":"scripts/cgc_safe_index.sh /tmp/repo"}}\n'
+            ),
+            stderr="",
+        ),
+    )
+
+    probe = read_code.codegraph_health_probe()
+
+    assert probe.status == "locked"
+    assert "lock marker present" in probe.detail
+    assert probe.recovery_command == "scripts/cgc_safe_index.sh /tmp/repo"
+
+
+def test_codegraph_edit_signature_file_uses_codegraphcontext(tmp_path: Path) -> None:
+    marker = read_code.codegraph_edit_signature_file(tmp_path)
+
+    assert marker == tmp_path / ".codegraphcontext" / "last-edit-signature.txt"
+
+
+def test_codegraph_cached_edit_signature_strips_trailing_newline(tmp_path: Path) -> None:
+    marker = tmp_path / ".codegraphcontext" / "last-edit-signature.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(" M src/module.py\n", encoding="utf-8")
+
+    cached = read_code.codegraph_cached_edit_signature(tmp_path)
+
+    assert cached == " M src/module.py"
+
+
+def test_codegraph_current_edit_signature_ignores_codegraphcontext_on_leading_space_status(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        read_code.subprocess,
+        "run",
+        lambda *args, **kwargs: _completed(0, stdout=" M .codegraphcontext/last-edit-signature.txt\n"),
+    )
+
+    signature = read_code.codegraph_current_edit_signature(tmp_path)
+
+    assert signature == ""
+
+
 def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkeypatch, tmp_path: Path) -> None:
-    statuses = iter(["stale", "healthy"])
-    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: next(statuses))
+    probes = iter(
+        [
+            read_code._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command=""),
+            read_code._CodegraphHealthProbe(status="healthy", detail="ok", recovery_command=""),
+        ]
+    )
+    monkeypatch.setattr(read_code, "codegraph_health_probe", lambda project_root=None: next(probes))
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
     fake_script = tmp_path / "cgc_safe_index.sh"
@@ -168,8 +226,47 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
     assert calls == [[str(fake_script), str(scope_path)]]
 
 
+def test_codegraph_refresh_if_needed_retries_locked_then_succeeds(monkeypatch, tmp_path: Path) -> None:
+    probes = iter(
+        [
+            read_code._CodegraphHealthProbe(
+                status="locked",
+                detail="lock marker present at .codegraphcontext/db/kuzudb.lock",
+                recovery_command="scripts/cgc_safe_index.sh /tmp/repo",
+            ),
+            read_code._CodegraphHealthProbe(status="healthy", detail="ok", recovery_command=""),
+        ]
+    )
+    monkeypatch.setattr(read_code, "codegraph_health_probe", lambda project_root=None: next(probes))
+    monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
+    monkeypatch.setattr(read_code, "CODEGRAPH_LOCK_RETRY_ATTEMPTS", 2)
+    monkeypatch.setattr(read_code.time, "sleep", lambda _: None)
+
+    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    fake_script.chmod(0o755)
+    monkeypatch.setattr(read_code, "SCRIPT_DIR", tmp_path)
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return _completed(0)
+
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+
+    result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
+
+    assert result is True
+    assert calls == [[str(fake_script), str(tmp_path / "src")]]
+
+
 def test_codegraph_refresh_if_needed_skips_when_status_is_healthy(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: "healthy")
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda project_root=None: read_code._CodegraphHealthProbe(status="healthy", detail="ok", recovery_command=""),
+    )
     monkeypatch.setattr(read_code, "SCRIPT_DIR", tmp_path)
 
     called = {"value": False}
@@ -186,12 +283,29 @@ def test_codegraph_refresh_if_needed_skips_when_status_is_healthy(monkeypatch, t
     assert called["value"] is False
 
 
-def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(read_code, "codegraph_health_status", lambda project_root=None: "unavailable")
+def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda project_root=None: read_code._CodegraphHealthProbe(
+            status="unavailable",
+            detail="doctor failed",
+            recovery_command="scripts/cgc_safe_index.sh /tmp/repo",
+        ),
+    )
+    monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
+    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    fake_script.chmod(0o755)
+    monkeypatch.setattr(read_code, "SCRIPT_DIR", tmp_path)
 
     result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
+    captured = capsys.readouterr()
 
     assert result is False
+    assert "status is unavailable" in captured.err
+    assert "Remediation:" in captured.err
+    assert "doctor suggested:" in captured.err
 
 
 def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeypatch, tmp_path: Path) -> None:
@@ -234,3 +348,55 @@ def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_p
     exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "1"])
 
     assert exit_code == 1
+
+
+def test_read_code_symbols_runs_preflight_and_renders_rows(monkeypatch, tmp_path: Path, capsys) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda file_path: (calls.append(file_path), True)[1],
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_vector_list_code_symbols",
+        lambda file_path: [
+            {
+                "symbol_name": "run_pipeline",
+                "symbol_type": "function",
+                "line_start": 1,
+                "line_end": 2,
+                "signature": "def run_pipeline():",
+                "qualified_name": "sample.run_pipeline",
+                "body": "def run_pipeline():\n    return 1\n",
+            }
+        ],
+    )
+
+    exit_code = read_code.read_code_symbols([str(code_file)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert calls == [code_file]
+    assert "symbol_name" in captured.out
+    assert "run_pipeline" in captured.out
+
+
+def test_read_code_symbols_returns_error_when_vector_symbols_missing(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code, "_vector_list_code_symbols", lambda file_path: [])
+
+    exit_code = read_code.read_code_symbols([str(code_file)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "No code symbols found" in captured.err

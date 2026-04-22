@@ -75,6 +75,10 @@ class VectorIndexService:
         """Query the active snapshot."""
         return self._store.query(query_text, top_k=top_k, scope=scope)
 
+    def list_file_code_symbols(self, file_path: str | Path) -> list[CodeSymbol]:
+        """Return deterministic symbols for a file from the active vector snapshot."""
+        return self._store.list_file_code_symbols(file_path)
+
     def refresh_changed_files(
         self,
         changed_paths: Sequence[str | Path],

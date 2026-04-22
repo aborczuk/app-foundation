@@ -382,6 +382,48 @@ class ChromaIndexStore:
         ranked.sort(key=lambda item: (-item.score, item.file_path.as_posix(), item.line_start, item.line_end))
         return [item.model_copy(update={"rank": index}) for index, item in enumerate(ranked[:top_k], start=1)]
 
+    def list_file_code_symbols(self, file_path: str | Path) -> list[CodeSymbol]:
+        """Return deterministic code symbols for a single file from the active snapshot."""
+        snapshot = self.load_snapshot()
+        if snapshot is None:
+            return []
+
+        metadata, _ = snapshot
+        normalized_file = _normalize_index_path(file_path, self._config.repo_root)
+        collection = self._open_collection(
+            Path(metadata.snapshot_path),
+            metadata.collection_name,
+            create=False,
+        )
+        payload = collection.get(
+            where={
+                "scope": IndexScope.CODE.value,
+                "record_type": "code",
+                "file_path": normalized_file,
+            },
+            include=["metadatas"],
+        )
+        metadatas = _payload_sequence(payload, "metadatas")
+
+        symbols: list[CodeSymbol] = []
+        for metadata_payload in metadatas:
+            if not isinstance(metadata_payload, dict):
+                continue
+            content = self._decode_content_unit(metadata_payload)
+            if isinstance(content, CodeSymbol):
+                symbols.append(content)
+
+        symbols.sort(
+            key=lambda item: (
+                item.line_start,
+                item.line_end,
+                item.symbol_type,
+                item.symbol_name,
+                item.qualified_name,
+            )
+        )
+        return symbols
+
     def _prepare_chunks(self, content_units: Sequence[CodeSymbol | MarkdownSection]) -> list[_PreparedChunk]:
         embedding_inputs = [_embedding_text(unit) for unit in content_units]
         logger.info("vector-index: embedding %d texts", len(embedding_inputs))

@@ -51,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--top-k", type=int, default=10)
     query.add_argument("--scope", choices=[scope.value for scope in IndexScope], default=None)
 
+    symbols = subparsers.add_parser(
+        "list-file-symbols",
+        help="List deterministic code symbols for a single file from the active snapshot",
+    )
+    symbols.add_argument("file_path")
+
     refresh = subparsers.add_parser("refresh", help="Refresh specific paths")
     refresh.add_argument("changed_paths", nargs="+")
     refresh.add_argument("--revision", default="local")
@@ -194,6 +200,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             json.dumps(
                 [result.model_dump(mode="json") for result in results],
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    if args.command == "list-file-symbols":
+        symbols = service.list_file_code_symbols(args.file_path)
+        print(
+            json.dumps(
+                [symbol.model_dump(mode="json") for symbol in symbols],
                 indent=2,
                 sort_keys=True,
             )
