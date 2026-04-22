@@ -46,13 +46,12 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 - Prefer the smallest task-specific artifact first: `scripts/read-code.sh`, `scripts/read-markdown.sh`, or the relevant `.claude/commands/*.md`.
 - Read `catalog.yaml` for system topology, services, resources, auth, hosting, or dependency questions.
 - Read `specs/*/behavior-map.md` only for runtime behavior and `specs/*/tasks.md` only for task state and execution order.
-- Use `codegraph` for relationship/blast-radius questions after a seam is anchored.
-- Use `codebase-lsp` for exact type and diagnostic checks before or after edits.
+- Commands in pipeline: /Users/andreborczuk/app-foundation/command-manifest.yaml
 
 ### Function docs
 - Function docstrings or comments are mandatory for new or modified functions.
 - Keep them short, specific, and colocated with the function they describe.
-- Any code edit that changes behavior should add or update nearby documentation explaining the function or work, unless the change is trivially self-evident.
+- Any code edit that changes behavior should add or update nearby documentation (eg quickstart.md)explaining the function or work, unless the change is trivially self-evident.
 
 ## Technology choices
 - all new code should be written in python so it is viable in codegraph. No bash or other direct shell scripting languages
@@ -81,7 +80,8 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 - Use for repository code/issue/PR discovery when remote context is required.
 - Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` (`cwd: /Users/andreborczuk/app-foundation`)
 
-RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead: 
+**RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
+
 **Mandatory workflow order**:
 1. **Helper-driven read**: Start with `scripts/read-code.sh` / `scripts/read-markdown.sh` for anchored bounded reads.
 2. **Semantic+exact semantics (internal)**: Those helpers run semantic lookup first, then exact seam anchoring.
@@ -95,7 +95,6 @@ RG, grep and other direct tools are banned in this repo by hook. don't waste you
 - If codegraph discovery is stale or incomplete, run a scoped non-force refresh first:
   `scripts/cgc_safe_index.sh <scoped-path>` (example: `scripts/cgc_safe_index.sh src/clickup_control_plane`),
   then retry codegraph queries.
-- Any force re-index requires explicit human approval and must be scoped (never full repo).
 - Repository command wrapper note: `uv run cgc ...` is routed through `csp_trader.cgc_guard` (project script) and enforces these index guards.
 
 **CodeGraph directories (canonical)**:
@@ -133,6 +132,7 @@ Use this workflow:
 7. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
+
 ### Edit Efficiency
 
 - Use `scripts/edit-code.sh` to edit code in this repo:
@@ -178,4 +178,5 @@ After each pipeline command or long running command, report if there were large 
 
 ### Healing and improvment
 - Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
+
 
