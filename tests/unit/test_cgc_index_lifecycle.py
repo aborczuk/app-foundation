@@ -6,10 +6,9 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
-import sys
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 READ_CODE_SCRIPT = REPO_ROOT / "scripts" / "read_code.py"
@@ -87,7 +86,21 @@ JSON
       ;;
     *)
       cat <<'JSON'
-{"access_mode":"READ_ONLY","checked_at":"2026-04-19T00:00:00Z","detail":"unavailable","latency_ms":1.0,"recovery_hint":{"action":"fallback","command":"scripts/read-code.sh <file> <symbol> --allow-fallback","id":"fallback-to-files","preserves_last_good":false,"summary":"fallback"},"source":"filesystem-freshness","status":"unavailable"}
+{
+  "access_mode":"READ_ONLY",
+  "checked_at":"2026-04-19T00:00:00Z",
+  "detail":"unavailable",
+  "latency_ms":1.0,
+  "recovery_hint":{
+    "action":"fallback",
+    "command":"scripts/read-code.sh <file> <symbol> --allow-fallback",
+    "id":"fallback-to-files",
+    "preserves_last_good":false,
+    "summary":"fallback"
+  },
+  "source":"filesystem-freshness",
+  "status":"unavailable"
+}
 JSON
       exit 0
       ;;
@@ -189,6 +202,34 @@ def test_safe_index_cleans_stale_owner_without_blocking(tmp_path: Path) -> None:
     assert "Removing stale CodeGraph owner marker" in result.stdout
     assert "cgc index src/mcp_codebase" in log_file.read_text(encoding="utf-8")
     assert not owner_pid_file.exists()
+    assert not lock_file.exists()
+
+
+def test_safe_index_cleans_stale_lock_without_owner_after_age_threshold(tmp_path: Path) -> None:
+    repo = _copy_script_repo(tmp_path)
+    bin_dir, log_file = _install_fake_uv(tmp_path)
+    lock_file = repo / ".codegraphcontext" / "db" / "kuzudb.lock"
+    lock_file.write_text("locked\n", encoding="utf-8")
+    old = time.time() - 120
+    os.utime(lock_file, (old, old))
+
+    result = _run_script(
+        repo,
+        "cgc_safe_index.sh",
+        "src/mcp_codebase",
+        env={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "FAKE_UV_LOG": str(log_file),
+            "FAKE_CGC_LOG": str(log_file),
+            "CGC_OWNER_WAIT_SECONDS": "1",
+            "CGC_OWNER_POLL_SECONDS": "1",
+            "CGC_OWNER_LOCK_STALE_SECONDS": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Removing stale CodeGraph lock marker without owner" in result.stdout
+    assert "cgc index src/mcp_codebase" in log_file.read_text(encoding="utf-8")
     assert not lock_file.exists()
 
 

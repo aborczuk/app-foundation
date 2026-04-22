@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: deny broad reads of large code/doc files unless read-code helper is used."""
+"""PreToolUse hook: enforce helper-only reads for code/doc files."""
 
 from __future__ import annotations
 
@@ -50,8 +50,7 @@ TEXT_EXTENSIONS = {
     ".env",
 }
 
-LINE_THRESHOLD = 200
-MAX_HELPER_LINES = 80
+MAX_HELPER_LINES = 110
 
 
 def _emit_deny(reason: str) -> None:
@@ -131,7 +130,8 @@ def _extract_candidate_paths(command: str) -> list[str]:
     return [m.group(1) for m in pattern.finditer(command)]
 
 
-def _is_large_code_file(path_text: str) -> bool:
+def _is_repo_code_doc_file(path_text: str) -> bool:
+    """Return whether a path is a repo-local existing code/doc file candidate."""
     if any(ch in path_text for ch in ("$", "*", "?")):
         return False
 
@@ -143,12 +143,7 @@ def _is_large_code_file(path_text: str) -> bool:
     if suffix not in CODE_EXTENSIONS and suffix not in TEXT_EXTENSIONS:
         return False
 
-    try:
-        line_count = sum(1 for _ in path.open("r", encoding="utf-8", errors="ignore"))
-    except OSError:
-        return False
-
-    return line_count > LINE_THRESHOLD
+    return True
 
 
 def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None:
@@ -205,7 +200,7 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
 
 
 def main() -> int:
-    """Evaluate command payload and deny risky broad reads of large code files."""
+    """Evaluate command payload and enforce helper-only code/doc reads."""
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -221,7 +216,8 @@ def main() -> int:
         if broad_root and code_doc_target:
             _emit_deny(
                 "Broad root-level file scans are denied (for example `find . -name '*.py'`). "
-                "Use scripts/read-code.sh (read_code_context/read_code_window) for code reads, "
+                "Use scripts/read-code.sh (read_code_context/read_code_window/read_code_symbols) for code reads, "
+                "use scripts/read-markdown.sh (read_markdown_headings/read_markdown_section) for markdown reads, "
                 "or scope inventory to explicit directories (for example `find src tests -name '*.py'`)."
             )
             return 0
@@ -229,22 +225,19 @@ def main() -> int:
     helper_policy = _extract_read_code_policy(command)
     if helper_policy is not None:
         _, target_path, requested_lines, allow_fallback = helper_policy
-        if _is_large_code_file(target_path):
+        if _is_repo_code_doc_file(target_path):
             if requested_lines > MAX_HELPER_LINES:
                 _emit_deny(
-                    f"read-code helper line windows over {MAX_HELPER_LINES} are denied for large files. "
+                    f"read-code helper line windows over {MAX_HELPER_LINES} are denied. "
                     "Use a smaller bounded window."
                 )
                 return 0
             if allow_fallback:
                 _emit_deny(
-                    "read-code --allow-fallback is denied for large code/doc files. "
-                    "Use strict symbol resolution or narrow the symbol first."
+                    "read-code --allow-fallback is denied for repo-local code/doc helper reads. "
+                    "Use strict preflight + strict symbol resolution (no --allow-fallback)."
                 )
                 return 0
-        return 0
-
-    if "SPECKIT_HUD_DIRECT_READ=1" in command and "read-code.sh" in command:
         return 0
 
     risky_read_tokens = ("cat ", "nl -ba ", "sed -n", "awk ", "head ", "tail ", "less ", "more ")
@@ -252,11 +245,12 @@ def main() -> int:
         return 0
 
     for candidate in _extract_candidate_paths(command):
-        if _is_large_code_file(candidate):
+        if _is_repo_code_doc_file(candidate):
             _emit_deny(
-                "Large code/doc-file reads must use scripts/read-code.sh "
-                "(read_code_context/read_code_window) with semantic lookup first, exact bounded reads second, "
-                "and discovery checks after anchoring (or approved HUD direct-read fast-path)."
+                "Code/doc-file reads must use scripts/read-code.sh "
+                "(read_code_context/read_code_window/read_code_symbols) or scripts/read-markdown.sh "
+                "(read_markdown_headings/read_markdown_section). "
+                "Direct shell reads are denied."
             )
             return 0
 

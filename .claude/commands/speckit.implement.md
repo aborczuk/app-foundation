@@ -98,7 +98,9 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    5. Append `discovery_completed`; append `lld_recorded` for 3+ point tasks whose sketch remains valid.
 
 6. Execute implementation following the task plan:
-   - **Codebase MCP tools (use when connected)** — see CLAUDE.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST follow this order per task: `helper-driven read (read-code/read-markdown; semantic+exact) -> discovery checks (codegraph blast radius) -> type verification (codebase-lsp get_type/get_diagnostics)`. Do not mark a task `[X]` while known type errors remain in files the task owns.
+- See ### Edit Efficiency and ### final edit handoff in AGENTS.MD
+
+   - **Codebase MCP tools (use when connected)** — see AGENTS.md `### Codebase MCP Toolkit` for the current list of available servers and their tools. You MUST follow this order per task: `helper-driven read (read-code/read-markdown; semantic+exact) -> discovery checks (codegraph blast radius) -> type verification (codebase-lsp get_type/get_diagnostics)`. Do not mark a task `[X]` while known type errors remain in files the task owns.
    - **Phase-by-phase execution**: Complete each phase before moving to the next
    - **Per-story RED step (MANDATORY at the start of each User Story phase — before any task code)**:
      1. Write the failing story-level acceptance test derived from the "Independent Test Criteria" in tasks.md for this story. This is a pytest case (or equivalent) targeting the story's observable outcome — not a unit test.

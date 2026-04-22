@@ -15,14 +15,14 @@ snapshot is refreshed.
 
 from __future__ import annotations
 
+import os
+import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import monotonic
 from typing import Any, Iterable
-import os
-import subprocess
 
 
 class GraphHealthStatus(str, Enum):
@@ -66,7 +66,6 @@ class GraphHealthResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-friendly dictionary."""
-
         payload = asdict(self)
         payload["status"] = self.status.value
         payload["access_mode"] = self.access_mode.value
@@ -106,7 +105,6 @@ _LAST_INDEX_ERROR_FILE = ".codegraphcontext/last-index-error.txt"
 
 def classify_graph_health(project_root: Path) -> GraphHealthResult:
     """Classify the current graph-readiness state from local filesystem cues."""
-
     start = monotonic()
     repo_root = project_root.resolve()
     last_index_error = _read_last_index_error(repo_root)
@@ -115,10 +113,8 @@ def classify_graph_health(project_root: Path) -> GraphHealthResult:
         status, detail = last_index_error
     else:
         status, detail = _classify_state(repo_root)
-        if status is GraphHealthStatus.HEALTHY:
-            edit_drift = _read_edit_drift(repo_root)
-            if edit_drift is not None:
-                status, detail = edit_drift
+        # Deliberately avoid git-status drift reclassification here; non-indexed
+        # metadata edits should not force graph health to stale.
     recovery_hint = build_recovery_hint(status, repo_root=repo_root, detail=detail)
     checked_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     latency_ms = round((monotonic() - start) * 1000.0, 1)
@@ -135,7 +131,6 @@ def classify_graph_health(project_root: Path) -> GraphHealthResult:
 
 async def get_graph_health_impl(project_root: Path) -> dict[str, Any]:
     """Return a JSON-friendly graph-health payload for adapter callers."""
-
     return classify_graph_health(project_root).to_dict()
 
 
@@ -146,7 +141,6 @@ def build_recovery_hint(
     detail: str = "",
 ) -> GraphRecoveryHint:
     """Map a health status to a stable next-action hint."""
-
     repo_display = str(repo_root)
 
     if status is GraphHealthStatus.HEALTHY:
@@ -314,7 +308,7 @@ def _read_cached_edit_signature(repo_root: Path) -> str:
         return ""
 
     try:
-        return marker_path.read_text(encoding="utf-8")
+        return marker_path.read_text(encoding="utf-8").rstrip("\n")
     except OSError:
         return ""
 
@@ -342,9 +336,9 @@ def _current_edit_signature(repo_root: Path) -> str:
 
     lines: list[str] = []
     for raw in proc.stdout.splitlines():
-        line = raw.strip()
-        if not line:
+        if not raw.strip():
             continue
+        line = raw.rstrip("\n")
         path = line[3:] if len(line) > 3 else ""
         if " -> " in path:
             candidates = [part.strip() for part in path.split(" -> ")]

@@ -31,7 +31,7 @@ No external service nodes appear in the Architecture Flow, so `catalog.yaml` is 
 
 | Finding ID | Category | Severity | Location | Question / Gap | Recommended Resolution | Story Point Impact | Status |
 |------------|----------|----------|----------|----------------|------------------------|-------------------|--------|
-| PR-001 | Behavior Map | LOW | `plan.md` Behavior Map Sync Gate | The repository-local storage target in the behavior map still referenced the older `.codegraphcontext/db/chroma/` path while the Technical Context and Handoff Contract use `.codegraphcontext/db/vector-index/`. | Update the behavior-map target to `.codegraphcontext/db/vector-index/` so the plan is internally consistent. | +0 pts | Resolved |
+| PR-001 | Behavior Map | LOW | `plan.md` Behavior Map Sync Gate | The repository-local storage target in the behavior map still referenced the older `.codegraphcontext/db/chroma/` path while the Technical Context and Handoff Contract use `.codegraphcontext/global/db/vector-index/`. | Update the behavior-map target to `.codegraphcontext/global/db/vector-index/` so the plan is internally consistent. | +0 pts | Resolved |
 
 ---
 

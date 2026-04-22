@@ -12,6 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from src.mcp_codebase.index.domain import IndexScope
 
 EXCLUDE_PATTERNS_ENV = "MCP_CODEBASE_INDEX_EXCLUDE_PATTERNS"
+DEFAULT_VECTOR_DB_PATH = Path(".codegraphcontext/global/db/vector-index")
+DEFAULT_EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+DEFAULT_EMBEDDING_CACHE_DIR = DEFAULT_VECTOR_DB_PATH / "fastembed-cache"
 
 
 class IndexConfig(BaseModel):
@@ -22,6 +25,7 @@ class IndexConfig(BaseModel):
     repo_root: Path
     db_path: Path
     embedding_model: str = Field(min_length=1)
+    embedding_cache_dir: Path = Field(default_factory=lambda: DEFAULT_EMBEDDING_CACHE_DIR)
     collection_name: str = Field(default="codebase-vector-index", min_length=1)
     default_scopes: tuple[IndexScope, ...] = Field(
         default_factory=lambda: (IndexScope.CODE, IndexScope.MARKDOWN)
@@ -46,6 +50,17 @@ class IndexConfig(BaseModel):
         if not self.embedding_model.strip():
             raise ValueError("embedding_model must not be blank")
 
+        embedding_cache_dir = self.embedding_cache_dir.expanduser()
+        if not embedding_cache_dir.is_absolute():
+            embedding_cache_dir = (repo_root / embedding_cache_dir).resolve()
+        else:
+            embedding_cache_dir = embedding_cache_dir.resolve()
+
+        try:
+            embedding_cache_dir.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError("embedding_cache_dir must reside within repo_root") from exc
+
         cleaned_patterns: list[str] = []
         for pattern in self.exclude_patterns:
             if not pattern or not pattern.strip():
@@ -54,6 +69,7 @@ class IndexConfig(BaseModel):
 
         object.__setattr__(self, "repo_root", repo_root)
         object.__setattr__(self, "db_path", db_path)
+        object.__setattr__(self, "embedding_cache_dir", embedding_cache_dir)
         object.__setattr__(self, "exclude_patterns", tuple(cleaned_patterns))
         return self
 
@@ -66,3 +82,13 @@ def load_exclude_patterns(raw_value: str | None = None) -> tuple[str, ...]:
         return ()
     patterns = [part.strip() for part in re.split(r"[,\n;]", raw_value) if part.strip()]
     return tuple(patterns)
+
+
+def embedding_model_cache_path(cache_dir: Path, model_name: str) -> Path:
+    """Return the fastembed model-cache path for a concrete embedding model name."""
+    return cache_dir / f"models--{model_name.replace('/', '--')}"
+
+
+def embedding_model_cache_is_present(cache_dir: Path, model_name: str) -> bool:
+    """Return whether the embedding model cache already exists on local disk."""
+    return embedding_model_cache_path(cache_dir, model_name).exists()

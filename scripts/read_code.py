@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,16 +17,22 @@ SCRIPT_DIR = SOURCE_PATH.parent
 REPO_ROOT = SCRIPT_DIR.parent
 CODEGRAPH_CONTEXT_DIR = REPO_ROOT / ".codegraphcontext"
 CODEGRAPH_DB_DIR = CODEGRAPH_CONTEXT_DIR / "db"
+VECTOR_DB_DIR = CODEGRAPH_CONTEXT_DIR / "global" / "db" / "vector-index"
+VECTOR_BOOTSTRAP_COMMAND = "uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap"
 
 CODE_FILE_LINE_THRESHOLD = 200
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
 READ_CODE_DEFAULT_WINDOW_LINES = 60
-READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
+READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "110") or "110")
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
 )
 LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-edit-signature.txt"
+CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_ATTEMPTS", "2") or "2")
+CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
+    os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
+)
 
 
 @dataclass(frozen=True)
@@ -43,8 +49,83 @@ class _VectorMatch:
     line_span: int
 
 
+@dataclass(frozen=True)
+class _CodegraphHealthProbe:
+    """Parsed health probe payload including detail and recovery command."""
+
+    status: str
+    detail: str
+    recovery_command: str
+
+
+_VECTOR_RUNTIME_NOTE: str | None = None
+
+
+def _set_vector_runtime_note(note: str) -> None:
+    """Track why vector lookup could not be used for the current resolution attempt."""
+    global _VECTOR_RUNTIME_NOTE
+    if not _VECTOR_RUNTIME_NOTE:
+        _VECTOR_RUNTIME_NOTE = note
+
+
+def _clear_vector_runtime_note() -> None:
+    """Reset per-attempt vector runtime diagnostics."""
+    global _VECTOR_RUNTIME_NOTE
+    _VECTOR_RUNTIME_NOTE = None
+
+
+def _consume_vector_runtime_note() -> str | None:
+    """Return and clear the current vector runtime diagnostic note."""
+    global _VECTOR_RUNTIME_NOTE
+    note = _VECTOR_RUNTIME_NOTE
+    _VECTOR_RUNTIME_NOTE = None
+    return note
+
+
+def _emit_vector_fallback_notice(
+    *,
+    file_path: Path,
+    pattern: str,
+    vector_match: _VectorMatch | None,
+    resolved_line: int | None,
+) -> None:
+    """Emit explicit fallback messaging when semantic anchor selection is not used."""
+    if not pattern or vector_match is not None:
+        _consume_vector_runtime_note()
+        return
+
+    runtime_note = _consume_vector_runtime_note()
+    if resolved_line is not None:
+        if runtime_note:
+            print(
+                f"WARN: Vector semantic anchor unavailable ({runtime_note}); using strict/local anchor for '{pattern}' in {file_path}.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"WARN: Vector semantic anchor not found for '{pattern}' in {file_path}; using strict/local anchor.",
+                file=sys.stderr,
+            )
+        return
+
+    if runtime_note:
+        print(
+            f"WARN: Vector semantic anchor unavailable ({runtime_note}) for '{pattern}' in {file_path}.",
+            file=sys.stderr,
+        )
+
+
 def _command_exists(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def _is_repo_local_path(file_path: Path) -> bool:
+    """Return whether a target file resides under the repository root."""
+    try:
+        file_path.resolve().relative_to(REPO_ROOT)
+        return True
+    except ValueError:
+        return False
 
 
 def _coerce_line(value: object) -> int | None:
@@ -71,26 +152,23 @@ def init_codegraph_env() -> None:
 
 def codegraph_edit_signature_file(project_root: Path | None = None) -> Path:
     """Return the cached edit-signature marker path."""
-
     root = project_root or REPO_ROOT
-    return root / LAST_EDIT_SIGNATURE_FILE.name
+    return root / ".codegraphcontext" / LAST_EDIT_SIGNATURE_FILE.name
 
 
 def codegraph_cached_edit_signature(project_root: Path | None = None) -> str:
     """Read the cached edit signature if it exists."""
-
     marker_file = codegraph_edit_signature_file(project_root)
     if not marker_file.is_file():
         return ""
     try:
-        return marker_file.read_text(encoding="utf-8")
+        return marker_file.read_text(encoding="utf-8").rstrip("\n")
     except OSError:
         return ""
 
 
 def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     """Return the current non-ignored git status signature."""
-
     root = project_root or REPO_ROOT
     proc = subprocess.run(
         [
@@ -117,9 +195,9 @@ def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     )
     lines: list[str] = []
     for raw in proc.stdout.splitlines():
-        line = raw.strip()
-        if not line:
+        if not raw.strip():
             continue
+        line = raw.rstrip("\n")
         path = line[3:] if len(line) > 3 else ""
         if " -> " in path:
             candidates = [part.strip() for part in path.split(" -> ")]
@@ -132,68 +210,323 @@ def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     return "\n".join(sorted(dict.fromkeys(lines)))
 
 
+def _signature_paths(signature: str) -> set[str]:
+    """Extract normalized relative paths from a git porcelain signature string."""
+    paths: set[str] = set()
+    for raw in signature.splitlines():
+        line = raw.rstrip("\n")
+        if not line.strip():
+            continue
+        if len(line) < 4:
+            continue
+        candidate = line[3:].strip()
+        if not candidate:
+            continue
+        if " -> " in candidate:
+            parts = [part.strip() for part in candidate.split(" -> ")]
+        else:
+            parts = [candidate]
+        for part in parts:
+            normalized = part.replace("\\", "/")
+            if normalized.startswith("./"):
+                normalized = normalized[2:]
+            if normalized:
+                paths.add(normalized)
+    return paths
+
+
+def _scope_needs_codegraph_refresh(scope_path: Path) -> bool:
+    """Return whether stale signature drift overlaps the requested scope path."""
+    current = codegraph_current_edit_signature(REPO_ROOT)
+    cached = codegraph_cached_edit_signature(REPO_ROOT)
+    if current == cached:
+        return False
+
+    current_paths = _signature_paths(current)
+    cached_paths = _signature_paths(cached)
+    drift_paths = current_paths.symmetric_difference(cached_paths)
+    if not drift_paths:
+        return True
+
+    try:
+        scope_abs = scope_path.resolve()
+        scope_rel = scope_abs.relative_to(REPO_ROOT).as_posix().rstrip("/")
+    except ValueError:
+        return True
+
+    if not scope_rel:
+        return True
+
+    scope_prefix = f"{scope_rel}/"
+    for candidate in drift_paths:
+        if candidate == scope_rel or candidate.startswith(scope_prefix):
+            return True
+    return False
+
+
 def codegraph_health_status(project_root: Path | None = None) -> str:
     """Return codegraph health status string or probe-failed."""
-    root = project_root or REPO_ROOT
-    stderr_path = Path(tempfile.mkstemp(prefix="codegraph-doctor.", suffix=".log")[1])
-    try:
-        proc = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--no-sync",
-                "python",
-                "-m",
-                "src.mcp_codebase.doctor",
-                "--json",
-                "--project-root",
-                str(root),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    finally:
-        try:
-            stderr_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+    return codegraph_health_probe(project_root).status
 
-    if proc.returncode != 0:
+
+def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealthProbe:
+    """Return codegraph health status plus detail and recovery hint command."""
+    root = project_root or REPO_ROOT
+    if not _command_exists("uv"):
+        print("WARN: codegraph health probe skipped because uv is not available", file=sys.stderr)
+        return _CodegraphHealthProbe(
+            status="unavailable",
+            detail="uv is not available",
+            recovery_command=f"{SCRIPT_DIR / 'cgc_safe_index.sh'} {root}",
+        )
+    proc = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "python",
+            "-m",
+            "src.mcp_codebase.doctor",
+            "--json",
+            "--project-root",
+            str(root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = (proc.stdout or "").strip()
+    status = ""
+    detail = ""
+    recovery_command = ""
+    if payload:
+        try:
+            data = json.loads(payload)
+            if isinstance(data, dict):
+                status = str(data.get("status", ""))
+                detail = str(data.get("detail", "") or "")
+                recovery_hint = data.get("recovery_hint")
+                if isinstance(recovery_hint, dict):
+                    recovery_command = str(recovery_hint.get("command", "") or "")
+        except json.JSONDecodeError:
+            print("WARN: codegraph health probe returned non-JSON output", file=sys.stderr)
+            status = ""
+
+    if not status:
         doctor_err = (proc.stderr or "").strip()
         if doctor_err:
             print(f"WARN: codegraph health probe failed: {doctor_err}", file=sys.stderr)
-        return "probe-failed"
+            detail = doctor_err
+        return _CodegraphHealthProbe(
+            status="probe-failed",
+            detail=detail,
+            recovery_command=recovery_command,
+        )
 
-    try:
-        status = str(json.loads(proc.stdout or "{}").get("status", "unavailable"))
-    except json.JSONDecodeError:
-        print("WARN: codegraph health probe returned non-JSON output", file=sys.stderr)
-        return "probe-failed"
-    if status == "healthy":
-        current_signature = codegraph_current_edit_signature(root)
-        cached_signature = codegraph_cached_edit_signature(root)
-        if current_signature != cached_signature:
-            print(
-                f"WARN: local working-tree edits changed since the last graph refresh; marking codegraph stale for {root}",
-                file=sys.stderr,
-            )
-            return "stale"
-    return status or "probe-failed"
+    return _CodegraphHealthProbe(
+        status=status or "probe-failed",
+        detail=detail,
+        recovery_command=recovery_command,
+    )
 
 
-def codegraph_refresh_if_needed(scope_path: Path | None = None) -> None:
-    """Refresh scoped codegraph index when health is stale/unavailable."""
+def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
+    """Refresh scoped codegraph index and retry lock recovery deterministically."""
     path = scope_path or REPO_ROOT
-    health_status = codegraph_health_status(REPO_ROOT)
-    if health_status in {"stale", "unavailable"}:
+    probe = codegraph_health_probe(REPO_ROOT)
+    if probe.status == "healthy":
+        return True
+    if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
+        print(
+            f"WARN: codegraph stale drift does not overlap requested scope ({path}); refreshing scoped index in background",
+            file=sys.stderr,
+        )
         safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
         if safe_index.is_file() and os.access(safe_index, os.X_OK):
+            try:
+                subprocess.Popen(
+                    [str(safe_index), str(path)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                print(f"WARN: codegraph background refresh could not start: {exc}", file=sys.stderr)
+        else:
             print(
-                f"WARN: codegraph is {health_status}; refreshing scoped index for {path}",
+                f"WARN: codegraph background refresh skipped: missing safe index script at {safe_index}",
                 file=sys.stderr,
             )
-            subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
+        return True
+
+    safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
+    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
+        print(f"ERROR: codegraph preflight failed: missing safe index script at {safe_index}", file=sys.stderr)
+        return False
+
+    lock_attempts = max(1, CODEGRAPH_LOCK_RETRY_ATTEMPTS)
+    max_attempts = lock_attempts if probe.status == "locked" else 1
+    attempt = 0
+    while attempt < max_attempts:
+        attempt += 1
+        if probe.status == "stale":
+            print(f"WARN: codegraph is stale; refreshing scoped index for {path}", file=sys.stderr)
+        elif probe.status == "locked":
+            reason = probe.detail or "lock marker present"
+            print(f"WARN: codegraph is locked ({reason}); attempting scoped recovery for {path}", file=sys.stderr)
+        else:
+            reason = probe.detail or "no additional detail"
+            print(
+                f"ERROR: codegraph preflight failed: status is {probe.status} ({reason}). "
+                f"Remediation: {safe_index} {path}",
+                file=sys.stderr,
+            )
+            if probe.recovery_command:
+                print(f"ERROR: doctor suggested: {probe.recovery_command}", file=sys.stderr)
+            return False
+
+        proc = subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()
+            if stderr:
+                print(f"ERROR: codegraph refresh failed: {stderr.splitlines()[-1]}", file=sys.stderr)
+            else:
+                print(f"ERROR: codegraph refresh failed with exit code {proc.returncode}", file=sys.stderr)
+            print(f"ERROR: remediation: {safe_index} {path}", file=sys.stderr)
+            return False
+
+        probe = codegraph_health_probe(REPO_ROOT)
+        if probe.status == "healthy":
+            return True
+        if probe.status == "locked" and attempt < max_attempts:
+            time.sleep(max(CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS, 0.0))
+            continue
+        break
+
+    final_reason = probe.detail or "no additional detail"
+    print(
+        f"ERROR: codegraph preflight failed after refresh: status is {probe.status} ({final_reason}). "
+        f"Remediation: {safe_index} {path}",
+        file=sys.stderr,
+    )
+    if probe.recovery_command:
+        print(f"ERROR: doctor suggested: {probe.recovery_command}", file=sys.stderr)
+    return False
+
+
+def vector_index_status(project_root: Path | None = None) -> str:
+    """Return vector index freshness state: healthy, stale, missing, unavailable, or probe-failed."""
+    root = project_root or REPO_ROOT
+    if not _command_exists("uv"):
+        _set_vector_runtime_note("uv is not available")
+        return "unavailable"
+
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(root),
+        "status",
+    ]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"index status probe failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"index status probe failed with exit code {proc.returncode}")
+        return "probe-failed"
+
+    payload = (proc.stdout or "").strip()
+    if payload in {"", "null"}:
+        return "missing"
+
+    try:
+        status_payload = json.loads(payload)
+    except json.JSONDecodeError:
+        _set_vector_runtime_note("index status probe returned non-JSON output")
+        return "probe-failed"
+    if not isinstance(status_payload, dict):
+        _set_vector_runtime_note("index status probe returned unexpected payload shape")
+        return "probe-failed"
+    if bool(status_payload.get("is_stale", False)):
+        return "stale"
+    return "healthy"
+
+
+def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
+    """Require a healthy vector index and refresh stale snapshots in-place."""
+    path = scope_path or REPO_ROOT
+    status = vector_index_status(REPO_ROOT)
+    if status == "healthy":
+        return True
+    if status in {"missing", "unavailable", "probe-failed"}:
+        if status == "missing":
+            _set_vector_runtime_note(
+                f"index snapshot missing at {VECTOR_DB_DIR}; run `{VECTOR_BOOTSTRAP_COMMAND}`"
+            )
+        print(f"ERROR: vector preflight failed: status is {status}", file=sys.stderr)
+        return False
+    if not _command_exists("uv"):
+        _set_vector_runtime_note("uv is not available")
+        print("ERROR: vector preflight failed: uv is not available", file=sys.stderr)
+        return False
+
+    print(f"WARN: vector index is stale; refreshing targeted index for {path}", file=sys.stderr)
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(REPO_ROOT),
+        "refresh",
+        str(path),
+    ]
+    env = os.environ.copy()
+    env.setdefault("HF_HUB_OFFLINE", "1")
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"index refresh failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
+        print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
+        return False
+
+    refreshed_status = vector_index_status(REPO_ROOT)
+    if refreshed_status != "healthy":
+        _set_vector_runtime_note(f"index status after refresh is {refreshed_status}")
+        print(f"ERROR: vector preflight failed after refresh: status is {refreshed_status}", file=sys.stderr)
+        return False
+    return True
+
+
+def _refresh_indexes_for_read(file_path: Path) -> bool:
+    """Run read preflight checks and require both codegraph/vector indexes to be healthy."""
+    if not _is_repo_local_path(file_path):
+        return True
+    if codegraph_supports_file(file_path) and not codegraph_refresh_if_needed(file_path.parent):
+        return False
+    if not vector_refresh_if_needed(file_path):
+        runtime_note = _consume_vector_runtime_note()
+        if runtime_note:
+            print(f"ERROR: {runtime_note}", file=sys.stderr)
+        print(
+            "ERROR: read-code preflight requires a healthy vector index; run "
+            f"`{VECTOR_BOOTSTRAP_COMMAND}`",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def codegraph_supports_file(file_path: Path) -> bool:
@@ -240,7 +573,12 @@ def _tail_lines(text: str, count: int = 20) -> list[str]:
     return lines[-count:]
 
 
-def codegraph_discover_or_fail(pattern: str, scope_path: Path | None = None) -> bool:
+def codegraph_discover_or_fail(
+    pattern: str,
+    scope_path: Path | None = None,
+    *,
+    skip_preflight_refresh: bool = False,
+) -> bool:
     """Run bounded codegraph discovery and self-heal index fragility once."""
     if not pattern:
         print("ERROR: codegraph discovery requires a non-empty symbol_or_pattern", file=sys.stderr)
@@ -252,7 +590,8 @@ def codegraph_discover_or_fail(pattern: str, scope_path: Path | None = None) -> 
 
     path = scope_path or REPO_ROOT
     init_codegraph_env()
-    codegraph_refresh_if_needed(path)
+    if not skip_preflight_refresh and not codegraph_refresh_if_needed(path):
+        return False
 
     cmd = ["uv", "run", "--no-sync", "cgc", "find", "pattern", "--", pattern]
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -487,7 +826,10 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
 
 
 def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
-    if not query or not scope or not _command_exists("uv"):
+    if not query or not scope:
+        return None
+    if not _command_exists("uv"):
+        _set_vector_runtime_note("uv is not available")
         return None
 
     cmd = [
@@ -508,13 +850,20 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
     ]
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
     if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"indexer query failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"indexer query failed with exit code {proc.returncode}")
         return None
 
     try:
         payload = json.loads(proc.stdout or "[]")
     except json.JSONDecodeError:
+        _set_vector_runtime_note("indexer query returned invalid JSON")
         return None
     if not isinstance(payload, list):
+        _set_vector_runtime_note("indexer query returned unexpected payload shape")
         return None
 
     target = file_path.resolve()
@@ -552,6 +901,7 @@ def _vector_find_line_num(
     normalized_pattern: str,
     scope: str,
 ) -> _VectorMatch | None:
+    _clear_vector_runtime_note()
     match = None
     if raw_pattern:
         match = _vector_query_line_num(file_path, raw_pattern, normalized_pattern, scope)
@@ -562,6 +912,49 @@ def _vector_find_line_num(
     ):
         match = _vector_query_line_num(file_path, normalized_pattern, normalized_pattern, scope)
     return match
+
+
+def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
+    """Return deterministic code symbols for a file from the active vector snapshot."""
+    if not _command_exists("uv"):
+        _set_vector_runtime_note("uv is not available")
+        return []
+
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(REPO_ROOT),
+        "list-file-symbols",
+        str(file_path),
+    ]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"list-file-symbols failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"list-file-symbols failed with exit code {proc.returncode}")
+        return []
+
+    try:
+        payload = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        _set_vector_runtime_note("list-file-symbols returned invalid JSON")
+        return []
+    if not isinstance(payload, list):
+        _set_vector_runtime_note("list-file-symbols returned unexpected payload shape")
+        return []
+
+    symbols: list[dict[str, object]] = []
+    for item in payload:
+        if isinstance(item, dict):
+            symbols.append(item)
+    return symbols
 
 
 def _find_first_literal_line(file_path: Path, literal: str) -> int | None:
@@ -651,6 +1044,65 @@ def _render_numbered_window(file_path: Path, start: int, end: int) -> None:
             print(f"{idx:6}\t{line.rstrip()}")
 
 
+def _render_symbol_listing(symbols: list[dict[str, object]]) -> None:
+    """Render a deterministic symbol list for agent anchor selection."""
+    for symbol in symbols:
+        symbol_name = str(symbol.get("symbol_name", "") or "")
+        if not symbol_name:
+            continue
+        symbol_type = str(symbol.get("symbol_type", "") or "symbol")
+        line_start = _coerce_line(symbol.get("line_start")) or 0
+        line_end = _coerce_line(symbol.get("line_end")) or line_start
+        signature = str(symbol.get("signature", "") or "")
+        qualified_name = str(symbol.get("qualified_name", "") or "")
+        has_body = bool(str(symbol.get("body", "") or ""))
+        print(
+            "\t".join(
+                [
+                    f"{line_start:6}",
+                    f"{line_end:6}",
+                    symbol_type,
+                    symbol_name,
+                    signature,
+                    qualified_name,
+                    f"has_body={'yes' if has_body else 'no'}",
+                ]
+            )
+        )
+
+
+def read_code_symbols(argv: list[str]) -> int:
+    """List deterministic file symbols before choosing an anchor for context/window reads."""
+    if len(argv) < 1:
+        print("ERROR: read_code_symbols requires: <file_path>", file=sys.stderr)
+        return 1
+    if len(argv) > 1:
+        print(f"ERROR: Unexpected argument(s) for symbols mode: {' '.join(argv[1:])}", file=sys.stderr)
+        return 1
+
+    file_path = Path(argv[0])
+    if not file_path.is_file():
+        print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    if not _refresh_indexes_for_read(file_path):
+        return 1
+
+    symbols = _vector_list_code_symbols(file_path)
+    runtime_note = _consume_vector_runtime_note()
+    if not symbols:
+        if runtime_note:
+            print(f"ERROR: Could not list file symbols: {runtime_note}", file=sys.stderr)
+        else:
+            print(f"ERROR: No code symbols found for {file_path}", file=sys.stderr)
+        return 1
+
+    print(
+        "# line_start\tline_end\tsymbol_type\tsymbol_name\tsignature\tqualified_name\thas_body"
+    )
+    _render_symbol_listing(symbols)
+    return 0
+
+
 def read_code_context(argv: list[str]) -> int:
     """Resolve an anchor from symbol/pattern and print bounded numbered context."""
     if len(argv) < 2:
@@ -692,6 +1144,8 @@ def read_code_context(argv: list[str]) -> int:
         print(f"ERROR: context_lines exceeds max ({READ_CODE_MAX_LINES}): {context}", file=sys.stderr)
         return 1
 
+    if not _refresh_indexes_for_read(file_path):
+        return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
     vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
@@ -711,7 +1165,11 @@ def read_code_context(argv: list[str]) -> int:
                 if normalized_pattern and normalized_pattern != pattern
                 else pattern
             )
-            if not codegraph_discover_or_fail(discover_pattern, file_path.parent):
+            if not codegraph_discover_or_fail(
+                discover_pattern,
+                file_path.parent,
+                skip_preflight_refresh=True,
+            ):
                 return 1
             vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
             if vector_match is not None:
@@ -725,6 +1183,13 @@ def read_code_context(argv: list[str]) -> int:
             line_num = strict_line_num
         elif line_num is None and allow_fallback:
             line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+    _emit_vector_fallback_notice(
+        file_path=file_path,
+        pattern=pattern,
+        vector_match=vector_match,
+        resolved_line=line_num,
+    )
 
     if line_num is None:
         if strict_status == 2:
@@ -799,10 +1264,12 @@ def read_code_window(argv: list[str]) -> int:
         print(f"ERROR: line_count exceeds max ({READ_CODE_MAX_LINES}): {line_count}", file=sys.stderr)
         return 1
 
-    use_hud_fast_path = hud_flag or os.environ.get("SPECKIT_HUD_DIRECT_READ", "0") == "1"
+    use_hud_fast_path = hud_flag
     vector_match = None
 
     if pattern:
+        if not _refresh_indexes_for_read(file_path):
+            return 1
         normalized_pattern = normalize_symbol_pattern(pattern)
         vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
 
@@ -822,7 +1289,11 @@ def read_code_window(argv: list[str]) -> int:
                     if normalized_pattern and normalized_pattern != pattern
                     else pattern
                 )
-                if not codegraph_discover_or_fail(discover_pattern, file_path.parent):
+                if not codegraph_discover_or_fail(
+                    discover_pattern,
+                    file_path.parent,
+                    skip_preflight_refresh=True,
+                ):
                     return 1
             vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
             if vector_match is not None:
@@ -831,6 +1302,13 @@ def read_code_window(argv: list[str]) -> int:
                 line_num = int(strict_line_num or 0)
             elif allow_fallback:
                 line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+        _emit_vector_fallback_notice(
+            file_path=file_path,
+            pattern=pattern,
+            vector_match=vector_match,
+            resolved_line=line_num,
+        )
 
         if line_num is None:
             if strict_status == 2:
@@ -870,6 +1348,7 @@ def _print_usage() -> None:
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
+    print("  read_code_symbols <file_path>")
     print(
         "                   (for large files, HUD current-line fast-path may omit symbol when --hud-symbol is set)"
     )
@@ -877,7 +1356,7 @@ def _print_usage() -> None:
 
 def main(argv: list[str]) -> int:
     """CLI entrypoint compatible with read-code.sh mode routing."""
-    if len(argv) < 3:
+    if len(argv) < 2:
         _print_usage()
         return 1
 
@@ -887,8 +1366,10 @@ def main(argv: list[str]) -> int:
         return read_code_context(args)
     if mode == "window":
         return read_code_window(args)
+    if mode == "symbols":
+        return read_code_symbols(args)
 
-    print(f"ERROR: Unknown mode '{mode}'. Use: context | window", file=sys.stderr)
+    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | symbols", file=sys.stderr)
     return 1
 
 

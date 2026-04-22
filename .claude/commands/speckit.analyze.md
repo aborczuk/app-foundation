@@ -25,7 +25,7 @@ Identify inconsistencies, duplications, ambiguities, and underspecified items ac
 
 ## Operating Constraints
 
-**STRICTLY READ-ONLY**: Do **not** modify any files. Output a structured analysis report. Offer an optional remediation plan (user must explicitly approve before any follow-up editing commands would be invoked manually).
+**STRICTLY READ-ONLY** for source artifacts: do **not** modify spec.md, plan.md, tasks.md, or code. Write the analysis report artifact to `FEATURE_DIR/analysis.md`. Offer an optional remediation plan (user must explicitly approve before any follow-up editing commands would be invoked manually).
 
 **Constitution Authority**: The project constitution (`constitution.md`) is **non-negotiable** within this analysis scope. Constitution conflicts are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit constitution update outside `/speckit.analyze`.
 
@@ -41,6 +41,14 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --inclu
 
 Abort with an error message if any required file is missing (instruct the user to run missing prerequisite command).
 Use shell quoting per CLAUDE.md "Shell Script Compatibility".
+
+Immediately scaffold the traceable analysis artifact:
+
+```bash
+UV_CACHE_DIR="${TMPDIR:-/tmp}/app-foundation-uv-cache" uv run python .specify/scripts/pipeline-scaffold.py speckit.analyze --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"
+```
+
+This creates `FEATURE_DIR/analysis.md` from `.specify/templates/analysis-template.md` before the report is filled in.
 
 ### 1a. Checklist Readiness Gate (MANDATORY — hard block)
 
@@ -189,7 +197,7 @@ Use this heuristic to prioritize findings:
 
 ### 6. Produce Compact Analysis Report
 
-Output a Markdown report (no file writes) with the following structure:
+Write a Markdown report to `FEATURE_DIR/analysis.md` with the following structure:
 
 ## Specification Analysis Report
 

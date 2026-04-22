@@ -7,6 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from src.mcp_codebase import health as health_module
 from src.mcp_codebase.health import (
     GraphAccessMode,
     GraphHealthStatus,
@@ -132,7 +133,7 @@ def test_classify_graph_health_returns_memory_pressure_hint(tmp_path: Path) -> N
     assert "memory pressure" in result.detail.lower()
 
 
-def test_classify_graph_health_returns_stale_for_edit_drift(tmp_path: Path) -> None:
+def test_classify_graph_health_ignores_git_edit_drift_for_fresh_snapshot(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
     source = tmp_path / "src" / "module.py"
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -149,10 +150,40 @@ def test_classify_graph_health_returns_stale_for_edit_drift(tmp_path: Path) -> N
 
     result = classify_graph_health(tmp_path)
 
-    assert result.status is GraphHealthStatus.STALE
+    assert result.status is GraphHealthStatus.HEALTHY
     assert result.access_mode is GraphAccessMode.READ_ONLY
-    assert result.recovery_hint.id == "refresh-scoped-index"
-    assert "working tree edits changed" in result.detail
+    assert result.recovery_hint.id == "continue"
+    assert "current with tracked source files" in result.detail
+
+
+def test_current_edit_signature_ignores_codegraphcontext_on_leading_space_status(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        health_module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=" M .codegraphcontext/last-edit-signature.txt\n",
+            stderr="",
+        ),
+    )
+
+    signature = health_module._current_edit_signature(tmp_path)
+
+    assert signature == ""
+
+
+def test_read_cached_edit_signature_strips_trailing_newline(tmp_path: Path) -> None:
+    marker = tmp_path / ".codegraphcontext" / "last-edit-signature.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(" M src/module.py\n", encoding="utf-8")
+
+    cached = health_module._read_cached_edit_signature(tmp_path)
+
+    assert cached == " M src/module.py"
 
 
 def test_classify_graph_health_stays_read_only_while_owner_marker_exists(tmp_path: Path) -> None:

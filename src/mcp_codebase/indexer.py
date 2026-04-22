@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Sequence
 
 from src.mcp_codebase.index import IndexConfig, IndexScope, build_vector_index_service
-from src.mcp_codebase.index.config import load_exclude_patterns
+from src.mcp_codebase.index.config import DEFAULT_VECTOR_DB_PATH, load_exclude_patterns
 from src.mcp_codebase.index.extractors.python import should_skip_path
 
 try:  # pragma: no cover - exercised in runtime verification
@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for vector-index operations."""
     parser = argparse.ArgumentParser(prog="mcp-codebase-indexer")
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    parser.add_argument("--db-path", type=Path, default=Path(".codegraphcontext/db/vector-index"))
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_VECTOR_DB_PATH)
     parser.add_argument("--embedding-model", type=str, default="local-default")
     parser.add_argument(
         "--exclude-pattern",
@@ -51,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--top-k", type=int, default=10)
     query.add_argument("--scope", choices=[scope.value for scope in IndexScope], default=None)
 
+    symbols = subparsers.add_parser(
+        "list-file-symbols",
+        help="List deterministic code symbols for a single file from the active snapshot",
+    )
+    symbols.add_argument("file_path")
+
     refresh = subparsers.add_parser("refresh", help="Refresh specific paths")
     refresh.add_argument("changed_paths", nargs="+")
     refresh.add_argument("--revision", default="local")
@@ -65,6 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.5,
         help="Wait this long after the most recent change before refreshing.",
+    )
+
+    bootstrap = subparsers.add_parser(
+        "bootstrap",
+        help="Ensure the embedding model is cached locally and optionally build a full snapshot",
+    )
+    bootstrap.add_argument("--revision", default="local")
+    bootstrap.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Only prime/check the embedding model cache without building embeddings.",
     )
 
     return parser
@@ -189,6 +206,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "list-file-symbols":
+        symbols = service.list_file_code_symbols(args.file_path)
+        print(
+            json.dumps(
+                [symbol.model_dump(mode="json") for symbol in symbols],
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
     if args.command == "refresh":
         metadata = service.refresh_changed_files(args.changed_paths, revision=args.revision)
         print(json.dumps(metadata.model_dump(mode="json"), indent=2, sort_keys=True))
@@ -212,6 +240,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             revision=args.revision,
             debounce_seconds=args.debounce_seconds,
         )
+
+    if args.command == "bootstrap":
+        bootstrap_payload = service.ensure_embedding_model_local()
+        if args.skip_build:
+            print(json.dumps(bootstrap_payload, indent=2, sort_keys=True))
+            return 0
+        metadata = service.build_full_index(revision=args.revision)
+        print(
+            json.dumps(
+                {
+                    **bootstrap_payload,
+                    "index_metadata": metadata.model_dump(mode="json"),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
 
     raise ValueError(f"Unknown command: {args.command}")
 

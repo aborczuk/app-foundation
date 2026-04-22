@@ -13,7 +13,7 @@ Build a repo-local semantic vector index for Python symbols and markdown section
 
 ### Current → Target Transition
 
-Today `src/mcp_codebase` only exposes pyright-backed type and diagnostics tools plus doctor/health helpers. The target state adds a local semantic index inside the same package, backed by `.codegraphcontext/db/vector-index/`, with query, refresh, and staleness operations that preserve line-level provenance and update as files change.
+Today `src/mcp_codebase` only exposes pyright-backed type and diagnostics tools plus doctor/health helpers. The target state adds a local semantic index inside the same package, backed by `.codegraphcontext/global/db/vector-index/`, with query, refresh, and staleness operations that preserve line-level provenance and update as files change.
 
 ### Dominant Execution Model
 
@@ -98,7 +98,7 @@ The feature extends the existing `src/mcp_codebase` package with a dedicated vec
 |------|---------------------------------|---------------|----------------|--------|----------------------|--------|----------------|----------------|
 | `src/mcp_codebase` MCP server | `src/mcp_codebase/server.py` | Agent query surface | Hybrid | tool args, project root | query/status results | none | tool registration | Modify |
 | Vector-index CLI | `src/mcp_codebase/indexer.py` | Local build/watch/query operator surface | Deterministic | subcommand, scope, query, top_k | index build/refesh status, query results | none | thin adapter to service | New |
-| Repo-local index storage | `.codegraphcontext/db/vector-index/` | Derived state persistence | Deterministic | extracted units, metadata, embeddings | active collection + metadata sidecar | none | storage backend | New |
+| Repo-local index storage | `.codegraphcontext/global/db/vector-index/` | Derived state persistence | Deterministic | extracted units, metadata, embeddings | active collection + metadata sidecar | none | storage backend | New |
 | Markdown read fallback | `scripts/read-markdown.sh` | Consumer fallback | Deterministic | file path, heading | section excerpt | none | read-after-query path | Reuse |
 | Safe scoped indexing pattern | `scripts/cgc_safe_index.sh` | Operational fallback | Deterministic | scoped path | refreshed codegraph state | none | fallback pattern only | Reuse |
 
@@ -144,7 +144,7 @@ The feature extends the existing `src/mcp_codebase` package with a dedicated vec
 ### Missing Seams or Contradictions
 
 - There is no current vector-index service or storage seam in `src/mcp_codebase`; the new package must be introduced.
-- The plan/data-model/quickstart now agree on `.codegraphcontext/db/vector-index/`; the old `.codegraphcontext/db/chroma/` path was a contradiction and is now resolved.
+- The plan/data-model/quickstart now agree on `.codegraphcontext/global/db/vector-index/`; the old `.codegraphcontext/db/chroma/` path was a contradiction and is now resolved.
 
 ---
 
@@ -432,7 +432,7 @@ The plan-level Architecture Flow remains correct. The sketch only refines the in
 
 | Subject | Status | Rationale | Downstream Implication | May Tasking Proceed? |
 |---------|--------|-----------|------------------------|----------------------|
-| Local persistence path | Decided | `.codegraphcontext/db/vector-index/` is the stable repo-local home for the active collection | Tasking can target a fixed storage path and metadata sidecar | Yes |
+| Local persistence path | Decided | `.codegraphcontext/global/db/vector-index/` is the stable repo-local home for the active collection | Tasking can target a fixed storage path and metadata sidecar | Yes |
 | Parser family | Decided | Tree-sitter for Python, markdown-it-py for markdown | Extractor tasks can be concrete and repo-grounded | Yes |
 | Embedding runtime | Decided | fastembed stays local and satisfies the phase-1 requirement | No external API dependency is introduced | Yes |
 | Refresh trigger | Decided | watchdog is primary, post-commit is fallback | Tasking must include watcher and fallback refresh coverage | Yes |
@@ -455,7 +455,7 @@ The plan-level Architecture Flow remains correct. The sketch only refines the in
 
 ### Plan vs Repo Contradictions
 
-- The feature docs now consistently say `.codegraphcontext/db/vector-index/`; the earlier `.codegraphcontext/db/chroma/` wording was a contradiction and has been corrected.
+- The feature docs now consistently say `.codegraphcontext/global/db/vector-index/`; the earlier `.codegraphcontext/db/chroma/` wording was a contradiction and has been corrected.
 - The current `src/mcp_codebase` package only exposes pyright tools; the vector index will add new tools rather than modifying type/diagnostic semantics.
 
 ### Blocking Design Issues
@@ -603,7 +603,7 @@ Atomic persistence and lifecycle orchestration.
 
 **Blast-Radius Neighbors**  
 - `src/mcp_codebase/server.py`
-- `.codegraphcontext/db/vector-index/`
+- `.codegraphcontext/global/db/vector-index/`
 - `tests/integration/`
 
 **Reuse / Modify / Create Classification**  

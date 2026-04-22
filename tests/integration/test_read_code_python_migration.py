@@ -76,6 +76,7 @@ def test_read_code_cli_usage_requires_mode_and_arguments(tmp_path: Path) -> None
     assert "Usage:" in result.stdout
     assert "read_code_context" in result.stdout
     assert "read_code_window" in result.stdout
+    assert "read_code_symbols" in result.stdout
 
 
 def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> None:
@@ -135,6 +136,8 @@ def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) ->
 
     assert result.returncode == 0, result.stderr
     assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    assert "WARN: Vector semantic anchor unavailable (uv is not available)" in result.stderr
+    assert "using strict/local anchor" in result.stderr
 
 
 def test_read_code_context_requires_uv_only_when_no_local_anchor_exists(tmp_path: Path) -> None:
@@ -186,6 +189,8 @@ def test_read_code_context_uses_uv_branch_without_hud_fast_path(tmp_path: Path) 
 
     assert result.returncode == 0, result.stderr
     assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    assert "WARN: Vector semantic anchor not found" in result.stderr
+    assert "using strict/local anchor" in result.stderr
 
 
 def test_read_code_context_prefers_exact_symbol_vector_hit_over_header_block(tmp_path: Path) -> None:
@@ -325,3 +330,60 @@ def test_read_code_source_wrapper_exposes_functions(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert any(line.endswith("\tdef target():") for line in result.stdout.splitlines())
+
+
+def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> None:
+    code_file = tmp_path / "source_sample.py"
+    code_file.write_text(
+        "def target():\n"
+        "    return 1\n"
+        "def other():\n"
+        "    return 2\n",
+        encoding="utf-8",
+    )
+
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(code_file),
+                "line_start": 1,
+                "line_end": 2,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "target",
+                "qualified_name": "source_sample.target",
+                "signature": "def target():",
+                "docstring": "",
+                "body": "def target():\n    return 1\n",
+                "preview": "def target():",
+                "symbol_type": "function",
+            },
+            {
+                "file_path": str(code_file),
+                "line_start": 3,
+                "line_end": 4,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "other",
+                "qualified_name": "source_sample.other",
+                "signature": "def other():",
+                "docstring": "",
+                "body": "def other():\n    return 2\n",
+                "preview": "def other():",
+                "symbol_type": "function",
+            },
+        ]
+    )
+
+    result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        env=_env_with_fake_uv(tmp_path, payload),
+    )
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith("# line_start")
+    assert any("\ttarget\tdef target():" in line for line in lines[1:])
+    assert any("\tother\tdef other():" in line for line in lines[1:])

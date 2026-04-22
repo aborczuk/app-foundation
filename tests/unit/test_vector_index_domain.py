@@ -22,7 +22,7 @@ def test_code_symbol_preserves_typed_fields() -> None:
     symbol = CodeSymbol(
         symbol_name="build_index",
         qualified_name="mcp_codebase.index.service.build_index",
-        file_path="src/mcp_codebase/index/service.py",
+        file_path=Path("src/mcp_codebase/index/service.py"),
         line_start=12,
         line_end=21,
         signature="def build_index(...):",
@@ -41,8 +41,8 @@ def test_code_symbol_preserves_typed_fields() -> None:
 def test_markdown_section_preserves_breadcrumb_and_scope() -> None:
     section = MarkdownSection(
         heading="Quickstart",
-        breadcrumb=["Codebase Vector Index", "Quickstart"],
-        file_path="specs/020-codebase-vector-index/quickstart.md",
+        breadcrumb=("Codebase Vector Index", "Quickstart"),
+        file_path=Path("specs/020-codebase-vector-index/quickstart.md"),
         line_start=1,
         line_end=8,
         depth=2,
@@ -61,7 +61,7 @@ def test_query_result_preserves_typed_content() -> None:
     symbol = CodeSymbol(
         symbol_name="query",
         qualified_name="mcp_codebase.index.service.VectorIndexService.query",
-        file_path="src/mcp_codebase/index/service.py",
+        file_path=Path("src/mcp_codebase/index/service.py"),
         line_start=44,
         line_end=81,
         signature="def query(...):",
@@ -79,21 +79,44 @@ def test_query_result_preserves_typed_content() -> None:
 
 
 def test_index_metadata_rejects_malformed_freshness_metadata() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="stale metadata must include a stale_reason"):
         IndexMetadata(
-            source_root=".",
+            source_root=Path("."),
+            indexed_commit="abc123",
+            current_commit="def456",
+            indexed_at=datetime.now(UTC),
+            entry_count=12,
+            is_stale=True,
+            stale_reason="",
+        )
+
+    with pytest.raises(ValidationError, match="fresh metadata must not include a stale_reason"):
+        IndexMetadata(
+            source_root=Path("."),
             indexed_commit="abc123",
             current_commit="def456",
             indexed_at=datetime.now(UTC),
             entry_count=12,
             is_stale=False,
+            stale_reason="stale despite fresh flag",
         )
+
+    metadata = IndexMetadata(
+        source_root=Path("."),
+        indexed_commit="abc123",
+        current_commit="def456",
+        indexed_at=datetime.now(UTC),
+        entry_count=12,
+        is_stale=False,
+        stale_reason="",
+    )
+    assert metadata.current_commit == "def456"
 
 
 def test_index_config_normalizes_repo_relative_db_path() -> None:
     config = IndexConfig(
-        repo_root=".",
-        db_path=".codegraphcontext/db/vector-index",
+        repo_root=Path("."),
+        db_path=Path(".codegraphcontext/global/db/vector-index"),
         embedding_model="local-default",
         exclude_patterns=("generated/", "  docs/build  "),
     )

@@ -2,7 +2,7 @@
 """Python entrypoint for markdown discovery and bounded section reads with vector-first anchoring.
 
 Markdown file read-efficiency contract:
-- Use this helper for markdown files over 100 lines.
+- Use this helper for markdown files.
 - Prefer the helper over raw file reads so the read stays bounded.
 - List markdown headings first when you need discovery, then resolve the target
   section semantically before falling back to exact heading matching.
@@ -20,30 +20,126 @@ How to use:
 Validation:
 - If the section does not resolve, the helper prints a clear not-found error
   and shows nearby headings.
-- If the file is large, the helper keeps the read window bounded.
+- The helper keeps the read window bounded.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+SOURCE_PATH = Path(__file__).resolve()
+SCRIPT_DIR = SOURCE_PATH.parent
+REPO_ROOT = SCRIPT_DIR.parent
 
-def _repo_root_from_cwd() -> Path:
-    """Resolve the repository root from the current working directory."""
+
+VECTOR_BOOTSTRAP_COMMAND = "uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap"
+
+
+def _command_exists(name: str) -> bool:
+    """Return whether a shell command is available on PATH."""
+    return shutil.which(name) is not None
+
+
+def _is_repo_local_path(file_path: Path) -> bool:
+    """Return whether a target file resides under the repository root."""
     try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            check=True,
-            text=True,
-        )
-        return Path(proc.stdout.strip() or ".").resolve()
-    except Exception:
-        return Path.cwd().resolve()
+        file_path.resolve().relative_to(REPO_ROOT)
+        return True
+    except ValueError:
+        return False
+
+
+def _vector_index_status(project_root: Path | None = None) -> str:
+    """Return vector index freshness state: healthy, stale, missing, unavailable, or probe-failed."""
+    root = project_root or REPO_ROOT
+    if not _command_exists("uv"):
+        return "unavailable"
+
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(root),
+        "status",
+    ]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return "probe-failed"
+
+    payload = (proc.stdout or "").strip()
+    if payload in {"", "null"}:
+        return "missing"
+
+    try:
+        status_payload = json.loads(payload)
+    except json.JSONDecodeError:
+        return "probe-failed"
+    if not isinstance(status_payload, dict):
+        return "probe-failed"
+    if bool(status_payload.get("is_stale", False)):
+        return "stale"
+    return "healthy"
+
+
+def _vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
+    """Require a healthy vector index and refresh stale snapshots in-place."""
+    path = scope_path or REPO_ROOT
+    status = _vector_index_status(REPO_ROOT)
+    if status == "healthy":
+        return True
+    if status in {"missing", "unavailable", "probe-failed"}:
+        print(f"ERROR: vector preflight failed: status is {status}", file=sys.stderr)
+        return False
+    if not _command_exists("uv"):
+        print("ERROR: vector preflight failed: uv is not available", file=sys.stderr)
+        return False
+
+    print(f"WARN: vector index is stale; refreshing targeted index for {path}", file=sys.stderr)
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(REPO_ROOT),
+        "refresh",
+        str(path),
+    ]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
+        return False
+
+    refreshed_status = _vector_index_status(REPO_ROOT)
+    if refreshed_status != "healthy":
+        print(f"ERROR: vector preflight failed after refresh: status is {refreshed_status}", file=sys.stderr)
+        return False
+    return True
+
+
+def _refresh_indexes_for_read(file_path: Path) -> bool:
+    """Run strict preflight checks for repo-local markdown reads."""
+    if not _is_repo_local_path(file_path):
+        return True
+    if _vector_refresh_if_needed(file_path):
+        return True
+    print(
+        "ERROR: read-markdown preflight requires a healthy vector index; run "
+        f"`{VECTOR_BOOTSTRAP_COMMAND}`",
+        file=sys.stderr,
+    )
+    return False
 
 
 def _resolve_file(item: dict[str, object]) -> str | None:
@@ -220,7 +316,6 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
     except Exception:
         return None
 
-    repo_root = _repo_root_from_cwd()
     cmd = [
         "uv",
         "run",
@@ -229,7 +324,7 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
         "-m",
         "src.mcp_codebase.indexer",
         "--repo-root",
-        str(repo_root),
+        str(REPO_ROOT),
         "query",
         section,
         "--scope",
@@ -312,6 +407,8 @@ def read_markdown_section(file_path: str, section: str) -> int:
         return 1
 
     resolved_file = target_file.resolve()
+    if not _refresh_indexes_for_read(resolved_file):
+        return 1
     line_num = _vector_markdown_line_num(resolved_file, section)
     if line_num is None:
         line_num = _fallback_heading_line_num(resolved_file, section)
@@ -349,6 +446,8 @@ def read_markdown_headings(file_path: str) -> int:
         return 1
 
     resolved_file = target_file.resolve()
+    if not _refresh_indexes_for_read(resolved_file):
+        return 1
     for line_num, heading in _markdown_heading_lines(resolved_file):
         print(f"{line_num}\t{heading}")
     return 0

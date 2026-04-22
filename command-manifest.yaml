@@ -239,10 +239,11 @@ commands:
     mode: legacy
     scripts:
     - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
     - output_path: ${FEATURE_DIR}/analysis.md
-      template: ''
+      template: analysis-template.md
     emits:
     - event: analysis_completed
       required_fields:

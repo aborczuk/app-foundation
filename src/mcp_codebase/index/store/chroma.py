@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import gc
-import logging
 import json
+import logging
 import re
 import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
 from time import monotonic
+from typing import Any, Sequence
 
-from src.mcp_codebase.index.config import IndexConfig
+from src.mcp_codebase.index.config import (
+    DEFAULT_EMBEDDING_MODEL_NAME,
+    IndexConfig,
+    embedding_model_cache_path,
+)
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
 
 try:  # pragma: no cover - exercised in integration/runtime verification
@@ -28,8 +32,7 @@ try:  # pragma: no cover - exercised in integration/runtime verification
 except ImportError:  # pragma: no cover - handled with a clear runtime error
     TextEmbedding = None
 
-_DEFAULT_FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
-_EMBEDDING_MODEL_ALIASES = {"local-default": _DEFAULT_FASTEMBED_MODEL}
+_EMBEDDING_MODEL_ALIASES = {"local-default": DEFAULT_EMBEDDING_MODEL_NAME}
 _COSINE_COLLECTION_METADATA = {"hnsw:space": "cosine"}
 _NO_OP_TELEMETRY_IMPL = "src.mcp_codebase.index.telemetry.NoOpProductTelemetry"
 _MIN_QUERY_SCORE = 0.55
@@ -52,13 +55,14 @@ class _PreparedChunk:
 class _FastEmbedBackend:
     """Thin wrapper around fastembed so the store can own embedding lifecycle."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, *, cache_dir: Path) -> None:
         if TextEmbedding is None:
             raise RuntimeError(
                 "fastembed is required for the vector index; run `uv sync` after adding the dependency."
             )
         self._model_name = model_name
-        self._model = TextEmbedding(model_name=model_name)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self._model = TextEmbedding(model_name=model_name, cache_dir=str(cache_dir))
 
     @property
     def model_name(self) -> str:
@@ -92,6 +96,28 @@ class ChromaIndexStore:
     def embedding_model(self) -> str:
         """Return the resolved embedding model name."""
         return _resolve_embedding_model_name(self._config.embedding_model)
+
+    @property
+    def embedding_cache_dir(self) -> Path:
+        """Return the repo-local cache directory for embedding models."""
+        return self._config.embedding_cache_dir
+
+    def ensure_embedding_model_local(self) -> dict[str, object]:
+        """Prime the configured embedding model cache and return local cache details."""
+        backend = self._ensure_embedding_backend()
+        # Trigger a real embedding pass so missing model weights are downloaded eagerly.
+        backend.embed_texts(["vector-index-bootstrap"])
+        model_cache_path = embedding_model_cache_path(self.embedding_cache_dir, backend.model_name)
+        if not model_cache_path.exists():
+            fallback_candidates = sorted(self.embedding_cache_dir.glob("models--*"))
+            if fallback_candidates:
+                model_cache_path = fallback_candidates[0]
+        return {
+            "embedding_model": backend.model_name,
+            "embedding_cache_dir": str(self.embedding_cache_dir),
+            "embedding_model_cache_path": str(model_cache_path),
+            "embedding_model_cache_present": model_cache_path.exists(),
+        }
 
     def write_snapshot(
         self,
@@ -356,6 +382,50 @@ class ChromaIndexStore:
         ranked.sort(key=lambda item: (-item.score, item.file_path.as_posix(), item.line_start, item.line_end))
         return [item.model_copy(update={"rank": index}) for index, item in enumerate(ranked[:top_k], start=1)]
 
+    def list_file_code_symbols(self, file_path: str | Path) -> list[CodeSymbol]:
+        """Return deterministic code symbols for a single file from the active snapshot."""
+        snapshot = self.load_snapshot()
+        if snapshot is None:
+            return []
+
+        metadata, _ = snapshot
+        normalized_file = _normalize_index_path(file_path, self._config.repo_root)
+        collection = self._open_collection(
+            Path(metadata.snapshot_path),
+            metadata.collection_name,
+            create=False,
+        )
+        payload = collection.get(
+            where={
+                "$and": [
+                    {"scope": IndexScope.CODE.value},
+                    {"record_type": "code"},
+                    {"file_path": normalized_file},
+                ]
+            },
+            include=["metadatas"],
+        )
+        metadatas = _payload_sequence(payload, "metadatas")
+
+        symbols: list[CodeSymbol] = []
+        for metadata_payload in metadatas:
+            if not isinstance(metadata_payload, dict):
+                continue
+            content = self._decode_content_unit(metadata_payload)
+            if isinstance(content, CodeSymbol):
+                symbols.append(content)
+
+        symbols.sort(
+            key=lambda item: (
+                item.line_start,
+                item.line_end,
+                item.symbol_type,
+                item.symbol_name,
+                item.qualified_name,
+            )
+        )
+        return symbols
+
     def _prepare_chunks(self, content_units: Sequence[CodeSymbol | MarkdownSection]) -> list[_PreparedChunk]:
         embedding_inputs = [_embedding_text(unit) for unit in content_units]
         logger.info("vector-index: embedding %d texts", len(embedding_inputs))
@@ -385,7 +455,10 @@ class ChromaIndexStore:
 
     def _ensure_embedding_backend(self) -> _FastEmbedBackend:
         if self._embedding_backend is None:
-            self._embedding_backend = _FastEmbedBackend(self.embedding_model)
+            self._embedding_backend = _FastEmbedBackend(
+                self.embedding_model,
+                cache_dir=self.embedding_cache_dir,
+            )
         return self._embedding_backend
 
     def _open_collection(self, collection_dir: Path, collection_name: str, *, create: bool) -> Any:

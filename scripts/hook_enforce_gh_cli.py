@@ -107,14 +107,14 @@ def main() -> int:
     if primary == "pr" and secondary == "diff":
         _emit_deny(
             "Direct `gh pr diff` is blocked due to high token payload risk. "
-            "Use scripts/gh_safe_pr_files.sh plus targeted file patch retrieval."
+            "Use `scripts/gh_safe_pr_files.sh <repo> <pr_number>` plus targeted file patch retrieval."
         )
         return 0
 
     if primary == "search" and secondary == "code":
         _emit_deny(
             "Direct `gh search code` is blocked in this repo. "
-            "Use scoped wrappers or codegraph-first local discovery."
+            "Use codegraph-first local discovery for repo code reads, or approved scoped wrappers."
         )
         return 0
 
@@ -123,7 +123,7 @@ def main() -> int:
             return 0
         _emit_deny(
             "Direct read-style `gh api` calls are blocked to prevent oversized responses. "
-            "Use scripts/gh_safe_pr_info.sh or scripts/gh_safe_pr_files.sh."
+            "Use `scripts/gh_safe_pr_info.sh <repo> <pr_number>` or `scripts/gh_safe_pr_files.sh <repo> <pr_number>`."
         )
         return 0
 
@@ -132,14 +132,14 @@ def main() -> int:
         if not fields:
             _emit_deny(
                 "Direct `gh pr view` without an explicit --json field list is blocked. "
-                "Use scripts/gh_safe_pr_info.sh."
+                "Use `scripts/gh_safe_pr_info.sh <repo> <pr_number>`."
             )
             return 0
         if fields & HEAVY_PR_VIEW_FIELDS:
             _emit_deny(
                 "High-payload `gh pr view --json` fields requested "
                 f"({', '.join(sorted(fields & HEAVY_PR_VIEW_FIELDS))}). "
-                "Use scripts/gh_safe_pr_files.sh for file listings."
+                "Use `scripts/gh_safe_pr_files.sh <repo> <pr_number>` for file listings."
             )
             return 0
         return 0

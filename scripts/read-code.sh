@@ -36,6 +36,10 @@ read_code_window() {
     _run_read_code_entrypoint window "$@"
 }
 
+read_code_symbols() {
+    _run_read_code_entrypoint symbols "$@"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     _run_read_code_entrypoint "$@"
 fi

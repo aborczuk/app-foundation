@@ -13,7 +13,7 @@ Build a local, repo-scoped semantic index for Python symbols and markdown sectio
 
 ### Architecture Direction
 
-Add a local indexer/query subsystem inside the existing `src/mcp_codebase` package, backed by an on-disk Chroma collection in `.codegraphcontext/db/vector-index/`. Use Tree-sitter for Python symbol extraction, `markdown-it-py` for markdown section extraction, `fastembed` for local embeddings, and `watchdog` for incremental refresh.
+Add a local indexer/query subsystem inside the existing `src/mcp_codebase` package, backed by an on-disk Chroma collection in `.codegraphcontext/global/db/vector-index/`. Use Tree-sitter for Python symbol extraction, `markdown-it-py` for markdown section extraction, `fastembed` for local embeddings, and `watchdog` for incremental refresh.
 
 ### Why This Direction
 
@@ -28,7 +28,7 @@ This direction reuses the repo's existing MCP/package structure, aligns with the
 | Language / Runtime | Python 3.12 | Matches the repo baseline in `pyproject.toml` and existing MCP servers. |
 | Technology Direction | Local embedded index, no custom backend service | Keep indexing/querying repo-local and deterministic; no external network dependency. |
 | Technology Selection | `tree-sitter`, `markdown-it-py`, `fastembed`, `chromadb`, `watchdog`, existing `src/mcp_codebase` package | Reuse existing package boundaries and local indexing conventions. |
-| Storage | On-disk Chroma collection under `.codegraphcontext/db/vector-index/` | Persistent across restarts; derived state only. |
+| Storage | On-disk Chroma collection under `.codegraphcontext/global/db/vector-index/` | Persistent across restarts; derived state only. |
 | Testing | `pytest`, deterministic smoke tests, plan/research smoke gates | Verification-first governance applies to this feature. |
 | Target Platform | Local developer/agent machine against a checked-out repo | Designed for repo-scoped use, not a multi-tenant service. |
 | Project Type | Local library + MCP tool surface extension | Extend the existing codebase MCP tooling instead of introducing a separate service. |
@@ -211,7 +211,7 @@ The repository working tree is authoritative for content. The index is a derived
 
 ### Persistence Model
 
-Persist the active vector store on disk under `.codegraphcontext/db/vector-index/`, with a sidecar metadata record that stores build timestamp, HEAD commit hash, model ID, symbol count, and section count. Use versioned collection names or a staging path to support safe rebuilds.
+Persist the active vector store on disk under `.codegraphcontext/global/db/vector-index/`, with a sidecar metadata record that stores build timestamp, HEAD commit hash, model ID, symbol count, and section count. Use versioned collection names or a staging path to support safe rebuilds.
 
 ### Retry / Timeout / Failure Posture
 
@@ -269,7 +269,7 @@ No separate `contracts/` artifact is required at plan time. If the implementatio
 |------------------------------------|---------|---------------|-------|
 | `src/mcp_codebase/` runtime config | Yes | `src/mcp_codebase/config.py` or new index config module | Add index path, embedding model, watcher scope, and refresh settings. |
 | Query tool surface | Yes | `src/mcp_codebase/server.py` or index tool module | Expose search/staleness/update entry points. |
-| Repo-local storage path | Yes | `.codegraphcontext/db/vector-index/` | Document the on-disk collection and metadata sidecar path. |
+| Repo-local storage path | Yes | `.codegraphcontext/global/db/vector-index/` | Document the on-disk collection and metadata sidecar path. |
 | Environment defaults | Yes | `.env.example` or equivalent docs | Only if runtime config needs explicit overrides. |
 | `scripts/cgc_safe_index.sh` | No | N/A | Existing helper remains a pattern reference, not a required edit for this feature. |
 | `scripts/read-markdown.sh` | No | N/A | Existing fallback read helper stays as-is. |
@@ -291,7 +291,7 @@ No separate `contracts/` artifact is required at plan time. If the implementatio
 - [x] **FQ-003**: Is `.codegraphcontext/db/chroma/` the right stable default path, or should the index live in a sibling subdirectory for cleaner separation from graph-based codegraph state?  
   **Probe:** Compare path conventions against the existing `.codegraphcontext/` layout and keep the one that makes backup/rebuild semantics clearer.  
   **Blocking:** Storage path default and documentation.  
-  **Answer:** Use `.codegraphcontext/db/vector-index/` as the stable on-disk path. It keeps the semantic index isolated while still staying inside the repo-local codegraph home.
+  **Answer:** Use `.codegraphcontext/global/db/vector-index/` as the stable on-disk path. It keeps the semantic index isolated while still staying inside the repo-local codegraph home.
 
 ---
 
