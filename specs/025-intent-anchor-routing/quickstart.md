@@ -2,7 +2,7 @@
 
 ## What This Feature Is
 
-This feature makes `read-code` easier for agents to use by returning a bounded shortlist of anchor candidates with confidence metadata, preferring full indexed body text when it is highly confident, exposing a bounded follow-up path for non-top bodies, and documenting the read rules in `AGENTS.md`.
+This feature makes `read-code` easier for agents to use by defaulting to a resolved anchor + bounded window output, exposing bounded ranked candidates only when explicitly requested, exposing inline body output only when explicitly requested, and documenting the read rules in `AGENTS.md`.
 
 - Spec folder: [`specs/025-intent-anchor-routing/`](./)
 - Task breakdown: [`tasks.md`](./tasks.md)
@@ -16,7 +16,7 @@ Get the feature running locally in a few minutes.
 - `uv`: check with `uv --version`
 - Repository checkout: make sure you are at the repo root
 - Read helper shell script: `scripts/read-code.sh`
-- A populated codebase index: required for semantic retrieval and body-first output
+- A populated codebase index: required for semantic retrieval and optional inline body output
 
 ### Installation
 
@@ -36,20 +36,26 @@ uv sync
 sed -n '1,220p' AGENTS.md
 ```
 
-The documented read rules should make the 125-line cap, helper-first reads, top-5 shortlist, and one bounded expansion easy to find.
+The documented read rules should make the 125-line cap, helper-first reads, opt-in top-5 shortlist, fixed small-before/larger-after context split, and bounded candidate stepping easy to find.
 
 ### Run the Feature
 
 ```bash
 source scripts/read-code.sh
 read_code_context scripts/read_code.py "read_code_context" 125
+read_code_context scripts/read_code.py "read_code_context" 125 --show-shortlist
+read_code_context scripts/read_code.py "read_code_context" 125 --next-candidate
+read_code_context scripts/read_code.py "read_code_context" 125 --inline-body
 ```
 
 Expected behavior:
 
-- The helper returns a ranked shortlist instead of a single forced anchor.
-- Each candidate includes a confidence signal.
-- If the symbol body clears the `90/100` threshold and is present in the index, the body text is preferred inline.
+- The default helper output is the resolved anchor plus bounded window (no shortlist by default).
+- `--show-shortlist` returns the ranked top-5 candidate list with confidence signals.
+- `--next-candidate` (or `--candidate-index N`) selects another ranked candidate without forcing shortlist output.
+- `context_lines` is a total budget with a fixed small-before/larger-after split (no optional override).
+- Inline body output is opt-in via `--inline-body`.
+- If `--inline-body` is set and the symbol body clears the `90/100` threshold, the body text is returned inline.
 - If you need the body for a non-top candidate later, use the bounded follow-up helper path rather than inventing a wider command family.
 
 ### Smoke Test
@@ -63,9 +69,9 @@ read_code_context scripts/read_code.py "read_code_context" 80
 
 Expected:
 
-- The output shows the top candidates first.
-- The shortlist is bounded.
-- The agent can request one bounded "more candidates" expansion if needed.
+- The default output is bounded context around the resolved symbol.
+- Shortlist output appears only when requested.
+- Candidate stepping works through `--next-candidate` / `--candidate-index N`.
 
 For plan validation, run the Speckit plan gates:
 
@@ -81,8 +87,8 @@ uv run python scripts/speckit_plan_gate.py plan-sections --plan-file specs/025-i
 This feature narrowed the read-code contract to four practical changes:
 
 - document the read rules in `AGENTS.md`
-- return multiple anchor candidates with confidence metadata
-- prefer full indexed body text when it is highly confident
+- support explicit shortlist output and ranked candidate stepping
+- require explicit request (`--inline-body`) before returning indexed body text
 - allow a bounded follow-up helper path for non-top shortlist candidates
 - widen retrieval recall with a bounded `top_k = 20`
 
@@ -91,7 +97,7 @@ This feature narrowed the read-code contract to four practical changes:
 
 ### Decision Log
 
-- Updated the quickstart to describe the shortlist/body contract, the `90/100` inline-body threshold, and the bounded follow-up helper so the feature matches the implemented read-code behavior.
+- Updated the quickstart to describe the shortlist/body contract, the `--inline-body` opt-in with `90/100` threshold, and the bounded follow-up helper so the feature matches the implemented read-code behavior.
 
 ---
 
@@ -100,7 +106,7 @@ This feature narrowed the read-code contract to four practical changes:
 | Issue | Symptom | Fix |
 |-------|---------|-----|
 | Read helper still returns one anchor | Agent keeps retrying the same query | Confirm the shortlist/body-first behavior is implemented and documented. |
-| Body payload missing | The helper falls back to a numeric window | Check that the symbol exists in the indexed body field and that confidence is high enough to trigger body-first output. |
+| Body payload missing | The helper falls back to a numeric window | Check that `--inline-body` was requested and the confidence clears the `90/100` cutoff. |
 | Candidate list feels too small | The agent still needs repeated searches | Confirm retrieval is widened to `top_k = 20` and the visible shortlist is still capped at 5. |
 
 ---

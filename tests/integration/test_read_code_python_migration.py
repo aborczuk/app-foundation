@@ -105,7 +105,7 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
         "context",
         str(code_file),
         "run_pipeline",
-        "2",
+        "3",
         "--hud-symbol",
         env=_env_without_uv(),
     )
@@ -115,11 +115,15 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
     assert any(line.endswith("\tdef run_pipeline():") for line in lines)
     assert any(line.endswith("\t    step = 1") for line in lines)
     assert any(line.endswith("\t    return step") for line in lines)
+    assert not any(line.endswith("\t    return 1") for line in lines)
 
 
 def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
-    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    lines = [f"value_{idx} = {idx}" for idx in range(1, 231)]
+    lines[99] = "def run_pipeline():"
+    lines[100] = "    return 1"
+    code_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     result = _run_read_code(
         tmp_path,
@@ -132,7 +136,28 @@ def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    numbered_rows: list[tuple[int, str]] = []
+    for row in result.stdout.splitlines():
+        parts = row.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        prefix = parts[0].strip()
+        if not prefix.isdigit():
+            continue
+        numbered_rows.append((int(prefix), parts[1]))
+
+    anchor_line = next(
+        (line_num for line_num, text in numbered_rows if text == "def run_pipeline():"),
+        None,
+    )
+    assert anchor_line == 100
+    assert anchor_line is not None
+    before_count = sum(1 for line_num, _ in numbered_rows if line_num < anchor_line)
+    after_count = sum(1 for line_num, _ in numbered_rows if line_num > anchor_line)
+    assert before_count == 25
+    assert after_count == 100
+    assert before_count < after_count
+    assert len(numbered_rows) == 126
 
 
 def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) -> None:
@@ -211,7 +236,7 @@ def test_read_code_context_uses_uv_branch_without_hud_fast_path(tmp_path: Path) 
     assert "using strict/local anchor" in result.stderr
 
 
-def test_read_code_context_renders_shortlist_and_confident_body(tmp_path: Path) -> None:
+def test_read_code_context_hides_shortlist_by_default_and_supports_candidate_stepping(tmp_path: Path) -> None:
     code_file = tmp_path / "uv_sample.py"
     code_file.write_text(
         "\n".join(
@@ -268,7 +293,7 @@ def test_read_code_context_renders_shortlist_and_confident_body(tmp_path: Path) 
         ]
     )
 
-    result = _run_read_code(
+    default_result = _run_read_code(
         tmp_path,
         "context",
         str(code_file),
@@ -277,11 +302,52 @@ def test_read_code_context_renders_shortlist_and_confident_body(tmp_path: Path) 
         env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
     )
 
-    assert result.returncode == 0, result.stderr
-    assert "# shortlist for: run_pipeline" in result.stdout
-    assert "# body" in result.stdout
-    assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
-    assert any(line.endswith("\t    return 1") for line in result.stdout.splitlines())
+    assert default_result.returncode == 0, default_result.stderr
+    assert "# shortlist for: run_pipeline" not in default_result.stdout
+    assert "# body" not in default_result.stdout
+
+    shortlist_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        "--show-shortlist",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert shortlist_result.returncode == 0, shortlist_result.stderr
+    assert "# shortlist for: run_pipeline" in shortlist_result.stdout
+
+    inline_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        "--inline-body",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert inline_result.returncode == 0, inline_result.stderr
+    assert "# shortlist for: run_pipeline" not in inline_result.stdout
+    assert "# body" in inline_result.stdout
+    assert any(line.endswith("\tdef run_pipeline():") for line in inline_result.stdout.splitlines())
+    assert any(line.endswith("\t    return 1") for line in inline_result.stdout.splitlines())
+
+    next_candidate_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        "--next-candidate",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert next_candidate_result.returncode == 0, next_candidate_result.stderr
+    assert any(line.endswith("\tdef helper():") for line in next_candidate_result.stdout.splitlines())
+    assert not any(line.endswith("\tdef run_pipeline():") for line in next_candidate_result.stdout.splitlines())
 
 
 def test_read_code_context_prefers_exact_symbol_vector_hit_over_header_block(tmp_path: Path) -> None:

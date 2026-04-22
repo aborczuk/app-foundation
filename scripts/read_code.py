@@ -24,6 +24,8 @@ CODE_FILE_LINE_THRESHOLD = 200
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
 READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "125") or "125")
+READ_CODE_CONTEXT_PRE_FRACTION = 0.1
+READ_CODE_CONTEXT_PRE_CAP = 25
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
@@ -1325,6 +1327,17 @@ def _render_numbered_window(file_path: Path, start: int, end: int) -> None:
             print(f"{idx:6}\t{line.rstrip()}")
 
 
+def _split_context_window(context_lines: int) -> tuple[int, int]:
+    """Split context budget into a small pre-window and larger post-window."""
+    if context_lines <= 1:
+        return 0, context_lines
+
+    pre_lines = max(1, int(context_lines * READ_CODE_CONTEXT_PRE_FRACTION))
+    pre_lines = min(pre_lines, READ_CODE_CONTEXT_PRE_CAP, context_lines - 1)
+    post_lines = context_lines - pre_lines
+    return pre_lines, post_lines
+
+
 def _render_symbol_listing(symbols: list[dict[str, object]]) -> None:
     """Render a deterministic symbol list for agent anchor selection."""
     for symbol in symbols:
@@ -1395,6 +1408,19 @@ def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | N
     return candidate.body
 
 
+def _select_vector_candidate(candidates: list[_VectorMatch], index: int) -> tuple[_VectorMatch | None, str | None]:
+    """Select a ranked candidate index while returning actionable selection errors."""
+    if index < 0:
+        return None, f"candidate index must be >= 0: {index}"
+    if not candidates:
+        if index == 0:
+            return None, None
+        return None, "no ranked candidates available for requested candidate index"
+    if index >= len(candidates):
+        return None, f"candidate index {index} is out of range (available: 0..{len(candidates) - 1})"
+    return candidates[index], None
+
+
 def read_code_symbols(argv: list[str]) -> int:
     """List deterministic file symbols before choosing an anchor for context/window reads."""
     if len(argv) < 1:
@@ -1428,7 +1454,7 @@ def read_code_symbols(argv: list[str]) -> int:
 
 
 def read_code_context(argv: list[str]) -> int:
-    """Resolve an anchor from symbol/pattern and print bounded numbered context."""
+    """Resolve an anchor and print bounded context with post-anchor bias."""
     if len(argv) < 2:
         print(
             "ERROR: read_code_context requires: <file_path> <symbol_or_pattern> [context_lines]",
@@ -1443,18 +1469,45 @@ def read_code_context(argv: list[str]) -> int:
     context = READ_CODE_DEFAULT_CONTEXT_LINES
     context_set = False
     allow_fallback = False
+    show_shortlist = False
+    inline_body = False
+    candidate_index = 0
+    expect_candidate_index = False
 
     for token in extra:
-        if token == "--hud-symbol":
+        if expect_candidate_index:
+            if not token.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {token}", file=sys.stderr)
+                return 1
+            candidate_index = int(token, 10)
+            expect_candidate_index = False
+        elif token == "--hud-symbol":
             continue
         elif token == "--allow-fallback":
             allow_fallback = True
+        elif token == "--show-shortlist":
+            show_shortlist = True
+        elif token == "--inline-body":
+            inline_body = True
+        elif token == "--next-candidate":
+            candidate_index += 1
+        elif token == "--candidate-index":
+            expect_candidate_index = True
+        elif token.startswith("--candidate-index="):
+            _, _, value = token.partition("=")
+            if not value.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
+                return 1
+            candidate_index = int(value, 10)
         elif token.isdigit() and not context_set:
             context = int(token, 10)
             context_set = True
         else:
             print(f"ERROR: Unexpected argument for context mode: {token}", file=sys.stderr)
             return 1
+    if expect_candidate_index:
+        print("ERROR: --candidate-index requires a value", file=sys.stderr)
+        return 1
 
     file_path = Path(file_arg)
     if not file_path.is_file():
@@ -1472,7 +1525,12 @@ def read_code_context(argv: list[str]) -> int:
         return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
     vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-    vector_match = vector_candidates[0] if vector_candidates else None
+    vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+    if candidate_error is not None:
+        print(f"ERROR: {candidate_error}", file=sys.stderr)
+        if vector_candidates:
+            print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+        return 1
 
     strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
     line_num: int | None = None
@@ -1496,13 +1554,27 @@ def read_code_context(argv: list[str]) -> int:
                 skip_preflight_refresh=True,
             ):
                 return 1
-            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
-            if vector_match is not None:
-                line_num = vector_match.line_num
+            refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+            if refreshed_candidates:
+                vector_candidates = refreshed_candidates
+                vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+                if candidate_error is not None:
+                    print(f"ERROR: {candidate_error}", file=sys.stderr)
+                    print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+                    return 1
+                if vector_match is not None:
+                    line_num = vector_match.line_num
         else:
-            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
-            if vector_match is not None:
-                line_num = vector_match.line_num
+            refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+            if refreshed_candidates:
+                vector_candidates = refreshed_candidates
+                vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+                if candidate_error is not None:
+                    print(f"ERROR: {candidate_error}", file=sys.stderr)
+                    print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+                    return 1
+                if vector_match is not None:
+                    line_num = vector_match.line_num
 
         if line_num is None and strict_status == 0:
             line_num = strict_line_num
@@ -1512,7 +1584,11 @@ def read_code_context(argv: list[str]) -> int:
     if line_num is not None and not vector_candidates:
         vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
         if vector_candidates and vector_match is None:
-            vector_match = vector_candidates[0]
+            vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+            if candidate_error is not None:
+                print(f"ERROR: {candidate_error}", file=sys.stderr)
+                print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+                return 1
 
     _emit_vector_fallback_notice(
         file_path=file_path,
@@ -1538,13 +1614,16 @@ def read_code_context(argv: list[str]) -> int:
         print(f"ERROR: Pattern not found after one bounded fallback: {pattern} in {file_arg}", file=sys.stderr)
         return 1
 
-    if vector_candidates:
+    if vector_candidates and show_shortlist:
         _render_candidate_shortlist(vector_candidates, pattern)
-        if vector_match is not None and vector_match.confidence >= 90:
+        if inline_body and vector_match is not None and vector_match.confidence >= 90:
             _render_candidate_body(vector_match)
+    elif inline_body and vector_match is not None and vector_match.confidence >= 90:
+        _render_candidate_body(vector_match)
 
-    start = max(1, line_num - context)
-    end = line_num + context
+    pre_lines, post_lines = _split_context_window(context)
+    start = max(1, line_num - pre_lines)
+    end = line_num + post_lines
     _render_numbered_window(file_path, start, end)
     return 0
 
@@ -1678,9 +1757,11 @@ def read_code_window(argv: list[str]) -> int:
 def _print_usage() -> None:
     print("Usage:")
     print(
-        f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback]"
+        f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
     )
-    print("                   (returns a top-5 shortlist; inline body when confidence >= 90/100)")
+    print(
+        "                   (default output is resolved anchor + bounded window; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
+    )
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
