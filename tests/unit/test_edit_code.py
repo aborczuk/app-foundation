@@ -113,6 +113,7 @@ def test_refresh_routes_through_hook_refresh_indexes(monkeypatch) -> None:
         "git",
         "status",
         "--porcelain",
+        "--untracked-files=normal",
         "--",
         "scripts/read_code.py",
         "AGENTS.md",
@@ -138,6 +139,8 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
         if cmd[:3] == ["git", "status", "--porcelain"]:
             status_calls["count"] += 1
             return _completed(0, stdout=" M scripts/read_code.py\n")
+        if cmd[:3] == ["git", "diff", "--cached"]:
+            return _completed(0, stdout="scripts/read_code.py\n")
         return _completed(0)
 
     monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
@@ -171,13 +174,13 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
         "git",
         "status",
         "--porcelain",
-        "--",
-        "scripts/read_code.py",
+        "--untracked-files=normal",
     ]
     assert calls[2]["cmd"] == [
         "git",
         "status",
         "--porcelain",
+        "--untracked-files=normal",
         "--",
         "scripts/read_code.py",
     ]
@@ -191,14 +194,15 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
     assert calls[4]["cmd"] == ["git", "add", "scripts/read_code.py"]
     assert calls[5]["cmd"] == [
         "git",
-        "status",
-        "--porcelain",
+        "diff",
+        "--cached",
+        "--name-only",
         "--",
         "scripts/read_code.py",
     ]
     assert calls[6]["cmd"] == ["git", "commit", "-m", "test commit"]
     assert len(calls) == 7
-    assert status_calls["count"] == 3
+    assert status_calls["count"] == 2
 
 
 def test_refresh_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
@@ -219,7 +223,14 @@ def test_refresh_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
     assert "refresh_indexes skipped" in captured.out
     assert calls == [
         {
-            "cmd": ["git", "status", "--porcelain", "--", "scripts/read_code.py"],
+            "cmd": [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+                "--",
+                "scripts/read_code.py",
+            ],
             "input": None,
         }
     ]
@@ -267,8 +278,7 @@ def test_sync_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
         "git",
         "status",
         "--porcelain",
-        "--",
-        "scripts/read_code.py",
+        "--untracked-files=normal",
     ]
     assert len(calls) == 2
 
@@ -286,6 +296,8 @@ def test_sync_retries_git_add_on_index_lock(monkeypatch) -> None:
             if add_attempts["count"] == 1:
                 return _completed(128, stderr="fatal: Unable to create '.git/index.lock': Operation not permitted")
             return _completed(0)
+        if cmd[:3] == ["git", "diff", "--cached"]:
+            return _completed(0, stdout="scripts/read_code.py\n")
         return _completed(0)
 
     monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
@@ -307,6 +319,117 @@ def test_sync_retries_git_add_on_index_lock(monkeypatch) -> None:
 
     assert exit_code == 0
     assert add_attempts["count"] == 2
+
+
+def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch) -> None:
+    calls: list[_RunCall] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _completed(
+                0,
+                stdout=(
+                    " M scripts/read_code.py\n"
+                    " M AGENTS.md\n"
+                ),
+            )
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(
+        [
+            "validate",
+            "--paths",
+            "scripts/read_code.py",
+            "AGENTS.md",
+            "--tests",
+            "tests/unit/test_read_code_index_refresh.py",
+            "--changed-only",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls[1]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+        "--",
+        "scripts/read_code.py",
+        "AGENTS.md",
+    ]
+    assert calls[2]["cmd"] == [
+        "uv",
+        "run",
+        "--no-sync",
+        "ruff",
+        "check",
+        "scripts/read_code.py",
+    ]
+    assert calls[3]["cmd"] == [
+        "uv",
+        "run",
+        "--no-sync",
+        "pyright",
+        "scripts/read_code.py",
+    ]
+
+
+def test_sync_warns_for_unrelated_dirty_paths(monkeypatch, capsys) -> None:
+    calls: list[_RunCall] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            if "--" in cmd:
+                return _completed(0, stdout=" M scripts/read_code.py\n")
+            return _completed(0, stdout=" M scripts/read_code.py\n M README.md\n")
+        if cmd[:3] == ["git", "diff", "--cached"]:
+            return _completed(0, stdout="scripts/read_code.py\n")
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(
+        [
+            "sync",
+            "--paths",
+            "scripts/read_code.py",
+            "--tests",
+            "tests/unit/test_read_code_index_refresh.py",
+            "--commit-message",
+            "warn unrelated",
+            "--no-push",
+            "--skip-ruff",
+            "--skip-pyright",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "unrelated dirty paths detected outside requested scope" in captured.err
+    assert "README.md" in captured.err
+
+
+def test_run_command_defaults_repo_local_uv_cache(monkeypatch) -> None:
+    seen_env: dict[str, str] = {}
+
+    def fake_run(cmd, **kwargs):
+        nonlocal seen_env
+        env = kwargs.get("env")
+        if isinstance(env, dict):
+            seen_env = dict(env)
+        return _completed(0)
+
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code._run_command(["uv", "run", "--no-sync", "python", "--version"], label="probe")
+
+    assert exit_code == 0
+    assert seen_env["UV_CACHE_DIR"] == str(edit_code.REPO_ROOT / ".codegraphcontext" / ".uv-cache")
 
 
 def test_paths_outside_repo_are_rejected(tmp_path: Path, capsys) -> None:
