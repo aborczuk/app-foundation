@@ -84,16 +84,10 @@ class IndexMetadata(BaseModel):
 
     @model_validator(mode="after")
     def _validate_freshness(self) -> Self:
-        if self.indexed_commit == self.current_commit:
-            if self.is_stale:
-                raise ValueError("fresh metadata cannot be marked stale")
-            if self.stale_reason:
-                raise ValueError("fresh metadata must not include a stale_reason")
-        else:
-            if not self.is_stale:
-                raise ValueError("stale metadata must set is_stale=True")
-            if not self.stale_reason:
-                raise ValueError("stale metadata must include a stale_reason")
+        if self.is_stale and not self.stale_reason:
+            raise ValueError("stale metadata must include a stale_reason")
+        if not self.is_stale and self.stale_reason:
+            raise ValueError("fresh metadata must not include a stale_reason")
         return self
 
 

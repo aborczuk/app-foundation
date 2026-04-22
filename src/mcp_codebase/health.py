@@ -113,10 +113,8 @@ def classify_graph_health(project_root: Path) -> GraphHealthResult:
         status, detail = last_index_error
     else:
         status, detail = _classify_state(repo_root)
-        if status is GraphHealthStatus.HEALTHY:
-            edit_drift = _read_edit_drift(repo_root)
-            if edit_drift is not None:
-                status, detail = edit_drift
+        # Deliberately avoid git-status drift reclassification here; non-indexed
+        # metadata edits should not force graph health to stale.
     recovery_hint = build_recovery_hint(status, repo_root=repo_root, detail=detail)
     checked_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     latency_ms = round((monotonic() - start) * 1000.0, 1)

@@ -133,7 +133,7 @@ def test_classify_graph_health_returns_memory_pressure_hint(tmp_path: Path) -> N
     assert "memory pressure" in result.detail.lower()
 
 
-def test_classify_graph_health_returns_stale_for_edit_drift(tmp_path: Path) -> None:
+def test_classify_graph_health_ignores_git_edit_drift_for_fresh_snapshot(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
     source = tmp_path / "src" / "module.py"
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -150,10 +150,10 @@ def test_classify_graph_health_returns_stale_for_edit_drift(tmp_path: Path) -> N
 
     result = classify_graph_health(tmp_path)
 
-    assert result.status is GraphHealthStatus.STALE
+    assert result.status is GraphHealthStatus.HEALTHY
     assert result.access_mode is GraphAccessMode.READ_ONLY
-    assert result.recovery_hint.id == "refresh-scoped-index"
-    assert "working tree edits changed" in result.detail
+    assert result.recovery_hint.id == "continue"
+    assert "current with tracked source files" in result.detail
 
 
 def test_current_edit_signature_ignores_codegraphcontext_on_leading_space_status(

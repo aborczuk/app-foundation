@@ -309,7 +309,7 @@ def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, t
     assert "doctor suggested:" in captured.err
 
 
-def test_codegraph_refresh_if_needed_skips_stale_refresh_when_scope_is_unaffected(
+def test_codegraph_refresh_if_needed_background_refreshes_when_scope_is_unaffected(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -319,19 +319,55 @@ def test_codegraph_refresh_if_needed_skips_stale_refresh_when_scope_is_unaffecte
         lambda project_root=None: read_code._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command=""),
     )
     monkeypatch.setattr(read_code, "_scope_needs_codegraph_refresh", lambda scope_path: False)
+    monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
-    called = {"value": False}
+    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    fake_script.chmod(0o755)
+    monkeypatch.setattr(read_code, "SCRIPT_DIR", tmp_path)
 
-    def fake_run(*args, **kwargs):
-        called["value"] = True
-        return _completed(0)
+    calls: list[list[str]] = []
 
-    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+    def fake_popen(cmd, **kwargs):
+        calls.append(cmd)
+        return object()
+
+    monkeypatch.setattr(read_code.subprocess, "Popen", fake_popen)
 
     result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
 
     assert result is True
-    assert called["value"] is False
+    assert calls == [[str(fake_script), str(tmp_path / "src")]]
+
+
+def test_codegraph_refresh_if_needed_background_refresh_logs_when_launch_fails(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda project_root=None: read_code._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command=""),
+    )
+    monkeypatch.setattr(read_code, "_scope_needs_codegraph_refresh", lambda scope_path: False)
+    monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
+
+    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    fake_script.chmod(0o755)
+    monkeypatch.setattr(read_code, "SCRIPT_DIR", tmp_path)
+
+    def fake_popen(cmd, **kwargs):
+        raise OSError("launch failed")
+
+    monkeypatch.setattr(read_code.subprocess, "Popen", fake_popen)
+
+    result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
+    captured = capsys.readouterr()
+
+    assert result is True
+    assert "background refresh could not start" in captured.err
 
 
 def test_scope_needs_codegraph_refresh_detects_overlap(monkeypatch, tmp_path: Path) -> None:

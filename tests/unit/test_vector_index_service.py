@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
 import pytest
 
-from src.mcp_codebase.index import IndexConfig, IndexScope
+import src.mcp_codebase.index.service as vector_service_module
+from src.mcp_codebase.index import CodeSymbol, IndexConfig, IndexMetadata, IndexScope
 from src.mcp_codebase.index.service import VectorIndexService
+from src.mcp_codebase.index.store.chroma import ChromaIndexStore
 
 
-def test_service_build_query_and_status_round_trip(tmp_path: Path) -> None:
+def _fake_embeddings(texts: Sequence[str]) -> list[list[float]]:
+    """Return deterministic local embeddings for unit tests."""
+    return [[float(len(text) % 7), float(sum(ord(char) for char in text) % 11), 1.0] for text in texts]
+
+
+def test_service_build_query_and_status_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source = tmp_path / "src" / "sample.py"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(
@@ -42,15 +51,18 @@ Run the index and query the doctor.
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/global/db/vector-index",
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
 
     metadata = service.build_full_index(revision="test-rev")
 
     assert metadata.entry_count >= 2
-    assert service.status().indexed_commit == "test-rev"
+    status = service.status()
+    assert status is not None
+    assert status.indexed_commit == "test-rev"
 
     code_results = service.query("Greeter hello", scope=IndexScope.CODE, top_k=3)
     assert code_results
@@ -65,7 +77,44 @@ Run the index and query the doctor.
     assert markdown_results[0].content.content_hash
 
 
-def test_service_indexes_shell_scripts_as_code(tmp_path: Path) -> None:
+def test_status_marks_local_edit_drift_stale_even_when_commit_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "src" / "sample.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("def alpha() -> str:\n    return 'a'\n", encoding="utf-8")
+
+    service = VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
+    monkeypatch.setattr(vector_service_module, "_resolve_current_commit", lambda _: "same-revision")
+    monkeypatch.setattr(vector_service_module, "_resolve_commit_distance", lambda *_: 0)
+
+    metadata = service.build_full_index(revision="same-revision")
+    fresh_status = service.status()
+
+    assert fresh_status is not None
+    assert fresh_status.is_stale is False
+
+    source.write_text("def alpha() -> str:\n    return 'b'\n", encoding="utf-8")
+    updated_mtime = metadata.indexed_at.timestamp() + 5.0
+    os.utime(source, (updated_mtime, updated_mtime))
+    stale_status = service.status()
+
+    assert stale_status is not None
+    assert stale_status.current_commit == "same-revision"
+    assert stale_status.is_stale is True
+    assert "src/sample.py" in stale_status.stale_reason
+    assert "changed after last embedding refresh" in stale_status.stale_reason
+
+
+def test_service_indexes_shell_scripts_as_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     script = tmp_path / "scripts" / "refresh.sh"
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(
@@ -93,20 +142,33 @@ esac
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/global/db/vector-index",
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
 
     metadata = service.build_full_index(revision="test-rev")
 
     assert metadata.entry_count >= 1
-    script_results = service.query("refresh vector index", scope=IndexScope.CODE, top_k=3)
+    script_results = service.query("refresh vector index", scope=IndexScope.CODE, top_k=10)
     assert script_results
     assert script_results[0].content.file_path == script
-    assert any(result.content.symbol_type == "script_function" and result.content.symbol_name == "run_refresh" for result in script_results)
-    assert any(result.content.symbol_type == "script_block" for result in script_results)
-    assert any(result.body.startswith("run_refresh()") for result in script_results if result.content.symbol_type == "script_function")
+    saw_run_refresh = False
+    saw_script_block = False
+    saw_function_body = False
+    for result in script_results:
+        content = result.content
+        if isinstance(content, CodeSymbol):
+            if content.symbol_type == "script_function" and content.symbol_name == "run_refresh":
+                saw_run_refresh = True
+            if content.symbol_type == "script_block":
+                saw_script_block = True
+            if content.symbol_type == "script_function" and result.body.startswith("run_refresh()"):
+                saw_function_body = True
+    assert saw_run_refresh
+    assert saw_script_block
+    assert saw_function_body
 
 
 def test_refresh_embeds_only_changed_units(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,10 +195,11 @@ def beta() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/global/db/vector-index",
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
     service.build_full_index(revision="rev-a")
 
     source_a.write_text(
@@ -163,6 +226,7 @@ def alpha_refresh() -> str:
     monkeypatch.setattr(service._store, "_embed_texts", spy_embed)
 
     refreshed = service.refresh_changed_files([source_a], revision="rev-b")
+    assert refreshed is not None
     assert refreshed.indexed_commit == "rev-b"
     assert embed_call_sizes == [len(expected_changed_units)]
     assert service.query("alpha_refresh", scope=IndexScope.CODE, top_k=1)
@@ -184,14 +248,17 @@ def current_name() -> str:
     service = VectorIndexService(
         IndexConfig(
             repo_root=tmp_path,
-            db_path=".codegraphcontext/global/db/vector-index",
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
             embedding_model="local-default",
         )
     )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
     service.build_full_index(revision="rev-a")
     before = service.query("current_name", scope=IndexScope.CODE, top_k=1)
     assert before
-    assert before[0].content.signature.startswith("def current_name")
+    before_content = before[0].content
+    assert isinstance(before_content, CodeSymbol)
+    assert before_content.signature.startswith("def current_name")
 
     source.write_text(
         """
@@ -212,6 +279,71 @@ def current_name() -> str:
 
     after = service.query("current_name", scope=IndexScope.CODE, top_k=1)
     assert after
-    assert after[0].content.signature.startswith("def current_name")
-    assert after[0].content.docstring == ""
-    assert service.status().indexed_commit == "rev-a"
+    after_content = after[0].content
+    assert isinstance(after_content, CodeSymbol)
+    assert after_content.signature.startswith("def current_name")
+    assert after_content.docstring == ""
+    status = service.status()
+    assert status is not None
+    assert status.indexed_commit == "rev-a"
+
+
+def test_list_file_code_symbols_uses_conjunctive_chroma_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store should query Chroma with a valid conjunctive filter for file symbols."""
+
+    store = ChromaIndexStore(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    metadata = IndexMetadata(
+        source_root=tmp_path,
+        indexed_commit="rev-a",
+        current_commit="rev-a",
+        indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+        entry_count=1,
+        snapshot_path=str(tmp_path / "snapshot"),
+        collection_name="test-collection",
+    )
+    expected_file = (tmp_path / "src" / "sample.py").resolve().as_posix()
+    expected_symbol = CodeSymbol(
+        symbol_name="sample",
+        qualified_name="sample",
+        file_path=Path(expected_file),
+        line_start=1,
+        line_end=2,
+        signature="def sample():",
+        docstring="",
+        preview="def sample():",
+    )
+
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.where = None
+
+        def get(self, *, where, include):
+            self.where = where
+            assert include == ["metadatas"]
+            return {"metadatas": [{}]}
+
+    fake_collection = FakeCollection()
+    monkeypatch.setattr(store, "load_snapshot", lambda: (metadata, None))
+    monkeypatch.setattr(store, "_open_collection", lambda *args, **kwargs: fake_collection)
+    monkeypatch.setattr(store, "_decode_content_unit", lambda metadata_payload, document=None: expected_symbol)
+
+    symbols = store.list_file_code_symbols("src/sample.py")
+
+    assert fake_collection.where == {
+        "$and": [
+            {"scope": IndexScope.CODE.value},
+            {"record_type": "code"},
+            {"file_path": expected_file},
+        ]
+    }
+    assert len(symbols) == 1
+    assert symbols[0].symbol_name == expected_symbol.symbol_name
+    assert symbols[0].file_path == expected_symbol.file_path

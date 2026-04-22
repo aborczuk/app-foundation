@@ -19,6 +19,7 @@ from src.mcp_codebase.index.extractors.python import should_skip_path
 from src.mcp_codebase.index.store import ChromaIndexStore
 
 logger = logging.getLogger(__name__)
+INDEXABLE_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}
 
 
 class VectorIndexService:
@@ -115,7 +116,7 @@ class VectorIndexService:
         )
 
     def status(self) -> IndexMetadata | None:
-        """Return the active snapshot metadata."""
+        """Return snapshot metadata with commit and local file-drift freshness checks."""
         metadata = self._store.status()
         if metadata is None:
             return None
@@ -123,29 +124,40 @@ class VectorIndexService:
         current_commit = _resolve_current_commit(self._config.repo_root)
         indexed_age_seconds = round(max(0.0, (_utc_now() - metadata.indexed_at).total_seconds()), 3)
         updates: dict[str, object] = {"indexed_age_seconds": indexed_age_seconds}
+        stale_reasons: list[str] = []
+        commits_behind_head: int | None = None
 
-        if current_commit is None:
-            return metadata.model_copy(update=updates)
+        if current_commit is not None:
+            commits_behind_head = _resolve_commit_distance(
+                self._config.repo_root,
+                metadata.indexed_commit,
+                current_commit,
+            )
+            updates["current_commit"] = current_commit
 
-        commits_behind_head = _resolve_commit_distance(
+            if current_commit != metadata.indexed_commit:
+                commit_reason = f"indexed commit {metadata.indexed_commit} is behind current HEAD {current_commit}"
+                if commits_behind_head is not None:
+                    commit_reason += f" by {commits_behind_head} commits"
+                stale_reasons.append(commit_reason)
+
+        drift_path = _latest_indexable_source_drift(
             self._config.repo_root,
-            metadata.indexed_commit,
-            current_commit,
+            self._config.exclude_patterns,
+            metadata.indexed_at.timestamp(),
         )
-        is_stale = current_commit != metadata.indexed_commit
+        if drift_path is not None:
+            relative_path = drift_path.relative_to(self._config.repo_root.resolve()).as_posix()
+            stale_reasons.append(f"indexable path {relative_path} changed after last embedding refresh")
+
+        is_stale = bool(stale_reasons)
         stale_reason = ""
         if is_stale:
-            reason_parts = [
-                f"indexed commit {metadata.indexed_commit} is behind current HEAD {current_commit}",
-            ]
-            if commits_behind_head is not None:
-                reason_parts[0] += f" by {commits_behind_head} commits"
-            reason_parts.append(f"built {indexed_age_seconds} seconds ago")
-            stale_reason = "; ".join(reason_parts)
+            stale_reasons.append(f"built {indexed_age_seconds} seconds ago")
+            stale_reason = "; ".join(stale_reasons)
 
         updates.update(
             {
-                "current_commit": current_commit,
                 "is_stale": is_stale,
                 "stale_reason": stale_reason,
                 "commits_behind_head": commits_behind_head,
@@ -214,7 +226,7 @@ class VectorIndexService:
                 continue
             if should_skip_path(path, repo_root, self._config.exclude_patterns):
                 continue
-            if path.suffix.lower() not in {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}:
+            if path.suffix.lower() not in INDEXABLE_SUFFIXES:
                 continue
             files.append(path)
         return files
@@ -306,3 +318,29 @@ def _resolve_commit_distance(repo_root: Path, indexed_commit: str, current_commi
         return int(completed.stdout.strip())
     except ValueError:
         return None
+
+
+def _latest_indexable_source_drift(
+    repo_root: Path,
+    exclude_patterns: Sequence[str],
+    indexed_at_timestamp: float,
+) -> Path | None:
+    """Return the most recently modified indexable path when it changed after index build."""
+    root = repo_root.resolve()
+    latest_path: Path | None = None
+    latest_mtime = indexed_at_timestamp
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if should_skip_path(path, root, exclude_patterns):
+            continue
+        if path.suffix.lower() not in INDEXABLE_SUFFIXES:
+            continue
+        try:
+            modified_at = path.stat().st_mtime
+        except OSError:
+            continue
+        if modified_at > latest_mtime:
+            latest_mtime = modified_at
+            latest_path = path
+    return latest_path

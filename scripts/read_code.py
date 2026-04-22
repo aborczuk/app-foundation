@@ -339,9 +339,25 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
         return True
     if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
         print(
-            f"WARN: codegraph stale drift does not overlap requested scope ({path}); skipping scoped refresh",
+            f"WARN: codegraph stale drift does not overlap requested scope ({path}); refreshing scoped index in background",
             file=sys.stderr,
         )
+        safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
+        if safe_index.is_file() and os.access(safe_index, os.X_OK):
+            try:
+                subprocess.Popen(
+                    [str(safe_index), str(path)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                print(f"WARN: codegraph background refresh could not start: {exc}", file=sys.stderr)
+        else:
+            print(
+                f"WARN: codegraph background refresh skipped: missing safe index script at {safe_index}",
+                file=sys.stderr,
+            )
         return True
 
     safe_index = SCRIPT_DIR / "cgc_safe_index.sh"

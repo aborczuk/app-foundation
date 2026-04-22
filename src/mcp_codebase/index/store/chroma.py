@@ -397,9 +397,11 @@ class ChromaIndexStore:
         )
         payload = collection.get(
             where={
-                "scope": IndexScope.CODE.value,
-                "record_type": "code",
-                "file_path": normalized_file,
+                "$and": [
+                    {"scope": IndexScope.CODE.value},
+                    {"record_type": "code"},
+                    {"file_path": normalized_file},
+                ]
             },
             include=["metadatas"],
         )

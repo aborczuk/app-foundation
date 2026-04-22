@@ -63,6 +63,7 @@ def main() -> int:
     _emit_deny(
         "Direct pytest calls are denied. Use "
         "`uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>` "
+        "(for example `uv run --no-sync python scripts/pytest_guard.py run -- tests/unit/test_x.py -k case_name`) "
         "so output remains compact and full logs are persisted to file."
     )
     return 0

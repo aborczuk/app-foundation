@@ -216,7 +216,8 @@ def main() -> int:
         if broad_root and code_doc_target:
             _emit_deny(
                 "Broad root-level file scans are denied (for example `find . -name '*.py'`). "
-                "Use scripts/read-code.sh (read_code_context/read_code_window) for code reads, "
+                "Use scripts/read-code.sh (read_code_context/read_code_window/read_code_symbols) for code reads, "
+                "use scripts/read-markdown.sh (read_markdown_headings/read_markdown_section) for markdown reads, "
                 "or scope inventory to explicit directories (for example `find src tests -name '*.py'`)."
             )
             return 0
@@ -234,7 +235,7 @@ def main() -> int:
             if allow_fallback:
                 _emit_deny(
                     "read-code --allow-fallback is denied for repo-local code/doc helper reads. "
-                    "Use strict preflight + strict symbol resolution."
+                    "Use strict preflight + strict symbol resolution (no --allow-fallback)."
                 )
                 return 0
         return 0
@@ -247,7 +248,7 @@ def main() -> int:
         if _is_repo_code_doc_file(candidate):
             _emit_deny(
                 "Code/doc-file reads must use scripts/read-code.sh "
-                "(read_code_context/read_code_window) or scripts/read-markdown.sh "
+                "(read_code_context/read_code_window/read_code_symbols) or scripts/read-markdown.sh "
                 "(read_markdown_headings/read_markdown_section). "
                 "Direct shell reads are denied."
             )

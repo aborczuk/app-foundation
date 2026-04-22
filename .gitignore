@@ -229,6 +229,8 @@ cython_debug/
 
 # CodeGraphContext runtime/index artifacts (machine-local, regenerated)
 .codegraphcontext/db/
+.codegraphcontext/global/db/
+.codegraphcontext/last-edit-signature.txt
 .codegraphcontext/.uv-cache/
 *.kuzudb
 *.kuzudb-wal
@@ -243,6 +245,7 @@ __marimo__/
 # Local runtime artifacts
 logs/
 dump.rdb
+.tmp-vector-test/
 
 *.pyc
 .venv/

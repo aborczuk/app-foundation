@@ -26,7 +26,7 @@ from src.mcp_codebase.index.config import (  # noqa: E402
     DEFAULT_EMBEDDING_MODEL_NAME,
 )
 
-VECTOR_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown"}
+VECTOR_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}
 
 
 def _repo_root() -> Path:

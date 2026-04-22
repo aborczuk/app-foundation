@@ -73,6 +73,36 @@ def test_refresh_vector_uses_offline_mode_when_embedding_model_cache_is_present(
     assert env_overrides == {"HF_HUB_OFFLINE": "1"}
 
 
+def test_refresh_vector_includes_shell_paths(monkeypatch, tmp_path) -> None:
+    """Include shell edits in the vector refresh path filter."""
+    hook = _load_hook_module()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    script_path = repo_root / "scripts" / "refresh.sh"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("#!/usr/bin/env bash\necho refresh\n", encoding="utf-8")
+    ignored_path = repo_root / "notes.txt"
+    ignored_path.write_text("not indexed", encoding="utf-8")
+    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
+
+    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
+    monkeypatch.setattr(hook, "_embedding_model_available_offline", lambda root: (True, ""))
+    monkeypatch.setattr(
+        hook,
+        "_run_refresh",
+        lambda command, label, env_overrides=None: refresh_calls.append((tuple(command), env_overrides)),
+    )
+
+    errors = hook._refresh_vector([script_path, ignored_path])
+
+    assert errors == []
+    assert len(refresh_calls) == 1
+    command, env_overrides = refresh_calls[0]
+    assert str(script_path) in command
+    assert str(ignored_path) not in command
+    assert env_overrides == {"HF_HUB_OFFLINE": "1"}
+
+
 def test_main_returns_nonzero_when_refresh_fails(monkeypatch) -> None:
     """Surface refresh failures as a hard hook failure for deterministic handoff."""
     hook = _load_hook_module()
