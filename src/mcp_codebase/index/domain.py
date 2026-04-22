@@ -67,6 +67,7 @@ class IndexMetadata(BaseModel):
     source_root: Path
     indexed_commit: str = Field(min_length=1)
     current_commit: str = Field(min_length=1)
+    indexed_worktree_signature: str = ""
     indexed_at: datetime
     entry_count: int = Field(ge=0)
     code_symbol_count: int = Field(default=0, ge=0)
@@ -76,6 +77,11 @@ class IndexMetadata(BaseModel):
     snapshot_path: str = Field(default="")
     is_stale: bool = False
     stale_reason: str = ""
+    stale_reason_class: str = "none"
+    stale_drift_paths: tuple[str, ...] = Field(default_factory=tuple)
+    stale_signal_source: str = "git"
+    stale_signal_available: bool = True
+    stale_signal_error: str = ""
     commits_behind_head: int | None = Field(default=None, ge=0)
     indexed_age_seconds: float | None = Field(default=None, ge=0.0)
     scopes: tuple[IndexScope, ...] = Field(
@@ -88,6 +94,8 @@ class IndexMetadata(BaseModel):
             raise ValueError("stale metadata must include a stale_reason")
         if not self.is_stale and self.stale_reason:
             raise ValueError("fresh metadata must not include a stale_reason")
+        if not self.is_stale and self.stale_drift_paths:
+            raise ValueError("fresh metadata must not include stale_drift_paths")
         return self
 
 

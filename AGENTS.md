@@ -112,7 +112,7 @@ For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first an
 
 ### Code File Read Efficiency
 
-For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 110 lines is the max context_lines:
+For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 125 lines is the max context_lines:
 ```bash
 source scripts/read-code.sh
 read_code_symbols <file>
@@ -120,7 +120,7 @@ read_code_context <file> <symbol_or_pattern> [context_lines]
 ```
 Examples:
 - `read_code_symbols src/clickup_control_plane/webhook_auth.py`
-- `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 110`
+- `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 125`
 
 Use this workflow:
 1. Invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
@@ -130,6 +130,10 @@ Use this workflow:
 5. Expand to additional windows only when needed to resolve ambiguity.
 6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
 7. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
+8. Vector stale handling is scope-aware and explicit:
+   - stale + overlap with requested scope => synchronous scoped refresh, then proceed/fail
+   - stale + no overlap => warning remains visible, background scoped refresh starts, read proceeds
+   - missing/unavailable/probe-failed => hard fail with remediation
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
 
@@ -178,5 +182,4 @@ After each pipeline command or long running command, report if there were large 
 
 ### Healing and improvment
 - Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
-
 

@@ -30,6 +30,27 @@ def _completed(returncode: int, stdout: str = "", stderr: str = "") -> subproces
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
+def _vector_probe(
+    *,
+    status: str,
+    stale_reason: str = "",
+    stale_reason_class: str = "none",
+    stale_drift_paths: tuple[str, ...] = (),
+    stale_signal_source: str = "git",
+    stale_signal_available: bool = True,
+    stale_signal_error: str = "",
+) -> object:
+    return read_code._VectorIndexProbe(
+        status=status,
+        stale_reason=stale_reason,
+        stale_reason_class=stale_reason_class,
+        stale_drift_paths=stale_drift_paths,
+        stale_signal_source=stale_signal_source,
+        stale_signal_available=stale_signal_available,
+        stale_signal_error=stale_signal_error,
+    )
+
+
 def test_vector_index_status_reports_missing_for_null_payload(monkeypatch) -> None:
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
     monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0, stdout="null\n"))
@@ -39,13 +60,27 @@ def test_vector_index_status_reports_missing_for_null_payload(monkeypatch) -> No
     assert status == "missing"
 
 
-def test_vector_index_status_reports_stale_when_status_payload_is_stale(monkeypatch) -> None:
+def test_vector_index_probe_parses_stale_payload_with_cause_details(monkeypatch) -> None:
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
-    monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0, stdout='{"is_stale": true}\n'))
+    monkeypatch.setattr(
+        read_code.subprocess,
+        "run",
+        lambda *args, **kwargs: _completed(
+            0,
+            stdout=(
+                '{"is_stale": true, "stale_reason": "indexable git drift paths: src/sample.py", '
+                '"stale_reason_class": "git-path-drift", "stale_drift_paths": ["src/sample.py"], '
+                '"stale_signal_source": "git", "stale_signal_available": true, "stale_signal_error": ""}\n'
+            ),
+        ),
+    )
 
-    status = read_code.vector_index_status()
+    probe = read_code.vector_index_probe()
 
-    assert status == "stale"
+    assert probe.status == "stale"
+    assert probe.stale_reason_class == "git-path-drift"
+    assert probe.stale_drift_paths == ("src/sample.py",)
+    assert "src/sample.py" in probe.stale_reason
 
 
 def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkeypatch) -> None:
@@ -58,7 +93,7 @@ def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkey
 
 
 def test_vector_refresh_if_needed_fails_fast_for_missing_index(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(read_code, "vector_index_status", lambda project_root=None: "missing")
+    monkeypatch.setattr(read_code, "vector_index_probe", lambda project_root=None: _vector_probe(status="missing"))
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
 
     called = {"value": False}
@@ -77,7 +112,7 @@ def test_vector_refresh_if_needed_fails_fast_for_missing_index(monkeypatch, tmp_
 
 
 def test_vector_refresh_if_needed_skips_when_index_is_healthy(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(read_code, "vector_index_status", lambda project_root=None: "healthy")
+    monkeypatch.setattr(read_code, "vector_index_probe", lambda project_root=None: _vector_probe(status="healthy"))
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
 
     called = {"value": False}
@@ -94,11 +129,25 @@ def test_vector_refresh_if_needed_skips_when_index_is_healthy(monkeypatch, tmp_p
     assert called["value"] is False
 
 
-def test_vector_refresh_if_needed_refreshes_stale_index(monkeypatch, tmp_path: Path) -> None:
-    statuses = iter(["stale", "healthy"])
+def test_vector_refresh_if_needed_refreshes_stale_index_for_overlap(monkeypatch, tmp_path: Path, capsys) -> None:
+    target = tmp_path / "src" / "sample.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def sample() -> None:\n    pass\n", encoding="utf-8")
+    probes = iter(
+        [
+            _vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: src/sample.py",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=("src/sample.py",),
+            ),
+            _vector_probe(status="healthy"),
+        ]
+    )
     calls: list[tuple[list[str], dict[str, str]]] = []
 
-    monkeypatch.setattr(read_code, "vector_index_status", lambda project_root=None: next(statuses))
+    monkeypatch.setattr(read_code, "vector_index_probe", lambda project_root=None: next(probes))
+    monkeypatch.setattr(read_code, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
 
     def fake_run(cmd, **kwargs):
@@ -107,10 +156,90 @@ def test_vector_refresh_if_needed_refreshes_stale_index(monkeypatch, tmp_path: P
 
     monkeypatch.setattr(read_code.subprocess, "run", fake_run)
 
-    result = read_code.vector_refresh_if_needed(tmp_path / "sample.py")
+    result = read_code.vector_refresh_if_needed(target)
+    captured = capsys.readouterr()
 
     assert result is True
     assert len(calls) == 1
+    assert "cause=git-path-drift" in captured.err
+    assert "overlap=yes" in captured.err
+
+
+def test_vector_refresh_if_needed_background_refreshes_when_scope_is_unaffected(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        read_code,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(
+            status="stale",
+            stale_reason="indexable git drift paths: docs/guide.md",
+            stale_reason_class="git-path-drift",
+            stale_drift_paths=("docs/guide.md",),
+        ),
+    )
+    monkeypatch.setattr(read_code, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+
+    calls: list[list[str]] = []
+
+    def fake_popen(cmd, **kwargs):
+        calls.append(cmd)
+        return object()
+
+    monkeypatch.setattr(read_code.subprocess, "Popen", fake_popen)
+
+    result = read_code.vector_refresh_if_needed(tmp_path / "src" / "sample.py")
+    captured = capsys.readouterr()
+
+    assert result is True
+    assert calls
+    assert "cause=git-path-drift" in captured.err
+    assert "overlap=no" in captured.err
+
+
+def test_vector_refresh_if_needed_proceeds_when_post_refresh_stale_is_out_of_scope(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    probes = iter(
+        [
+            _vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: src/sample.py",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=("src/sample.py",),
+            ),
+            _vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: docs/guide.md",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=("docs/guide.md",),
+            ),
+        ]
+    )
+    monkeypatch.setattr(read_code, "vector_index_probe", lambda project_root=None: next(probes))
+    monkeypatch.setattr(read_code, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0))
+
+    background_calls: list[list[str]] = []
+
+    def fake_popen(cmd, **kwargs):
+        background_calls.append(cmd)
+        return object()
+
+    monkeypatch.setattr(read_code.subprocess, "Popen", fake_popen)
+
+    result = read_code.vector_refresh_if_needed(tmp_path / "src" / "sample.py")
+    captured = capsys.readouterr()
+
+    assert result is True
+    assert background_calls
+    assert "remains stale after scoped refresh" in captured.err
 
 
 def test_codegraph_health_status_reports_unavailable_without_uv(monkeypatch) -> None:

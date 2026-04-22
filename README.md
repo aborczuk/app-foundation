@@ -56,34 +56,40 @@ pytest tests/unit/ -v
 
 ## Codebase Vector Index
 
-The repo now includes a local semantic index backed by Chroma and `fastembed`.
-It is stored entirely on disk under `.codegraphcontext/db/vector-index/`, so it
-stays local to the checkout and does not require a remote database.
+### Purpose
 
-Key implementation files:
+Provide a repo-local semantic index for bounded helper reads and deterministic symbol/section anchoring.
+The index is backed by Chroma + `fastembed` and stored under `.codegraphcontext/db/vector-index/`.
 
-- `src/mcp_codebase/index/domain.py` — typed models for symbols, markdown
-  sections, metadata, and query results
-- `src/mcp_codebase/index/config.py` — repo-local configuration and configurable
-  exclude-pattern loading
-- `src/mcp_codebase/index/extractors/` — Python and markdown chunk extraction
-- `src/mcp_codebase/index/store/chroma.py` — Chroma persistence, embeddings,
-  queries, and snapshot swaps
-- `src/mcp_codebase/index/service.py` — build/query/refresh/status orchestration
-- `src/mcp_codebase/indexer.py` — CLI entrypoint
-- `src/mcp_codebase/server.py` — MCP tool registration
-- `src/mcp_codebase/index/telemetry.py` — local no-op telemetry client to keep
-  Chroma quiet during runs
+### Inputs
 
-Operational docs and workflow helpers:
+- source files with indexable suffixes (`.py`, `.pyi`, `.md`, `.markdown`, `.mdown`, `.sh`, `.bash`, `.zsh`, `.yaml`, `.yml`)
+- repository git state (commit drift + path drift signals)
+- helper scope path (`scripts/read-code.sh` or `scripts/read-markdown.sh` request target)
 
-- `specs/020-codebase-vector-index/quickstart.md` — operator quickstart
-- `specs/020-codebase-vector-index/e2e.md` — end-to-end workflow contract
-- `scripts/e2e_020_codebase_vector_index.sh` — local smoke/E2E helper
-- `tests/integration/test_codebase_vector_index.py` — semantic lookup,
-  refresh, and staleness coverage
-- `tests/integration/test_codebase_vector_index_performance.py` — timing,
-  max-volume, and configurable-exclude regressions
+### Execution
+
+1. Build or refresh snapshots with `src.mcp_codebase.indexer` (`build`, `refresh`, `status`, `watch`).
+2. Extract structured units from Python, Markdown, Shell, and YAML via `src/mcp_codebase/index/extractors/`.
+3. Compute stale status using git-first drift detection with mtime fallback only when git signals are unavailable.
+4. During helper preflight, apply scope-aware stale handling:
+   - overlap => synchronous scoped refresh
+   - no overlap => warning + background scoped refresh + proceed
+   - missing/unavailable/probe-failed => fail with remediation
+
+### Output requirements
+
+- quickstart: use `specs/020-codebase-vector-index/quickstart.md` for operator bootstrap and run flow
+- verification: run `scripts/e2e_020_codebase_vector_index.sh` and integration coverage in:
+  - `tests/integration/test_codebase_vector_index.py`
+  - `tests/integration/test_codebase_vector_index_performance.py`
+- caveats:
+  - stale warnings remain visible (no suppression)
+  - codegraph discovery remains language-scoped; non-codegraph types rely on vector/local anchoring
+- traceability:
+  - spec: `specs/020-codebase-vector-index/spec.md`
+  - tasks: `specs/020-codebase-vector-index/tasks.md`
+  - implementation/e2e trail: `specs/020-codebase-vector-index/e2e.md`
 
 ## Customization
 

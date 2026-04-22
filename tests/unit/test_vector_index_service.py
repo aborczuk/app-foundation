@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
@@ -77,7 +76,7 @@ Run the index and query the doctor.
     assert markdown_results[0].content.content_hash
 
 
-def test_status_marks_local_edit_drift_stale_even_when_commit_matches(
+def test_status_marks_git_path_drift_stale_even_when_commit_matches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -95,23 +94,63 @@ def test_status_marks_local_edit_drift_stale_even_when_commit_matches(
     monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
     monkeypatch.setattr(vector_service_module, "_resolve_current_commit", lambda _: "same-revision")
     monkeypatch.setattr(vector_service_module, "_resolve_commit_distance", lambda *_: 0)
+    monkeypatch.setattr(
+        vector_service_module,
+        "_current_git_signature",
+        lambda _: " M src/sample.py",
+    )
+    monkeypatch.setattr(
+        vector_service_module,
+        "_collect_git_indexable_drift_paths",
+        lambda *args, **kwargs: (("src/sample.py",), None),
+    )
 
-    metadata = service.build_full_index(revision="same-revision")
+    _ = service.build_full_index(revision="same-revision")
     fresh_status = service.status()
 
     assert fresh_status is not None
-    assert fresh_status.is_stale is False
+    assert fresh_status.current_commit == "same-revision"
+    assert fresh_status.is_stale is True
+    assert fresh_status.stale_reason_class == "git-path-drift"
+    assert fresh_status.stale_drift_paths == ("src/sample.py",)
+    assert fresh_status.stale_signal_source == "git"
 
-    source.write_text("def alpha() -> str:\n    return 'b'\n", encoding="utf-8")
-    updated_mtime = metadata.indexed_at.timestamp() + 5.0
-    os.utime(source, (updated_mtime, updated_mtime))
+
+def test_status_uses_mtime_fallback_only_when_git_signal_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "src" / "sample.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("def alpha() -> str:\n    return 'a'\n", encoding="utf-8")
+
+    service = VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
+    monkeypatch.setattr(vector_service_module, "_resolve_current_commit", lambda _: "same-revision")
+    monkeypatch.setattr(vector_service_module, "_resolve_commit_distance", lambda *_: 0)
+    monkeypatch.setattr(vector_service_module, "_current_git_signature", lambda _: None)
+    monkeypatch.setattr(
+        vector_service_module,
+        "_collect_git_indexable_drift_paths",
+        lambda *args, **kwargs: ((), "git status signature unavailable"),
+    )
+    monkeypatch.setattr(vector_service_module, "_latest_indexable_source_drift", lambda *args: source)
+
+    _ = service.build_full_index(revision="same-revision")
     stale_status = service.status()
 
     assert stale_status is not None
-    assert stale_status.current_commit == "same-revision"
     assert stale_status.is_stale is True
-    assert "src/sample.py" in stale_status.stale_reason
-    assert "changed after last embedding refresh" in stale_status.stale_reason
+    assert stale_status.stale_reason_class == "mtime-fallback-drift"
+    assert stale_status.stale_drift_paths == ("src/sample.py",)
+    assert stale_status.stale_signal_source == "mtime-fallback"
+    assert stale_status.stale_signal_available is False
 
 
 def test_service_indexes_shell_scripts_as_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -117,6 +117,24 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
     assert any(line.endswith("\t    return step") for line in lines)
 
 
+def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "125",
+        "--hud-symbol",
+        env=_env_without_uv(),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+
+
 def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text(
@@ -387,3 +405,77 @@ def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> N
     assert lines[0].startswith("# line_start")
     assert any("\ttarget\tdef target():" in line for line in lines[1:])
     assert any("\tother\tdef other():" in line for line in lines[1:])
+
+
+def test_read_code_yaml_symbols_and_context_flow(tmp_path: Path) -> None:
+    yaml_file = tmp_path / "command-manifest.yaml"
+    yaml_file.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "commands:",
+                "  read-code:",
+                "    script: scripts/read-code.sh",
+                "domains:",
+                "  - security",
+                "  - observability",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(yaml_file),
+                "line_start": 2,
+                "line_end": 4,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "commands",
+                "qualified_name": "command-manifest.yaml::commands",
+                "signature": "commands:",
+                "docstring": "commands:",
+                "body": "commands:\n  read-code:\n    script: scripts/read-code.sh",
+                "preview": "commands:",
+                "symbol_type": "yaml_section",
+            },
+            {
+                "file_path": str(yaml_file),
+                "line_start": 5,
+                "line_end": 7,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "domains",
+                "qualified_name": "command-manifest.yaml::domains",
+                "signature": "domains:",
+                "docstring": "domains:",
+                "body": "domains:\n  - security\n  - observability",
+                "preview": "domains:",
+                "symbol_type": "yaml_section",
+            },
+        ]
+    )
+
+    symbols_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(yaml_file),
+        env=_env_with_fake_uv(tmp_path, payload),
+    )
+    assert symbols_result.returncode == 0, symbols_result.stderr
+    assert "yaml_section" in symbols_result.stdout
+    assert "commands" in symbols_result.stdout
+
+    context_result = _run_read_code(
+        tmp_path,
+        "context",
+        str(yaml_file),
+        "commands",
+        "2",
+        "--hud-symbol",
+        env=_env_with_fake_uv(tmp_path, payload),
+    )
+    assert context_result.returncode == 0, context_result.stderr
+    assert any(line.endswith("\tcommands:") for line in context_result.stdout.splitlines())

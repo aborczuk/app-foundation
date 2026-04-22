@@ -23,6 +23,9 @@ def _env_with_fake_uv(tmp_path: Path, indexer_payload: str) -> dict[str, str]:
     fake_uv = fake_bin / "uv"
     fake_uv.write_text(
         "#!/usr/bin/env bash\n"
+        "if [[ -n \"${FAKE_UV_CACHE_TRACE:-}\" ]]; then\n"
+        "  printf '%s\\n' \"${UV_CACHE_DIR:-}\" > \"$FAKE_UV_CACHE_TRACE\"\n"
+        "fi\n"
         "if [[ \"$1\" == \"--version\" ]]; then\n"
         "  echo \"uv 0.0.0\"\n"
         "  exit 0\n"
@@ -308,6 +311,27 @@ def test_read_markdown_source_wrapper_exposes_headings_function(tmp_path: Path) 
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == ["1\t# Title", "3\t## Existing"]
+
+
+def test_read_markdown_wrapper_sets_repo_local_uv_cache_by_default(tmp_path: Path) -> None:
+    markdown_file = tmp_path / "sample.md"
+    markdown_file.write_text("# Title\n\n## Existing\nBody\n", encoding="utf-8")
+    trace_file = tmp_path / "uv-cache-path.txt"
+    env = _env_with_fake_uv(tmp_path, json.dumps({"is_stale": False}))
+    env["FAKE_UV_CACHE_TRACE"] = str(trace_file)
+    env.pop("UV_CACHE_DIR", None)
+
+    result = _run_read_markdown(
+        tmp_path,
+        "--headings",
+        str(markdown_file),
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert trace_file.is_file()
+    expected_cache_dir = SCRIPT_PATH.resolve().parents[1] / ".codegraphcontext" / ".uv-cache"
+    assert trace_file.read_text(encoding="utf-8").strip() == str(expected_cache_dir)
 
 
 def test_command_docs_share_the_compact_expanded_shape(tmp_path: Path) -> None:

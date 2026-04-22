@@ -14,6 +14,7 @@ from src.mcp_codebase.index.extractors import (
     extract_markdown_sections,
     extract_python_symbols,
     extract_shell_scripts,
+    extract_yaml_sections,
     should_skip_path,
 )
 from src.mcp_codebase.index.service import VectorIndexService, build_vector_index_service
@@ -30,5 +31,6 @@ __all__ = (
     "extract_markdown_sections",
     "extract_python_symbols",
     "extract_shell_scripts",
+    "extract_yaml_sections",
     "should_skip_path",
 )

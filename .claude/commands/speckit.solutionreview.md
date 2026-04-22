@@ -342,6 +342,7 @@ For each touched domain, validate that the sketch has preserved domain MUST rule
 
 Always review at least:
 
+- Domain 10 — Observability
 - Domain 12 — Testing & quality gates
 - Domain 13 — Identity & access control
 - Domain 14 — Security controls

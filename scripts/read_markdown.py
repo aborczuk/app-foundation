@@ -26,10 +26,12 @@ Validation:
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 SOURCE_PATH = Path(__file__).resolve()
@@ -38,6 +40,19 @@ REPO_ROOT = SCRIPT_DIR.parent
 
 
 VECTOR_BOOTSTRAP_COMMAND = "uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap"
+
+
+@dataclass(frozen=True)
+class _VectorIndexProbe:
+    """Parsed vector status payload used to drive refresh branching."""
+
+    status: str
+    stale_reason: str
+    stale_reason_class: str
+    stale_drift_paths: tuple[str, ...]
+    stale_signal_source: str
+    stale_signal_available: bool
+    stale_signal_error: str
 
 
 def _command_exists(name: str) -> bool:
@@ -54,11 +69,45 @@ def _is_repo_local_path(file_path: Path) -> bool:
         return False
 
 
-def _vector_index_status(project_root: Path | None = None) -> str:
-    """Return vector index freshness state: healthy, stale, missing, unavailable, or probe-failed."""
+def _vector_command_env() -> dict[str, str]:
+    """Return deterministic env for vector subprocess calls with repo-local uv cache."""
+    env = os.environ.copy()
+    cache_dir = Path(env.get("UV_CACHE_DIR", str(REPO_ROOT / ".codegraphcontext" / ".uv-cache"))).expanduser()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    env["UV_CACHE_DIR"] = str(cache_dir)
+    env.setdefault("HF_HUB_OFFLINE", "1")
+    return env
+
+
+def _normalize_vector_drift_paths(payload: object) -> tuple[str, ...]:
+    """Normalize vector status drift-path payload into repo-relative POSIX paths."""
+    if not isinstance(payload, list):
+        return ()
+    paths: list[str] = []
+    for item in payload:
+        if not isinstance(item, str):
+            continue
+        candidate = item.strip().replace("\\", "/")
+        if candidate.startswith("./"):
+            candidate = candidate[2:]
+        if candidate:
+            paths.append(candidate)
+    return tuple(dict.fromkeys(paths))
+
+
+def _vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
+    """Return parsed vector freshness payload for deterministic refresh decisions."""
     root = project_root or REPO_ROOT
     if not _command_exists("uv"):
-        return "unavailable"
+        return _VectorIndexProbe(
+            status="unavailable",
+            stale_reason="uv is not available",
+            stale_reason_class="probe-unavailable",
+            stale_drift_paths=(),
+            stale_signal_source="git",
+            stale_signal_available=False,
+            stale_signal_error="uv is not available",
+        )
 
     cmd = [
         "uv",
@@ -71,29 +120,104 @@ def _vector_index_status(project_root: Path | None = None) -> str:
         str(root),
         "status",
     ]
-    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    proc = subprocess.run(
+        cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_vector_command_env(),
+    )
     if proc.returncode != 0:
-        return "probe-failed"
+        detail = (proc.stderr or "").strip() or f"index status probe failed with exit code {proc.returncode}"
+        return _VectorIndexProbe(
+            status="probe-failed",
+            stale_reason=detail,
+            stale_reason_class="probe-failed",
+            stale_drift_paths=(),
+            stale_signal_source="git",
+            stale_signal_available=False,
+            stale_signal_error=detail,
+        )
 
     payload = (proc.stdout or "").strip()
     if payload in {"", "null"}:
-        return "missing"
+        return _VectorIndexProbe(
+            status="missing",
+            stale_reason="index snapshot missing",
+            stale_reason_class="missing-index",
+            stale_drift_paths=(),
+            stale_signal_source="git",
+            stale_signal_available=False,
+            stale_signal_error="index snapshot missing",
+        )
 
     try:
         status_payload = json.loads(payload)
     except json.JSONDecodeError:
-        return "probe-failed"
+        return _VectorIndexProbe(
+            status="probe-failed",
+            stale_reason="index status probe returned non-JSON output",
+            stale_reason_class="probe-failed",
+            stale_drift_paths=(),
+            stale_signal_source="git",
+            stale_signal_available=False,
+            stale_signal_error="non-json status payload",
+        )
     if not isinstance(status_payload, dict):
-        return "probe-failed"
-    if bool(status_payload.get("is_stale", False)):
-        return "stale"
-    return "healthy"
+        return _VectorIndexProbe(
+            status="probe-failed",
+            stale_reason="index status probe returned unexpected payload shape",
+            stale_reason_class="probe-failed",
+            stale_drift_paths=(),
+            stale_signal_source="git",
+            stale_signal_available=False,
+            stale_signal_error="unexpected payload shape",
+        )
+    is_stale = bool(status_payload.get("is_stale", False))
+    return _VectorIndexProbe(
+        status="stale" if is_stale else "healthy",
+        stale_reason=str(status_payload.get("stale_reason", "") or ""),
+        stale_reason_class=str(status_payload.get("stale_reason_class", "none") or "none"),
+        stale_drift_paths=_normalize_vector_drift_paths(status_payload.get("stale_drift_paths")),
+        stale_signal_source=str(status_payload.get("stale_signal_source", "git") or "git"),
+        stale_signal_available=bool(status_payload.get("stale_signal_available", True)),
+        stale_signal_error=str(status_payload.get("stale_signal_error", "") or ""),
+    )
+
+
+def _vector_index_status(project_root: Path | None = None) -> str:
+    """Return vector index freshness state: healthy, stale, missing, unavailable, or probe-failed."""
+    return _vector_index_probe(project_root).status
+
+
+def _scope_needs_vector_refresh(scope_path: Path, drift_paths: tuple[str, ...]) -> bool | None:
+    """Return overlap decision for a requested scope against stale drift paths."""
+    if not drift_paths:
+        return None
+    try:
+        scope_abs = scope_path.resolve()
+        scope_rel = scope_abs.relative_to(REPO_ROOT).as_posix().rstrip("/")
+    except ValueError:
+        return None
+
+    if not scope_rel:
+        return True
+    scope_prefix = f"{scope_rel}/"
+    for candidate in drift_paths:
+        if candidate == scope_rel:
+            return True
+        if candidate.startswith(scope_prefix):
+            return True
+        if scope_rel.startswith(f"{candidate.rstrip('/')}/"):
+            return True
+    return False
 
 
 def _vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
-    """Require a healthy vector index and refresh stale snapshots in-place."""
+    """Require a healthy vector index with scope-aware stale refresh branching."""
     path = scope_path or REPO_ROOT
-    status = _vector_index_status(REPO_ROOT)
+    probe = _vector_index_probe(REPO_ROOT)
+    status = probe.status
     if status == "healthy":
         return True
     if status in {"missing", "unavailable", "probe-failed"}:
@@ -103,7 +227,56 @@ def _vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         print("ERROR: vector preflight failed: uv is not available", file=sys.stderr)
         return False
 
-    print(f"WARN: vector index is stale; refreshing targeted index for {path}", file=sys.stderr)
+    overlap = _scope_needs_vector_refresh(path, probe.stale_drift_paths)
+    overlap_label = (
+        "yes"
+        if overlap is True
+        else "no"
+        if overlap is False
+        else "unknown"
+    )
+    cause = probe.stale_reason_class or "none"
+    detail = probe.stale_reason or "no stale reason provided"
+    signal = probe.stale_signal_source or "git"
+    if overlap is False:
+        print(
+            "WARN: vector index is stale; "
+            f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
+            f"drift_paths={list(probe.stale_drift_paths)}; "
+            f"refreshing scoped index in background for {path}",
+            file=sys.stderr,
+        )
+        refresh_cmd = [
+            "uv",
+            "run",
+            "--no-sync",
+            "python",
+            "-m",
+            "src.mcp_codebase.indexer",
+            "--repo-root",
+            str(REPO_ROOT),
+            "refresh",
+            str(path),
+        ]
+        try:
+            subprocess.Popen(
+                refresh_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                env=_vector_command_env(),
+            )
+        except OSError as exc:
+            print(f"WARN: vector background refresh could not start: {exc}", file=sys.stderr)
+        return True
+
+    print(
+        "WARN: vector index is stale; "
+        f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
+        f"drift_paths={list(probe.stale_drift_paths)}; "
+        f"refreshing targeted index for {path}",
+        file=sys.stderr,
+    )
     cmd = [
         "uv",
         "run",
@@ -116,14 +289,54 @@ def _vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         "refresh",
         str(path),
     ]
-    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    proc = subprocess.run(
+        cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_vector_command_env(),
+    )
     if proc.returncode != 0:
         print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
         return False
 
-    refreshed_status = _vector_index_status(REPO_ROOT)
-    if refreshed_status != "healthy":
-        print(f"ERROR: vector preflight failed after refresh: status is {refreshed_status}", file=sys.stderr)
+    refreshed_probe = _vector_index_probe(REPO_ROOT)
+    if refreshed_probe.status != "healthy":
+        refreshed_overlap = _scope_needs_vector_refresh(path, refreshed_probe.stale_drift_paths)
+        if refreshed_probe.status == "stale" and refreshed_overlap is False:
+            print(
+                "WARN: vector index remains stale after scoped refresh, but stale drift does not overlap "
+                f"requested scope ({path}); proceeding and refreshing in background",
+                file=sys.stderr,
+            )
+            followup_cmd = [
+                "uv",
+                "run",
+                "--no-sync",
+                "python",
+                "-m",
+                "src.mcp_codebase.indexer",
+                "--repo-root",
+                str(REPO_ROOT),
+                "refresh",
+                str(path),
+            ]
+            try:
+                subprocess.Popen(
+                    followup_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                    env=_vector_command_env(),
+                )
+            except OSError as exc:
+                print(f"WARN: vector follow-up background refresh could not start: {exc}", file=sys.stderr)
+            return True
+
+        print(
+            f"ERROR: vector preflight failed after refresh: status is {refreshed_probe.status}",
+            file=sys.stderr,
+        )
         return False
     return True
 
@@ -312,6 +525,7 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
             capture_output=True,
             check=True,
             text=True,
+            env=_vector_command_env(),
         )
     except Exception:
         return None
@@ -332,7 +546,7 @@ def _vector_markdown_line_num(target_file: Path, section: str) -> int | None:
         "--top-k",
         "5",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=_vector_command_env())
     if proc.returncode != 0:
         return None
 

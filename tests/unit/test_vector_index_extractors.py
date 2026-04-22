@@ -9,6 +9,7 @@ from src.mcp_codebase.index.extractors import (
     extract_markdown_sections,
     extract_python_symbols,
     extract_shell_scripts,
+    extract_yaml_sections,
 )
 
 
@@ -197,3 +198,28 @@ esac
     assert any(symbol.docstring == "Check whether a command exists." for symbol in function_symbols)
     assert any(symbol.docstring == "Run the refresh action." for symbol in function_symbols)
     assert scripts[0].scope is IndexScope.CODE
+
+
+def test_extract_yaml_sections_builds_top_level_structured_chunks(tmp_path: Path) -> None:
+    manifest = tmp_path / "command-manifest.yaml"
+    manifest.write_text(
+        """
+version: 1
+commands:
+  read-code:
+    script: scripts/read-code.sh
+domains:
+  - security
+  - observability
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    sections = extract_yaml_sections(manifest, repo_root=tmp_path)
+
+    assert [section.symbol_name for section in sections] == ["version", "commands", "domains"]
+    assert all(section.symbol_type == "yaml_section" for section in sections)
+    assert sections[1].preview.startswith("commands:")
+    assert sections[2].content_hash
+    assert all(section.scope is IndexScope.CODE for section in sections)

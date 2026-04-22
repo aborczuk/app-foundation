@@ -50,7 +50,7 @@ TEXT_EXTENSIONS = {
     ".env",
 }
 
-MAX_HELPER_LINES = 110
+MAX_HELPER_LINES = 125
 
 
 def _emit_deny(reason: str) -> None:

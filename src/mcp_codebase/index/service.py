@@ -14,12 +14,24 @@ from src.mcp_codebase.index.extractors import (
     extract_markdown_sections,
     extract_python_symbols,
     extract_shell_scripts,
+    extract_yaml_sections,
 )
 from src.mcp_codebase.index.extractors.python import should_skip_path
 from src.mcp_codebase.index.store import ChromaIndexStore
 
 logger = logging.getLogger(__name__)
-INDEXABLE_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}
+INDEXABLE_SUFFIXES = {
+    ".py",
+    ".pyi",
+    ".md",
+    ".markdown",
+    ".mdown",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".yaml",
+    ".yml",
+}
 
 
 class VectorIndexService:
@@ -116,15 +128,21 @@ class VectorIndexService:
         )
 
     def status(self) -> IndexMetadata | None:
-        """Return snapshot metadata with commit and local file-drift freshness checks."""
+        """Return snapshot metadata with git-primary stale diagnostics and mtime fallback."""
         metadata = self._store.status()
         if metadata is None:
             return None
 
         current_commit = _resolve_current_commit(self._config.repo_root)
+        current_signature = _current_git_signature(self._config.repo_root)
         indexed_age_seconds = round(max(0.0, (_utc_now() - metadata.indexed_at).total_seconds()), 3)
         updates: dict[str, object] = {"indexed_age_seconds": indexed_age_seconds}
         stale_reasons: list[str] = []
+        stale_reason_class = "none"
+        stale_drift_paths: tuple[str, ...] = ()
+        stale_signal_source = "git"
+        stale_signal_available = True
+        stale_signal_error = ""
         commits_behind_head: int | None = None
 
         if current_commit is not None:
@@ -140,26 +158,73 @@ class VectorIndexService:
                 if commits_behind_head is not None:
                     commit_reason += f" by {commits_behind_head} commits"
                 stale_reasons.append(commit_reason)
+                stale_reason_class = "commit-drift"
 
-        drift_path = _latest_indexable_source_drift(
-            self._config.repo_root,
-            self._config.exclude_patterns,
-            metadata.indexed_at.timestamp(),
-        )
-        if drift_path is not None:
-            relative_path = drift_path.relative_to(self._config.repo_root.resolve()).as_posix()
-            stale_reasons.append(f"indexable path {relative_path} changed after last embedding refresh")
+            git_drift_paths, git_probe_error = _collect_git_indexable_drift_paths(
+                self._config.repo_root,
+                self._config.exclude_patterns,
+                metadata.indexed_commit,
+                current_commit,
+                metadata.indexed_worktree_signature,
+                current_signature,
+            )
+            if git_probe_error:
+                stale_signal_source = "mtime-fallback"
+                stale_signal_available = False
+                stale_signal_error = git_probe_error
+            else:
+                stale_drift_paths = git_drift_paths
+                if git_drift_paths:
+                    joined = ", ".join(git_drift_paths[:8])
+                    if len(git_drift_paths) > 8:
+                        joined += ", ..."
+                    stale_reasons.append(f"indexable git drift paths: {joined}")
+                    if stale_reason_class == "none":
+                        stale_reason_class = "git-path-drift"
+                    elif stale_reason_class == "commit-drift":
+                        stale_reason_class = "commit-and-git-path-drift"
+        else:
+            stale_signal_source = "mtime-fallback"
+            stale_signal_available = False
+            stale_signal_error = "could not resolve current git HEAD"
+        if current_signature is None:
+            stale_signal_source = "mtime-fallback"
+            stale_signal_available = False
+            stale_signal_error = "could not resolve current git status signature"
+
+        if not stale_signal_available:
+            drift_path = _latest_indexable_source_drift(
+                self._config.repo_root,
+                self._config.exclude_patterns,
+                metadata.indexed_at.timestamp(),
+            )
+            if drift_path is not None:
+                relative_path = drift_path.relative_to(self._config.repo_root.resolve()).as_posix()
+                stale_drift_paths = (relative_path,)
+                stale_reasons.append(f"indexable path {relative_path} changed after last embedding refresh")
+                if stale_reason_class == "none":
+                    stale_reason_class = "mtime-fallback-drift"
+                elif stale_reason_class == "commit-drift":
+                    stale_reason_class = "commit-and-mtime-fallback-drift"
 
         is_stale = bool(stale_reasons)
         stale_reason = ""
         if is_stale:
             stale_reasons.append(f"built {indexed_age_seconds} seconds ago")
             stale_reason = "; ".join(stale_reasons)
+        else:
+            stale_reason_class = "none"
+            stale_drift_paths = ()
 
         updates.update(
             {
                 "is_stale": is_stale,
                 "stale_reason": stale_reason,
+                "stale_reason_class": stale_reason_class,
+                "stale_drift_paths": stale_drift_paths,
+                "stale_signal_source": stale_signal_source,
+                "stale_signal_available": stale_signal_available,
+                "stale_signal_error": stale_signal_error,
                 "commits_behind_head": commits_behind_head,
             }
         )
@@ -214,6 +279,14 @@ class VectorIndexService:
                         exclude_patterns=self._config.exclude_patterns,
                     )
                 )
+            elif suffix in {".yaml", ".yml"}:
+                units.extend(
+                    extract_yaml_sections(
+                        path,
+                        repo_root=self._config.repo_root,
+                        exclude_patterns=self._config.exclude_patterns,
+                    )
+                )
             if total_candidates and (index % 50 == 0 or index == total_candidates):
                 logger.info("vector-index: processed %d/%d files", index, total_candidates)
         return units
@@ -241,10 +314,12 @@ class VectorIndexService:
         is_stale: bool,
         stale_reason: str,
     ) -> IndexMetadata:
+        indexed_signature = _current_git_signature(self._config.repo_root) or ""
         return IndexMetadata(
             source_root=self._config.repo_root,
             indexed_commit=revision,
             current_commit=revision,
+            indexed_worktree_signature=indexed_signature,
             indexed_at=_utc_now(),
             entry_count=entry_count,
             code_symbol_count=code_symbol_count,
@@ -320,12 +395,142 @@ def _resolve_commit_distance(repo_root: Path, indexed_commit: str, current_commi
         return None
 
 
+def _current_git_signature(repo_root: Path) -> str | None:
+    """Return a stable git status signature string for stale-drift comparisons."""
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root.resolve()),
+            "status",
+            "--porcelain",
+            "--untracked-files=normal",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+
+    ignored_prefixes = (
+        ".codegraphcontext/",
+        ".speckit/",
+        ".uv-cache/",
+        "logs/",
+        "shadow-runs/",
+    )
+    lines: list[str] = []
+    for raw in completed.stdout.splitlines():
+        if not raw.strip():
+            continue
+        path_text = raw[3:].strip() if len(raw) > 3 else ""
+        if not path_text:
+            continue
+        if " -> " in path_text:
+            candidates = [part.strip() for part in path_text.split(" -> ")]
+        else:
+            candidates = [path_text]
+        if any(candidate.startswith(ignored_prefixes) for candidate in candidates if candidate):
+            continue
+        lines.append(raw.rstrip("\n"))
+    return "\n".join(sorted(dict.fromkeys(lines)))
+
+
+def _signature_paths(signature: str) -> set[str]:
+    """Extract normalized relative paths from a git porcelain signature string."""
+    paths: set[str] = set()
+    for raw in signature.splitlines():
+        line = raw.rstrip("\n")
+        if not line.strip() or len(line) < 4:
+            continue
+        candidate = line[3:].strip()
+        if not candidate:
+            continue
+        if " -> " in candidate:
+            parts = [part.strip() for part in candidate.split(" -> ")]
+        else:
+            parts = [candidate]
+        for part in parts:
+            normalized = part.strip().strip('"').replace("\\", "/")
+            if normalized.startswith("./"):
+                normalized = normalized[2:]
+            if normalized:
+                paths.add(normalized)
+    return paths
+
+
+def _collect_git_indexable_drift_paths(
+    repo_root: Path,
+    exclude_patterns: Sequence[str],
+    indexed_commit: str,
+    current_commit: str,
+    indexed_signature: str,
+    current_signature: str | None,
+) -> tuple[tuple[str, ...], str | None]:
+    """Collect indexable changed paths from commit and worktree signature drift."""
+    root = repo_root.resolve()
+    paths: set[str] = set()
+
+    if current_signature is None:
+        return (), "git status signature unavailable"
+
+    if indexed_commit != current_commit:
+        diff_proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "diff",
+                "--name-only",
+                "--diff-filter=ACDMRTUXB",
+                f"{indexed_commit}..{current_commit}",
+                "--",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if diff_proc.returncode != 0:
+            detail = (diff_proc.stderr or "").strip() or "git diff failed"
+            return (), detail
+        for line in diff_proc.stdout.splitlines():
+            _add_indexable_drift_path(paths, line, root, exclude_patterns)
+
+    if indexed_signature != current_signature:
+        indexed_paths = _signature_paths(indexed_signature)
+        current_paths = _signature_paths(current_signature)
+        for candidate in indexed_paths.symmetric_difference(current_paths):
+            _add_indexable_drift_path(paths, candidate, root, exclude_patterns)
+
+    return tuple(sorted(paths)), None
+
+
+def _add_indexable_drift_path(
+    paths: set[str],
+    raw_path: str,
+    repo_root: Path,
+    exclude_patterns: Sequence[str],
+) -> None:
+    """Normalize and record an indexable repo-local drift path."""
+    normalized = raw_path.strip().strip('"').replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    if not normalized:
+        return
+    if Path(normalized).suffix.lower() not in INDEXABLE_SUFFIXES:
+        return
+    if should_skip_path(repo_root / normalized, repo_root, exclude_patterns):
+        return
+    paths.add(normalized)
+
+
 def _latest_indexable_source_drift(
     repo_root: Path,
     exclude_patterns: Sequence[str],
     indexed_at_timestamp: float,
 ) -> Path | None:
-    """Return the most recently modified indexable path when it changed after index build."""
+    """Return the latest indexable path by mtime when git drift probing is unavailable."""
     root = repo_root.resolve()
     latest_path: Path | None = None
     latest_mtime = indexed_at_timestamp

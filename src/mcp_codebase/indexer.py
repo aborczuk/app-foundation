@@ -25,7 +25,18 @@ except ImportError:  # pragma: no cover - handled with a clear runtime error
 
     Observer = None
 
-_WATCHABLE_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown"}
+_WATCHABLE_SUFFIXES = {
+    ".py",
+    ".pyi",
+    ".md",
+    ".markdown",
+    ".mdown",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".yaml",
+    ".yml",
+}
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for vector-index operations."""

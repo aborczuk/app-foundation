@@ -14,6 +14,8 @@ if [[ ! -f "$SCRIPT_DIR/read-code.sh" && -f "$SCRIPT_DIR/scripts/read-code.sh" ]
 fi
 
 ENTRYPOINT="$SCRIPT_DIR/read_code.py"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEFAULT_UV_CACHE_DIR="$REPO_ROOT/.codegraphcontext/.uv-cache"
 
 _run_read_code_entrypoint() {
     if [[ ! -f "$ENTRYPOINT" ]]; then
@@ -22,6 +24,10 @@ _run_read_code_entrypoint() {
     fi
 
     if command -v uv >/dev/null 2>&1; then
+        if [[ -z "${UV_CACHE_DIR:-}" ]]; then
+            export UV_CACHE_DIR="$DEFAULT_UV_CACHE_DIR"
+        fi
+        mkdir -p "$UV_CACHE_DIR"
         uv run --no-sync python "$ENTRYPOINT" "$@"
     else
         python3 "$ENTRYPOINT" "$@"
