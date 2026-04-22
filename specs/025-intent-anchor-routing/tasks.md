@@ -68,8 +68,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T010 [US3] Update `AGENTS.md` with the read-code rule source, the top-5 shortlist, the `90/100` cutoff, and the bounded follow-up helper rule — `AGENTS.md:read-code rules`
-- [ ] T011 [US3] Update the feature quickstart with shortlist/body examples and the follow-up helper explanation — `specs/025-intent-anchor-routing/quickstart.md:What This Feature Is`
+- [X] T010 [US3] Update `AGENTS.md` with the read-code rule source, the top-5 shortlist, the `90/100` cutoff, and the bounded follow-up helper rule — `AGENTS.md:read-code rules`
+- [X] T011 [US3] Update the feature quickstart with shortlist/body examples and the follow-up helper explanation — `specs/025-intent-anchor-routing/quickstart.md:What This Feature Is`
 
 ---
 
@@ -77,8 +77,8 @@
 
 **Purpose**: Validate the user-facing contract and keep the helper surface elegant.
 
-- [ ] T012 [P] [US3] Align `scripts/read-code.sh` help text and usage guidance with the new shortlist/body contract — `scripts/read-code.sh:read_code_context`
-- [ ] T013 [P] [US3] Confirm the solution-review and tasking artifacts remain consistent with the sketch contract after implementation edits — `specs/025-intent-anchor-routing/solutionreview.md:Final Decision`
+- [X] T012 [P] [US3] Align `scripts/read-code.sh` help text and usage guidance with the new shortlist/body contract — `scripts/read-code.sh:read_code_context`
+- [X] T013 [P] [US3] Confirm the solution-review and tasking artifacts remain consistent with the sketch contract after implementation edits — `specs/025-intent-anchor-routing/solutionreview.md:Final Decision`
 
 ---
 
