@@ -205,6 +205,7 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
     )
     monkeypatch.setattr(read_code, "codegraph_health_probe", lambda project_root=None: next(probes))
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
+    monkeypatch.setattr(read_code, "_scope_needs_codegraph_refresh", lambda scope_path: True)
 
     fake_script = tmp_path / "cgc_safe_index.sh"
     fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
@@ -306,6 +307,48 @@ def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, t
     assert "status is unavailable" in captured.err
     assert "Remediation:" in captured.err
     assert "doctor suggested:" in captured.err
+
+
+def test_codegraph_refresh_if_needed_skips_stale_refresh_when_scope_is_unaffected(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda project_root=None: read_code._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command=""),
+    )
+    monkeypatch.setattr(read_code, "_scope_needs_codegraph_refresh", lambda scope_path: False)
+
+    called = {"value": False}
+
+    def fake_run(*args, **kwargs):
+        called["value"] = True
+        return _completed(0)
+
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+
+    result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
+
+    assert result is True
+    assert called["value"] is False
+
+
+def test_scope_needs_codegraph_refresh_detects_overlap(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(read_code, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_current_edit_signature",
+        lambda project_root=None: " M src/module.py\n",
+    )
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_cached_edit_signature",
+        lambda project_root=None: " M AGENTS.md\n",
+    )
+
+    assert read_code._scope_needs_codegraph_refresh(tmp_path / "src") is True
+    assert read_code._scope_needs_codegraph_refresh(tmp_path / "docs") is False
 
 
 def test_codegraph_discover_or_fail_skips_refresh_when_preflight_already_done(

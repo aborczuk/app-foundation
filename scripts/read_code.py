@@ -210,6 +210,60 @@ def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     return "\n".join(sorted(dict.fromkeys(lines)))
 
 
+def _signature_paths(signature: str) -> set[str]:
+    """Extract normalized relative paths from a git porcelain signature string."""
+    paths: set[str] = set()
+    for raw in signature.splitlines():
+        line = raw.rstrip("\n")
+        if not line.strip():
+            continue
+        if len(line) < 4:
+            continue
+        candidate = line[3:].strip()
+        if not candidate:
+            continue
+        if " -> " in candidate:
+            parts = [part.strip() for part in candidate.split(" -> ")]
+        else:
+            parts = [candidate]
+        for part in parts:
+            normalized = part.replace("\\", "/")
+            if normalized.startswith("./"):
+                normalized = normalized[2:]
+            if normalized:
+                paths.add(normalized)
+    return paths
+
+
+def _scope_needs_codegraph_refresh(scope_path: Path) -> bool:
+    """Return whether stale signature drift overlaps the requested scope path."""
+    current = codegraph_current_edit_signature(REPO_ROOT)
+    cached = codegraph_cached_edit_signature(REPO_ROOT)
+    if current == cached:
+        return False
+
+    current_paths = _signature_paths(current)
+    cached_paths = _signature_paths(cached)
+    drift_paths = current_paths.symmetric_difference(cached_paths)
+    if not drift_paths:
+        return True
+
+    try:
+        scope_abs = scope_path.resolve()
+        scope_rel = scope_abs.relative_to(REPO_ROOT).as_posix().rstrip("/")
+    except ValueError:
+        return True
+
+    if not scope_rel:
+        return True
+
+    scope_prefix = f"{scope_rel}/"
+    for candidate in drift_paths:
+        if candidate == scope_rel or candidate.startswith(scope_prefix):
+            return True
+    return False
+
+
 def codegraph_health_status(project_root: Path | None = None) -> str:
     """Return codegraph health status string or probe-failed."""
     return codegraph_health_probe(project_root).status
@@ -282,6 +336,12 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
     path = scope_path or REPO_ROOT
     probe = codegraph_health_probe(REPO_ROOT)
     if probe.status == "healthy":
+        return True
+    if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
+        print(
+            f"WARN: codegraph stale drift does not overlap requested scope ({path}); skipping scoped refresh",
+            file=sys.stderr,
+        )
         return True
 
     safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
