@@ -33,8 +33,8 @@ def _load_module(module_name: str, script_name: str):
 edit_code = _load_module("edit_code", "edit_code.py")
 
 
-def _completed(returncode: int) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout="", stderr="")
+def _completed(returncode: int, *, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def test_validate_runs_pytest_guard_ruff_and_pyright(monkeypatch) -> None:
@@ -93,6 +93,8 @@ def test_refresh_routes_through_hook_refresh_indexes(monkeypatch) -> None:
 
     def fake_run(cmd, **kwargs):
         calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _completed(0, stdout=" M scripts/read_code.py\n")
         return _completed(0)
 
     monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
@@ -108,21 +110,34 @@ def test_refresh_routes_through_hook_refresh_indexes(monkeypatch) -> None:
 
     assert exit_code == 0
     assert calls[0]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        "scripts/read_code.py",
+        "AGENTS.md",
+    ]
+    assert calls[1]["cmd"] == [
         "uv",
         "run",
         "--no-sync",
         "python",
         "scripts/hook_refresh_indexes.py",
     ]
-    payload = json.loads(str(calls[0]["input"]))
+    payload = json.loads(str(calls[1]["input"]))
     assert payload == {"tool_input": {"paths": ["scripts/read_code.py", "AGENTS.md"]}}
 
 
 def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypatch) -> None:
     calls: list[_RunCall] = []
 
+    status_calls = {"count": 0}
+
     def fake_run(cmd, **kwargs):
         calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            status_calls["count"] += 1
+            return _completed(0, stdout=" M scripts/read_code.py\n")
         return _completed(0)
 
     monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
@@ -153,15 +168,145 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
         "--",
     ]
     assert calls[1]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        "scripts/read_code.py",
+    ]
+    assert calls[2]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        "scripts/read_code.py",
+    ]
+    assert calls[3]["cmd"] == [
         "uv",
         "run",
         "--no-sync",
         "python",
         "scripts/hook_refresh_indexes.py",
     ]
-    assert calls[2]["cmd"] == ["git", "add", "scripts/read_code.py"]
-    assert calls[3]["cmd"] == ["git", "commit", "-m", "test commit"]
-    assert len(calls) == 4
+    assert calls[4]["cmd"] == ["git", "add", "scripts/read_code.py"]
+    assert calls[5]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        "scripts/read_code.py",
+    ]
+    assert calls[6]["cmd"] == ["git", "commit", "-m", "test commit"]
+    assert len(calls) == 7
+    assert status_calls["count"] == 3
+
+
+def test_refresh_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
+    calls: list[_RunCall] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _completed(0, stdout="")
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(["refresh", "--paths", "scripts/read_code.py"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "refresh_indexes skipped" in captured.out
+    assert calls == [
+        {
+            "cmd": ["git", "status", "--porcelain", "--", "scripts/read_code.py"],
+            "input": None,
+        }
+    ]
+
+
+def test_sync_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
+    calls: list[_RunCall] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _completed(0, stdout="")
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(
+        [
+            "sync",
+            "--paths",
+            "scripts/read_code.py",
+            "--tests",
+            "tests/unit/test_read_code_index_refresh.py",
+            "--commit-message",
+            "noop",
+            "--no-push",
+            "--skip-ruff",
+            "--skip-pyright",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "sync skipped: nothing changed in requested paths" in captured.out
+    assert calls[0]["cmd"][:7] == [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "scripts/pytest_guard.py",
+        "run",
+        "--",
+    ]
+    assert calls[1]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        "scripts/read_code.py",
+    ]
+    assert len(calls) == 2
+
+
+def test_sync_retries_git_add_on_index_lock(monkeypatch) -> None:
+    calls: list[_RunCall] = []
+    add_attempts = {"count": 0}
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _completed(0, stdout=" M scripts/read_code.py\n")
+        if cmd[:2] == ["git", "add"]:
+            add_attempts["count"] += 1
+            if add_attempts["count"] == 1:
+                return _completed(128, stderr="fatal: Unable to create '.git/index.lock': Operation not permitted")
+            return _completed(0)
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(
+        [
+            "sync",
+            "--paths",
+            "scripts/read_code.py",
+            "--tests",
+            "tests/unit/test_read_code_index_refresh.py",
+            "--commit-message",
+            "retry add",
+            "--no-push",
+            "--skip-ruff",
+            "--skip-pyright",
+        ]
+    )
+
+    assert exit_code == 0
+    assert add_attempts["count"] == 2
 
 
 def test_paths_outside_repo_are_rejected(tmp_path: Path, capsys) -> None:

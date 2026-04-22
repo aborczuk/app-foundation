@@ -7,6 +7,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Sequence
 
@@ -83,9 +84,9 @@ def _python_paths(paths: Sequence[str]) -> list[str]:
 
 def _run_command(command: list[str], *, label: str, stdin_payload: str | None = None) -> int:
     """Run a command and return its exit code while emitting deterministic labels."""
-    print(f"[edit-code] {label}")
+    print(f"[edit-code] {label}", flush=True)
     printable = " ".join(command)
-    print(f"[edit-code] cmd: {printable}")
+    print(f"[edit-code] cmd: {printable}", flush=True)
     completed = subprocess.run(
         command,
         cwd=str(REPO_ROOT),
@@ -94,6 +95,57 @@ def _run_command(command: list[str], *, label: str, stdin_payload: str | None = 
         input=stdin_payload,
     )
     return completed.returncode
+
+
+def _has_path_changes(paths: Sequence[str]) -> bool:
+    """Return whether any requested paths have local git changes."""
+    command = ["git", "status", "--porcelain", "--", *paths]
+    completed = subprocess.run(
+        command,
+        cwd=str(REPO_ROOT),
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        # If git status cannot run, be conservative and continue workflow checks.
+        stderr = (completed.stderr or "").strip()
+        if stderr:
+            print(f"[edit-code] WARN: git status probe failed: {stderr}", file=sys.stderr, flush=True)
+        return True
+    return bool((completed.stdout or "").strip())
+
+
+def _run_git_with_retry(command: list[str], *, label: str, max_attempts: int = 3) -> int:
+    """Run git commands with bounded retries for transient index.lock contention."""
+    for attempt in range(1, max_attempts + 1):
+        print(f"[edit-code] {label}", flush=True)
+        print(f"[edit-code] cmd: {' '.join(command)}", flush=True)
+        completed = subprocess.run(
+            command,
+            cwd=str(REPO_ROOT),
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if completed.stdout:
+            print(completed.stdout, end="")
+        if completed.stderr:
+            print(completed.stderr, end="", file=sys.stderr)
+        if completed.returncode == 0:
+            return 0
+
+        combined_error = f"{completed.stdout or ''}\n{completed.stderr or ''}".lower()
+        if "index.lock" in combined_error and attempt < max_attempts:
+            print(
+                f"[edit-code] WARN: transient git index lock detected; retrying ({attempt}/{max_attempts})",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(0.5 * attempt)
+            continue
+        return completed.returncode
+    return 1
 
 
 def _run_validate(paths: Sequence[str], tests: Sequence[str], *, skip_ruff: bool, skip_pyright: bool) -> int:
@@ -137,6 +189,9 @@ def _run_validate(paths: Sequence[str], tests: Sequence[str], *, skip_ruff: bool
 
 def _run_refresh(paths: Sequence[str]) -> int:
     """Run the repo refresh hook for changed paths."""
+    if not _has_path_changes(paths):
+        print("[edit-code] refresh_indexes skipped: no local changes in requested paths", flush=True)
+        return 0
     payload = json.dumps({"tool_input": {"paths": list(paths)}})
     return _run_command(
         ["uv", "run", "--no-sync", "python", "scripts/hook_refresh_indexes.py"],
@@ -159,22 +214,30 @@ def _run_sync(
     if rc != 0:
         return rc
 
+    if not _has_path_changes(paths):
+        print("[edit-code] sync skipped: nothing changed in requested paths", flush=True)
+        return 0
+
     rc = _run_refresh(paths)
     if rc != 0:
         return rc
 
-    rc = _run_command(["git", "add", *paths], label="git_add")
+    rc = _run_git_with_retry(["git", "add", *paths], label="git_add")
     if rc != 0:
         return rc
 
-    rc = _run_command(["git", "commit", "-m", commit_message], label="git_commit")
+    if not _has_path_changes(paths):
+        print("[edit-code] sync skipped: nothing left to commit after refresh", flush=True)
+        return 0
+
+    rc = _run_git_with_retry(["git", "commit", "-m", commit_message], label="git_commit")
     if rc != 0:
         return rc
 
     if no_push:
         return 0
 
-    return _run_command(["git", "push"], label="git_push")
+    return _run_git_with_retry(["git", "push"], label="git_push")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
