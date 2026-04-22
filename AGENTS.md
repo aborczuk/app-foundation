@@ -135,6 +135,15 @@ Use this workflow:
    - stale + no overlap => warning remains visible, background scoped refresh starts, read proceeds
    - missing/unavailable/probe-failed => hard fail with remediation
 
+### Read-Code Rules
+
+Use the shortlist/body contract when reading code with the helper.
+
+- The visible shortlist is capped at 5 candidates.
+- The confidence cutoff for inline body output is `90/100`.
+- A non-top candidate body should only be returned through the bounded follow-up helper path.
+- Keep the shell wrapper, Python helper, and docs aligned with the same contract when the behavior changes.
+
 Full-file reads are disallowed unless the user explicitly requests full contents.
 
 ### Edit Efficiency
@@ -182,4 +191,3 @@ After each pipeline command or long running command, report if there were large 
 
 ### Healing and improvment
 - Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
-

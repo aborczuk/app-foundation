@@ -2,7 +2,7 @@
 
 ## What This Feature Is
 
-This feature makes `read-code` easier for agents to use by returning a bounded shortlist of anchor candidates with confidence metadata, preferring full indexed body text when it is highly confident, and documenting the read rules in `AGENTS.md`.
+This feature makes `read-code` easier for agents to use by returning a bounded shortlist of anchor candidates with confidence metadata, preferring full indexed body text when it is highly confident, exposing a bounded follow-up path for non-top bodies, and documenting the read rules in `AGENTS.md`.
 
 - Spec folder: [`specs/025-intent-anchor-routing/`](./)
 - Task breakdown: [`tasks.md`](./tasks.md)
@@ -36,20 +36,21 @@ uv sync
 sed -n '1,220p' AGENTS.md
 ```
 
-The documented read rules should make the 80-line cap, helper-first reads, top-5 shortlist, and one bounded expansion easy to find.
+The documented read rules should make the 125-line cap, helper-first reads, top-5 shortlist, and one bounded expansion easy to find.
 
 ### Run the Feature
 
 ```bash
 source scripts/read-code.sh
-read_code_context scripts/read_code.py "read_code_context" 80
+read_code_context scripts/read_code.py "read_code_context" 125
 ```
 
 Expected behavior:
 
 - The helper returns a ranked shortlist instead of a single forced anchor.
 - Each candidate includes a confidence signal.
-- If the symbol body is highly confident and present in the index, the body text is preferred.
+- If the symbol body clears the `90/100` threshold and is present in the index, the body text is preferred inline.
+- If you need the body for a non-top candidate later, use the bounded follow-up helper path rather than inventing a wider command family.
 
 ### Smoke Test
 
@@ -82,10 +83,15 @@ This feature narrowed the read-code contract to four practical changes:
 - document the read rules in `AGENTS.md`
 - return multiple anchor candidates with confidence metadata
 - prefer full indexed body text when it is highly confident
+- allow a bounded follow-up helper path for non-top shortlist candidates
 - widen retrieval recall with a bounded `top_k = 20`
 
 - Detailed task breakdown: [`tasks.md`](./tasks.md)
-- Implementation trail: feature branch `025-intent-anchor-routing`
+- Implementation trail: feature branch `025-intent-anchor-routing`, commit `e1914c9`
+
+### Decision Log
+
+- Updated the quickstart to describe the shortlist/body contract, the `90/100` inline-body threshold, and the bounded follow-up helper so the feature matches the implemented read-code behavior.
 
 ---
 
