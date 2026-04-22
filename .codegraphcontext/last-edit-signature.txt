@@ -1,16 +1,6 @@
-?? scripts/hook_enforce_pytest_guard.py
-?? scripts/pytest_guard.py
-?? tests/unit/test_hook_enforce_pytest_guard.py
-?? tests/unit/test_pytest_guard.py
-M .claude/commands/speckit.sketch.md
-M .claude/settings.json
-M .codegraphcontext/global/db/vector-index/active.json
-M .codegraphcontext/global/db/vector-index/previous.json
-M .codegraphcontext/global/db/vector-index/staging/5af3ed658b0842c2b221850537825d6d/chroma.sqlite3
-M .codegraphcontext/last-edit-signature.txt
-M .gitignore
-M AGENTS.md
-M scripts/hook_enforce_code_reads.py
-M scripts/read_code.py
-M scripts/read_markdown.py
-M tests/unit/test_hook_enforce_code_reads.py
+ M scripts/cgc_owner.sh
+ M scripts/read_code.py
+ M src/mcp_codebase/health.py
+ M tests/unit/test_cgc_index_lifecycle.py
+ M tests/unit/test_health.py
+ M tests/unit/test_read_code_index_refresh.py

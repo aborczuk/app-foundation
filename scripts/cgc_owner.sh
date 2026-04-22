@@ -25,6 +25,32 @@ cgc_owner_poll_seconds() {
   printf '%s\n' "${CGC_OWNER_POLL_SECONDS:-1}"
 }
 
+cgc_owner_lock_stale_seconds() {
+  printf '%s\n' "${CGC_OWNER_LOCK_STALE_SECONDS:-300}"
+}
+
+cgc_owner_file_mtime_epoch() {
+  local path mtime
+  path="${1:-}"
+  if [ -z "$path" ] || [ ! -e "$path" ]; then
+    return 1
+  fi
+
+  mtime="$(stat -f '%m' "$path" 2>/dev/null || true)"
+  if cgc_owner_is_valid_pid "$mtime"; then
+    printf '%s\n' "$mtime"
+    return 0
+  fi
+
+  mtime="$(stat -c '%Y' "$path" 2>/dev/null || true)"
+  if cgc_owner_is_valid_pid "$mtime"; then
+    printf '%s\n' "$mtime"
+    return 0
+  fi
+
+  return 1
+}
+
 cgc_owner_is_valid_pid() {
   case "${1:-}" in
     ""|*[!0-9]*)
@@ -53,6 +79,33 @@ cgc_owner_pid_is_alive() {
   return 0
 }
 
+cgc_owner_lock_is_stale_without_owner() {
+  local owner_file lock_file stale_after now mtime age
+
+  owner_file="$(cgc_owner_pid_file)"
+  lock_file="$(cgc_owner_lock_file)"
+  stale_after="$(cgc_owner_lock_stale_seconds)"
+  if ! cgc_owner_is_valid_pid "$stale_after"; then
+    stale_after=300
+  fi
+
+  if [ -f "$owner_file" ] || [ ! -f "$lock_file" ]; then
+    return 1
+  fi
+
+  mtime="$(cgc_owner_file_mtime_epoch "$lock_file" || true)"
+  now="$(date +%s 2>/dev/null || true)"
+  if ! cgc_owner_is_valid_pid "$mtime" || ! cgc_owner_is_valid_pid "$now"; then
+    return 1
+  fi
+
+  age=$((now - mtime))
+  if [ "$age" -lt 0 ]; then
+    age=0
+  fi
+  [ "$age" -ge "$stale_after" ]
+}
+
 cgc_owner_clear_artifacts() {
   rm -f "$(cgc_owner_pid_file)" "$(cgc_owner_lock_file)"
 }
@@ -75,30 +128,41 @@ cgc_owner_release() {
 }
 
 cgc_owner_wait_for_release() {
-  local owner_file owner_wait owner_poll waited owner_pid
+  local owner_file lock_file owner_wait owner_poll waited owner_pid
 
   owner_file="$(cgc_owner_pid_file)"
+  lock_file="$(cgc_owner_lock_file)"
   owner_wait="$(cgc_owner_wait_seconds)"
   owner_poll="$(cgc_owner_poll_seconds)"
   waited=0
 
-  while [ -f "$owner_file" ]; do
-    owner_pid="$(sed -n '1p' "$owner_file" 2>/dev/null || true)"
+  while [ -f "$owner_file" ] || [ -f "$lock_file" ]; do
+    if [ -f "$owner_file" ]; then
+      owner_pid="$(sed -n '1p' "$owner_file" 2>/dev/null || true)"
 
-    if ! cgc_owner_is_valid_pid "$owner_pid"; then
-      echo "Removing invalid CodeGraph owner marker: $owner_file"
-      cgc_owner_clear_artifacts
-      return 0
-    fi
+      if ! cgc_owner_is_valid_pid "$owner_pid"; then
+        echo "Removing invalid CodeGraph owner marker: $owner_file"
+        cgc_owner_clear_artifacts
+        return 0
+      fi
 
-    if ! cgc_owner_pid_is_alive "$owner_pid"; then
-      echo "Removing stale CodeGraph owner marker (pid $owner_pid): $owner_file"
-      cgc_owner_clear_artifacts
+      if ! cgc_owner_pid_is_alive "$owner_pid"; then
+        echo "Removing stale CodeGraph owner marker (pid $owner_pid): $owner_file"
+        cgc_owner_clear_artifacts
+        return 0
+      fi
+    elif cgc_owner_lock_is_stale_without_owner; then
+      echo "Removing stale CodeGraph lock marker without owner: $lock_file"
+      rm -f "$lock_file"
       return 0
     fi
 
     if [ "$waited" -ge "$owner_wait" ]; then
-      echo "Existing CodeGraph owner (pid $owner_pid) is still active after ${owner_wait}s; refusing recovery yet." >&2
+      if [ -f "$owner_file" ]; then
+        echo "Existing CodeGraph owner (pid $owner_pid) is still active after ${owner_wait}s; refusing recovery yet." >&2
+      else
+        echo "CodeGraph lock marker persists without owner after ${owner_wait}s; refusing recovery yet." >&2
+      fi
       return 75
     fi
 
@@ -175,9 +239,9 @@ ignored_prefixes = (
 status_path = Path(sys.argv[1])
 lines = []
 for raw in status_path.read_text(encoding="utf-8").splitlines():
-    line = raw.strip()
-    if not line:
+    if not raw.strip():
         continue
+    line = raw.rstrip("\n")
     path = line[3:] if len(line) > 3 else ""
     if " -> " in path:
         candidates = [part.strip() for part in path.split(" -> ")]
@@ -200,5 +264,5 @@ cgc_owner_record_edit_signature() {
 
   signature_file="$(cgc_owner_last_edit_signature_file)"
   current_signature="$(cgc_owner_current_edit_signature)"
-  printf '%s\n' "$current_signature" > "$signature_file"
+  printf '%s' "$current_signature" > "$signature_file"
 }
