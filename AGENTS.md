@@ -40,8 +40,6 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
   - **Validate ledger syntax**: `uv run python scripts/task_ledger.py validate --file .speckit/task-ledger.jsonl`
   - **Other queries**: Run `uv run python scripts/task_ledger.py --help` to see all subcommands and valid event types.
 
-### Deterministic workflow gate checks
-- Canonical command catalog lives in `constitution.md` `## Quality Gates`. Keep command docs and scripts aligned there.
 
 ### Progressive load routing
 - Treat this file as the route map, not the full knowledge base.
@@ -83,6 +81,7 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 - Use for repository code/issue/PR discovery when remote context is required.
 - Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` (`cwd: /Users/andreborczuk/app-foundation`)
 
+RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead: 
 **Mandatory workflow order**:
 1. **Helper-driven read**: Start with `scripts/read-code.sh` / `scripts/read-markdown.sh` for anchored bounded reads.
 2. **Semantic+exact semantics (internal)**: Those helpers run semantic lookup first, then exact seam anchoring.
@@ -96,7 +95,6 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 - If codegraph discovery is stale or incomplete, run a scoped non-force refresh first:
   `scripts/cgc_safe_index.sh <scoped-path>` (example: `scripts/cgc_safe_index.sh src/clickup_control_plane`),
   then retry codegraph queries.
-- Only fall back to `rg`/direct file inspection if scoped refresh still leaves discovery incomplete.
 - Any force re-index requires explicit human approval and must be scoped (never full repo).
 - Repository command wrapper note: `uv run cgc ...` is routed through `csp_trader.cgc_guard` (project script) and enforces these index guards.
 
@@ -106,34 +104,6 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
   - `db/`: generated runtime/index artifacts (Kuzu/Falkor files, sockets)
   - `.uv-cache/`: CodeGraph uv cache when scripts set `CGC_UV_CACHE_DIR`
 
-### Shell Script Compatibility (macOS-first)
-
-Treat every generated shell script as macOS-first. Apply all three rules unconditionally — macOS uses BSD core utilities that differ from GNU/Linux.
-
-- **No `head -n-1`**: GNU-only, fails on macOS. Use `sed '$d'` instead.
-  ```bash
-  # WRONG: echo \"$x\" | head -n-1
-  echo \"$x\" | sed '$d'
-  ```
-
-- **`mktemp` — XXXXXX must be last**: Any suffix after `XXXXXX` (e.g. `.json`) causes `mkstemp failed` on macOS. Drop the extension.
-  ```bash
-  # WRONG: mktemp \"${TMPDIR:-/tmp}/file-XXXXXX.json\"
-  mktemp \"${TMPDIR:-/tmp}/file-XXXXXX\"
-  ```
-
-- **Never pipe + heredoc to the same command**: The heredoc wins stdin; piped data is silently lost. Write data to a temp file and pass the path as an argument instead.
-  ```bash
-  # WRONG: echo \"$body\" | python3 - <<'PY' ... PY
-  tmp=\"$(mktemp \"${TMPDIR:-/tmp}/data-XXXXXX\")\"
-  printf '%s' \"$body\" > \"$tmp\"
-  python3 - \"$tmp\" <<'PY'
-  ...
-  PY
-  rm -f \"$tmp\"
-  ```
-
-- **Quote args consistently**: Prefer double quotes around arguments containing `'`; otherwise use POSIX escaping (`'\\''`).
 
 ### Markdown File Read Efficiency
 
@@ -163,17 +133,9 @@ Use this workflow:
 7. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
+  ### Edit Efficiency
 
-### Token efficiency
-
-After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
-
-### Healing and improvment
-- Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
-
-### Edit Efficiency
-
-- Use `scripts/edit-code.sh` when you want deterministic validation/refresh/sync sequencing for a coherent edit unit:
+- Use `scripts/edit-code.sh` to edit code in this repo:
 ```bash
 source scripts/edit-code.sh
 edit_validate --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.py --tests tests/unit/test_read_code_index_refresh.py
@@ -194,9 +156,9 @@ edit_sync --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.p
 - Verify once after the patch set is complete as a final end-to-end pass, not instead of batch-level validation.
 - Treat a completed edit as the basic unit of work: keep the patch set coherent, verify it, then hand it off as one synced change.
 
-### Final Handoff
+### Final Edit Handoff
 
-- When the user asks for a completed change, finish with local verification, run `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin, then commit and push so the branch is synced.
+- Finish with local verification, run `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin, then commit and push so the branch is synced.
 - Commit once per completed edit unit; small, well-described commits are the basic unit of maintainable code.
 - Commit messages should describe one coherent edit unit clearly and narrowly.
 - Do not split one logical edit across multiple unsynced handoffs unless the user explicitly wants an intermediate checkpoint.
@@ -208,3 +170,12 @@ edit_sync --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.p
   - `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin
   - commit the coherent edit unit
   - push so the branch is synced
+
+### Token efficiency
+
+After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
+
+### Healing and improvment
+- Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
+
+
