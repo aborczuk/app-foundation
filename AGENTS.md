@@ -133,14 +133,15 @@ Use this workflow:
 7. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
-  ### Edit Efficiency
+### Edit Efficiency
 
 - Use `scripts/edit-code.sh` to edit code in this repo:
 ```bash
 source scripts/edit-code.sh
-edit_validate --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.py --tests tests/unit/test_read_code_index_refresh.py
-edit_sync --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.py --tests tests/unit/test_read_code_index_refresh.py --commit-message "Describe coherent edit"
+edit_validate --paths <touched-paths> --tests <pytest-selectors>
+edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<coherent-edit-message>"
 ```
+- Replace `<touched-paths>` with the files changed in the edit batch, and `<pytest-selectors>` with the minimal targeted tests for that batch.
 - Read the exact seam once before editing.
 - Work seam-by-seam: finish one seam before starting another.
 - Default to one-file edit batches: complete one file’s coherent change + validation loop before moving to the next file.
@@ -177,5 +178,4 @@ After each pipeline command or long running command, report if there were large 
 
 ### Healing and improvment
 - Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix
-
 
