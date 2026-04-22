@@ -270,20 +270,6 @@ def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealth
             recovery_command=recovery_command,
         )
 
-    if status == "healthy":
-        current_signature = codegraph_current_edit_signature(root)
-        cached_signature = codegraph_cached_edit_signature(root)
-        if current_signature != cached_signature:
-            stale_detail = (
-                "local working-tree edits changed since the last graph refresh; "
-                f"marking codegraph stale for {root}"
-            )
-            print(f"WARN: {stale_detail}", file=sys.stderr)
-            return _CodegraphHealthProbe(
-                status="stale",
-                detail=stale_detail,
-                recovery_command=recovery_command,
-            )
     return _CodegraphHealthProbe(
         status=status or "probe-failed",
         detail=detail,
@@ -511,7 +497,12 @@ def _tail_lines(text: str, count: int = 20) -> list[str]:
     return lines[-count:]
 
 
-def codegraph_discover_or_fail(pattern: str, scope_path: Path | None = None) -> bool:
+def codegraph_discover_or_fail(
+    pattern: str,
+    scope_path: Path | None = None,
+    *,
+    skip_preflight_refresh: bool = False,
+) -> bool:
     """Run bounded codegraph discovery and self-heal index fragility once."""
     if not pattern:
         print("ERROR: codegraph discovery requires a non-empty symbol_or_pattern", file=sys.stderr)
@@ -523,7 +514,8 @@ def codegraph_discover_or_fail(pattern: str, scope_path: Path | None = None) -> 
 
     path = scope_path or REPO_ROOT
     init_codegraph_env()
-    codegraph_refresh_if_needed(path)
+    if not skip_preflight_refresh and not codegraph_refresh_if_needed(path):
+        return False
 
     cmd = ["uv", "run", "--no-sync", "cgc", "find", "pattern", "--", pattern]
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -1097,7 +1089,11 @@ def read_code_context(argv: list[str]) -> int:
                 if normalized_pattern and normalized_pattern != pattern
                 else pattern
             )
-            if not codegraph_discover_or_fail(discover_pattern, file_path.parent):
+            if not codegraph_discover_or_fail(
+                discover_pattern,
+                file_path.parent,
+                skip_preflight_refresh=True,
+            ):
                 return 1
             vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
             if vector_match is not None:
@@ -1217,7 +1213,11 @@ def read_code_window(argv: list[str]) -> int:
                     if normalized_pattern and normalized_pattern != pattern
                     else pattern
                 )
-                if not codegraph_discover_or_fail(discover_pattern, file_path.parent):
+                if not codegraph_discover_or_fail(
+                    discover_pattern,
+                    file_path.parent,
+                    skip_preflight_refresh=True,
+                ):
                     return 1
             vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
             if vector_match is not None:

@@ -308,6 +308,46 @@ def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, t
     assert "doctor suggested:" in captured.err
 
 
+def test_codegraph_discover_or_fail_skips_refresh_when_preflight_already_done(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(read_code, "init_codegraph_env", lambda: None)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_refresh_if_needed",
+        lambda scope_path=None: (_ for _ in ()).throw(AssertionError("refresh should be skipped")),
+    )
+    monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0))
+
+    result = read_code.codegraph_discover_or_fail(
+        "run_pipeline",
+        tmp_path / "src",
+        skip_preflight_refresh=True,
+    )
+
+    assert result is True
+
+
+def test_codegraph_discover_or_fail_refreshes_by_default(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(read_code, "init_codegraph_env", lambda: None)
+    calls: list[Path | None] = []
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_refresh_if_needed",
+        lambda scope_path=None: (calls.append(scope_path), True)[1],
+    )
+    monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0))
+
+    scope = tmp_path / "src"
+    result = read_code.codegraph_discover_or_fail("run_pipeline", scope)
+
+    assert result is True
+    assert calls == [scope]
+
+
 def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeypatch, tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
