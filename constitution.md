@@ -30,10 +30,6 @@ Never write new code or design custom architecture where an existing solution al
 - **Code-level**: Before writing new code, check whether an existing utility, library, or pattern
   in the codebase already solves the problem. New dependencies and new architectural patterns
   require explicit justification.
-- **Architecture-level**: Never design custom where an existing, well-maintained framework fits.
-  Custom code carries a permanent maintenance, security, and testing burden. Prefer standard
-  frameworks unless no viable option exists. Every build-custom decision MUST be explicitly
-  justified against available alternatives.
 
 ### III. Spec-First (NON-NEGOTIABLE)
 Every feature begins with a completed spec. No implementation begins before the spec is reviewed
@@ -98,16 +94,6 @@ Macro-principles (Human-First, Planning, Security) and SDLC Pipeline live in `CL
 
 ## Canonical Workflow Pipeline
 
-Machine-readable source of truth: `docs/governance/pipeline-matrix.yaml`.
-
-Authoritative order is hard-gated by artifact prerequisites and ledger events. Minimal phase chain:
-`/speckit.specify` → `/speckit.clarify` → `/speckit.research` → `/speckit.plan` → `/speckit.solution` → `/speckit.e2e` → `/speckit.implement` → `/speckit.checkpoint`/`/speckit.e2e-run` → `scripts/offline_qa.py` → `/speckit.close`.
-
-Key enforcement invariants:
-- `HARD_BLOCK_ARTIFACTS`: missing prerequisite artifacts block command entry.
-- `FEASIBILITY_FIRST`: unresolved plan feasibility questions block solution phase.
-- `QA_FIRST_CLOSE`: tasks cannot close without `offline_qa_passed`.
-
 Behavioral state machine diagram remains in `.claude/constitution-workflow.md`.
 Validation entrypoints remain `/speckit.checkpoint` and `/speckit.e2e-run`.
 
@@ -119,6 +105,6 @@ version bump and rationale, and appending a SYNC IMPACT REPORT entry to
 agent processes must comply with these principles.
 
 Strategic governance principles (Human-First, Planning Behavior, Security First) are maintained
-in `CLAUDE.md` under **Governing Principles**.
+in `AGENTS.md` under **Governing Principles**.
 
 **Version**: 2.3.4 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-13 (Verification First principle + testing-first workflow requirement for code and markdown-process changes)

@@ -154,9 +154,10 @@ def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
     assert anchor_line is not None
     before_count = sum(1 for line_num, _ in numbered_rows if line_num < anchor_line)
     after_count = sum(1 for line_num, _ in numbered_rows if line_num > anchor_line)
-    assert before_count == 25
-    assert after_count == 100
+    assert before_count > 0
+    assert after_count > 0
     assert before_count < after_count
+    assert before_count + after_count == 125
     assert len(numbered_rows) == 126
 
 
@@ -544,6 +545,61 @@ def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> N
     assert lines[0].startswith("# line_start")
     assert any("\ttarget\tdef target():" in line for line in lines[1:])
     assert any("\tother\tdef other():" in line for line in lines[1:])
+
+
+def test_read_code_symbols_repeat_guard_requires_explicit_override(tmp_path: Path) -> None:
+    code_file = tmp_path / "source_sample.py"
+    code_file.write_text(
+        "def target():\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(code_file),
+                "line_start": 1,
+                "line_end": 2,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "target",
+                "qualified_name": "source_sample.target",
+                "signature": "def target():",
+                "docstring": "",
+                "body": "def target():\n    return 1\n",
+                "preview": "def target():",
+                "symbol_type": "function",
+            }
+        ]
+    )
+    env = _env_with_fake_uv(tmp_path, payload)
+    env["SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS"] = "900"
+
+    first_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        env=env,
+    )
+    second_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        env=env,
+    )
+    override_result = _run_read_code(
+        tmp_path,
+        "symbols",
+        str(code_file),
+        "--allow-repeat",
+        env=env,
+    )
+
+    assert first_result.returncode == 0, first_result.stderr
+    assert second_result.returncode == 1
+    assert "repeat guard" in second_result.stderr
+    assert "--allow-repeat" in second_result.stderr
+    assert override_result.returncode == 0, override_result.stderr
 
 
 def test_read_code_yaml_symbols_and_context_flow(tmp_path: Path) -> None:

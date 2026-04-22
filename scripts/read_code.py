@@ -26,11 +26,15 @@ READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "125") or "125")
 READ_CODE_CONTEXT_PRE_FRACTION = 0.1
 READ_CODE_CONTEXT_PRE_CAP = 25
+READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS = int(
+    os.environ.get("SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS", "900") or "900"
+)
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
 )
 LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-edit-signature.txt"
+READ_CODE_SYMBOLS_USAGE_FILE = CODEGRAPH_DB_DIR / "read-code-symbols-usage.json"
 CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_ATTEMPTS", "2") or "2")
 CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
     os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
@@ -1408,6 +1412,92 @@ def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | N
     return candidate.body
 
 
+def _load_symbols_usage_state() -> dict[str, dict[str, object]]:
+    """Load persisted read_code_symbols usage telemetry for repeat-call guarding."""
+    if not READ_CODE_SYMBOLS_USAGE_FILE.is_file():
+        return {}
+    try:
+        payload = json.loads(READ_CODE_SYMBOLS_USAGE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, dict[str, object]] = {}
+    for key, value in payload.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            normalized[key] = value
+    return normalized
+
+
+def _persist_symbols_usage_state(state: dict[str, dict[str, object]]) -> None:
+    """Persist read_code_symbols usage telemetry without failing the read path."""
+    try:
+        READ_CODE_SYMBOLS_USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        READ_CODE_SYMBOLS_USAGE_FILE.write_text(
+            json.dumps(state, ensure_ascii=True, sort_keys=True),
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
+def _check_symbols_repeat_guard(file_path: Path, *, allow_repeat: bool) -> tuple[bool, str]:
+    """Enforce a cooldown on repeated symbol dumps for unchanged files."""
+    if allow_repeat or READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS <= 0:
+        return False, ""
+    try:
+        stat = file_path.stat()
+    except OSError:
+        return False, ""
+    current_mtime_ns = int(stat.st_mtime_ns)
+    current_size = int(stat.st_size)
+    now = time.time()
+    key = str(file_path.resolve())
+    state = _load_symbols_usage_state()
+    entry = state.get(key)
+    if isinstance(entry, dict):
+        recorded_mtime_raw = entry.get("mtime_ns")
+        recorded_size_raw = entry.get("size")
+        recorded_ts_raw = entry.get("last_called_ts")
+        recorded_mtime_ns = (
+            int(recorded_mtime_raw)
+            if isinstance(recorded_mtime_raw, (int, float))
+            else -1
+        )
+        recorded_size = (
+            int(recorded_size_raw)
+            if isinstance(recorded_size_raw, (int, float))
+            else -1
+        )
+        recorded_ts = (
+            float(recorded_ts_raw)
+            if isinstance(recorded_ts_raw, (int, float))
+            else 0.0
+        )
+        elapsed = now - recorded_ts
+        if (
+            recorded_mtime_ns == current_mtime_ns
+            and recorded_size == current_size
+            and elapsed >= 0
+            and elapsed < READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS
+        ):
+            remaining = int(READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS - elapsed)
+            return (
+                True,
+                (
+                    f"read_code_symbols repeat guard: {file_path} was listed {int(elapsed)}s ago and is unchanged; "
+                    f"use read_code_context/read_code_window or pass --allow-repeat (cooldown remaining: {remaining}s)."
+                ),
+            )
+    state[key] = {
+        "mtime_ns": current_mtime_ns,
+        "size": current_size,
+        "last_called_ts": now,
+    }
+    _persist_symbols_usage_state(state)
+    return False, ""
+
+
 def _select_vector_candidate(candidates: list[_VectorMatch], index: int) -> tuple[_VectorMatch | None, str | None]:
     """Select a ranked candidate index while returning actionable selection errors."""
     if index < 0:
@@ -1426,13 +1516,21 @@ def read_code_symbols(argv: list[str]) -> int:
     if len(argv) < 1:
         print("ERROR: read_code_symbols requires: <file_path>", file=sys.stderr)
         return 1
-    if len(argv) > 1:
-        print(f"ERROR: Unexpected argument(s) for symbols mode: {' '.join(argv[1:])}", file=sys.stderr)
+    allow_repeat = False
+    for token in argv[1:]:
+        if token == "--allow-repeat":
+            allow_repeat = True
+            continue
+        print(f"ERROR: Unexpected argument(s) for symbols mode: {token}", file=sys.stderr)
         return 1
 
     file_path = Path(argv[0])
     if not file_path.is_file():
         print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    repeat_blocked, repeat_message = _check_symbols_repeat_guard(file_path, allow_repeat=allow_repeat)
+    if repeat_blocked:
+        print(f"ERROR: {repeat_message}", file=sys.stderr)
         return 1
     if not _refresh_indexes_for_read(file_path):
         return 1
@@ -1765,7 +1863,7 @@ def _print_usage() -> None:
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
-    print("  read_code_symbols <file_path>")
+    print("  read_code_symbols <file_path> [--allow-repeat]")
     print(
         "                   (bounded follow-up helper may return a non-top candidate body without widening scope)"
     )

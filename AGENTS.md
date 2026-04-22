@@ -126,7 +126,7 @@ Use this workflow:
 1. Invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
 2. Use one of those exact symbols with `read_code_context` / `read_code_window` for seam anchoring.
 3. The helper resolves semantic lookup first and then performs exact bounded reads.
-   - `read_code_context` applies a fixed asymmetric split: small pre-anchor context and larger post-anchor context (no optional override).
+   - `read_code_context` applies a fixed asymmetric split: small pre-anchor context and larger post-anchor context
 4. Run codegraph discovery checks for blast radius only after the seam is confirmed.
 5. Expand to additional windows only when needed to resolve ambiguity.
 6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
@@ -143,6 +143,8 @@ Use the shortlist/body contract when reading code with the helper.
 - `read_code_context` defaults to resolved anchor + bounded window output (no shortlist by default).
 - The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
 - Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
+- `read_code_symbols` has repeat-call enforcement for unchanged files; one symbol dump per file should be enough for most seams.
+- If a true second symbol dump is required, use `read_code_symbols <file> --allow-repeat` and state why before doing it.
 - `context_lines` is a total context budget with a fixed small-before/larger-after split.
 - The confidence cutoff for inline body output is `90/100` when `--inline-body` is requested.
 - A non-top candidate body should only be returned through the bounded follow-up helper path.
