@@ -173,6 +173,12 @@ After each pipeline command or long running command, report if there were large 
 
 ### Edit Efficiency
 
+- Use `scripts/edit-code.sh` when you want deterministic validation/refresh/sync sequencing for a coherent edit unit:
+```bash
+source scripts/edit-code.sh
+edit_validate --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.py --tests tests/unit/test_read_code_index_refresh.py
+edit_sync --paths scripts/read_code.py tests/unit/test_read_code_index_refresh.py --tests tests/unit/test_read_code_index_refresh.py --commit-message "Describe coherent edit"
+```
 - Read the exact seam once before editing.
 - Work seam-by-seam: finish one seam before starting another.
 - Default to one-file edit batches: complete one file’s coherent change + validation loop before moving to the next file.
