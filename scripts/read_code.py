@@ -1680,12 +1680,13 @@ def _print_usage() -> None:
     print(
         f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback]"
     )
+    print("                   (returns a top-5 shortlist; inline body when confidence >= 90/100)")
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
     print("  read_code_symbols <file_path>")
     print(
-        "                   (for large files, HUD current-line fast-path may omit symbol when --hud-symbol is set)"
+        "                   (bounded follow-up helper may return a non-top candidate body without widening scope)"
     )
 
 

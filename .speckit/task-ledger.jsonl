@@ -1007,3 +1007,15 @@
 {"actor": "codex", "attempt": 1, "details": "Verified the follow-up body regression path and bounded retry behavior in the migration tests.", "event": "human_action_verified", "feature_id": "025", "task_id": "T009", "timestamp_utc": "2026-04-22T20:08:41.936047Z", "verification_method": "targeted pytest and ruff"}
 {"actor": "codex", "attempt": 1, "details": "Closed after non-top candidate follow-up behavior and bounded retry coverage were verified.", "event": "task_closed", "feature_id": "025", "task_id": "T009", "timestamp_utc": "2026-04-22T20:08:43.743446Z"}
 {"actor": "codex", "attempt": 1, "details": "Started docs update for read-code rules in AGENTS.md.", "event": "task_started", "feature_id": "025", "task_id": "T010", "timestamp_utc": "2026-04-22T20:15:25.787502Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "025", "task_id": "T010", "timestamp_utc": "2026-04-22T20:15:58.263473Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "375446d", "event": "commit_created", "feature_id": "025", "task_id": "T010", "timestamp_utc": "2026-04-22T20:15:58.304183Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "025", "task_id": "T010", "timestamp_utc": "2026-04-22T20:15:58.345989Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "025", "qa_run_id": "docs-readback-20260422", "task_id": "T010", "timestamp_utc": "2026-04-22T20:15:58.384575Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "025", "task_id": "T010", "timestamp_utc": "2026-04-22T20:15:58.421056Z"}
+{"actor": "codex", "attempt": 1, "details": "Started quickstart update for shortlist/body contract.", "event": "task_started", "feature_id": "025", "task_id": "T011", "timestamp_utc": "2026-04-22T20:16:02.671911Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "025", "task_id": "T011", "timestamp_utc": "2026-04-22T20:16:04.679608Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "375446d", "event": "commit_created", "feature_id": "025", "task_id": "T011", "timestamp_utc": "2026-04-22T20:16:04.726138Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "025", "task_id": "T011", "timestamp_utc": "2026-04-22T20:16:04.771319Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "025", "qa_run_id": "quickstart-readback-20260422", "task_id": "T011", "timestamp_utc": "2026-04-22T20:16:04.829626Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "025", "task_id": "T011", "timestamp_utc": "2026-04-22T20:16:04.867122Z"}
+{"actor": "codex", "attempt": 1, "details": "Started consistency review for solution-review and tasking artifacts.", "event": "task_started", "feature_id": "025", "task_id": "T013", "timestamp_utc": "2026-04-22T20:17:04.247886Z"}
