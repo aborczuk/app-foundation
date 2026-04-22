@@ -211,6 +211,79 @@ def test_read_code_context_uses_uv_branch_without_hud_fast_path(tmp_path: Path) 
     assert "using strict/local anchor" in result.stderr
 
 
+def test_read_code_context_renders_shortlist_and_confident_body(tmp_path: Path) -> None:
+    code_file = tmp_path / "uv_sample.py"
+    code_file.write_text(
+        "\n".join(
+            [
+                "def helper():",
+                "    return 0",
+                "",
+                "def run_pipeline():",
+                "    return 1",
+                "",
+                "def after():",
+                "    return 2",
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = json.dumps(
+        [
+            {
+                "file_path": str(code_file),
+                "line_start": 4,
+                "line_end": 5,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "run_pipeline",
+                "qualified_name": "sample.run_pipeline",
+                "signature": "def run_pipeline():",
+                "docstring": "Run the pipeline.",
+                "body": "def run_pipeline():\n    return 1",
+                "preview": "def run_pipeline():",
+                "symbol_type": "function",
+                "score": 1.0,
+                "distance": 0.0,
+            },
+            {
+                "file_path": str(code_file),
+                "line_start": 1,
+                "line_end": 2,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "helper",
+                "qualified_name": "sample.helper",
+                "signature": "def helper():",
+                "docstring": "Helper.",
+                "body": "def helper():\n    return 0",
+                "preview": "def helper():",
+                "symbol_type": "function",
+                "score": 0.6,
+                "distance": 0.4,
+            },
+        ]
+    )
+
+    result = _run_read_code(
+        tmp_path,
+        "context",
+        str(code_file),
+        "run_pipeline",
+        "2",
+        env=_env_with_fake_uv(tmp_path, indexer_payload=payload),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "# shortlist for: run_pipeline" in result.stdout
+    assert "# body" in result.stdout
+    assert any(line.endswith("\tdef run_pipeline():") for line in result.stdout.splitlines())
+    assert any(line.endswith("\t    return 1") for line in result.stdout.splitlines())
+
+
 def test_read_code_context_prefers_exact_symbol_vector_hit_over_header_block(tmp_path: Path) -> None:
     code_file = tmp_path / "wrapper.sh"
     code_file.write_text(

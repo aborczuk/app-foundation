@@ -53,3 +53,4 @@
 {"actor": "codex", "event": "tasking_completed", "feature_id": "025", "phase": "", "story_count": 3, "task_count": 14, "timestamp_utc": "2026-04-21T16:10:26.493654Z"}
 {"actor": "codex", "estimate_points": 26, "event": "solution_approved", "feature_id": "025", "phase": "", "story_count": 3, "task_count": 14, "timestamp_utc": "2026-04-21T17:16:43.713970Z"}
 {"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "025", "high_count": 0, "phase": "", "timestamp_utc": "2026-04-21T17:16:48.598861Z"}
+{"actor": "codex", "details": "Generated feature e2e artifacts and canonical script name for speckit implement gate.", "e2e_artifact": "specs/025-intent-anchor-routing/e2e.md", "event": "e2e_generated", "feature_id": "025", "phase": "", "timestamp_utc": "2026-04-22T19:56:32.983899Z"}

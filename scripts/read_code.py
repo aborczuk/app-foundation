@@ -42,11 +42,15 @@ class _VectorMatch:
     line_num: int
     raw_score: float
     metadata_score: float
+    confidence: int
     exact_symbol_match: bool
     symbol_type: str
     has_body: bool
     has_docstring: bool
     line_span: int
+    body: str
+    preview: str
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -1007,8 +1011,31 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
     return score, exact_symbol_match
 
 
-def _vector_anchor_rank(match: _VectorMatch) -> tuple[int, int, int, int, float, float, int, int]:
+def _candidate_confidence(
+    raw_score: float,
+    metadata_score: float,
+    *,
+    exact_symbol_match: bool,
+    has_body: bool,
+    has_docstring: bool,
+    line_span: int,
+) -> int:
+    """Normalize vector signal into a stable 0-100 confidence score."""
+    score = raw_score * 50.0
+    score += min(metadata_score, 20.0) * 2.5
+    if exact_symbol_match:
+        score += 10.0
+    if has_body:
+        score += 7.0
+    if has_docstring:
+        score += 4.0
+    score -= min(float(line_span), 10.0)
+    return max(0, min(100, int(round(score))))
+
+
+def _vector_anchor_rank(match: _VectorMatch) -> tuple[int, int, int, int, int, float, float, int, int]:
     return (
+        match.confidence,
         1 if match.exact_symbol_match else 0,
         1 if match.symbol_type in {"function", "method", "class"} else 0,
         1 if match.has_body else 0,
@@ -1027,24 +1054,45 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
 
     raw_score = _candidate_raw_score(item)
     metadata_score, exact_symbol_match = _candidate_metadata_score(item, query, normalized_query)
+    body = _candidate_text(item, "body")
+    preview = _candidate_text(item, "preview")
+    signature = _candidate_text(item, "signature")
+    has_docstring = bool(_candidate_text(item, "docstring"))
+    line_span = max(0, (_candidate_int(item, "line_end") or 0) - line_num)
     return _VectorMatch(
         line_num=line_num,
         raw_score=raw_score,
         metadata_score=metadata_score,
+        confidence=_candidate_confidence(
+            raw_score,
+            metadata_score,
+            exact_symbol_match=exact_symbol_match,
+            has_body=bool(body),
+            has_docstring=has_docstring,
+            line_span=line_span,
+        ),
         exact_symbol_match=exact_symbol_match,
         symbol_type=_candidate_text(item, "symbol_type"),
-        has_body=bool(_candidate_text(item, "body")),
-        has_docstring=bool(_candidate_text(item, "docstring")),
-        line_span=max(0, (_candidate_int(item, "line_end") or 0) - line_num),
+        has_body=bool(body),
+        has_docstring=has_docstring,
+        line_span=line_span,
+        body=body,
+        preview=preview,
+        signature=signature,
     )
 
 
-def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
+def _vector_query_candidates(
+    file_path: Path,
+    query: str,
+    normalized_query: str,
+    scope: str,
+) -> list[_VectorMatch]:
     if not query or not scope:
-        return None
+        return []
     if not _command_exists("uv"):
         _set_vector_runtime_note("uv is not available")
-        return None
+        return []
 
     cmd = [
         "uv",
@@ -1060,7 +1108,7 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
         "--scope",
         scope,
         "--top-k",
-        "5",
+        "20",
     ]
     proc = subprocess.run(
         cmd,
@@ -1075,19 +1123,19 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
             _set_vector_runtime_note(f"indexer query failed: {stderr.splitlines()[0]}")
         else:
             _set_vector_runtime_note(f"indexer query failed with exit code {proc.returncode}")
-        return None
+        return []
 
     try:
         payload = json.loads(proc.stdout or "[]")
     except json.JSONDecodeError:
         _set_vector_runtime_note("indexer query returned invalid JSON")
-        return None
+        return []
     if not isinstance(payload, list):
         _set_vector_runtime_note("indexer query returned unexpected payload shape")
-        return None
+        return []
 
     target = file_path.resolve()
-    best_match: _VectorMatch | None = None
+    matches: list[_VectorMatch] = []
     for item in payload:
         if not isinstance(item, dict):
             continue
@@ -1102,17 +1150,14 @@ def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, s
         match = _vector_match_for_item(item, query, normalized_query)
         if match is None:
             continue
+        matches.append(match)
 
-        if best_match is None:
-            best_match = match
-            continue
+    return sorted(matches, key=_vector_anchor_rank, reverse=True)[:5]
 
-        best_tuple = _vector_anchor_rank(best_match)
-        candidate_tuple = _vector_anchor_rank(match)
-        if candidate_tuple > best_tuple:
-            best_match = match
 
-    return best_match
+def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
+    candidates = _vector_query_candidates(file_path, query, normalized_query, scope)
+    return candidates[0] if candidates else None
 
 
 def _vector_find_line_num(
@@ -1132,6 +1177,22 @@ def _vector_find_line_num(
     ):
         match = _vector_query_line_num(file_path, normalized_pattern, normalized_pattern, scope)
     return match
+
+
+def _vector_find_candidates(
+    file_path: Path,
+    raw_pattern: str,
+    normalized_pattern: str,
+    scope: str,
+) -> list[_VectorMatch]:
+    """Return the bounded shortlist for a query using raw and normalized probes."""
+    _clear_vector_runtime_note()
+    candidates: list[_VectorMatch] = []
+    if raw_pattern:
+        candidates = _vector_query_candidates(file_path, raw_pattern, normalized_pattern, scope)
+    if not candidates and normalized_pattern and normalized_pattern != raw_pattern:
+        candidates = _vector_query_candidates(file_path, normalized_pattern, normalized_pattern, scope)
+    return candidates
 
 
 def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
@@ -1291,6 +1352,49 @@ def _render_symbol_listing(symbols: list[dict[str, object]]) -> None:
         )
 
 
+def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> None:
+    """Render a bounded shortlist of ranked vector candidates."""
+    if not candidates:
+        return
+    print(f"# shortlist for: {query}")
+    print(
+        "# confidence\tline\tname\ttype\tbody\tdocstring\traw\tmetadata"
+    )
+    for candidate in candidates[:5]:
+        print(
+            "\t".join(
+                [
+                    f"{candidate.confidence:3}",
+                    f"{candidate.line_num:6}",
+                    candidate.signature or candidate.preview or "",
+                    candidate.symbol_type or "symbol",
+                    "yes" if candidate.has_body else "no",
+                    "yes" if candidate.has_docstring else "no",
+                    f"{candidate.raw_score:.3f}",
+                    f"{candidate.metadata_score:.3f}",
+                ]
+            )
+        )
+
+
+def _render_candidate_body(candidate: _VectorMatch) -> None:
+    """Render an indexed symbol body when confidence clears the body-first threshold."""
+    if not candidate.body:
+        return
+    print("# body")
+    print(candidate.body.rstrip())
+
+
+def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | None:
+    """Return a non-top shortlist candidate body through a bounded lookup."""
+    if index < 0 or index >= len(candidates):
+        return None
+    candidate = candidates[index]
+    if not candidate.body:
+        return None
+    return candidate.body
+
+
 def read_code_symbols(argv: list[str]) -> int:
     """List deterministic file symbols before choosing an anchor for context/window reads."""
     if len(argv) < 1:
@@ -1367,7 +1471,8 @@ def read_code_context(argv: list[str]) -> int:
     if not _refresh_indexes_for_read(file_path):
         return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
-    vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+    vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    vector_match = vector_candidates[0] if vector_candidates else None
 
     strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
     line_num: int | None = None
@@ -1404,6 +1509,11 @@ def read_code_context(argv: list[str]) -> int:
         elif line_num is None and allow_fallback:
             line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
+    if line_num is not None and not vector_candidates:
+        vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+        if vector_candidates and vector_match is None:
+            vector_match = vector_candidates[0]
+
     _emit_vector_fallback_notice(
         file_path=file_path,
         pattern=pattern,
@@ -1427,6 +1537,11 @@ def read_code_context(argv: list[str]) -> int:
     if line_num is None:
         print(f"ERROR: Pattern not found after one bounded fallback: {pattern} in {file_arg}", file=sys.stderr)
         return 1
+
+    if vector_candidates:
+        _render_candidate_shortlist(vector_candidates, pattern)
+        if vector_match is not None and vector_match.confidence >= 90:
+            _render_candidate_body(vector_match)
 
     start = max(1, line_num - context)
     end = line_num + context
