@@ -1,6 +1,2 @@
- M scripts/cgc_owner.sh
  M scripts/read_code.py
- M src/mcp_codebase/health.py
- M tests/unit/test_cgc_index_lifecycle.py
- M tests/unit/test_health.py
  M tests/unit/test_read_code_index_refresh.py
