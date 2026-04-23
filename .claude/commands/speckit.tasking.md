@@ -199,6 +199,12 @@ uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-runbook 
   TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
 ```
 
+After scaffolding, hydrate missing/template HUD bodies directly from `tasks.md` without clobbering populated HUDs:
+
+```bash
+uv run python scripts/speckit_remake_huds.py --feature-dir "$FEATURE_DIR"
+```
+
 ### 10. Generate acceptance tests
 
 Use `.specify/scripts/acceptance-test-scaffold.py` to create `.speckit/acceptance-tests/story-N.py` from the task graph, then fill in the story-specific deterministic assertions from:

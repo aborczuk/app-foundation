@@ -153,11 +153,12 @@ commands:
       stabilization and generate HUDs + acceptance tests
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
-    - .specify/scripts/pipeline-scaffold.py
-    - .specify/scripts/acceptance-test-scaffold.py
-    - scripts/speckit_tasks_gate.py
-    - scripts/pipeline_ledger.py
+      - .specify/scripts/bash/check-prerequisites.sh
+      - .specify/scripts/pipeline-scaffold.py
+      - scripts/speckit_remake_huds.py
+      - .specify/scripts/acceptance-test-scaffold.py
+      - scripts/speckit_tasks_gate.py
+      - scripts/pipeline_ledger.py
     artifacts:
     - output_path: ${FEATURE_DIR}/tasks.md
       template: tasks-template.md

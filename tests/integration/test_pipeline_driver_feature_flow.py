@@ -101,6 +101,26 @@ def build_feature_workspace(
     return manifest_path, routes
 
 
+def assert_deterministic_step_result(
+    result: dict[str, object],
+    *,
+    ok: bool,
+    exit_code: int,
+    next_phase: str | None,
+    gate: str | None = None,
+    reasons: list[str] | None = None,
+) -> None:
+    """Assert the shared deterministic step-result envelope contract."""
+    assert result["schema_version"] == "1.0.0"
+    assert result["ok"] is ok
+    assert result["exit_code"] == exit_code
+    assert result["next_phase"] == next_phase
+    assert result["gate"] == gate
+    assert result["reasons"] == (reasons or [])
+    assert result["error_code"] is None
+    assert result["debug_path"] is None
+
+
 def test_deterministic_route_success(driver_flow_harness) -> None:
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -131,9 +151,7 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
         cwd=driver_flow_harness.feature_dir,
     )
 
-    assert result["ok"] is True
-    assert result["exit_code"] == 0
-    assert result["next_phase"] == "plan"
+    assert_deterministic_step_result(result, ok=True, exit_code=0, next_phase="plan")
     assert result["process_exit_code"] == 0
     assert result["timed_out"] is False
 
@@ -171,10 +189,14 @@ def test_deterministic_route_blocked(driver_flow_harness) -> None:
         cwd=driver_flow_harness.feature_dir,
     )
 
-    assert result["ok"] is False
-    assert result["exit_code"] == 1
-    assert result["gate"] == "planreview_questions"
-    assert result["reasons"] == ["fq_count_nonzero"]
+    assert_deterministic_step_result(
+        result,
+        ok=False,
+        exit_code=1,
+        next_phase=None,
+        gate="planreview_questions",
+        reasons=["fq_count_nonzero"],
+    )
     assert result["process_exit_code"] == 1
     assert result["timed_out"] is False
 

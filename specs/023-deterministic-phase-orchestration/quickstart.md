@@ -44,9 +44,21 @@ Expected: valid step envelope; blocked or error outcomes are deterministic and m
 
 ## What Was Done
 
-This feature was completed in six phases: phase routing and state resolution, deterministic append and approval gating, command contract hardening, retry/drift handling, command-doc contract cleanup, and manifest routing plus final regression coverage.
+This feature now keeps the original `T001-T029` task graph intact and appends the sketch-derived delta as `T030-T049` in `tasks.md`. The implementation run followed the task ledger lifecycle through start, discovery, QA, and close events for the delta tasks.
 
-For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation and closeout trail, inspect commits `0592df6` and `1a199a8`.
+For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation and closeout trail, inspect the task ledger and the current branch history.
+
+## Implementation Notes
+
+- The regenerated sketch work was appended as a delta instead of overwriting the existing task history.
+- Targeted QA passed for the driver flow, contract surface, and unit coverage around the delta work.
+- Task ledger state for feature `023` is now fully closed for the current task graph.
+
+## Decision Log
+
+- Preserved the original `T001-T029` task graph and appended the regenerated sketch work as `T030-T049` so the ledger and HUDs stay aligned.
+- Kept the delta task lifecycle explicit in the task ledger with discovery, QA, and close events.
+- Updated the operator quickstart to point readers at `tasks.md` for the combined base + delta plan.
 
 ---
 
