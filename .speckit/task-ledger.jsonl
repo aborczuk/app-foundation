@@ -1054,3 +1054,12 @@
 {"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.491876Z"}
 {"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.548804Z"}
 {"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.622175Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "6edf367", "event": "commit_created", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:47:03.190824Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:47:03.233084Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "pytest-20260423T024204Z", "task_id": "T032", "timestamp_utc": "2026-04-23T02:47:03.273237Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:47:03.313182Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "023", "task_id": "T033", "timestamp_utc": "2026-04-23T02:47:37.223203Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "023", "task_id": "T033", "timestamp_utc": "2026-04-23T02:50:57.754977Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "023", "task_id": "T033", "timestamp_utc": "2026-04-23T02:50:57.812084Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T033", "timestamp_utc": "2026-04-23T02:50:57.866325Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "023", "task_id": "T033", "timestamp_utc": "2026-04-23T02:50:57.923890Z"}

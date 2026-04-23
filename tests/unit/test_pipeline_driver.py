@@ -54,6 +54,39 @@ def test_main_outputs_minimal_step_result(capsys) -> None:
     assert payload["step_result"]["exit_code"] == 0
 
 
+def test_main_uses_ledger_feature_id_for_correlation_id(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "022-codegraph-hardening",
+            "ledger_feature_id": "022",
+            "phase": "plan",
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+
+    called: dict[str, str] = {}
+
+    def _fake_build_correlation_id(feature_id: str, phase: str, **kwargs) -> str:
+        called["feature_id"] = feature_id
+        called["phase"] = phase
+        return f"{feature_id}:{phase}"
+
+    monkeypatch.setattr(pipeline_driver, "build_correlation_id", _fake_build_correlation_id)
+
+    exit_code = pipeline_driver.main(["--feature-id", "022-codegraph-hardening", "--dry-run", "--json"])
+    assert exit_code == 0
+
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert called["feature_id"] == "022"
+    assert called["phase"] == "plan"
+    assert payload["phase_state"]["ledger_feature_id"] == "022"
+    assert payload["step_result"]["correlation_id"] == "022:plan"
+
+
 def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
     monkeypatch.setattr(
         pipeline_driver,

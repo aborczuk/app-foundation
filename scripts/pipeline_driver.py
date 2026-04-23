@@ -1214,7 +1214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         current_phase = "unknown"
 
     if requested_phase is not None and requested_phase not in VALID_PIPELINE_PHASES:
-        correlation_id = build_correlation_id(requested_feature_id, requested_phase)
+        correlation_id = build_correlation_id(resolved_feature_id, requested_phase)
         step_result = {
             "schema_version": "1.0.0",
             "ok": False,
@@ -1232,7 +1232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     effective_phase = current_phase if requested_phase is None else requested_phase
-    correlation_id = build_correlation_id(requested_feature_id, effective_phase)
+    correlation_id = build_correlation_id(resolved_feature_id, effective_phase)
 
     if (
         requested_phase is not None
