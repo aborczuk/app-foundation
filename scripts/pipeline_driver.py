@@ -436,6 +436,12 @@ def resolve_step_mapping(
         raise ValueError(f"unsupported route mode: {mode}")
     normalized_route["mode"] = mode
 
+    canonical_trigger = normalized_route.get("canonical_trigger")
+    if isinstance(canonical_trigger, str) and canonical_trigger.strip():
+        normalized_route["canonical_trigger"] = canonical_trigger.strip()
+    elif mode in {"deterministic", "generative"}:
+        normalized_route["canonical_trigger"] = "speckit.run"
+
     if mode == "deterministic":
         return {
             "type": "deterministic",

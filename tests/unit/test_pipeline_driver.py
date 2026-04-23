@@ -1285,6 +1285,39 @@ def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None
     ]
 
 
+def test_resolve_step_mapping_defaults_canonical_trigger_for_driver_managed_route(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \"example route\"",
+                "    driver:",
+                "      mode: deterministic",
+                "      script_path: scripts/example.sh",
+                "    emits:",
+                "      - event: example_event",
+                "        required_fields: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = pipeline_driver.resolve_step_mapping(
+        "example",
+        manifest_path=manifest_path,
+        correlation_id="run_20260410T120000Z_019:speckit.example",
+    )
+
+    assert result["type"] == "deterministic"
+    assert result["command_id"] == "speckit.example"
+    assert result["route"]["canonical_trigger"] == "speckit.run"
+
+
 def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None:
     manifest_path = tmp_path / "command-manifest.yaml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
