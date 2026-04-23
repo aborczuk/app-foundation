@@ -179,10 +179,10 @@
 
 **Purpose**: Complete implement closeout orchestration, deterministic idempotency, and operator-facing governance.
 
-- [ ] T046 Implement task-ledger-informed implement phase-close gates and once-only `implementation_completed` emission (SK-08) — `scripts/speckit_implement_gate.py:main`
-- [ ] T047 [P] Add integration/unit regression coverage for implement close pass/fail/retry idempotency and duplicate terminal event prevention (SK-06 + SK-08) — `tests/integration/test_pipeline_driver_feature_flow.py:test_implement_completion_emits_once`
-- [ ] T048 [P] Add runner-adapter stdin/stdout envelope contract coverage ensuring parse failures cannot emit completion events — `scripts/pipeline_driver_contracts.py:parse_step_result`
-- [ ] T049 [H] Perform operator dry-run/live-run validation pass and capture deterministic rerun/forward-block reason-code evidence in quickstart notes — `specs/023-deterministic-phase-orchestration/quickstart.md:Deterministic Operator Runbook Notes`
+- [X] T046 Implement task-ledger-informed implement phase-close gates and once-only `implementation_completed` emission (SK-08) — `scripts/speckit_implement_gate.py:main`
+- [X] T047 [P] Add integration/unit regression coverage for implement close pass/fail/retry idempotency and duplicate terminal event prevention (SK-06 + SK-08) — `tests/integration/test_pipeline_driver_feature_flow.py:test_implement_completion_emits_once`
+- [X] T048 [P] Add runner-adapter stdin/stdout envelope contract coverage ensuring parse failures cannot emit completion events — `scripts/pipeline_driver_contracts.py:parse_step_result`
+- [X] T049 [H] Perform operator dry-run/live-run validation pass and capture deterministic rerun/forward-block reason-code evidence in quickstart notes — `specs/023-deterministic-phase-orchestration/quickstart.md:Deterministic Operator Runbook Notes`
 
 ---
 

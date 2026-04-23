@@ -55,6 +55,12 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - Task ledger state for feature `023` is now fully closed for the current task graph.
 - Markdown doc-shape validation now rejects compact command docs that still embed executable gate/append procedures, so the producer-only command-doc cleanup stays enforced while the docs are migrated.
 
+## Deterministic Operator Runbook Notes
+
+- Re-running the `implement` phase stays deterministic: when the ledger is already at `implement`, the driver continues along the valid path and advances to `closed` instead of re-running a later phase.
+- Forward overreach is blocked with a stable reason code: requesting `closed` directly from `implement` returns `gate=phase_drift` with `reasons=["requested_phase_mismatch"]`.
+- Duplicate terminal-event replay is idempotent: a second `implementation_completed` append reports `reason=event_already_recorded` and leaves the ledger with one terminal event.
+
 ## Decision Log
 
 - Preserved the original `T001-T029` task graph and appended the regenerated sketch work as `T030-T049` so the ledger and HUDs stay aligned.

@@ -665,6 +665,19 @@ def test_run_step_rejects_error_envelope_without_debug_path(tmp_path: Path) -> N
     assert Path(result["debug_path"]).exists()
 
 
+def test_parse_step_result_rejects_success_envelope_without_next_phase() -> None:
+    """Missing success routing fields should fail fast at the parse boundary."""
+    with pytest.raises(ValueError, match="exit_code=0"):
+        pipeline_driver_contracts.parse_step_result(
+            {
+                "schema_version": "1.0.0",
+                "ok": True,
+                "exit_code": 0,
+                "correlation_id": "run-019-success",
+            }
+        )
+
+
 def test_normalize_driver_mode_aliases() -> None:
     assert pipeline_driver_contracts.normalize_driver_mode(None) == "legacy"
     assert pipeline_driver_contracts.normalize_driver_mode("script") == "deterministic"

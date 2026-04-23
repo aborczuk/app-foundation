@@ -665,6 +665,139 @@ def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
     assert result["next_phase"] == "validate"
 
 
+def test_implement_completion_emits_once(monkeypatch, tmp_path: Path) -> None:
+    """Implement completion appends the terminal event once and stays idempotent on retry."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    append_results: list[dict[str, object]] = []
+    command_log: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "023-deterministic-phase-orchestration",
+            "ledger_feature_id": "023",
+            "phase": "implement",
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "enforce_approval_breakpoint",
+        lambda *args, **kwargs: {"ok": True, "breakpoint_enforced": True, "approval_granted": True},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.implement",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.implement",
+                "required_inputs": [],
+                "output_template_path": str(tmp_path / "implementation.md"),
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.implement",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.implement",
+            "next_phase": "closed",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(tmp_path / "implementation.md"),
+                "completion_marker": "## Summary",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.implement",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "next_phase": "closed",
+            "debug_path": None,
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    real_append = pipeline_driver.append_pipeline_success_event
+
+    def _fake_execute_command(command, **kwargs):  # noqa: ANN001
+        command_log.append(tuple(str(part) for part in command))
+        if any(str(part).endswith("pipeline_ledger.py") for part in command) and "append" in command:
+            ledger_path.write_text(
+                json.dumps(
+                    {
+                        "timestamp_utc": "2026-04-23T00:00:00Z",
+                        "feature_id": "023",
+                        "phase": "implement",
+                        "event": "implementation_completed",
+                        "actor": "pipeline_driver",
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return {
+                "exit_code": 0,
+                "stdout": json.dumps({"ok": True, "appended": True, "event": "implementation_completed"}),
+                "stderr": "",
+                "timed_out": False,
+            }
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(pipeline_driver, "_execute_command", _fake_execute_command)
+
+    def _append_once(*, feature_id, phase, command_id, **kwargs):
+        call_kwargs = dict(kwargs)
+        call_kwargs.pop("ledger_path", None)
+        result = real_append(
+            feature_id=feature_id,
+            phase=phase,
+            command_id=command_id,
+            ledger_path=ledger_path,
+            **call_kwargs,
+        )
+        append_results.append(result)
+        return result
+
+    monkeypatch.setattr(pipeline_driver, "append_pipeline_success_event", _append_once)
+
+    first_exit = pipeline_driver.main(["--feature-id", "023", "--phase", "implement"])
+    second_exit = pipeline_driver.main(["--feature-id", "023", "--phase", "implement"])
+
+    assert first_exit == 0
+    assert second_exit == 0
+    assert len(append_results) == 2
+    assert append_results[0]["appended"] is True
+    assert append_results[0]["event"] == "implementation_completed"
+    assert append_results[1]["appended"] is False
+    assert append_results[1]["event"] == "implementation_completed"
+    assert append_results[1]["reason"] == "event_already_recorded"
+
+
 def test_legacy_direct_phase_redirect_or_blocked(monkeypatch, capsys) -> None:
     """Canonical trigger path allows reruns and blocks forward overreach deterministically."""
     monkeypatch.setattr(
