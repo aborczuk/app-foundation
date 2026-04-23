@@ -58,6 +58,38 @@ Expected behavior:
 - If `--inline-body` is set and the symbol body clears the `90/100` threshold, the body text is returned inline.
 - If you need the body for a non-top candidate later, use the bounded follow-up helper path rather than inventing a wider command family.
 
+### Deterministic Anchor Resolution Policy
+
+The helper uses a 3-stage flow:
+
+1. Broad retrieval: semantic search gathers ranked candidates (recall set).
+2. Middle arbitration: one candidate is selected (`--candidate-index` or default top match), then upgraded to the next ranked semantic candidate when confidence is weak.
+3. Tactical read: bounded file window is rendered from the selected anchor line.
+
+Important detail: semantic retrieval does not directly print the final read window by itself. It returns candidate metadata (including a line anchor). The helper then renders a deterministic bounded window from the file around that anchor, using the fixed small-before/larger-after split.
+
+Confidence policy:
+
+- Semantic candidate strength is evaluated against `SPECKIT_READ_CODE_SEMANTIC_MIN_CONFIDENCE` (default `70/100`).
+- When the first candidate is below threshold, the helper tries the next semantic candidate(s) before strict fallback.
+- Strict matching is used only when no semantic candidate clears the confidence threshold.
+
+Strict matching exists for cases where semantic retrieval has no winner. It checks exact literal hits in-file and can produce:
+
+- one hit: deterministic strict anchor
+- multiple hits: strict ambiguity
+- zero hits: optional bounded fallback path when `--allow-fallback` is set
+
+Resolved issue (the one you hit): strict ambiguity previously ran even after a semantic winner was already selected. For terms like `invalid_step_result`, multiple literal hits can exist in one function (for example `error_code="invalid_step_result"` and `reason="invalid_step_result"`), so strict used to emit ambiguity even though the semantic anchor was already known.
+
+Deterministic policy to enforce:
+
+1. Semantic first: choose a semantic candidate and render the bounded window from that anchor.
+2. If that candidate is weak, move to the next semantic candidate before strict fallback.
+3. Once a strong semantic anchor is selected, strict ambiguity must not block or emit an error.
+4. Strict resolution only runs when semantic selection has no strong winner.
+5. Fallback only applies after strict fails and only when explicitly requested.
+
 ### Smoke Test
 
 Verify the feature contract is visible in the docs and helper output:
@@ -108,6 +140,7 @@ This feature narrowed the read-code contract to four practical changes:
 | Read helper still returns one anchor | Agent keeps retrying the same query | Confirm the shortlist/body-first behavior is implemented and documented. |
 | Body payload missing | The helper falls back to a numeric window | Check that `--inline-body` was requested and the confidence clears the `90/100` cutoff. |
 | Candidate list feels too small | The agent still needs repeated searches | Confirm retrieval is widened to `top_k = 20` and the visible shortlist is still capped at 5. |
+| Strict ambiguity appears despite semantic shortlist winner | Error prints `Strict symbol match is ambiguous` even when shortlist has one clear candidate | Apply anchor-of-record policy: once semantic winner exists, skip strict ambiguity handling for that request. |
 
 ---
 

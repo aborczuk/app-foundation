@@ -51,13 +51,13 @@ def _vector_probe(
     )
 
 
-def _vector_match(line_num: int, signature: str) -> object:
+def _vector_match(line_num: int, signature: str, *, confidence: int = 100) -> object:
     """Build a minimal ranked vector match for helper selection tests."""
     return read_code._VectorMatch(
         line_num=line_num,
         raw_score=1.0,
         metadata_score=10.0,
-        confidence=100,
+        confidence=confidence,
         exact_symbol_match=True,
         symbol_type="function",
         has_body=True,
@@ -681,6 +681,112 @@ def test_read_code_context_returns_error_for_out_of_range_candidate_index(monkey
     assert exit_code == 1
     assert "candidate index 9 is out of range (available: 0..1)" in captured.err
     assert "--show-shortlist" in captured.err
+
+
+def test_read_code_context_skips_strict_when_semantic_anchor_is_strong(monkeypatch, tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("line1\nline2\nline3\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [_vector_match(2, "def run_pipeline():", confidence=95)],
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_line_num_strict",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict should not run")),
+    )
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "1"])
+
+    assert exit_code == 0
+
+
+def test_read_code_context_uses_next_strong_semantic_candidate_before_strict(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("line1\nline2\nline3\nline4\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [
+            _vector_match(1, "def weak():", confidence=42),
+            _vector_match(3, "def strong():", confidence=97),
+        ],
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_line_num_strict",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict should not run")),
+    )
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "1"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "using candidate 1 confidence 97" in captured.err
+
+
+def test_read_code_context_falls_back_to_strict_when_semantic_candidates_are_weak(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("line1\nline2\nline3\nline4\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [_vector_match(1, "def weak():", confidence=40)],
+    )
+    monkeypatch.setattr(read_code, "_resolve_line_num_strict", lambda *args, **kwargs: (0, 4))
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "1"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "below confidence threshold" in captured.err
+
+
+def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatch, tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("line1\nline2\nline3\nline4\nline5\nline6\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [_vector_match(4, "def run_pipeline():", confidence=95)],
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_line_num_strict",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict should not run")),
+    )
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
+
+    rendered: dict[str, int] = {}
+
+    def fake_render(file_path: Path, start: int, end: int) -> None:
+        rendered["start"] = start
+        rendered["end"] = end
+
+    monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
+
+    exit_code = read_code.read_code_window([str(code_file), "1", "3", "run_pipeline"])
+
+    assert exit_code == 0
+    assert rendered == {"start": 4, "end": 6}
 
 
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:

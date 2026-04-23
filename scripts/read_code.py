@@ -26,6 +26,9 @@ READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "125") or "125")
 READ_CODE_CONTEXT_PRE_FRACTION = 0.1
 READ_CODE_CONTEXT_PRE_CAP = 25
+READ_CODE_SEMANTIC_MIN_CONFIDENCE = int(
+    os.environ.get("SPECKIT_READ_CODE_SEMANTIC_MIN_CONFIDENCE", "70") or "70"
+)
 READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS = int(
     os.environ.get("SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS", "900") or "900"
 )
@@ -1511,6 +1514,39 @@ def _select_vector_candidate(candidates: list[_VectorMatch], index: int) -> tupl
     return candidates[index], None
 
 
+def _select_semantic_anchor_candidate(
+    candidates: list[_VectorMatch],
+    index: int,
+) -> tuple[_VectorMatch | None, str | None]:
+    """Select the first strong semantic anchor from the requested index onward."""
+    selected, error = _select_vector_candidate(candidates, index)
+    if error is not None:
+        return None, error
+    if selected is None:
+        return None, None
+    if selected.confidence >= READ_CODE_SEMANTIC_MIN_CONFIDENCE:
+        return selected, None
+
+    for next_index in range(index + 1, len(candidates)):
+        next_candidate = candidates[next_index]
+        if next_candidate.confidence >= READ_CODE_SEMANTIC_MIN_CONFIDENCE:
+            print(
+                (
+                    "WARN: Semantic candidate "
+                    f"{index} confidence {selected.confidence} is below threshold "
+                    f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100; using candidate {next_index} "
+                    f"confidence {next_candidate.confidence}."
+                ),
+                file=sys.stderr,
+            )
+            return next_candidate, None
+
+    _set_vector_runtime_note(
+        f"semantic candidates below confidence threshold {READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100"
+    )
+    return None, None
+
+
 def read_code_symbols(argv: list[str]) -> int:
     """List deterministic file symbols before choosing an anchor for context/window reads."""
     if len(argv) < 1:
@@ -1623,21 +1659,24 @@ def read_code_context(argv: list[str]) -> int:
         return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
     vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-    vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+    vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
     if candidate_error is not None:
         print(f"ERROR: {candidate_error}", file=sys.stderr)
         if vector_candidates:
             print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
         return 1
 
-    strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+    strict_status = 1
+    strict_line_num: int | None = None
     line_num: int | None = None
     if vector_match is not None:
         line_num = vector_match.line_num
-    elif strict_status == 0:
-        line_num = strict_line_num
-    elif allow_fallback:
-        line_num = _find_line_num(file_path, pattern, normalized_pattern)
+    else:
+        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+        if strict_status == 0:
+            line_num = strict_line_num
+        elif allow_fallback:
+            line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
     if line_num is None and strict_status != 0:
         if codegraph_supports_file(file_path):
@@ -1655,7 +1694,7 @@ def read_code_context(argv: list[str]) -> int:
             refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
             if refreshed_candidates:
                 vector_candidates = refreshed_candidates
-                vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+                vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
                 if candidate_error is not None:
                     print(f"ERROR: {candidate_error}", file=sys.stderr)
                     print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
@@ -1666,7 +1705,7 @@ def read_code_context(argv: list[str]) -> int:
             refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
             if refreshed_candidates:
                 vector_candidates = refreshed_candidates
-                vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+                vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
                 if candidate_error is not None:
                     print(f"ERROR: {candidate_error}", file=sys.stderr)
                     print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
@@ -1674,15 +1713,17 @@ def read_code_context(argv: list[str]) -> int:
                 if vector_match is not None:
                     line_num = vector_match.line_num
 
-        if line_num is None and strict_status == 0:
-            line_num = strict_line_num
-        elif line_num is None and allow_fallback:
-            line_num = _find_line_num(file_path, pattern, normalized_pattern)
+        if line_num is None:
+            strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+            if strict_status == 0:
+                line_num = strict_line_num
+            elif allow_fallback:
+                line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
     if line_num is not None and not vector_candidates:
         vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
         if vector_candidates and vector_match is None:
-            vector_match, candidate_error = _select_vector_candidate(vector_candidates, candidate_index)
+            vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
             if candidate_error is not None:
                 print(f"ERROR: {candidate_error}", file=sys.stderr)
                 print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
@@ -1783,16 +1824,23 @@ def read_code_window(argv: list[str]) -> int:
         if not _refresh_indexes_for_read(file_path):
             return 1
         normalized_pattern = normalize_symbol_pattern(pattern)
-        vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+        vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+        vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, 0)
+        if candidate_error is not None:
+            print(f"ERROR: {candidate_error}", file=sys.stderr)
+            return 1
 
-        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+        strict_status = 1
+        strict_line_num: int | None = None
         line_num: int | None = None
         if vector_match is not None:
             line_num = vector_match.line_num
-        elif strict_status == 0:
-            line_num = int(strict_line_num or 0)
-        elif allow_fallback:
-            line_num = _find_line_num(file_path, pattern, normalized_pattern)
+        else:
+            strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+            if strict_status == 0:
+                line_num = int(strict_line_num or 0)
+            elif allow_fallback:
+                line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
         if line_num is None and strict_status != 0:
             if codegraph_supports_file(file_path):
@@ -1807,13 +1855,19 @@ def read_code_window(argv: list[str]) -> int:
                     skip_preflight_refresh=True,
                 ):
                     return 1
-            vector_match = _vector_find_line_num(file_path, pattern, normalized_pattern, "code")
+            vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+            vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, 0)
+            if candidate_error is not None:
+                print(f"ERROR: {candidate_error}", file=sys.stderr)
+                return 1
             if vector_match is not None:
                 line_num = vector_match.line_num
-            elif strict_status == 0:
-                line_num = int(strict_line_num or 0)
-            elif allow_fallback:
-                line_num = _find_line_num(file_path, pattern, normalized_pattern)
+            else:
+                strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+                if strict_status == 0:
+                    line_num = int(strict_line_num or 0)
+                elif allow_fallback:
+                    line_num = _find_line_num(file_path, pattern, normalized_pattern)
 
         _emit_vector_fallback_notice(
             file_path=file_path,
@@ -1858,7 +1912,8 @@ def _print_usage() -> None:
         f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
     )
     print(
-        "                   (default output is resolved anchor + bounded window; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
+        "                   (default output is resolved anchor + bounded window; semantic anchors are preferred at confidence >= "
+        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
     )
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"

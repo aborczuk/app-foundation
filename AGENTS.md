@@ -143,6 +143,9 @@ Use the shortlist/body contract when reading code with the helper.
 - `read_code_context` defaults to resolved anchor + bounded window output (no shortlist by default).
 - The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
 - Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
+- Anchor policy is semantic-first: if semantic returns a strong candidate, that candidate is the anchor of record and the bounded window is rendered from that line.
+- If the selected semantic candidate is weak, evaluate the next ranked semantic candidate(s) before strict matching.
+- Strict matching is fallback-only and should run only when semantic cannot provide a strong anchor; strict ambiguity must not block a strong semantic anchor.
 - `read_code_symbols` has repeat-call enforcement for unchanged files; one symbol dump per file should be enough for most seams.
 - If a true second symbol dump is required, use `read_code_symbols <file> --allow-repeat` and state why before doing it.
 - `context_lines` is a total context budget with a fixed small-before/larger-after split.
