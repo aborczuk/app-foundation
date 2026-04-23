@@ -143,7 +143,7 @@
 
 **Independent Test**: Run a phase where validation fails and confirm no completion event is emitted, then run with valid artifacts and confirm the event is emitted once.
 
-- [ ] T036 [P] Add unit coverage for validate-before-emit and no-append-on-invalid-envelope behavior — `tests/unit/test_pipeline_driver.py:test_append_pipeline_success_event_requires_validated_success`
+- [X] T036 [P] Add unit coverage for validate-before-emit and no-append-on-invalid-envelope behavior — `tests/unit/test_pipeline_driver.py:test_append_pipeline_success_event_requires_validated_success`
 - [ ] T037 [P] Add integration coverage for blocked validation with zero completion append and deterministic reason codes — `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked`
 - [ ] T038 Wire deterministic success append to validated route/emit contracts only, including parse-failure no-append behavior — `scripts/pipeline_driver.py:append_pipeline_success_event`
 
