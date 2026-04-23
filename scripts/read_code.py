@@ -1114,6 +1114,8 @@ def _vector_query_candidates(
         str(REPO_ROOT),
         "query",
         query,
+        "--file-path",
+        str(file_path.resolve()),
         "--scope",
         scope,
         "--top-k",
@@ -1913,7 +1915,7 @@ def _print_usage() -> None:
     )
     print(
         "                   (default output is resolved anchor + bounded window; semantic anchors are preferred at confidence >= "
-        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
+        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; semantic query is file-scoped first; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
     )
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"

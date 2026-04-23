@@ -84,9 +84,10 @@ class VectorIndexService:
         *,
         top_k: int = 10,
         scope: IndexScope | None = None,
+        file_path: str | Path | None = None,
     ) -> list[QueryResult]:
-        """Query the active snapshot."""
-        return self._store.query(query_text, top_k=top_k, scope=scope)
+        """Query the active snapshot with optional scope and file-local filtering."""
+        return self._store.query(query_text, top_k=top_k, scope=scope, file_path=file_path)
 
     def list_file_code_symbols(self, file_path: str | Path) -> list[CodeSymbol]:
         """Return deterministic symbols for a file from the active vector snapshot."""

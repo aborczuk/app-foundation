@@ -61,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("query_text")
     query.add_argument("--top-k", type=int, default=10)
     query.add_argument("--scope", choices=[scope.value for scope in IndexScope], default=None)
+    query.add_argument(
+        "--file-path",
+        default=None,
+        help="Optional file path filter for file-local semantic retrieval.",
+    )
 
     symbols = subparsers.add_parser(
         "list-file-symbols",
@@ -207,7 +212,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "query":
         scope = IndexScope(args.scope) if args.scope else None
-        results = service.query(args.query_text, top_k=args.top_k, scope=scope)
+        results = service.query(
+            args.query_text,
+            top_k=args.top_k,
+            scope=scope,
+            file_path=args.file_path,
+        )
         print(
             json.dumps(
                 [result.model_dump(mode="json") for result in results],

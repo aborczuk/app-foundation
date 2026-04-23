@@ -19,8 +19,15 @@ def test_indexer_query_routes_through_shared_service(monkeypatch, tmp_path, caps
         def __init__(self) -> None:
             self.calls: list[tuple] = []
 
-        def query(self, query_text: str, *, top_k: int = 10, scope: IndexScope | None = None):
-            self.calls.append(("query", query_text, top_k, scope))
+        def query(
+            self,
+            query_text: str,
+            *,
+            top_k: int = 10,
+            scope: IndexScope | None = None,
+            file_path: str | None = None,
+        ):
+            self.calls.append(("query", query_text, top_k, scope, file_path))
             return [
                 QueryResult(
                     rank=1,
@@ -72,8 +79,45 @@ def test_indexer_query_routes_through_shared_service(monkeypatch, tmp_path, caps
     exit_code = indexer.main(["--repo-root", str(tmp_path), "query", "hello"])
 
     assert exit_code == 0
-    assert fake_service.calls[0] == ("query", "hello", 10, None)
+    assert fake_service.calls[0] == ("query", "hello", 10, None, None)
     assert "\"rank\": 1" in capsys.readouterr().out
+
+
+def test_indexer_query_routes_file_path_filter_through_shared_service(monkeypatch, tmp_path, capsys) -> None:
+    """The CLI should pass optional file-path filtering to the shared service query."""
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.calls: list[tuple] = []
+
+        def query(
+            self,
+            query_text: str,
+            *,
+            top_k: int = 10,
+            scope: IndexScope | None = None,
+            file_path: str | None = None,
+        ):
+            self.calls.append(("query", query_text, top_k, scope, file_path))
+            return []
+
+    fake_service = FakeService()
+    monkeypatch.setattr(indexer, "build_service", lambda args: fake_service)
+
+    exit_code = indexer.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "query",
+            "hello",
+            "--file-path",
+            "src/example.py",
+        ]
+    )
+
+    assert exit_code == 0
+    assert fake_service.calls == [("query", "hello", 10, None, "src/example.py")]
+    assert json.loads(capsys.readouterr().out) == []
 
 
 def test_indexer_list_file_symbols_routes_through_shared_service(monkeypatch, tmp_path, capsys) -> None:

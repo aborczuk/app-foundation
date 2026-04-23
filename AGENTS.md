@@ -144,6 +144,7 @@ Use the shortlist/body contract when reading code with the helper.
 - The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
 - Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
 - Anchor policy is semantic-first: if semantic returns a strong candidate, that candidate is the anchor of record and the bounded window is rendered from that line.
+- Use broad discovery only when the target file is unknown; once the file is known, semantic retrieval must stay file-scoped for seam anchoring.
 - If the selected semantic candidate is weak, evaluate the next ranked semantic candidate(s) before strict matching.
 - Strict matching is fallback-only and should run only when semantic cannot provide a strong anchor; strict ambiguity must not block a strong semantic anchor.
 - `read_code_symbols` has repeat-call enforcement for unchanged files; one symbol dump per file should be enough for most seams.

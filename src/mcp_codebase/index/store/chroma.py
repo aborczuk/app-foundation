@@ -341,6 +341,7 @@ class ChromaIndexStore:
         *,
         top_k: int = 10,
         scope: IndexScope | None = None,
+        file_path: str | Path | None = None,
     ) -> list[QueryResult]:
         """Return ranked query results from the active snapshot."""
         snapshot = self.load_snapshot()
@@ -350,7 +351,17 @@ class ChromaIndexStore:
         metadata, _ = snapshot
         collection = self._open_collection(Path(metadata.snapshot_path), metadata.collection_name, create=False)
         query_embedding = self._embed_texts([query_text])[0]
-        where = {"scope": scope.value} if scope is not None else None
+        where_filters: list[dict[str, object]] = []
+        if scope is not None:
+            where_filters.append({"scope": scope.value})
+        if file_path is not None:
+            where_filters.append({"file_path": _normalize_index_path(file_path, self._config.repo_root)})
+        if len(where_filters) > 1:
+            where: dict[str, object] | None = {"$and": where_filters}
+        elif where_filters:
+            where = where_filters[0]
+        else:
+            where = None
         candidate_count = max(top_k * 4, top_k)
         result = collection.query(
             query_embeddings=[query_embedding],

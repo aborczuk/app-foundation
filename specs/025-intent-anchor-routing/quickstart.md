@@ -62,7 +62,7 @@ Expected behavior:
 
 The helper uses a 3-stage flow:
 
-1. Broad retrieval: semantic search gathers ranked candidates (recall set).
+1. Broad retrieval (only when needed): if the target file is unknown, run broad discovery to identify likely files first.
 2. Middle arbitration: one candidate is selected (`--candidate-index` or default top match), then upgraded to the next ranked semantic candidate when confidence is weak.
 3. Tactical read: bounded file window is rendered from the selected anchor line.
 
@@ -72,6 +72,7 @@ Confidence policy:
 
 - Semantic candidate strength is evaluated against `SPECKIT_READ_CODE_SEMANTIC_MIN_CONFIDENCE` (default `70/100`).
 - When the first candidate is below threshold, the helper tries the next semantic candidate(s) before strict fallback.
+- Once the target file is known, semantic retrieval remains file-scoped.
 - Strict matching is used only when no semantic candidate clears the confidence threshold.
 
 Strict matching exists for cases where semantic retrieval has no winner. It checks exact literal hits in-file and can produce:

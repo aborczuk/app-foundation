@@ -68,6 +68,23 @@ Run the index and query the doctor.
     assert code_results[0].content.file_path == source
     assert code_results[0].content.scope is IndexScope.CODE
 
+    file_scoped_results = service.query(
+        "Greeter hello",
+        scope=IndexScope.CODE,
+        top_k=3,
+        file_path=source,
+    )
+    assert file_scoped_results
+    assert all(result.content.file_path == source for result in file_scoped_results)
+
+    missing_file_results = service.query(
+        "Greeter hello",
+        scope=IndexScope.CODE,
+        top_k=3,
+        file_path=tmp_path / "src" / "missing.py",
+    )
+    assert missing_file_results == []
+
     markdown_results = service.query("Usage run index", scope=IndexScope.MARKDOWN, top_k=3)
     assert markdown_results
     assert markdown_results[0].content.file_path == docs
@@ -386,3 +403,69 @@ def test_list_file_code_symbols_uses_conjunctive_chroma_filter(
     assert len(symbols) == 1
     assert symbols[0].symbol_name == expected_symbol.symbol_name
     assert symbols[0].file_path == expected_symbol.file_path
+
+
+def test_store_query_uses_conjunctive_filter_for_scope_and_file_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store should combine scope + file constraints in a single Chroma where clause."""
+    store = ChromaIndexStore(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    metadata = IndexMetadata(
+        source_root=tmp_path,
+        indexed_commit="rev-a",
+        current_commit="rev-a",
+        indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+        entry_count=1,
+        snapshot_path=str(tmp_path / "snapshot"),
+        collection_name="test-collection",
+    )
+    expected_file = (tmp_path / "src" / "sample.py").resolve().as_posix()
+    expected_symbol = CodeSymbol(
+        symbol_name="sample",
+        qualified_name="sample",
+        file_path=Path(expected_file),
+        line_start=1,
+        line_end=2,
+        signature="def sample():",
+        docstring="",
+        preview="def sample():",
+        body="def sample():\n    return 1\n",
+    )
+
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.where = None
+
+        def query(self, *, query_embeddings, n_results, where, include):
+            self.where = where
+            assert query_embeddings
+            assert n_results == 12
+            assert include == ["distances", "metadatas", "documents"]
+            return {
+                "distances": [[0.0]],
+                "documents": [["def sample():\n    return 1\n"]],
+                "metadatas": [[{}]],
+            }
+
+    fake_collection = FakeCollection()
+    monkeypatch.setattr(store, "load_snapshot", lambda: (metadata, []))
+    monkeypatch.setattr(store, "_open_collection", lambda *args, **kwargs: fake_collection)
+    monkeypatch.setattr(store, "_embed_texts", lambda texts: [[0.1, 0.2, 0.3]])
+    monkeypatch.setattr(store, "_decode_content_unit", lambda metadata_payload, document=None: expected_symbol)
+
+    results = store.query("sample", top_k=3, scope=IndexScope.CODE, file_path="src/sample.py")
+
+    assert fake_collection.where == {
+        "$and": [
+            {"scope": IndexScope.CODE.value},
+            {"file_path": expected_file},
+        ]
+    }
+    assert len(results) == 1
+    assert results[0].content.file_path == expected_symbol.file_path

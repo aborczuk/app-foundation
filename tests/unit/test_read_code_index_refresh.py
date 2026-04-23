@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -67,6 +68,49 @@ def _vector_match(line_num: int, signature: str, *, confidence: int = 100) -> ob
         preview=signature,
         signature=signature,
     )
+
+
+def test_vector_query_candidates_passes_file_path_to_indexer(monkeypatch, tmp_path: Path) -> None:
+    """Semantic query subprocess calls should include the target file-path filter."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def sample() -> int:\n    return 1\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _completed(
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "file_path": str(code_file.resolve()),
+                        "line_start": 1,
+                        "line_end": 2,
+                        "symbol_name": "sample",
+                        "qualified_name": "sample",
+                        "symbol_type": "function",
+                        "signature": "def sample() -> int:",
+                        "preview": "def sample() -> int:",
+                        "body": "def sample() -> int:\n    return 1\n",
+                        "score": 1.0,
+                    }
+                ]
+            ),
+        )
+
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+
+    matches = read_code._vector_query_candidates(code_file, "sample", "sample", "code")
+
+    assert matches
+    assert matches[0].line_num == 1
+    assert "cmd" in captured
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert "--file-path" in cmd
+    file_flag_index = cmd.index("--file-path")
+    assert cmd[file_flag_index + 1] == str(code_file.resolve())
 
 
 def test_vector_index_status_reports_missing_for_null_payload(monkeypatch) -> None:
