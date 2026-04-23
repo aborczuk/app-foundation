@@ -665,6 +665,68 @@ def test_approval_breakpoint_resume_flow(driver_flow_harness) -> None:
     assert result["next_phase"] == "validate"
 
 
+def test_legacy_direct_phase_redirect_or_blocked(monkeypatch, capsys) -> None:
+    """Canonical trigger path allows reruns and blocks forward overreach deterministically."""
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "023-deterministic-phase-orchestration",
+            "ledger_feature_id": "023",
+            "phase": "implement",
+            "last_event": "implementation_completed",
+            "ledger_event_count": 42,
+            "approved_plan": True,
+            "approved_solution": True,
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    canonical_exit = pipeline_driver.main(
+        ["--feature-id", "023-deterministic-phase-orchestration", "--dry-run", "--json"]
+    )
+    canonical_payload = json.loads(capsys.readouterr().out.strip())
+    assert canonical_exit == 0
+    assert canonical_payload["phase_state"]["phase"] == "implement"
+    assert canonical_payload["step_result"]["ok"] is True
+    assert canonical_payload["step_result"]["next_phase"] == "closed"
+
+    rerun_exit = pipeline_driver.main(
+        [
+            "--feature-id",
+            "023-deterministic-phase-orchestration",
+            "--phase",
+            "implement",
+            "--dry-run",
+            "--json",
+        ]
+    )
+    rerun_payload = json.loads(capsys.readouterr().out.strip())
+    assert rerun_exit == 0
+    assert rerun_payload["phase_state"]["phase"] == "implement"
+    assert rerun_payload["step_result"]["ok"] is True
+    assert rerun_payload["step_result"]["next_phase"] == "closed"
+
+    blocked_exit = pipeline_driver.main(
+        [
+            "--feature-id",
+            "023-deterministic-phase-orchestration",
+            "--phase",
+            "closed",
+            "--json",
+        ]
+    )
+    blocked_payload = json.loads(capsys.readouterr().out.strip())
+    assert blocked_exit == 1
+    assert blocked_payload["phase_state"]["phase"] == "implement"
+    assert blocked_payload["step_result"]["gate"] == "phase_drift"
+    assert blocked_payload["step_result"]["reasons"] == ["requested_phase_mismatch"]
+    assert blocked_payload["step_result"]["next_phase"] == "implement"
+
+
 def test_resolve_phase_state_skeleton(driver_flow_harness) -> None:
     state = driver_flow_harness.resolve(feature_id="999", phase_hint="setup")
     assert state["feature_id"] == "999"
