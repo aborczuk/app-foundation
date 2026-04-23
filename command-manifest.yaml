@@ -329,7 +329,9 @@ commands:
     - scripts/task_ledger.py
     - scripts/cgc_safe_index.sh
     artifacts: []
-    emits: []
+    emits:
+    - event: implementation_completed
+      required_fields: []
   speckit.closeout:
     description: Close a completed task through the canonical append-first ledger path
       and hand off to checkpoint when a user story ends

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -120,3 +121,85 @@ def test_task_preflight_defaults_hud_to_feature_local_path(tmp_path: Path) -> No
     assert exit_code == 0
     assert payload["ok"] is True
     assert payload["hud_path"] == str(default_hud_path.resolve())
+
+
+def test_phase_gate_emits_implementation_completed_once(tmp_path: Path, monkeypatch) -> None:
+    feature_dir = tmp_path / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    tasks_file = feature_dir / "tasks.md"
+    tasks_file.write_text("## implement\n- [X] T046 gate task\n", encoding="utf-8")
+
+    state = {"implementation_completed_emitted": False}
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(cmd, capture_output=False, text=False):  # noqa: ANN001
+        calls.append(tuple(str(part) for part in cmd))
+        command = tuple(str(part) for part in cmd)
+        if any(part.endswith("task_ledger.py") for part in command) and "validate" in command:
+            stdout = "Task ledger validation passed (1 events).\n- feature 023: closed=1 open=0 active=none\n"
+            return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+        if any(part.endswith("pipeline_ledger.py") for part in command) and "assert-phase-complete" in command:
+            if state["implementation_completed_emitted"]:
+                stdout = "Phase gate PASSED: implementation_completed found for feature 023 (recorded at 2026-04-23T00:00:00Z).\n"
+                return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+            stderr = "Phase gate FAILED: no 'implementation_completed' event found for feature 023 in .speckit/pipeline-ledger.jsonl.\n"
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=stderr)
+        if any(part.endswith("pipeline_ledger.py") for part in command) and "append" in command:
+            state["implementation_completed_emitted"] = True
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected subprocess invocation: {command}")
+
+    monkeypatch.setattr(speckit_implement_gate.subprocess, "run", fake_run)
+
+    args = argparse.Namespace(
+        feature_dir=str(feature_dir),
+        phase_name="implement",
+        phase_type="polish",
+        layer1="pass",
+        layer2="pass",
+        layer3="na",
+        json=True,
+    )
+
+    exit_code, payload = speckit_implement_gate._phase_gate(args)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["implementation_completed_state"] == "emitted"
+
+    second_exit_code, second_payload = speckit_implement_gate._phase_gate(args)
+    assert second_exit_code == 0
+    assert second_payload["ok"] is True
+    assert second_payload["implementation_completed_state"] == "already_recorded"
+    assert sum(1 for command in calls if "append" in command and any(part.endswith("pipeline_ledger.py") for part in command)) == 1
+
+
+def test_phase_gate_blocks_when_task_ledger_still_open(tmp_path: Path, monkeypatch) -> None:
+    feature_dir = tmp_path / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    tasks_file = feature_dir / "tasks.md"
+    tasks_file.write_text("## implement\n- [X] T046 gate task\n", encoding="utf-8")
+
+    def fake_run(cmd, capture_output=False, text=False):  # noqa: ANN001
+        command = tuple(str(part) for part in cmd)
+        if any(part.endswith("task_ledger.py") for part in command) and "validate" in command:
+            stdout = "Task ledger validation passed (2 events).\n- feature 023: closed=0 open=1 active=T046\n"
+            return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+        raise AssertionError(f"unexpected subprocess invocation: {command}")
+
+    monkeypatch.setattr(speckit_implement_gate.subprocess, "run", fake_run)
+
+    args = argparse.Namespace(
+        feature_dir=str(feature_dir),
+        phase_name="implement",
+        phase_type="polish",
+        layer1="pass",
+        layer2="pass",
+        layer3="na",
+        json=True,
+    )
+
+    exit_code, payload = speckit_implement_gate._phase_gate(args)
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["reasons"] == ["task_ledger_open_tasks"]
+    assert payload["implementation_completed_state"] == "blocked_task_ledger"

@@ -169,7 +169,8 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "solution_approved": {"tasking_completed"},
     "analysis_completed": {"solution_approved"},
     "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
-    "feature_closed": {"e2e_generated"},
+    "implementation_completed": {"e2e_generated"},
+    "feature_closed": {"e2e_generated", "implementation_completed"},
 }
 
 # Temporary compatibility for pre-cutover solution-sequence events recorded before

@@ -171,9 +171,9 @@
 
 **Independent Test**: Execute canonical trigger and direct phase invocations across states; confirm reruns at/below allowed step succeed deterministically while forward overreach is blocked/redirected with explicit reason codes.
 
-- [ ] T043 [P] Add integration coverage for canonical trigger path and direct-rerun-vs-forward-overreach policy — `tests/integration/test_pipeline_driver_feature_flow.py:test_legacy_direct_phase_redirect_or_blocked`
-- [ ] T044 [P] Add migration-path regression for mixed legacy/generative routing with deterministic contracts — `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
-- [ ] T045 Implement canonical trigger routing policy and deterministic direct invocation branch handling (SK-07) — `scripts/pipeline_driver.py:resolve_step_mapping`
+- [X] T043 [P] Add integration coverage for canonical trigger path and direct-rerun-vs-forward-overreach policy — `tests/integration/test_pipeline_driver_feature_flow.py:test_legacy_direct_phase_redirect_or_blocked`
+- [X] T044 [P] Add migration-path regression for mixed legacy/generative routing with deterministic contracts — `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
+- [X] T045 Implement canonical trigger routing policy and deterministic direct invocation branch handling (SK-07) — `scripts/pipeline_driver.py:resolve_step_mapping`
 
 ### Delta Phase 7: Polish & Cross-Cutting Concerns
 

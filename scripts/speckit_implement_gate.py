@@ -14,6 +14,11 @@ from typing import Any, Sequence
 TASK_LINE_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]\s+(?P<task_id>T\d{3})\b")
 CHECKBOX_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]")
 PHASE_HEADER_RE = re.compile(r"^\s*##\s+(?P<title>.+?)\s*$")
+PIPELINE_FEATURE_SUMMARY_RE = re.compile(
+    r"feature\s+(?P<feature_id>\d+):\s+closed=(?P<closed>\d+)\s+open=(?P<open>\d+)\s+active=(?P<active>\S+)"
+)
+IMPLEMENTATION_COMPLETED_EVENT = "implementation_completed"
+IMPLEMENTATION_PHASE_NAME = "implement"
 
 
 def _nonempty_string(value: Any) -> bool:
@@ -305,10 +310,88 @@ def _find_matching_e2e_scripts(repo_root: Path, feature_dir: Path) -> list[str]:
     return [str(path) for path in matches]
 
 
+def _task_ledger_ready_for_implementation(repo_root: Path, feature_id: str) -> tuple[bool, list[str]]:
+    """Confirm the task ledger is valid and fully closed for the feature."""
+    ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
+    result = subprocess.run(
+        [sys.executable, str(repo_root / "scripts" / "task_ledger.py"), "validate", "--file", str(ledger_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False, ["task_ledger_invalid"]
+
+    match = None
+    for line in result.stdout.splitlines():
+        match = PIPELINE_FEATURE_SUMMARY_RE.search(line)
+        if match and match.group("feature_id") == feature_id:
+            break
+    if not match or match.group("feature_id") != feature_id:
+        return False, ["task_ledger_summary_missing"]
+    if int(match.group("open")) != 0:
+        return False, ["task_ledger_open_tasks"]
+    if match.group("active") != "none":
+        return False, ["task_ledger_active_task"]
+    return True, []
+
+
+def _emit_implementation_completed_once(
+    repo_root: Path,
+    *,
+    feature_id: str,
+    actor: str,
+) -> tuple[bool, str]:
+    """Append implementation_completed once for a feature."""
+    ledger_path = repo_root / ".speckit" / "pipeline-ledger.jsonl"
+    assert_result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "pipeline_ledger.py"),
+            "assert-phase-complete",
+            "--file",
+            str(ledger_path),
+            "--feature-id",
+            feature_id,
+            "--event",
+            IMPLEMENTATION_COMPLETED_EVENT,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if assert_result.returncode == 0:
+        return True, "already_recorded"
+
+    append_result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "pipeline_ledger.py"),
+            "append",
+            "--file",
+            str(ledger_path),
+            "--feature-id",
+            feature_id,
+            "--phase",
+            IMPLEMENTATION_PHASE_NAME,
+            "--event",
+            IMPLEMENTATION_COMPLETED_EVENT,
+            "--actor",
+            actor,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if append_result.returncode != 0:
+        return False, "implementation_completed_append_failed"
+    return True, "emitted"
+
+
 def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     feature_dir = Path(args.feature_dir).resolve()
     tasks_file = feature_dir / "tasks.md"
+    repo_root = Path(__file__).resolve().parent.parent
+    feature_id = feature_dir.name.split("-", 1)[0]
     reasons: list[str] = []
+    implementation_completed_state = "not_applicable"
 
     if not feature_dir.exists():
         reasons.append("missing_feature_dir")
@@ -361,6 +444,20 @@ def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         if not e2e_scripts:
             reasons.append("missing_e2e_script")
 
+    if not reasons and args.phase_name == IMPLEMENTATION_PHASE_NAME:
+        task_ledger_ready, task_ledger_reasons = _task_ledger_ready_for_implementation(repo_root, feature_id)
+        if not task_ledger_ready:
+            reasons.extend(task_ledger_reasons)
+            implementation_completed_state = "blocked_task_ledger"
+        else:
+            emitted, implementation_completed_state = _emit_implementation_completed_once(
+                repo_root,
+                feature_id=feature_id,
+                actor="codex",
+            )
+            if not emitted:
+                reasons.append(implementation_completed_state)
+
     payload: dict[str, Any] = {
         "mode": "phase_gate",
         "feature_dir": str(feature_dir),
@@ -371,6 +468,7 @@ def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "layer2": args.layer2,
         "layer3": args.layer3,
         "reasons": reasons,
+        "implementation_completed_state": implementation_completed_state,
     }
     return _exit_payload(len(reasons) == 0, payload)
 
