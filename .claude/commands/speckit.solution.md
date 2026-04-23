@@ -22,17 +22,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Compact Contract (Load First)
 
-Top-level LLD phase for sketch-first planning. Run these steps first; only load expanded guidance when a gate fails or the user asks for detail.
+Top-level LLD phase for sketch-first planning. Produce the `solution_approved` payload and keep the sketch/review/tasking/analyze sequence driver-owned.
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse `FEATURE_DIR`, `IMPL_PLAN`, and `AVAILABLE_DOCS`.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
-2. Read `## Open Feasibility Questions` in `plan.md`.
-   - If any unchecked items remain, stop and route to `/speckit.feasibilityspike`.
-3. Auto-invoke `/speckit.sketch`.
-4. Auto-invoke `/speckit.solutionreview`.
-5. Auto-invoke `/speckit.tasking`.
-6. Produce the `solution_approved` payload for pipeline orchestration.
-7. Auto-invoke `/speckit.analyze` as the post-solution drift gate.
+- Resolve `FEATURE_DIR`, `IMPL_PLAN`, and `AVAILABLE_DOCS` from the feature workspace.
+- Use the approved plan and the repository-grounded sketch/review outputs as the solution inputs.
+- Preserve the downstream handoff contract that yields `solution_approved` for pipeline orchestration.
+- Keep the detailed repo-grounding and auto-invoke sequence in the expanded guidance.
 
 ## Expanded Guidance (Load On Demand)
 

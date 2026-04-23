@@ -191,8 +191,8 @@ commands:
       template: hud-runbook-template.md
     emits: []
   speckit.sketch:
-    description: Generate a pre-task low-level design blueprint (sketch.md) from plan/spec/codebase
-      context
+    description: Generate the feature sketch artifact from approved plan context and
+      repository-grounded discovery
     driver:
       mode: generative
       timeout_seconds: 180
@@ -268,8 +268,8 @@ commands:
       - critical_count
       - high_count
   speckit.solution:
-    description: "LLD solutioning phase \u2014 orchestrates sketch \u2192 solutionreview\
-      \ \u2192 tasking \u2192 analyze loop"
+    description: Produce the solution_approved payload from sketch, solutionreview,
+      tasking, and analyze context
     driver:
       mode: generative
       timeout_seconds: 180
@@ -316,8 +316,8 @@ commands:
     artifacts: []
     emits: []
   speckit.implement:
-    description: Execute the implementation plan by processing and executing all tasks
-      defined in tasks.md
+    description: Execute the implementation plan through driver-owned approval, validation,
+      QA, and closeout sequencing
     mode: legacy
     scripts:
     - .specify/scripts/bash/check-prerequisites.sh

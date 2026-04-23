@@ -70,6 +70,40 @@ def test_validate_markdown_doc_shape_accepts_compact_expanded(tmp_path: Path) ->
     ]
 
 
+def test_validate_markdown_doc_shape_rejects_executable_gate_append_procedures(
+    tmp_path: Path,
+) -> None:
+    """Compact docs with gate/append procedures should be rejected."""
+    doc = tmp_path / "doc.md"
+    doc.write_text(
+        "\n".join(
+            [
+                "# Title",
+                "## User Input",
+                "## Compact Contract (Load First)",
+                "1. Run `uv run python scripts/speckit_gate_status.py --mode implement --feature-dir \"$FEATURE_DIR\" --json`.",
+                "2. Run `uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file \"$FEATURE_DIR/plan.md\" --json`.",
+                "3. Execute tasks in order, using the task gate and ledger flow defined below.",
+                "## Expanded Guidance (Load On Demand)",
+                "## Behavior rules",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = validator.validate_markdown_doc_shape(markdown_file=doc)
+
+    assert payload["ok"] is False
+    assert payload["reasons"] == ["executable_procedures_detected"]
+    assert payload["matched_shape"] == "compact_expanded"
+    assert payload["forbidden_markers"] == [
+        "speckit_gate_status.py",
+        "speckit_prepare_ignores.py",
+        "task gate and ledger flow",
+    ]
+
+
 def test_validate_markdown_doc_shape_reports_legacy_mismatch(tmp_path: Path) -> None:
     """A legacy command doc should fail the compact/expanded shape check."""
     doc = tmp_path / "doc.md"

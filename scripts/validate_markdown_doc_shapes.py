@@ -24,6 +24,13 @@ KNOWN_SHAPES: dict[str, list[str]] = {
     ],
 }
 
+FORBIDDEN_PROCEDURE_MARKERS = (
+    "speckit_gate_status.py",
+    "speckit_prepare_ignores.py",
+    "task gate and ledger flow",
+    "append_pipeline_success_event",
+)
+
 
 def _top_level_headings(markdown_file: Path) -> list[str]:
     """Return the top-level markdown headings in file order."""
@@ -37,6 +44,31 @@ def _top_level_headings(markdown_file: Path) -> list[str]:
 def _shape_matches(headings: list[str], expected: list[str]) -> bool:
     """Return whether the file headings match the expected shape exactly."""
     return headings == expected
+
+
+def _compact_contract_body(markdown_file: Path) -> str:
+    """Return the body text that belongs to the compact contract section."""
+    lines = markdown_file.read_text(encoding="utf-8").splitlines()
+    compact_heading = "## Compact Contract (Load First)"
+    collecting = False
+    compact_lines: list[str] = []
+
+    for line in lines:
+        if line.strip() == compact_heading:
+            collecting = True
+            continue
+        if collecting and re.match(r"^##\s+.+$", line):
+            break
+        if collecting:
+            compact_lines.append(line)
+
+    return "\n".join(compact_lines)
+
+
+def _find_forbidden_procedure_markers(text: str) -> list[str]:
+    """Return executable gate/append markers embedded in a command doc."""
+    lower_text = text.lower()
+    return [marker for marker in FORBIDDEN_PROCEDURE_MARKERS if marker in lower_text]
 
 
 def validate_markdown_doc_shape(
@@ -59,6 +91,7 @@ def validate_markdown_doc_shape(
     headings = _top_level_headings(markdown_file)
     reasons: list[str] = []
     matched_shape: str | None = None
+    forbidden_markers: list[str] = []
 
     if shape != "auto" and shape not in KNOWN_SHAPES:
         reasons.append(f"unknown_shape:{shape}")
@@ -70,6 +103,10 @@ def validate_markdown_doc_shape(
                 break
         if matched_shape is None:
             reasons.append("shape_mismatch")
+        else:
+            forbidden_markers = _find_forbidden_procedure_markers(_compact_contract_body(markdown_file))
+            if forbidden_markers:
+                reasons.append("executable_procedures_detected")
 
     payload = {
         "markdown_file": str(markdown_file),
@@ -78,6 +115,7 @@ def validate_markdown_doc_shape(
         "reasons": reasons,
         "headings": headings,
         "matched_shape": matched_shape,
+        "forbidden_markers": forbidden_markers,
         "available_shapes": sorted(KNOWN_SHAPES),
     }
     return payload

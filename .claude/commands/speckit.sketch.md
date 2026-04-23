@@ -32,17 +32,10 @@ This phase owns `sketch.md` only. It is **design-only**.
 
 ## Execution
 
-1. Run the sketch gate / prerequisite checks for the active feature.
-2. Scaffold `sketch.md` for the feature:
-   ```bash
-   uv run python .specify/scripts/pipeline-scaffold.py speckit.sketch --feature-dir "$FEATURE_DIR" FEATURE_ID="NNN" FEATURE_NAME="[Feature Name]"
-   ```
-3. Load the approved upstream planning context and available repo-grounding context.
-4. Use repository-grounded discovery to identify the relevant implementation surfaces, reuse seams, symbol boundaries, and blast radius for the feature.
-5. Produce the sketch by filling the scaffolded artifact completely.
-6. Preserve the scaffold structure.
-7. Emit the manifest-declared completion event for this phase.
-8. Hand off to `/speckit.solutionreview`.
+- Ground the sketch in the approved planning context and repo-discovery outputs.
+- Scaffold and complete `sketch.md` for the feature without changing the artifact shape.
+- Capture the implementation surfaces, reuse seams, symbol boundaries, and blast radius needed for downstream tasking.
+- Hand off the completed sketch to `/speckit.solutionreview` through the manifest-declared completion event.
 
 ## Repo-grounding requirements
 

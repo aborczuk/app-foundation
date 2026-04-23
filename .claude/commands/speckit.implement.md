@@ -12,15 +12,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Compact Contract (Load First)
 
-Use `.specify/command-manifest.yaml` as the command registry source of truth. Run these steps first; only load expanded guidance when a gate fails or the user asks for detail.
+Use `.specify/command-manifest.yaml` as the command registry source of truth. Keep the load-first view focused on the task inputs and driver-owned handoff.
 
-1. Resolve `FEATURE_DIR` and `AVAILABLE_DOCS` with `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks`.
-2. Run `uv run python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`.
-3. If hard blocks report missing `e2e.md`/E2E script or `estimates.md`, stop and route to `/speckit.e2e` or `/speckit.estimate` respectively.
-4. If `checklists.incomplete_total > 0`, pause and ask before continuing.
-5. Load `tasks.md`, `plan.md`, and any optional context docs listed in the implement playbook.
-6. Run `uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json`.
-7. Execute tasks in order, using the task gate and ledger flow defined below.
+- Resolve `FEATURE_DIR` and `AVAILABLE_DOCS` from the feature workspace.
+- Load `tasks.md`, `plan.md`, and any optional context docs listed in the implement playbook.
+- Keep approval, validation, QA, and ledger sequencing in the driver-owned workflow described in the expanded guidance.
+- Defer the detailed gate and closeout mechanics to the expanded guidance and the implementation driver.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -234,9 +231,15 @@ Use `.specify/command-manifest.yaml` as the command registry source of truth. Ru
    - When a user story reaches its hard stop, return only the compact status line and the checkpoint result; do not emit a prose summary before yielding control back to the user.
 
 
+## Behavior rules
+
+- Keep the compact contract declarative and producer-only.
+- Leave gate, QA, and ledger sequencing in the driver-owned workflow and expanded guidance.
+- Preserve task-ledger ordering and deterministic closeout behavior.
+
 # Documentation Step
 
-## Purpose
+### Purpose
 
 Capture the implementation outcome in durable documentation.
 
@@ -246,7 +249,7 @@ This skill updates:
 - the feature decision log
 - the relevant GitHub reference link
 
-## Inputs
+### Inputs
 
 - the active feature context
 - the implementation or design change that was completed
@@ -257,7 +260,7 @@ This skill updates:
   - discussion
   - or repo path link
 
-## Execution
+### Execution
 
 1. Load the current `quickstart.md` (or create if doesnt exist for current spec folder)
 2. Add or update the section that future readers should use to:
@@ -274,9 +277,9 @@ This skill updates:
 5. Preserve existing structure and formatting.
 6. Keep the documentation concise and future-reader-focused.
 
-## Output requirements
+### Output requirements
 
-### Quickstart update
+#### Quickstart update
 The `quickstart.md` update should include only what a future reader/operator needs:
 - what this feature does
 - how to run or exercise it
@@ -285,7 +288,7 @@ The `quickstart.md` update should include only what a future reader/operator nee
 - a link to the feature spec folder for deeper context
 - a link to `tasks.md` plus the relevant commit or PR trail for implementation details
 
-### Decision log entry
+#### Decision log entry
 Use this format:
 
 ```md

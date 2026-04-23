@@ -53,12 +53,14 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - The regenerated sketch work was appended as a delta instead of overwriting the existing task history.
 - Targeted QA passed for the driver flow, contract surface, and unit coverage around the delta work.
 - Task ledger state for feature `023` is now fully closed for the current task graph.
+- Markdown doc-shape validation now rejects compact command docs that still embed executable gate/append procedures, so the producer-only command-doc cleanup stays enforced while the docs are migrated.
 
 ## Decision Log
 
 - Preserved the original `T001-T029` task graph and appended the regenerated sketch work as `T030-T049` so the ledger and HUDs stay aligned.
 - Kept the delta task lifecycle explicit in the task ledger with discovery, QA, and close events.
 - Updated the operator quickstart to point readers at `tasks.md` for the combined base + delta plan.
+- Tightened command-doc validation so executable gate/append procedures are rejected instead of slipping through under a compact/expanded heading shape.
 
 ---
 

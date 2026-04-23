@@ -308,6 +308,98 @@ def test_generative_route_blocks_without_completion_append(driver_flow_harness, 
     assert append_called["value"] is False
 
 
+def test_generative_route_blocks_on_parse_failure_without_completion_append(
+    driver_flow_harness, monkeypatch
+) -> None:
+    """Parse-failure envelopes must not reach the success append path."""
+    feature_artifact = driver_flow_harness.feature_dir / "plan.md"
+    feature_artifact.write_text("# Plan\n## Summary\nGenerated content\n", encoding="utf-8")
+
+    append_called = {"value": False}
+    validate_called = {"value": False}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": str(feature_artifact),
+                "completion_marker": "## Summary",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 2,
+            "correlation_id": "run-test:speckit.plan",
+            "gate": "runtime_failure",
+            "reasons": ["invalid_json_result"],
+            "error_code": "invalid_json_result",
+            "debug_path": "/tmp/invalid-json-result.json",
+            "next_phase": None,
+            "handoff_execution": "failed",
+            "generated_artifact": {
+                "path": str(feature_artifact),
+                "completion_marker": "## Summary",
+            },
+            "process_exit_code": 2,
+            "timed_out": False,
+        },
+    )
+
+    def _fake_validate_generated_artifact(*args, **kwargs):
+        validate_called["value"] = True
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "next_phase": None,
+            "debug_path": None,
+        }
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        _fake_validate_generated_artifact,
+    )
+
+    def _fake_append_pipeline_success_event(**kwargs):
+        append_called["value"] = True
+        return {"ok": True, "appended": True, "event": "plan_started"}
+
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        _fake_append_pipeline_success_event,
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+
+    assert exit_code == 2
+    assert validate_called["value"] is False
+    assert append_called["value"] is False
+
+
 def test_runtime_failure_verbose_rerun(driver_flow_harness) -> None:
     """Runtime error (exit code 2) triggers verbose rerun with sidecar persistence."""
     sidecar_dir = driver_flow_harness.feature_dir / ".speckit" / "failures"
