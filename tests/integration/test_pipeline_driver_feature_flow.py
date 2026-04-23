@@ -755,6 +755,13 @@ commands:
       timeout_seconds: 30
   speckit.sketch:
     mode: legacy
+  speckit.specify:
+    description: "generative migration path"
+    driver:
+      mode: generative
+    emits:
+      - event: backlog_registered
+        required_fields: []
   speckit.uncovered:
     description: "Intentionally uncovered command (no driver metadata)"
 """
@@ -774,8 +781,24 @@ commands:
     assert routes["speckit.sketch"]["driver_managed"] is False
     assert routes["speckit.sketch"]["mode"] == "legacy"
 
+    # Generative command should preserve driver-managed routing contracts
+    assert routes["speckit.specify"]["driver_managed"] is True
+    assert routes["speckit.specify"]["mode"] == "generative"
+    assert routes["speckit.specify"]["emits"] == ["backlog_registered"]
+
     # Uncovered command should have legacy default
     assert routes["speckit.uncovered"]["driver_managed"] is False
+
+    # Resolve the generative route through the driver mapping seam
+    generative_mapping = pipeline_driver.resolve_step_mapping(
+        "specify",
+        manifest_path=repo_root / "command-manifest.yaml",
+        correlation_id="run_20260410T120000Z_019:speckit.specify",
+    )
+    assert generative_mapping["type"] == "generative"
+    assert generative_mapping["command_id"] == "speckit.specify"
+    assert generative_mapping["handoff"]["step_name"] == "speckit.specify"
+    assert generative_mapping["handoff"]["correlation_id"] == "run_20260410T120000Z_019:speckit.specify"
 
     # Test 2: Mixed mode coverage validation (NEW in Phase 5)
     # This function is called by gates to detect uncovered command mappings
