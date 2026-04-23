@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
+
+from tests.support import build_step_result_envelope
 
 
 def _load_script_module(module_name: str, script_name: str):
@@ -95,14 +97,13 @@ def test_step_result_schema_success_requires_next_phase() -> None:
 def test_step_result_schema_blocked_requires_gate_and_reasons() -> None:
     """Exit code 1 (blocked) requires gate and reasons fields."""
     parsed = contracts.parse_step_result(
-        {
-            "schema_version": "1.0.0",
-            "ok": False,
-            "exit_code": 1,
-            "correlation_id": "019:plan:T001",
-            "gate": "artifact_validation",
-            "reasons": ["artifact_empty_or_minimal"],
-        }
+        build_step_result_envelope(
+            ok=False,
+            exit_code=1,
+            correlation_id="019:plan:T001",
+            gate="artifact_validation",
+            reasons=["artifact_empty_or_minimal"],
+        )
     )
     assert parsed["exit_code"] == 1
     assert parsed["ok"] is False

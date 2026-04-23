@@ -1035,3 +1035,7 @@
 {"actor": "codex", "attempt": 1, "details": "deterministic route/ledger setup and envelope assertions preserved", "event": "quality_guards_passed", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:22:18.077218Z"}
 {"actor": "codex", "attempt": 1, "details": "T030 fixture helper exists and integration tests pass", "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:22:18.130360Z"}
 {"actor": "codex", "attempt": 1, "details": "uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_pipeline_driver_feature_flow.py", "event": "tests_passed", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:22:18.182431Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "0645103", "event": "commit_created", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.137280Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.176230Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "pytest-20260423T021935Z", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.214165Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.254380Z"}

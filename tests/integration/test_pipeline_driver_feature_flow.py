@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
+
+from tests.support import assert_step_result_envelope
 
 
 def _load_script_module(module_name: str, script_name: str):
@@ -101,26 +103,6 @@ def build_feature_workspace(
     return manifest_path, routes
 
 
-def assert_deterministic_step_result(
-    result: dict[str, object],
-    *,
-    ok: bool,
-    exit_code: int,
-    next_phase: str | None,
-    gate: str | None = None,
-    reasons: list[str] | None = None,
-) -> None:
-    """Assert the shared deterministic step-result envelope contract."""
-    assert result["schema_version"] == "1.0.0"
-    assert result["ok"] is ok
-    assert result["exit_code"] == exit_code
-    assert result["next_phase"] == next_phase
-    assert result["gate"] == gate
-    assert result["reasons"] == (reasons or [])
-    assert result["error_code"] is None
-    assert result["debug_path"] is None
-
-
 def test_deterministic_route_success(driver_flow_harness) -> None:
     correlation_id = pipeline_driver.build_correlation_id(
         "019",
@@ -151,7 +133,7 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
         cwd=driver_flow_harness.feature_dir,
     )
 
-    assert_deterministic_step_result(result, ok=True, exit_code=0, next_phase="plan")
+    assert_step_result_envelope(result, ok=True, exit_code=0, next_phase="plan")
     assert result["process_exit_code"] == 0
     assert result["timed_out"] is False
 
@@ -189,7 +171,7 @@ def test_deterministic_route_blocked(driver_flow_harness) -> None:
         cwd=driver_flow_harness.feature_dir,
     )
 
-    assert_deterministic_step_result(
+    assert_step_result_envelope(
         result,
         ok=False,
         exit_code=1,
@@ -616,7 +598,7 @@ def test_mixed_migration_mode(driver_flow_harness) -> None:
     )
 
     # Create mixed-mode manifest: one driver-managed, one legacy, one uncovered
-    manifest_routes = {
+    _manifest_routes = {
         "speckit.plan": {
             "mode": "deterministic",
             "driver_managed": True,
