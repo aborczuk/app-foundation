@@ -1,12 +1,8 @@
 from pathlib import Path
 
 
-def test_story3_agent_rules_documentation_contract(tmp_path: Path) -> None:
-    """US3: agent-facing documentation for read-code rules."""
-    agents = Path("AGENTS.md").read_text()
-    quickstart = Path("specs/025-intent-anchor-routing/quickstart.md").read_text()
-    assert "read-code rules" in agents
-    assert "top-5" in agents
-    assert "90/100" in agents
-    assert "shortlist" in quickstart
-    assert "follow-up" in quickstart
+def test_story3_producer_only_command_contracts(tmp_path: Path) -> None:
+    """US3: Producer-Only Command Contracts."""
+    # Independent Test: Run migrated command docs and confirm driver-owned orchestration/gating emits events while docs do not contain executable gate/ledger append procedures.
+    # - TODO: fill in acceptance scenarios from tasks.md
+    raise AssertionError("TODO: replace scaffold with a deterministic PASS/FAIL oracle")

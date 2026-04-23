@@ -121,6 +121,71 @@
 
 ---
 
+## Delta: Sketch-Generated Additions
+
+**Purpose**: Append the regenerated sketch-derived work as an additive delta without disturbing the original 29-task graph.
+
+### Delta Phase 1: Setup
+
+- [ ] T030 [P] Establish shared feature-flow fixtures for route/ledger setup and deterministic envelope assertions — `tests/integration/test_pipeline_driver_feature_flow.py:build_feature_workspace`
+- [ ] T031 [P] Add shared runner-adapter request/response helpers used by contract and integration tests — `tests/contract/test_pipeline_driver_contract.py:test_step_result_schema_blocked_requires_gate_and_reasons`
+
+### Delta Phase 2: Foundational
+
+- [ ] T032 Harden runtime execution envelope semantics for success/blocked/error and debug sidecar behavior (SK-01) — `scripts/pipeline_driver.py:run_step`
+- [ ] T033 Make phase resolution ledger-authoritative with deterministic drift reasons and lock behavior (SK-02) — `scripts/pipeline_driver_state.py:resolve_phase_state`
+- [ ] T034 Enforce transition/append contract guards so only validated transitions mutate ledger state (SK-03) — `scripts/pipeline_ledger.py:validate_sequence`
+- [ ] T035 Normalize manifest-driven route + emit contract parsing (including canonical trigger metadata) and reject unknown modes deterministically (SK-04) — `scripts/pipeline_driver_contracts.py:load_driver_routes`
+
+### Delta Phase 3: User Story 1 - Deterministic Phase Completion
+
+**Goal**: Completion events are emitted only after deterministic validation passes.
+
+**Independent Test**: Run a phase where validation fails and confirm no completion event is emitted, then run with valid artifacts and confirm the event is emitted once.
+
+- [ ] T036 [P] Add unit coverage for validate-before-emit and no-append-on-invalid-envelope behavior — `tests/unit/test_pipeline_driver.py:test_append_pipeline_success_event_requires_validated_success`
+- [ ] T037 [P] Add integration coverage for blocked validation with zero completion append and deterministic reason codes — `tests/integration/test_pipeline_driver_feature_flow.py:test_deterministic_route_blocked`
+- [ ] T038 Wire deterministic success append to validated route/emit contracts only, including parse-failure no-append behavior — `scripts/pipeline_driver.py:append_pipeline_success_event`
+
+### Delta Phase 4: User Story 2 - Permissioned Phase Start
+
+**Goal**: Phase execution starts only after explicit approval and rejects invalid/denied tokens with zero side effects.
+
+**Independent Test**: Resolve a step with interactive confirmation, reject once and confirm no phase execution occurs, then approve and confirm phase execution begins.
+
+- [ ] T039 [P] Add integration coverage for approval-denied and invalid-token branches with no ledger/artifact mutations — `tests/integration/test_pipeline_driver_feature_flow.py:test_approval_breakpoint_blocks_without_token`
+- [ ] T040 Enforce deterministic approval gate and no-side-effect rejection path in driver execution flow — `scripts/pipeline_driver.py:require_confirmation`
+
+### Delta Phase 5: User Story 3 - Producer-Only Command Contracts
+
+**Goal**: Command docs emit producer payload contracts only; orchestration, gate checks, and ledger append remain driver-owned.
+
+**Independent Test**: Run migrated command docs and confirm driver-owned orchestration/gating emits events while docs do not contain executable gate/ledger append procedures.
+
+- [ ] T041 [P] Add doc-shape and manifest-contract coverage to reject command docs that embed executable gate/append procedures — `tests/unit/test_validate_markdown_doc_shapes.py:test_validate_markdown_doc_shape_accepts_compact_expanded`
+- [ ] T042 Normalize `speckit.sketch` / `speckit.solution` / `speckit.implement` docs to compact producer-only contracts and align manifest route metadata (SK-05) — `.claude/commands/speckit.implement.md:Compact Contract (Load First)`
+
+### Delta Phase 6: User Story 4 - Full-Pipeline Deterministic Entry
+
+**Goal**: `/speckit.run` is the canonical progression trigger; direct phase reruns are allowed at/below latest allowed step, and only forward overreach is blocked/redirected.
+
+**Independent Test**: Execute canonical trigger and direct phase invocations across states; confirm reruns at/below allowed step succeed deterministically while forward overreach is blocked/redirected with explicit reason codes.
+
+- [ ] T043 [P] Add integration coverage for canonical trigger path and direct-rerun-vs-forward-overreach policy — `tests/integration/test_pipeline_driver_feature_flow.py:test_legacy_direct_phase_redirect_or_blocked`
+- [ ] T044 [P] Add migration-path regression for mixed legacy/generative routing with deterministic contracts — `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`
+- [ ] T045 Implement canonical trigger routing policy and deterministic direct invocation branch handling (SK-07) — `scripts/pipeline_driver.py:resolve_step_mapping`
+
+### Delta Phase 7: Polish & Cross-Cutting Concerns
+
+**Purpose**: Complete implement closeout orchestration, deterministic idempotency, and operator-facing governance.
+
+- [ ] T046 Implement task-ledger-informed implement phase-close gates and once-only `implementation_completed` emission (SK-08) — `scripts/speckit_implement_gate.py:main`
+- [ ] T047 [P] Add integration/unit regression coverage for implement close pass/fail/retry idempotency and duplicate terminal event prevention (SK-06 + SK-08) — `tests/integration/test_pipeline_driver_feature_flow.py:test_implement_completion_emits_once`
+- [ ] T048 [P] Add runner-adapter stdin/stdout envelope contract coverage ensuring parse failures cannot emit completion events — `scripts/pipeline_driver_contracts.py:parse_step_result`
+- [ ] T049 [H] Perform operator dry-run/live-run validation pass and capture deterministic rerun/forward-block reason-code evidence in quickstart notes — `specs/023-deterministic-phase-orchestration/quickstart.md:Deterministic Operator Runbook Notes`
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -131,6 +196,7 @@
 - Phase 4 (US2): Depends on Phase 2 and leverages Phase 3 execution envelope hardening.
 - Phase 5 (US3): Depends on Phase 2 and aligns manifest/doc ownership against stable runtime seams.
 - Phase 6 (Polish): Depends on completion of Phases 3-5.
+- Delta phases: appended after the original graph and intended as additive follow-on work.
 
 ### User Story Dependencies
 
@@ -166,6 +232,7 @@
 1. Ship US1 deterministic completion boundary.
 2. Add US2 permission gate and ledger-authoritative state safeguards.
 3. Finish US3 producer-only contract normalization and cross-cutting regression lock.
+4. Tackle the appended delta tasks once the original graph remains stable.
 
 ### Parallel Team Strategy
 

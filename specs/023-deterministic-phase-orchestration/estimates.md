@@ -1,7 +1,7 @@
 # Effort Estimate: Deterministic Phase Orchestration
 
-**Date**: 2026-04-19 | **Total Points**: 66 | **T-shirt Size**: L
-**Estimated by**: AI (`speckit.tasking` estimate loop)
+**Date**: 2026-04-22 | **Total Points**: 47 | **T-shirt Size**: L  
+**Estimated by**: AI (speckit.estimate) — calibrated to existing repo seams and prior deterministic flow patterns.
 
 ---
 
@@ -9,149 +9,109 @@
 
 | Task ID | Points | Description | Rationale |
 |---------|--------|-------------|-----------|
-| T001 | 2 | Shared integration fixture seam | Existing test file seam; low uncertainty. |
-| T002 | 1 | Shared unit transition helper | Local helper-only change in one file. |
-| T003 | 3 | Route contract parsing hardening | Multi-branch normalization and error-path assertions. |
-| T004 | 2 | Step mapping alignment to normalized routes | Focused routing adaptation in one runtime seam. |
-| T005 | 3 | Ledger-authoritative phase-state resolution | Crosses state derivation and deterministic drift signaling. |
-| T006 | 2 | Unit validate-before-emit regression | Narrow assertions on existing driver unit harness. |
-| T007 | 2 | Integration blocked-validation no-append regression | One feature-flow path extension, known pattern. |
-| T008 | 2 | Transition-map rejection test coverage | Existing ledger sequence test pattern reuse. |
-| T009 | 5 | Deterministic run-step envelope hardening | Core orchestration seam with multiple failure envelope branches. |
-| T010 | 5 | Success-append idempotent gating | High-risk ledger mutation boundary across retry/success paths. |
-| T011 | 3 | Transition/append guard tightening | Sequence and append validation constraints across unit seams. |
-| T012 | 2 | Deny/invalid approval integration tests | Existing integration harness with additional cases. |
-| T013 | 2 | Drift reconciliation unit tests | Deterministic reason assertions in known unit file. |
-| T014 | 3 | Explicit approval enforcement in runtime path | Behavioral control-flow update in primary driver seam. |
-| T015 | 3 | Drift reason strengthening in phase-state resolver | Logic + deterministic reason-shape constraints in state seam. |
-| T016 | 2 | Lock/retry sequencing refinement | Focused control-path update with existing lock seam. |
-| T017 | 3 | Contract schema and mode-normalization tests | Contract-level assertions spanning route + schema contracts. |
-| T018 | 2 | Producer-only markdown shape regression | One test seam update with known pattern. |
-| T019 | 2 | Manifest/doc coverage regression | Existing coverage guard extension. |
-| T020 | 2 | Manifest `speckit.solution` contract normalization | YAML updates with bounded schema scope. |
-| T021 | 2 | Producer-only command contract wording updates | Deterministic command-doc contract edits in one file. |
-| T022 | 1 | Quickstart ownership clarification | Documentation-only refinement. |
-| T023 | 3 | Parse-step fail-fast contract enforcement | Error-contract handling across route and result parse logic. |
-| T024 | 3 | Mixed migration deterministic regression | Integration regression across legacy + driver-mode branches. |
-| T025 | 2 | Duplicate terminal-event retry prevention tests | Additional unit coverage in established seam. |
-| T026 | 1 | Human dry-run/runbook verification record | Manual operator verification task with doc update. |
-| T027 | 2 | Command-doc token-footprint measurement regression | Direct coverage for SC-004 measurement requirement. |
-| T028 | 3 | Rollback and no-partial-write regression coverage | Explicit FR-013 rollback / partial-write oracle. |
-| T029 | 3 | Manifest-to-ledger validation routing | Manifest emits gain ledger-domain routing so validation can dispatch to the correct existing ledger validator. |
+| T001 | 2 | Shared feature-flow fixture seam | Existing integration harness extension with low uncertainty. |
+| T002 | 2 | Runner-adapter helper seam | Local contract-helper additions in one test surface. |
+| T003 | 3 | Runtime envelope hardening | Core execution seam with multiple deterministic failure branches. |
+| T004 | 3 | Ledger-authoritative phase resolution | State reconciliation + reason-code semantics in critical flow. |
+| T005 | 3 | Transition/append contract enforcement | Sequence authority and mutation guards across ledger boundary. |
+| T006 | 3 | Manifest route + emit normalization | Contract parsing plus deterministic rejection behavior. |
+| T007 | 2 | Unit validate-before-emit tests | Focused assertions in existing unit suite. |
+| T008 | 2 | Integration blocked-validation tests | Known integration fixture path with bounded setup. |
+| T009 | 3 | Success-append behavior wiring | Driver append seam change with parse-failure protections. |
+| T010 | 2 | Approval deny/invalid integration tests | Adds branch coverage with existing flow harness. |
+| T011 | 2 | Approval gate implementation | Constrained runtime gate path update in one module. |
+| T012 | 2 | Doc-shape/manifest contract tests | Existing doc-shape rules extended for this feature. |
+| T013 | 3 | Producer-only doc contract alignment | Multi-doc + manifest consistency updates. |
+| T014 | 3 | Canonical trigger/rerun-overreach tests | Integration branching around deterministic policy edges. |
+| T015 | 2 | Legacy/generative migration regression | Existing migration test seam extension. |
+| T016 | 3 | Canonical trigger route implementation | Driver mapping branch logic with reason-code outputs. |
+| T017 | 3 | Implement phase-close orchestration | Cross-module closeout seam with once-only emission rules. |
+| T018 | 2 | Implement idempotency regressions | Additional deterministic assertions in current test suite. |
+| T019 | 2 | Runner-adapter parse-failure coverage | Contract assertions for no-emit on parse failure. |
+| T020 | 1 | Human dry-run/live-run evidence capture | Manual validation and quickstart evidence updates. |
 
 ---
 
 ### T003 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver_contracts.py:load_driver_routes` to reject unknown modes and normalize emit contracts deterministically.
-**Create**: none.
-**Reuse**: Existing route-normalization helpers and reason-code conventions.
-**Composition**: parse manifest route blocks, validate required keys, emit normalized driver route map.
-**Failing test assertion**: unknown route mode returns deterministic contract error instead of fallback success.
-**Domains touched**: command contracts, deterministic runtime.
+**Modify**: `scripts/pipeline_driver.py:run_step` to normalize success/blocked/error envelopes with deterministic reason fields.  
+**Create**: none.  
+**Reuse**: existing runtime failure sidecar path and envelope schema checks.  
+**Composition**: validate subprocess result shape, map to deterministic envelope, preserve debug sidecar path on failures.  
+**Failing test assertion**: malformed result payload cannot produce `ok=true` and cannot advance phase.  
+**Domains touched**: deterministic runtime, orchestration.
+
+### T004 — Solution Sketch
+
+**Modify**: `scripts/pipeline_driver_state.py:resolve_phase_state` to prioritize ledger truth and emit machine-readable drift reasons.  
+**Create**: none.  
+**Reuse**: current phase resolution event stream reads and lock checks.  
+**Composition**: compute current phase from ledger, compare hints, produce deterministic drift metadata where mismatched.  
+**Failing test assertion**: stale hint cannot override ledger-derived phase.  
+**Domains touched**: state authority, reliability.
 
 ### T005 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver_state.py:resolve_phase_state` to prefer ledger truth over hints and emit machine-readable drift reasons.
-**Create**: none.
-**Reuse**: Existing event-stream read + reconcile logic.
-**Composition**: derive current phase from ledger events, compare hints, add deterministic drift reason payload.
-**Failing test assertion**: stale hint cannot override ledger-derived phase resolution.
-**Domains touched**: state authority, retry/idempotency.
+**Modify**: `scripts/pipeline_ledger.py:validate_sequence` and append guard checks for strict transition-map enforcement.  
+**Create**: none.  
+**Reuse**: current append command contract and transition definitions.  
+**Composition**: pre-validate event predecessor constraints, reject invalid transitions before any append side effect.  
+**Failing test assertion**: invalid predecessor event returns rejected outcome and ledger file remains unchanged.  
+**Domains touched**: governance ledger, sequence safety.
+
+### T006 — Solution Sketch
+
+**Modify**: `scripts/pipeline_driver_contracts.py:load_driver_routes` to enforce explicit route metadata and deterministic unknown-mode failure.  
+**Create**: none.  
+**Reuse**: existing mode normalization and emit-contract parsing seams.  
+**Composition**: parse manifest route entries, validate required fields, return normalized map consumed by runtime dispatch.  
+**Failing test assertion**: unknown mode returns deterministic contract error and no fallback route is selected.  
+**Domains touched**: command contract, routing.
 
 ### T009 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver.py:run_step` envelope parsing branches.
-**Create**: none.
-**Reuse**: Existing runtime failure sidecar writer.
-**Composition**: normalize subprocess result, map invalid envelope/missing fields to deterministic blocked/error outcomes.
-**Failing test assertion**: malformed step output yields blocked/error envelope and no completion progression.
-**Domains touched**: runtime envelope, deterministic failure handling.
+**Modify**: `scripts/pipeline_driver.py:append_pipeline_success_event` to append only after validated success and parse-safe route resolution.  
+**Create**: none.  
+**Reuse**: existing append command invocation flow and sequence validation checks.  
+**Composition**: enforce validate-before-emit boundary, short-circuit append on invalid payload/result, preserve explicit error envelope.  
+**Failing test assertion**: parse failure in step result emits no completion event.  
+**Domains touched**: event emission, deterministic gating.
 
-### T010 — Solution Sketch
+### T013 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver.py:append_pipeline_success_event`.
-**Create**: none.
-**Reuse**: Existing manifest-derived emit contract and ledger append wrapper.
-**Composition**: require validated gate-pass precondition, guard duplicate terminal emission on retries, append only once.
-**Failing test assertion**: retry after terminal success does not duplicate completion event.
-**Domains touched**: ledger mutation safety, idempotency.
-
-### T011 — Solution Sketch
-
-**Modify**: `scripts/pipeline_ledger.py:validate_sequence` and append guard call sites.
-**Create**: none.
-**Reuse**: Current transition maps and event-shape validators.
-**Composition**: enforce predecessor requirements before append and preserve append-only guarantees.
-**Failing test assertion**: invalid predecessor transition is rejected before ledger mutation.
-**Domains touched**: governance state machine, append safety.
+**Modify**: `.claude/commands/speckit.{sketch,solution,implement}.md` and `command-manifest.yaml` contract wording/metadata alignment.  
+**Create**: none.  
+**Reuse**: compact/expanded command template structure and manifest emit contracts.  
+**Composition**: remove direct gate/append procedures from docs, retain producer payload expectations, align manifest route declarations.  
+**Failing test assertion**: doc-shape validator flags any command doc that reintroduces executable gate/ledger append instructions.  
+**Domains touched**: governance docs, contract consistency.
 
 ### T014 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver.py:run_step` approval branch.
-**Create**: none.
-**Reuse**: Existing permission token checks and gate reason codes.
-**Composition**: enforce explicit affirmative approval before command execution begins; denied/invalid exits are side-effect free.
-**Failing test assertion**: non-yes approval never executes phase command and emits no completion event.
-**Domains touched**: human approval gate, deterministic side-effect boundary.
+**Modify**: integration flow tests around canonical trigger vs direct invocation branch outcomes.  
+**Create**: none.  
+**Reuse**: `test_pipeline_driver_feature_flow` scenario harness and deterministic reason checks.  
+**Composition**: encode allowed rerun branch and forward-overreach blocked/redirected branch assertions.  
+**Failing test assertion**: direct forward progression beyond allowed latest step is blocked with explicit reason code.  
+**Domains touched**: trigger policy, regression safety.
 
-### T015 — Solution Sketch
+### T016 — Solution Sketch
 
-**Modify**: `scripts/pipeline_driver_state.py:resolve_phase_state`.
-**Create**: none.
-**Reuse**: drift flag structure used by feature-flow tests.
-**Composition**: classify drift causes deterministically and expose machine-readable reason values for downstream handling.
-**Failing test assertion**: unresolved reconciliation path yields explicit deterministic drift reason code.
-**Domains touched**: state reconciliation, observability.
+**Modify**: `scripts/pipeline_driver.py:resolve_step_mapping` for canonical trigger routing and direct-invocation policy handling.  
+**Create**: none.  
+**Reuse**: manifest-derived route map and phase resolution output.  
+**Composition**: route `/speckit.run` as canonical path, allow direct reruns at/below allowed step, block/redirect forward overreach.  
+**Failing test assertion**: direct rerun at current step is permitted while next-step overreach is rejected deterministically.  
+**Domains touched**: orchestration routing, progression control.
 
 ### T017 — Solution Sketch
 
-**Modify**: `tests/contract/test_pipeline_driver_contract.py` assertions on route mode + step-result schema.
-**Create**: none.
-**Reuse**: existing contract fixture loader.
-**Composition**: assert blocked schema requires gate/reasons and route mode normalization rejects invalid modes.
-**Failing test assertion**: contract parse accepts invalid blocked payload without reasons (expected fail before fix).
-**Domains touched**: contract verification, schema governance.
-
-### T023 — Solution Sketch
-
-**Modify**: `scripts/pipeline_driver_contracts.py:parse_step_result`.
-**Create**: none.
-**Reuse**: existing deterministic reason code constants.
-**Composition**: strict parse/validate blocked/success envelopes; fail fast with deterministic reason codes.
-**Failing test assertion**: malformed payload cannot be treated as successful step result.
-**Domains touched**: command-result contract parsing, deterministic reasoning.
-
-### T024 — Solution Sketch
-
-**Modify**: `tests/integration/test_pipeline_driver_feature_flow.py:test_mixed_migration_mode`.
-**Create**: none.
-**Reuse**: existing migration-mode fixtures.
-**Composition**: exercise mixed legacy and driver routes across deterministic success/blocked paths.
-**Failing test assertion**: mixed migration path emits non-deterministic route behavior across repeated runs.
-**Domains touched**: migration compatibility, regression safety.
-
-### T027 — sketch: trivial
-
-Token-footprint measurement is a focused test/additional assertion in an existing markdown-doc-shape seam.
-
-### T028 — Solution Sketch
-
-**Modify**: `tests/unit/test_pipeline_ledger_sequence.py:test_append_rejects_partial_write_and_preserves_state` to assert partial writes do not persist or advance the phase state.
-**Create**: none.
-**Reuse**: Existing sequence validator and append guard behavior.
-**Composition**: simulate append failure or partial-write condition, then assert ledger state remains unchanged and no rollback ambiguity exists.
-**Failing test assertion**: append failure still mutates state or advances the feature sequence.
-**Domains touched**: storage integrity, governance state machine, testing.
-
-### T029 — Solution Sketch
-
-**Modify**: `scripts/pipeline_ledger.py:cmd_validate_manifest` to classify manifest emits by ledger domain and dispatch task events to the task-ledger validator path.
-**Create**: none.
-**Reuse**: Existing pipeline and task ledger validation rules plus manifest emit declarations.
-**Composition**: tag manifest emits with ledger ownership, validate pipeline emits against pipeline transitions, and validate task emits against task transitions without collapsing the two ledgers.
-**Failing test assertion**: task-domain manifest emits are rejected by the pipeline validator even though the task ledger already accepts them.
-**Domains touched**: governance routing, manifest validation, audit-trail separation.
+**Modify**: `scripts/speckit_implement_gate.py` and driver closeout append boundary for once-only `implementation_completed`.  
+**Create**: none.  
+**Reuse**: task-ledger assertions and pipeline append sequencing rules.  
+**Composition**: run implement close predicates, append terminal event only on close-pass, enforce idempotent retries.  
+**Failing test assertion**: implement close failure cannot emit `implementation_completed`.  
+**Domains touched**: implement lifecycle, terminal emission safety.
 
 ---
 
@@ -159,20 +119,19 @@ Token-footprint measurement is a focused test/additional assertion in an existin
 
 | Phase | Points | Task Count | Parallel Tasks |
 |-------|--------|------------|----------------|
-| Phase 1: Setup | 3 | 2 | 0 |
-| Phase 2: Foundational | 8 | 3 | 0 |
-| Phase 3: User Story 1 | 19 | 6 | 3 |
-| Phase 4: User Story 2 | 12 | 5 | 2 |
-| Phase 5: User Story 3 | 15 | 7 | 3 |
-| Phase 6: Polish | 14 | 6 | 4 |
-| **Total** | **71** | **29** | **12** |
+| Phase 1: Setup | 4 | 2 | 2 |
+| Phase 2: Foundational | 12 | 4 | 0 |
+| Phase 3: US1 | 7 | 3 | 2 |
+| Phase 4: US2 | 4 | 2 | 1 |
+| Phase 5: US3 | 5 | 2 | 1 |
+| Phase 6: US4 | 8 | 3 | 2 |
+| Phase 7: Polish | 7 | 4 | 2 |
+| **Total** | **47** | **20** | **10** |
 
 ---
 
 ## Warnings
 
-- No tasks are scored 8 or 13; no breakdown required in this estimate loop.
-- Phases with no parallel opportunities: Phase 1, Phase 2 (expected due shared setup/foundational sequencing).
-- Higher-risk seams to monitor during implementation: T009, T010, T014 (primary driver/append control flow boundaries).
-- Higher-risk seams to monitor during implementation: T029 (manifest routing and ledger-domain dispatch boundary).
-- No uncovered async lifecycle guard, state-safety, or transaction-integrity gaps were identified from current task scope.
+- No tasks scored 8 or 13 in the settled estimate set; breakdown loop not required.
+- Most uncertainty is concentrated in T003/T016/T017 due to cross-boundary orchestration behavior.
+- Human validation task T020 cannot be parallelized with automated runtime verification evidence generation.
