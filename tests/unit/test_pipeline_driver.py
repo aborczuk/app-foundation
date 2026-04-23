@@ -717,6 +717,60 @@ def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> N
     assert routes["speckit.fallback"]["driver_managed"] is False
 
 
+def test_load_driver_routes_preserves_route_and_emit_metadata(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "command-manifest.yaml"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "commands:",
+                "  speckit.example:",
+                "    description: \" example route \"",
+                "    canonical_trigger: \" speckit.run \"",
+                "    scripts:",
+                "      - \" scripts/example.sh \"",
+                "    artifacts:",
+                "      - output_path: \" ${FEATURE_DIR}/example.md \"",
+                "        template: \" example-template.md \"",
+                "        scaffold_script: \" scripts/scaffold.py \"",
+                "        consumed_by:",
+                "          - \" speckit.implement \"",
+                "          - \" speckit.checkpoint \"",
+                "    driver:",
+                "      mode: deterministic",
+                "      script_path: scripts/example.sh",
+                "    emits:",
+                "      - event: example_event",
+                "        required_fields:",
+                "          - \" task_id \"",
+                "        canonical_trigger: \" speckit.run \"",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
+    route = routes["speckit.example"]
+    assert route["description"] == "example route"
+    assert route["canonical_trigger"] == "speckit.run"
+    assert route["scripts"] == ["scripts/example.sh"]
+    assert route["artifacts"] == [
+        {
+            "output_path": "${FEATURE_DIR}/example.md",
+            "template": "example-template.md",
+            "scaffold_script": "scripts/scaffold.py",
+            "consumed_by": ["speckit.implement", "speckit.checkpoint"],
+        }
+    ]
+    assert route["emit_contracts"] == [
+        {
+            "event": "example_event",
+            "required_fields": ["task_id"],
+            "canonical_trigger": "speckit.run",
+        }
+    ]
+
+
 def test_load_driver_routes_rejects_conflicting_mode_definitions(tmp_path: Path) -> None:
     manifest_path = tmp_path / "command-manifest.yaml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

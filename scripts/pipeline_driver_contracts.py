@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -184,6 +185,81 @@ def _normalize_script_path(manifest_path: Path, raw_path: Any) -> str | None:
     return str((base_dir / script_path).resolve())
 
 
+def _normalize_string_list(value: Any, *, field_name: str, command_id: str) -> list[str]:
+    """Normalize a manifest list of non-empty strings."""
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list: {command_id}")
+
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{field_name} entries must be non-empty strings: {command_id}")
+        normalized.append(item.strip())
+    return normalized
+
+
+def _normalize_freeform_metadata(value: Any) -> Any:
+    """Recursively trim manifest metadata while preserving nested shape."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        return [_normalize_freeform_metadata(item) for item in value]
+    if isinstance(value, Mapping):
+        return {str(key): _normalize_freeform_metadata(item) for key, item in value.items()}
+    return deepcopy(value)
+
+
+def _normalize_artifact_contract(
+    artifact: Mapping[str, Any],
+    *,
+    command_id: str,
+) -> dict[str, Any]:
+    """Normalize a single artifact contract from a manifest route."""
+    normalized: dict[str, Any] = {}
+    for key, value in artifact.items():
+        if key == "consumed_by":
+            normalized[key] = _normalize_string_list(
+                value,
+                field_name="artifact.consumed_by",
+                command_id=command_id,
+            )
+        elif isinstance(value, str):
+            normalized[key] = value.strip()
+        elif isinstance(value, list):
+            normalized[key] = _normalize_freeform_metadata(value)
+        elif isinstance(value, Mapping):
+            normalized[key] = _normalize_freeform_metadata(value)
+        else:
+            normalized[key] = deepcopy(value)
+    return normalized
+
+
+def _normalize_emit_contract(
+    emit: Mapping[str, Any],
+    *,
+    command_id: str,
+) -> dict[str, Any]:
+    """Normalize a single emit contract from a manifest route."""
+    event_name = emit.get("event")
+    if not isinstance(event_name, str) or not event_name.strip():
+        raise ValueError(f"emit.event must be a non-empty string: {command_id}")
+
+    required_fields = emit.get("required_fields", [])
+    normalized = {
+        "event": event_name.strip(),
+        "required_fields": _normalize_string_list(
+            required_fields,
+            field_name="emit.required_fields",
+            command_id=command_id,
+        ),
+    }
+    for key, value in emit.items():
+        if key in {"event", "required_fields"}:
+            continue
+        normalized[key] = _normalize_freeform_metadata(value)
+    return normalized
+
+
 def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dict[str, Any]]:
     """Load command routing metadata and normalize modes for driver routing.
 
@@ -191,8 +267,10 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
     - mode: canonical driver mode (`deterministic`, `generative`, `legacy`)
     - script_path: normalized absolute script path if declared
     - timeout_seconds: optional positive integer
+    - scripts: declared script dependencies, trimmed but not re-rooted
+    - artifacts: normalized artifact declarations, including consumed_by metadata
     - emits: declared pipeline events for the command
-    - required_fields: trimmed, non-empty field names for each emit contract
+    - emit_contracts: normalized emit declarations, preserving canonical trigger metadata
     """
     resolved_manifest_path = (
         Path(manifest_path).resolve()
@@ -240,37 +318,56 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
             if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
                 raise ValueError(f"timeout_seconds must be a positive integer: {command_id}")
 
+        description = command_def.get("description")
+        if description is not None and not isinstance(description, str):
+            raise ValueError(f"manifest description must be a string: {command_id}")
+        normalized_description = description.strip() if isinstance(description, str) else None
+
+        scripts = command_def.get("scripts")
+        normalized_scripts: list[str] | None = None
+        if scripts is not None:
+            normalized_scripts = _normalize_string_list(
+                scripts,
+                field_name="manifest scripts",
+                command_id=command_id,
+            )
+
+        artifacts = command_def.get("artifacts")
+        normalized_artifacts: list[dict[str, Any]] | None = None
+        if artifacts is not None:
+            if not isinstance(artifacts, list):
+                raise ValueError(f"manifest artifacts must be a list: {command_id}")
+            normalized_artifacts = []
+            for artifact in artifacts:
+                if not isinstance(artifact, Mapping):
+                    raise ValueError(f"artifact entry must be a mapping: {command_id}")
+                normalized_artifacts.append(
+                    _normalize_artifact_contract(artifact, command_id=command_id)
+                )
+
         emits = command_def.get("emits", [])
         if not isinstance(emits, list):
             raise ValueError(f"manifest emits must be a list: {command_id}")
-        emit_events: list[str] = []
-        emit_contracts: list[dict[str, Any]] = []
+        emit_events = []
+        emit_contracts = []
         for emit in emits:
             if not isinstance(emit, Mapping):
                 raise ValueError(f"emit entry must be a mapping: {command_id}")
-            event_name = emit.get("event")
-            if not isinstance(event_name, str) or not event_name.strip():
-                raise ValueError(f"emit.event must be a non-empty string: {command_id}")
-            normalized_event_name = event_name.strip()
-            emit_events.append(normalized_event_name)
-            required_fields = emit.get("required_fields", [])
-            if not isinstance(required_fields, list):
-                raise ValueError(f"emit.required_fields must be a list: {command_id}")
-            normalized_required: list[str] = []
-            for field in required_fields:
-                if not isinstance(field, str) or not field.strip():
-                    raise ValueError(
-                        f"emit.required_fields entries must be non-empty strings: {command_id}"
-                    )
-                normalized_required.append(field.strip())
-            emit_contracts.append(
-                {
-                    "event": normalized_event_name,
-                    "required_fields": normalized_required,
-                }
-            )
+            normalized_contract = _normalize_emit_contract(emit, command_id=command_id)
+            emit_events.append(normalized_contract["event"])
+            emit_contracts.append(normalized_contract)
 
-        routes[command_id] = {
+        canonical_trigger = (
+            driver_block.get("canonical_trigger")
+            if driver_block.get("canonical_trigger") is not None
+            else command_def.get("canonical_trigger")
+        )
+        if canonical_trigger is None:
+            canonical_trigger = driver_block.get("trigger")
+        if canonical_trigger is None:
+            canonical_trigger = command_def.get("trigger")
+
+        route: dict[str, Any] = {
             "mode": mode,
             "script_path": script_path,
             "timeout_seconds": timeout_seconds,
@@ -278,6 +375,16 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
             "emits": emit_events,
             "emit_contracts": emit_contracts,
         }
+        if normalized_description is not None:
+            route["description"] = normalized_description
+        if normalized_scripts is not None:
+            route["scripts"] = normalized_scripts
+        if normalized_artifacts is not None:
+            route["artifacts"] = normalized_artifacts
+        if canonical_trigger is not None:
+            route["canonical_trigger"] = _normalize_freeform_metadata(canonical_trigger)
+
+        routes[command_id] = route
 
     return routes
 
