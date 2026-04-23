@@ -38,6 +38,8 @@ PHASE_TRANSITIONS: dict[str, str] = {
     "solution": "implement",
     "implement": "closed",
 }
+PHASE_SEQUENCE: tuple[str, ...] = ("specify", "research", "plan", "solution", "implement", "closed")
+PHASE_INDEX: dict[str, int] = {phase: index for index, phase in enumerate(PHASE_SEQUENCE)}
 
 
 def advance_phase(current_phase: str) -> str:
@@ -55,6 +57,15 @@ def _feature_id_candidates(feature_id: str) -> tuple[str, ...]:
         if prefix and prefix != normalized:
             candidates.append(prefix)
     return tuple(dict.fromkeys(candidates))
+
+
+def _hint_exceeds_derived_phase(*, hinted_phase: str, derived_phase: str) -> bool:
+    """Return True when hinted_phase requests forward progression beyond derived_phase."""
+    hinted_index = PHASE_INDEX.get(hinted_phase)
+    derived_index = PHASE_INDEX.get(derived_phase)
+    if hinted_index is None or derived_index is None:
+        return hinted_phase != derived_phase
+    return hinted_index > derived_index
 
 
 REQUIRED_ARTIFACTS_BY_EVENT: dict[str, tuple[str, ...]] = {
@@ -350,6 +361,7 @@ def resolve_phase_state(
             and hinted_phase
             and hinted_phase != derived_phase
             and last_event is not None
+            and _hint_exceeds_derived_phase(hinted_phase=hinted_phase, derived_phase=derived_phase)
         ):
             drift_reasons.append("phase_hint_conflicts_with_ledger")
             drift_reason_details.append(

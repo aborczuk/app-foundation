@@ -935,6 +935,35 @@ def test_main_rejects_requested_phase_mismatch(monkeypatch, capsys) -> None:
     assert payload["step_result"]["next_phase"] == "specify"
 
 
+def test_main_allows_requested_phase_rerun(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "023-deterministic-phase-orchestration",
+            "ledger_feature_id": "023",
+            "phase": "implement",
+            "last_event": "e2e_generated",
+            "ledger_event_count": 14,
+            "approved_plan": True,
+            "approved_solution": True,
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(
+        ["--feature-id", "023-deterministic-phase-orchestration", "--phase", "plan", "--dry-run", "--json"]
+    )
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["step_result"]["ok"] is True
+    assert payload["step_result"]["gate"] is None
+    assert payload["phase_state"]["phase"] == "implement"
+
+
 def test_main_rejects_invalid_phase_input(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         pipeline_driver,
@@ -962,6 +991,58 @@ def test_main_rejects_invalid_phase_input(monkeypatch, capsys) -> None:
     assert payload["step_result"]["gate"] == "invalid_input"
     assert payload["step_result"]["reasons"] == ["invalid_phase"]
     assert payload["step_result"]["next_phase"] == "specify"
+
+
+def test_resolve_phase_state_allows_earlier_hint_without_drift(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
+        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
+        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+        _ledger_event(
+            "planreview_completed",
+            timestamp_utc="2026-04-10T00:03:00Z",
+            fq_count=0,
+            questions_asked=0,
+        ),
+        _ledger_event(
+            "feasibility_spike_completed",
+            timestamp_utc="2026-04-10T00:04:00Z",
+            spike_artifact="specs/023-deterministic-phase-orchestration/spike.md",
+            fq_count=0,
+        ),
+        _ledger_event(
+            "plan_approved",
+            timestamp_utc="2026-04-10T00:05:00Z",
+            feasibility_required="false",
+        ),
+        _ledger_event("sketch_completed", timestamp_utc="2026-04-10T00:06:00Z"),
+        _ledger_event(
+            "solutionreview_completed",
+            timestamp_utc="2026-04-10T00:07:00Z",
+            critical_count=0,
+            high_count=0,
+        ),
+        _ledger_event("estimation_completed", timestamp_utc="2026-04-10T00:08:00Z", estimate_points=8),
+        _ledger_event("tasking_completed", timestamp_utc="2026-04-10T00:09:00Z", task_count=4, story_count=2),
+        _ledger_event("solution_approved", timestamp_utc="2026-04-10T00:10:00Z", task_count=4, story_count=2, estimate_points=8),
+        _ledger_event("analysis_completed", timestamp_utc="2026-04-10T00:11:00Z", critical_count=0),
+        _ledger_event("e2e_generated", timestamp_utc="2026-04-10T00:12:00Z", e2e_artifact="scripts/e2e_023.sh"),
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "plan"},
+        ledger_path=ledger_path,
+    )
+    assert state["phase"] == "implement"
+    assert state["blocked"] is False
+    assert state["drift_detected"] is False
+    assert state["drift_reasons"] == []
 
 
 def test_handoff_contract_requires_all_fields() -> None:

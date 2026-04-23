@@ -34,6 +34,23 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _repo_uv_cache_dir(root: Path) -> Path:
+    """Return the repository-local uv cache directory used by refresh subprocesses."""
+    return root / ".codegraphcontext" / ".uv-cache"
+
+
+def _refresh_env(*, root: Path, env_overrides: dict[str, str] | None = None) -> dict[str, str]:
+    """Build a subprocess env that prefers repo-local uv cache for sandbox-safe execution."""
+    env = os.environ.copy()
+    if not env.get("UV_CACHE_DIR"):
+        cache_dir = _repo_uv_cache_dir(root)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        env["UV_CACHE_DIR"] = str(cache_dir)
+    if env_overrides:
+        env.update(env_overrides)
+    return env
+
+
 def _emit_error(message: str) -> None:
     """Emit a blocking refresh error to stderr."""
     print(f"ERROR: {message}", file=sys.stderr)
@@ -76,9 +93,7 @@ def _collect_changed_paths(payload: dict) -> list[Path]:
 
 def _run_refresh(command: list[str], label: str, *, env_overrides: dict[str, str] | None = None) -> str | None:
     """Run a refresh command and return an error message on failure."""
-    env = os.environ.copy()
-    if env_overrides:
-        env.update(env_overrides)
+    env = _refresh_env(root=_repo_root(), env_overrides=env_overrides)
     proc = subprocess.run(command, capture_output=True, text=True, env=env)
     if proc.returncode == 0:
         return None
@@ -119,8 +134,7 @@ def _embedding_model_available_offline(root: Path) -> tuple[bool, str]:
         "bootstrap",
         "--skip-build",
     ]
-    env = os.environ.copy()
-    env["HF_HUB_OFFLINE"] = "1"
+    env = _refresh_env(root=root, env_overrides={"HF_HUB_OFFLINE": "1"})
     proc = subprocess.run(command, capture_output=True, text=True, env=env)
     if proc.returncode == 0:
         return True, ""

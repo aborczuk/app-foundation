@@ -7,7 +7,7 @@
 
 ## One-Line Purpose *(mandatory)*
 
-Pipeline operators run phase work through a deterministic orchestrator that validates outputs before any ledger event is emitted.
+Pipeline operators and Codex commands run all speckit phases through one deterministic orchestrator (`/speckit.run` + pipeline driver) that validates outputs before any ledger event is emitted.
 
 ## Consumer & Context *(mandatory)*
 
@@ -62,6 +62,23 @@ Command docs produce phase artifacts and completion payloads only, while orchest
 
 ---
 
+### User Story 4 - Full-Pipeline Deterministic Entry (Priority: P4)
+
+All phase progression is entered through one deterministic trigger, while direct phase-command invocations are allowed for deterministic reruns and blocked only when they attempt to progress beyond the allowed latest step.
+
+**Why this priority**: This removes non-deterministic drift from command-local execution paths and makes gate -> step -> verify -> emit behavior auditable end-to-end.
+
+**Independent Test**: Invoke phase execution through `/speckit.run` and verify gate checks are deterministic; invoke a direct phase command for an already-reached step and verify deterministic rerun is allowed; invoke a direct phase command that would progress beyond allowed latest step and verify deterministic block/redirect behavior.
+
+**Acceptance Scenarios**:
+
+1. **Given** a phase invocation request, **When** `/speckit.run` is executed, **Then** the driver resolves phase, runs deterministic gates, executes LLM action through runner adapter, validates, and emits exactly one completion decision.
+2. **Given** a direct invocation of a phase command for the current or earlier step, **When** execution starts, **Then** deterministic rerun execution is allowed and bounded by the same validation/emit rules.
+3. **Given** a direct invocation of a phase command that would progress beyond the allowed latest step, **When** execution starts, **Then** it is deterministically blocked or redirected to canonical orchestration.
+4. **Given** implement phase completion gates pass, **When** phase-close validation succeeds, **Then** `implementation_completed` is emitted once and only once.
+
+---
+
 ### Edge Cases
 
 - What happens when validation dependencies are temporarily unavailable during the validate step?
@@ -72,15 +89,20 @@ Command docs produce phase artifacts and completion payloads only, while orchest
 
 ```mermaid
 flowchart TD
-    A[Resolve current phase step] --> B{User confirms step?}
-    B -->|No| C[Stop with no execution]
-    B -->|Invalid or unauthorized| D[Return deterministic permission failure]
-    B -->|Yes| E[Orchestrate and extract deterministic context]
-    E --> F[Scaffold phase-owned artifacts]
-    F --> G[LLM Action produces artifacts and completion payload]
-    G --> H{Deterministic validation passes?}
-    H -->|No| I[Return blocked result and do not emit event]
-    H -->|Yes| J[Emit phase event and handoff next step]
+    A[/speckit.run or pipeline_driver entrypoint/] --> B[Resolve current phase + deterministic gate checks]
+    B --> C{User confirms step?}
+    C -->|No| D[Stop with no execution]
+    C -->|Invalid or unauthorized| E[Return deterministic permission failure]
+    C -->|Yes| F[Run preflight scripts and orchestrate context]
+    F --> G[Scaffold phase-owned artifacts]
+    G --> H[LLM Runner Adapter returns completion payload]
+    H --> I{Deterministic validation passes?}
+    I -->|No| J[Return blocked result and do not emit event]
+    I -->|Yes| K[Run postflight/phase-close deterministic gates]
+    K -->|Pass| L[Emit phase event and handoff next step]
+    M[Direct phase command invocation] --> N{Requested step <= latest allowed step?}
+    N -->|Yes| A
+    N -->|No| O[Deterministic blocked result with redirect reason]
 ```
 
 ## Data & State Preconditions *(mandatory)*
@@ -93,8 +115,8 @@ flowchart TD
 
 | Direction | Description | Format |
 | :-- | :-- | :-- |
-| Input | Feature context, current phase request, command-produced artifacts, and explicit permission response | Caller-defined |
-| Output | Deterministic phase status, validation outcome, and event/handoff decision | Caller-defined |
+| Input | `/speckit.run` (or driver CLI) request with feature context, phase hint, explicit permission response, and runner-adapter execution context | Caller-defined |
+| Output | Deterministic phase status, gate/validation outcome, emitted event decision, and handoff/next-step result | Canonical step-result envelope |
 
 ## Constraints & Non-Goals *(mandatory)*
 
@@ -102,10 +124,13 @@ flowchart TD
 - Must NOT emit completion events before deterministic validation succeeds.
 - Must NOT require command docs to duplicate orchestration gate logic owned by the deterministic flow.
 - Must NOT allow ambiguous permission responses to start phase execution.
+- Must NOT allow direct invocation to progress beyond the allowed latest step outside deterministic orchestration boundaries.
 
 **Adopted dependencies** *(include if feature uses external tools/packages to deliver capability)*:
 - Pipeline ledger command tooling for event append and sequence enforcement.
 - Existing deterministic phase gate commands for pre-validation signals.
+- Runner-adapter contract for LLM action execution (stdin JSON request -> stdout JSON step payload).
+- Task ledger command tooling for implement-phase task lifecycle gates.
 
 **Boundary assumptions**:
 - Pipeline ledger event sequencing remains the source of truth for phase progression. Owner: governance scripts. Verifiability: `pipeline_ledger.py validate` passes.
@@ -114,6 +139,7 @@ flowchart TD
 **Out of scope** *(things this feature genuinely does not do, even via external tools)*:
 - Redefining the semantic content of each phase artifact template.
 - Replacing existing task-level ledger lifecycle semantics.
+- Replacing external model/provider selection policy for the runner adapter.
 
 ## Requirements *(mandatory)*
 
@@ -133,6 +159,14 @@ flowchart TD
 - **FR-012**: System MUST define source-of-truth ownership for live phase state versus local mirrors and define stale fallback/fail behavior when reconciliation fails.
 - **FR-013**: System MUST define local persisted mutation boundaries such that partial-write outcomes are rejected and rollback/idempotency behavior is explicit.
 - **FR-014**: System MUST name the executing orchestration command as the pipeline driver command in the phase contract and treat it as the execution entrypoint for automated phase flow.
+- **FR-015**: System MUST expose a canonical orchestration command trigger (`/speckit.run`) that dispatches deterministic phase execution through the pipeline driver contract.
+- **FR-016**: System MUST ensure direct phase-command execution paths that would progress beyond the allowed latest step are deterministically blocked or redirected to `/speckit.run`.
+- **FR-017**: System MUST support deterministic dry-run gate evaluation that resolves phase and gate outcomes without mutating ledgers or artifacts.
+- **FR-018**: System MUST migrate implement-phase execution into driver-managed orchestration with deterministic preflight, per-task verification gates, phase-close gating, and emit `implementation_completed` only after success.
+- **FR-019**: System MUST execute LLM action via a runner-adapter contract where orchestration scripts own gating, validation, and ledger emission decisions.
+- **FR-020**: System MUST define explicit driver route metadata for each migrated phase command (mode, script ownership, timeout, and emit contract fields) in the canonical manifest.
+- **FR-021**: System MUST normalize command docs to producer-only compact contracts that exclude executable gate/ledger procedures.
+- **FR-022**: System MUST allow deterministic rerun of current or earlier steps via direct phase-command invocation without requiring ledger rewind, while still enforcing validate-before-emit and idempotent terminal outcomes.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -140,6 +174,9 @@ flowchart TD
 - **Phase Completion Payload**: Producer output describing phase artifacts and completion status before orchestration validation.
 - **Validation Outcome**: Deterministic pass/fail result with explicit reasons used to allow or block event emission.
 - **Event Emission Decision**: Post-validation decision record stating whether a phase event is appended or withheld.
+- **Orchestration Trigger Contract**: Canonical `/speckit.run` request/response boundary for deterministic phase execution.
+- **Runner Adapter Contract**: Deterministic transport contract for LLM step execution (`stdin` JSON request, `stdout` JSON result envelope).
+- **Implementation Completion Event**: Pipeline-level terminal event (`implementation_completed`) emitted only after implement-phase close gates pass.
 
 ## Success Criteria *(mandatory)*
 
@@ -149,7 +186,10 @@ flowchart TD
 - **SC-002**: 100% of denied confirmation responses result in zero phase execution side effects.
 - **SC-003**: For migrated command flows, command docs no longer contain direct ledger emission instructions and no behavioral regression is observed in phase progression.
 - **SC-004**: Median command-doc token footprint for migrated phases is reduced by at least 30% while preserving deterministic phase outcomes.
+- **SC-005**: 100% of phase execution requests that attempt forward progression beyond the allowed latest step are blocked or redirected to canonical orchestration, while deterministic direct reruns at or below the latest allowed step remain permitted.
+- **SC-006**: 100% of successful implement-phase closures emit exactly one `implementation_completed` event and 0 emissions when phase-close gates fail.
+- **SC-007**: 100% of speckit command docs conform to compact producer-only contract shape after migration.
 
 ## Definition of Done *(mandatory)*
 
-In production workflows, phase runs execute through permissioned deterministic orchestration where completion events are emitted only after validation passes and failed validation never advances ledger state.
+In production workflows, speckit phase progression executes through canonical permissioned deterministic orchestration where completion events (including `implementation_completed`) are emitted only after validation and phase-close gates pass, failed validation never advances ledger state, and reruns of current/earlier steps are allowed without enabling out-of-order forward progression.

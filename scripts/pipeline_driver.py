@@ -17,7 +17,9 @@ from typing import Any, Mapping, Sequence
 from pipeline_driver_contracts import parse_step_result, render_status_lines
 from pipeline_driver_state import advance_phase, resolve_phase_state
 
-VALID_PIPELINE_PHASES = {"specify", "research", "plan", "solution", "implement", "closed"}
+VALID_PIPELINE_PHASE_SEQUENCE = ("specify", "research", "plan", "solution", "implement", "closed")
+VALID_PIPELINE_PHASES = set(VALID_PIPELINE_PHASE_SEQUENCE)
+PHASE_INDEX = {phase: index for index, phase in enumerate(VALID_PIPELINE_PHASE_SEQUENCE)}
 
 
 def build_correlation_id(
@@ -48,6 +50,15 @@ def build_correlation_id(
         )
 
     return f"{safe_run}:{safe_step}"
+
+
+def _requested_phase_exceeds_current(*, requested_phase: str, current_phase: str) -> bool:
+    """Return True when requested_phase is ahead of ledger-derived current_phase."""
+    requested_index = PHASE_INDEX.get(requested_phase)
+    current_index = PHASE_INDEX.get(current_phase)
+    if requested_index is None or current_index is None:
+        return requested_phase != current_phase
+    return requested_index > current_index
 
 
 def validate_generated_artifact(
@@ -1223,22 +1234,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     effective_phase = current_phase if requested_phase is None else requested_phase
     correlation_id = build_correlation_id(requested_feature_id, effective_phase)
 
-    if requested_phase is not None and current_phase != "unknown" and requested_phase != current_phase:
-        step_result = {
-            "schema_version": "1.0.0",
-            "ok": False,
-            "exit_code": 1,
-            "correlation_id": correlation_id,
-            "gate": "phase_drift",
-            "reasons": ["requested_phase_mismatch"],
-            "error_code": None,
-            "next_phase": current_phase,
-            "debug_path": None,
-        }
-        emit_human_status(step_result)
-        if args.output_json:
-            print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
-        return 1
+    if (
+        requested_phase is not None
+        and current_phase != "unknown"
+        and requested_phase != current_phase
+        and _requested_phase_exceeds_current(
+            requested_phase=requested_phase,
+            current_phase=current_phase,
+        )
+    ):
+            step_result = {
+                "schema_version": "1.0.0",
+                "ok": False,
+                "exit_code": 1,
+                "correlation_id": correlation_id,
+                "gate": "phase_drift",
+                "reasons": ["requested_phase_mismatch"],
+                "error_code": None,
+                "next_phase": current_phase,
+                "debug_path": None,
+            }
+            emit_human_status(step_result)
+            if args.output_json:
+                print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
+            return 1
 
     # 2. Blocked by drift — surface immediately, no execution
     if phase_state.get("blocked") and not args.dry_run:
