@@ -163,7 +163,7 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 - Replace `<touched-paths>` with the files changed in the edit batch, and `<pytest-selectors>` with the minimal targeted tests for that batch.
 - Read the exact seam once before editing.
 - Work seam-by-seam: finish one seam before starting another.
-- Default to one-file edit batches: complete one file’s coherent change + validation loop before moving to the next file.
+- Default to the smallest coherent edit batch that keeps the seam clear: one file when practical, or a tightly related set of files when that avoids repeated refresh/index overhead.
 - Prefer one high-quality seam read per active file (function/class level) and derive the full file edit plan from that snapshot.
 - Apply one consolidated patch per file when possible instead of many tiny hunks.
 - For multi-file work, prepare edits from initial seam reads, apply file-by-file, then run one targeted validation pass for the batch.
@@ -175,10 +175,11 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 - Do not advance past an edit batch until its validation loop passes or the failure is understood and intentionally deferred.
 - Verify once after the patch set is complete as a final end-to-end pass, not instead of batch-level validation.
 - Treat a completed edit as the basic unit of work: keep the patch set coherent, verify it, then hand it off as one synced change.
+- If codegraph is only needed after the batch, prefer finishing the batch first and then running the refresh hook once; if a later codegraph read overlaps the changed scope, the read helper's stale detection will force the needed scoped refresh before you rely on it.
 
 ### Final Edit Handoff
 
-- Finish with local verification, run `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin, then commit and push so the branch is synced.
+- Finish with local verification, run `uv run python scripts/hook_refresh_indexes.py` once with the batch's changed-path JSON payload on stdin, then commit and push so the branch is synced.
 - Commit once per completed edit unit; small, well-described commits are the basic unit of maintainable code.
 - Commit messages should describe one coherent edit unit clearly and narrowly.
 - Do not split one logical edit across multiple unsynced handoffs unless the user explicitly wants an intermediate checkpoint.

@@ -2,8 +2,9 @@
 """PostToolUse hook: refresh CodeGraphContext and vector index after edits.
 
 This script is invoked with a JSON payload on stdin after tool edits.
-It extracts changed repo-local paths, refreshes codegraph for each path,
-and refreshes the vector index for supported markdown/code files.
+It extracts changed repo-local paths, refreshes codegraph for the smallest
+covering set of targets, and refreshes the vector index for supported
+markdown/code files.
 Refresh failures are fatal so the edit handoff never proceeds with stale
 or missing discovery state.
 """
@@ -105,12 +106,41 @@ def _run_refresh(command: list[str], label: str, *, env_overrides: dict[str, str
     return f"{label} refresh failed: {details}"
 
 
+def _codegraph_refresh_targets(paths: Iterable[Path]) -> list[Path]:
+    """Collapse changed paths to the smallest covering set of codegraph targets."""
+    root = _repo_root()
+    targets: list[Path] = []
+    seen: set[Path] = set()
+
+    for path in paths:
+        if not path.exists():
+            continue
+        target = path if path.is_dir() else path.parent
+        if target == root:
+            target = path
+        try:
+            target.relative_to(root)
+        except ValueError:
+            continue
+        if target in seen:
+            continue
+        seen.add(target)
+
+        # Prefer broader ancestors when they already cover an earlier target.
+        if any(target.is_relative_to(existing) for existing in targets):
+            continue
+        targets = [existing for existing in targets if not existing.is_relative_to(target)]
+        targets.append(target)
+
+    return sorted(targets)
+
+
 def _refresh_codegraph(paths: Iterable[Path]) -> list[str]:
-    """Refresh codegraph path-by-path through the safe wrapper."""
+    """Refresh codegraph using a batched, target-minimized safe wrapper."""
     script = _repo_root() / "scripts" / "cgc_safe_index.sh"
     failures: list[str] = []
-    for path in paths:
-        error = _run_refresh(["bash", str(script), str(path)], f"codegraph {path}")
+    for target in _codegraph_refresh_targets(paths):
+        error = _run_refresh(["bash", str(script), str(target)], f"codegraph {target}")
         if error:
             failures.append(error)
     return failures

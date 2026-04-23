@@ -144,6 +144,36 @@ def test_refresh_vector_reprobes_when_embedding_cache_state_changes(
         assert env_overrides == {"HF_HUB_OFFLINE": "1"}
 
 
+def test_refresh_codegraph_batches_sibling_files(monkeypatch, tmp_path) -> None:
+    """Refresh a shared parent directory once when multiple sibling files change."""
+    hook = _load_hook_module()
+    repo_root = tmp_path / "repo"
+    sibling_dir = repo_root / "scripts"
+    sibling_dir.mkdir(parents=True)
+    first_path = sibling_dir / "first.py"
+    second_path = sibling_dir / "second.py"
+    first_path.write_text("print('a')\n", encoding="utf-8")
+    second_path.write_text("print('b')\n", encoding="utf-8")
+    refresh_calls: list[tuple[list[str], str]] = []
+
+    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
+
+    def fake_run_refresh(command: list[str], label: str, *, env_overrides=None):
+        refresh_calls.append((command, label))
+        return None
+
+    monkeypatch.setattr(hook, "_run_refresh", fake_run_refresh)
+
+    errors = hook._refresh_codegraph([first_path, second_path])
+
+    assert errors == []
+    assert len(refresh_calls) == 1
+    command, label = refresh_calls[0]
+    assert label == f"codegraph {sibling_dir}"
+    assert command[:2] == ["bash", str(repo_root / "scripts" / "cgc_safe_index.sh")]
+    assert command[2] == str(sibling_dir)
+
+
 def test_refresh_vector_includes_shell_paths(monkeypatch, tmp_path) -> None:
     """Include shell edits in the vector refresh path filter."""
     hook = _load_hook_module()
