@@ -132,10 +132,10 @@
 
 ### Delta Phase 2: Foundational
 
-- [ ] T032 Harden runtime execution envelope semantics for success/blocked/error and debug sidecar behavior (SK-01) — `scripts/pipeline_driver.py:run_step`
-- [ ] T033 Make phase resolution ledger-authoritative with deterministic drift reasons and lock behavior (SK-02) — `scripts/pipeline_driver_state.py:resolve_phase_state`
-- [ ] T034 Enforce transition/append contract guards so only validated transitions mutate ledger state (SK-03) — `scripts/pipeline_ledger.py:validate_sequence`
-- [ ] T035 Normalize manifest-driven route + emit contract parsing (including canonical trigger metadata) and reject unknown modes deterministically (SK-04) — `scripts/pipeline_driver_contracts.py:load_driver_routes`
+- [X] T032 Harden runtime execution envelope semantics for success/blocked/error and debug sidecar behavior (SK-01) — `scripts/pipeline_driver.py:run_step`
+- [X] T033 Make phase resolution ledger-authoritative with deterministic drift reasons and lock behavior (SK-02) — `scripts/pipeline_driver_state.py:resolve_phase_state`
+- [X] T034 Enforce transition/append contract guards so only validated transitions mutate ledger state (SK-03) — `scripts/pipeline_ledger.py:validate_sequence`
+- [X] T035 Normalize manifest-driven route + emit contract parsing (including canonical trigger metadata) and reject unknown modes deterministically (SK-04) — `scripts/pipeline_driver_contracts.py:load_driver_routes`
 
 ### Delta Phase 3: User Story 1 - Deterministic Phase Completion
 
