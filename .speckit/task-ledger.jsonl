@@ -1039,3 +1039,18 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.176230Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "pytest-20260423T021935Z", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.214165Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T030", "timestamp_utc": "2026-04-23T02:28:24.254380Z"}
+{"actor": "codex", "attempt": 1, "details": "started shared runner-adapter helper extraction", "event": "task_started", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:05.918447Z"}
+{"actor": "codex", "attempt": 1, "details": "read T031 HUD and extracted shared runner-adapter envelope helpers", "event": "discovery_completed", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:11.802827Z"}
+{"actor": "codex", "attempt": 1, "details": "shared step-result envelope helpers added in tests/support/pipeline_driver_envelopes.py", "event": "lld_recorded", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:11.862153Z"}
+{"actor": "codex", "attempt": 1, "details": "shared helper extraction keeps deterministic runner-adapter contracts explicit", "event": "quality_guards_passed", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:11.920748Z"}
+{"actor": "codex", "attempt": 1, "details": "contract and integration tests now reuse shared step-result envelope helpers", "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:11.981149Z"}
+{"actor": "codex", "attempt": 1, "details": "uv run --no-sync python scripts/pytest_guard.py run -- tests/contract/test_pipeline_driver_contract.py tests/integration/test_pipeline_driver_feature_flow.py", "event": "tests_passed", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:12.037084Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "7d64853", "event": "commit_created", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:15.662921Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:15.700467Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "023", "qa_run_id": "pytest-20260423T023230Z", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:15.740106Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "023", "task_id": "T031", "timestamp_utc": "2026-04-23T02:33:15.803832Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:40:43.562728Z"}
+{"actor": "codex", "attempt": 1, "event": "discovery_completed", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.430089Z"}
+{"actor": "codex", "attempt": 1, "event": "quality_guards_passed", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.491876Z"}
+{"actor": "codex", "attempt": 1, "event": "functional_goal_achieved", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.548804Z"}
+{"actor": "codex", "attempt": 1, "event": "tests_passed", "feature_id": "023", "task_id": "T032", "timestamp_utc": "2026-04-23T02:43:03.622175Z"}

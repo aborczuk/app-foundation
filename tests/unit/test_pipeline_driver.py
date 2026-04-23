@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import build_step_result_envelope
+
 
 def _load_script_module(module_name: str, script_name: str):
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
@@ -559,6 +561,72 @@ def test_run_step_rejects_partial_step_result_envelope(tmp_path: Path) -> None:
     assert result["error_code"] == "invalid_step_result"
     assert result["reasons"] == ["invalid_step_result"]
     assert result["process_exit_code"] == 0
+    assert result["timed_out"] is False
+    assert result["debug_path"] is not None
+    assert Path(result["debug_path"]).exists()
+
+
+def test_run_step_routes_error_envelope_without_sidecar(tmp_path: Path) -> None:
+    sidecar_dir = tmp_path / "runtime-failures"
+    correlation_id = "run-019-error"
+    payload = build_step_result_envelope(
+        ok=False,
+        exit_code=2,
+        correlation_id=correlation_id,
+        error_code="script_failed",
+        debug_path="/tmp/placeholder.json",
+    )
+    payload_json = json.dumps(payload, sort_keys=True)
+    command = [
+        sys.executable,
+        "-c",
+        f"import json; print({payload_json!r}); import sys; sys.exit(2)",
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+        sidecar_dir=sidecar_dir,
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["process_exit_code"] == 2
+    assert result["timed_out"] is False
+    assert result["error_code"] == "script_failed"
+    assert result["debug_path"] == "/tmp/placeholder.json"
+    assert not sidecar_dir.exists()
+
+
+def test_run_step_rejects_error_envelope_without_debug_path(tmp_path: Path) -> None:
+    sidecar_dir = tmp_path / "runtime-failures"
+    correlation_id = "run-019-error-missing-debug"
+    payload = build_step_result_envelope(
+        ok=False,
+        exit_code=2,
+        correlation_id=correlation_id,
+        error_code="script_failed",
+    )
+    payload_json = json.dumps(payload, sort_keys=True)
+    command = [
+        sys.executable,
+        "-c",
+        f"import json; print({payload_json!r}); import sys; sys.exit(2)",
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+        sidecar_dir=sidecar_dir,
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["error_code"] == "invalid_step_result"
+    assert result["reasons"] == ["invalid_step_result"]
+    assert result["process_exit_code"] == 2
     assert result["timed_out"] is False
     assert result["debug_path"] is not None
     assert Path(result["debug_path"]).exists()

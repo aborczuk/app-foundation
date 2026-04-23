@@ -128,7 +128,7 @@
 ### Delta Phase 1: Setup
 
 - [X] T030 [P] Establish shared feature-flow fixtures for route/ledger setup and deterministic envelope assertions — `tests/integration/test_pipeline_driver_feature_flow.py:build_feature_workspace`
-- [ ] T031 [P] Add shared runner-adapter request/response helpers used by contract and integration tests — `tests/contract/test_pipeline_driver_contract.py:test_step_result_schema_blocked_requires_gate_and_reasons`
+- [X] T031 [P] Add shared runner-adapter request/response helpers used by contract and integration tests — `tests/contract/test_pipeline_driver_contract.py:test_step_result_schema_blocked_requires_gate_and_reasons`
 
 ### Delta Phase 2: Foundational
 

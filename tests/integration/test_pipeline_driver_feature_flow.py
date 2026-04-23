@@ -109,7 +109,7 @@ def test_deterministic_route_success(driver_flow_harness) -> None:
         "speckit.plan",
         run_id="run-us1-success",
     )
-    manifest_path, routes = build_feature_workspace(
+    _manifest_path, routes = build_feature_workspace(
         driver_flow_harness,
         command_id="speckit.plan",
         script_name="plan_step.py",
@@ -181,6 +181,51 @@ def test_deterministic_route_blocked(driver_flow_harness) -> None:
     )
     assert result["process_exit_code"] == 1
     assert result["timed_out"] is False
+
+
+def test_deterministic_route_error_envelope(driver_flow_harness) -> None:
+    correlation_id = pipeline_driver.build_correlation_id(
+        "019",
+        "speckit.planerror",
+        run_id="run-us1-error",
+    )
+    manifest_path, routes = build_feature_workspace(
+        driver_flow_harness,
+        command_id="speckit.planerror",
+        script_name="planerror_gate.py",
+        emit_event="planerror_reported",
+        payload={
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 2,
+            "correlation_id": correlation_id,
+            "error_code": "script_failed",
+            "debug_path": "/tmp/placeholder.json",
+        },
+        exit_code=2,
+    )
+    route = routes["speckit.planerror"]
+    assert route["mode"] == "deterministic"
+    assert route["driver_managed"] is True
+
+    result = pipeline_driver.run_step(
+        [sys.executable, str(route["script_path"])],
+        timeout_seconds=route["timeout_seconds"],
+        correlation_id=correlation_id,
+        cwd=driver_flow_harness.feature_dir,
+    )
+
+    assert_step_result_envelope(
+        result,
+        ok=False,
+        exit_code=2,
+        next_phase=None,
+        error_code="script_failed",
+        debug_path="/tmp/placeholder.json",
+    )
+    assert result["process_exit_code"] == 2
+    assert result["timed_out"] is False
+    assert not (driver_flow_harness.feature_dir / ".speckit" / "runtime-failures").exists()
 
 
 def test_generative_route_blocks_without_completion_append(driver_flow_harness, monkeypatch) -> None:
