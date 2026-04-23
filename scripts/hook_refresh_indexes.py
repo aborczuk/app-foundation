@@ -27,6 +27,7 @@ from src.mcp_codebase.index.config import (  # noqa: E402
 )
 
 VECTOR_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}
+EMBEDDING_AVAILABILITY_CACHE_VERSION = 1
 
 
 def _repo_root() -> Path:
@@ -120,6 +121,19 @@ def _embedding_model_cache_dir(root: Path) -> Path:
     return root / DEFAULT_EMBEDDING_CACHE_DIR
 
 
+def _embedding_model_availability_cache_path(root: Path) -> Path:
+    """Return the cache file for offline embedding availability checks."""
+    return _repo_uv_cache_dir(root) / "hook-refresh" / "embedding-model-availability.json"
+
+
+def _embedding_model_cache_signature(root: Path) -> tuple[bool, int | None]:
+    """Fingerprint the embedding cache directory so stale memoized results expire."""
+    cache_dir = _embedding_model_cache_dir(root)
+    if not cache_dir.exists():
+        return False, None
+    return True, cache_dir.stat().st_mtime_ns
+
+
 def _embedding_model_available_offline(root: Path) -> tuple[bool, str]:
     """Probe whether the embedding model can be loaded in offline mode."""
     command = [
@@ -145,6 +159,71 @@ def _embedding_model_available_offline(root: Path) -> tuple[bool, str]:
     return False, details
 
 
+def _read_cached_embedding_model_availability(root: Path) -> tuple[bool, str] | None:
+    """Return a cached availability result when the embedding cache state matches."""
+    cache_path = _embedding_model_availability_cache_path(root)
+    if not cache_path.exists():
+        return None
+
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("version") != EMBEDDING_AVAILABILITY_CACHE_VERSION:
+        return None
+    if payload.get("model_name") != DEFAULT_EMBEDDING_MODEL_NAME:
+        return None
+
+    cache_exists, cache_mtime_ns = _embedding_model_cache_signature(root)
+    if payload.get("cache_dir_exists") != cache_exists:
+        return None
+    if payload.get("cache_dir_mtime_ns") != cache_mtime_ns:
+        return None
+
+    available = payload.get("available")
+    details = payload.get("details", "")
+    if not isinstance(available, bool):
+        return None
+    if not isinstance(details, str):
+        details = ""
+    return available, details
+
+
+def _write_cached_embedding_model_availability(root: Path, *, available: bool, details: str) -> None:
+    """Persist the latest availability check for reuse across edit-refresh invocations."""
+    cache_path = _embedding_model_availability_cache_path(root)
+    cache_exists, cache_mtime_ns = _embedding_model_cache_signature(root)
+    payload = {
+        "version": EMBEDDING_AVAILABILITY_CACHE_VERSION,
+        "model_name": DEFAULT_EMBEDDING_MODEL_NAME,
+        "cache_dir_exists": cache_exists,
+        "cache_dir_mtime_ns": cache_mtime_ns,
+        "available": available,
+        "details": details,
+    }
+
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError:
+        # Refreshing the cache should never block the actual refresh path.
+        return
+
+
+def _resolve_embedding_model_availability(root: Path) -> tuple[bool, str]:
+    """Return a memoized embedding-model availability result when the cache is fresh."""
+    cached = _read_cached_embedding_model_availability(root)
+    if cached is not None:
+        return cached
+
+    available, details = _embedding_model_available_offline(root)
+    _write_cached_embedding_model_availability(root, available=available, details=details)
+    return available, details
+
+
 def _refresh_vector(paths: Iterable[Path]) -> list[str]:
     """Refresh vector embeddings only for file types the indexer can ingest."""
     vector_paths = [path for path in paths if path.suffix.lower() in VECTOR_SUFFIXES]
@@ -153,7 +232,7 @@ def _refresh_vector(paths: Iterable[Path]) -> list[str]:
 
     root = _repo_root()
     cache_dir = _embedding_model_cache_dir(root)
-    model_available, availability_details = _embedding_model_available_offline(root)
+    model_available, availability_details = _resolve_embedding_model_availability(root)
     if not model_available:
         return [
             "vector index refresh blocked: embedding model cache for "

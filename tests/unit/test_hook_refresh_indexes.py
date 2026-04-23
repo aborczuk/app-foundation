@@ -73,6 +73,77 @@ def test_refresh_vector_uses_offline_mode_when_embedding_model_cache_is_present(
     assert env_overrides == {"HF_HUB_OFFLINE": "1"}
 
 
+def test_refresh_vector_reuses_cached_embedding_model_availability(monkeypatch, tmp_path) -> None:
+    """Reuse the availability probe result while the embedding cache stays unchanged."""
+    hook = _load_hook_module()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    probe_calls: list[Path] = []
+    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
+
+    def fake_probe(root: Path) -> tuple[bool, str]:
+        probe_calls.append(root)
+        return True, ""
+
+    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
+    monkeypatch.setattr(hook, "_embedding_model_available_offline", fake_probe)
+    monkeypatch.setattr(
+        hook,
+        "_run_refresh",
+        lambda command, label, env_overrides=None: refresh_calls.append(
+            (tuple(command), env_overrides)
+        ),
+    )
+
+    first_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
+    second_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
+
+    assert first_errors == []
+    assert second_errors == []
+    assert len(probe_calls) == 1
+    assert len(refresh_calls) == 2
+    for _, env_overrides in refresh_calls:
+        assert env_overrides == {"HF_HUB_OFFLINE": "1"}
+
+
+def test_refresh_vector_reprobes_when_embedding_cache_state_changes(
+    monkeypatch, tmp_path
+) -> None:
+    """Invalidate the cached probe when the embedding cache directory changes."""
+    hook = _load_hook_module()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    probe_calls: list[Path] = []
+    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
+
+    def fake_probe(root: Path) -> tuple[bool, str]:
+        probe_calls.append(root)
+        return True, ""
+
+    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
+    monkeypatch.setattr(hook, "_embedding_model_available_offline", fake_probe)
+    monkeypatch.setattr(
+        hook,
+        "_run_refresh",
+        lambda command, label, env_overrides=None: refresh_calls.append(
+            (tuple(command), env_overrides)
+        ),
+    )
+
+    first_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
+    model_cache_dir = repo_root / DEFAULT_EMBEDDING_CACHE_DIR
+    model_cache_dir.mkdir(parents=True, exist_ok=True)
+    (model_cache_dir / "snapshot.json").write_text("{}", encoding="utf-8")
+    second_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
+
+    assert first_errors == []
+    assert second_errors == []
+    assert len(probe_calls) == 2
+    assert len(refresh_calls) == 2
+    for _, env_overrides in refresh_calls:
+        assert env_overrides == {"HF_HUB_OFFLINE": "1"}
+
+
 def test_refresh_vector_includes_shell_paths(monkeypatch, tmp_path) -> None:
     """Include shell edits in the vector refresh path filter."""
     hook = _load_hook_module()
