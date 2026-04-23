@@ -823,25 +823,40 @@ def run_generative_handoff(
     if not isinstance(completion_marker, str):
         completion_marker = None
 
-    # Backward-compatible mode: no runner configured, return explicit handoff with metadata probe.
+    # Runner is mandatory for generative routes; fail deterministically when missing.
     if not runner_spec.strip():
-        return {
+        sidecar_path = _runtime_sidecar_path(correlation_id, sidecar_dir)
+        sidecar_payload = {
             "schema_version": "1.0.0",
-            "ok": True,
-            "exit_code": 0,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "correlation_id": correlation_id,
-            "next_phase": advance_phase(phase),
-            "gate": None,
-            "reasons": [],
-            "error_code": None,
-            "debug_path": None,
-            "handoff": dict(handoff),
-            "handoff_execution": "not_configured",
-            "generated_artifact": _collect_generated_artifact_metadata(
-                artifact_path or ".",
-                completion_marker=completion_marker,
-            ),
+            "error_code": "handoff_runner_not_configured",
+            "reason": "handoff_runner_not_configured",
+            "command": [],
+            "initial": {
+                "exit_code": None,
+                "timed_out": False,
+                "stdout": "",
+                "stderr": "",
+            },
+            "rerun": {
+                "exit_code": None,
+                "timed_out": False,
+                "stdout": "",
+                "stderr": "",
+            },
         }
+        sidecar_path.write_text(json.dumps(sidecar_payload, sort_keys=True, indent=2), encoding="utf-8")
+        return _runtime_failure_result(
+            correlation_id=correlation_id,
+            error_code="handoff_runner_not_configured",
+            reason="runtime_failure:handoff_runner_not_configured",
+            stdout="",
+            stderr="",
+            process_exit_code=None,
+            timed_out=False,
+            debug_path=str(sidecar_path),
+        )
 
     command = shlex.split(runner_spec)
     if not command:
@@ -1354,8 +1369,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not script_path:
             step_result = route_legacy_step(mapping, correlation_id=correlation_id)
         else:
+            step_command = [str(script_path)]
+            if mapping.get("command_id") == "speckit.implement":
+                step_command.extend(
+                    [
+                        "--feature-id",
+                        resolved_feature_id,
+                        "--phase",
+                        effective_phase,
+                        "--correlation-id",
+                        correlation_id,
+                    ]
+                )
+                if isinstance(args.handoff_runner, str) and args.handoff_runner.strip():
+                    step_command.extend(["--handoff-runner", args.handoff_runner.strip()])
             step_result = run_step(
-                [script_path],
+                step_command,
                 timeout_seconds=timeout,
                 correlation_id=correlation_id,
             )

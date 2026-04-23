@@ -1,6 +1,4 @@
----
-description: Decompose approved `sketch.md` into executable tasks, run estimate/breakdown subprocess loop, then generate HUDs and acceptance tests. Sub-agent of /speckit.solution; callable standalone.
----
+# /speckit.tasking
 
 ## User Input
 
@@ -8,61 +6,43 @@ description: Decompose approved `sketch.md` into executable tasks, run estimate/
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
-
 ## Compact Contract (Load First)
 
-Generate `tasks.md` from an approved sketch blueprint and finalize downstream execution artifacts in this order:
+Generate `tasks.md` from an approved `sketch.md` and stabilize the downstream task graph with deterministic script-owned checks.
 
-1. task decomposition,
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
-2. estimate/breakdown subprocess loop,
-3. deterministic format gate,
-4. HUD generation,
-5. acceptance-test generation.
-
-This phase must consume `sketch.md` as an **authoritative design-to-tasking contract**, not as loose inspiration.
+1. Decompose `sketch.md` into `tasks.md` (authoritative source: sketch design slices).
+2. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py`.
+3. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
+4. Generate/hydrate HUDs via scaffold + `scripts/speckit_remake_huds.py`.
+5. Generate acceptance tests from the settled task graph.
 
 ## Expanded Guidance (Load On Demand)
 
-### 1. Setup
+### 1. Setup + hard-block gate
 
-Run:
+1. Run:
+   - `.specify/scripts/bash/check-prerequisites.sh --json`
+2. Resolve:
+   - `FEATURE_DIR`
+   - `AVAILABLE_DOCS`
+3. Require:
+   - `FEATURE_DIR/sketch.md`
+   - passing sketch review (`solutionreview_completed` with `critical_count == 0`)
+4. If any hard-block condition fails, stop.
 
-```bash
-.specify/scripts/bash/check-prerequisites.sh --json
-```
-
-Parse:
-
-- `FEATURE_DIR`
-- `AVAILABLE_DOCS`
-
-### 2. Hard-block gate
-
-Require:
-
-- `FEATURE_DIR/sketch.md`
-- a passing sketch review (`solutionreview_completed` with `critical_count == 0`)
-
-If either condition fails, stop.
-
-### 3. Load context
+### 2. Authoritative context loading
 
 Required:
-
 - `sketch.md`
 - `spec.md`
 - `plan.md`
 
 Optional:
-
 - `research.md`
 - `catalog.yaml`
 - `command-manifest.yaml`
 
-When reading `sketch.md`, treat the following sections as authoritative inputs:
-
+When deriving tasks, treat the following sketch sections as authoritative:
 - `Solution Narrative`
 - `Construction Strategy`
 - `Acceptance Traceability`
@@ -73,173 +53,64 @@ When reading `sketch.md`, treat the following sections as authoritative inputs:
 - `Interface, Symbol, and Contract Notes`
 - `Human-Task and Operator Boundaries`
 - `Verification Strategy`
-- `Design-to-Tasking Contract`
-- `Decomposition-Ready Design Slices`
 
-### 4. Task derivation rules (mandatory)
+### 3. Task derivation rules (required)
 
-Derive tasks from sketch using these rules:
+- Derive tasks from sketch contracts first; do not invent major architecture not present in sketch.
+- Preserve execution order and dependency rules from sketch + tasks graph.
+- Add `[H]` tasks only where sketch/operator boundaries explicitly require human action.
+- Keep each task anchored to actionable file/symbol seams.
+- Preserve command/script/template/manifest work as explicit tasks when present in sketch.
+- Keep task descriptions deterministic and implementation-usable (no vague placeholders).
 
-#### A. Primary source of tasks
-`Decomposition-Ready Design Slices` are the primary source of executable tasks.
+### 4. Estimate/breakdown stabilization (required)
 
-Every design slice must produce at least one task unless an explicit omission rationale is recorded.
+Primary path (script-owned):
+- `uv run --no-sync python scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json`
 
-#### B. Ordering source
-Task ordering must derive primarily from:
+If command bridges are needed, run:
+- `--estimate-command "<estimate executor>"`
+- `--breakdown-command "<breakdown executor>"`
 
-- `Construction Strategy`
-- slice dependency relationships
-- safety/validation sequencing implied by the sketch
+Required behavior:
+- run estimate against current `tasks.md`
+- if any task remains 8/13, run breakdown then re-run estimate
+- repeat until no 8/13 remain or fail deterministically
+- treat non-zero result as hard-block
 
-Do not invent task order solely from convenience.
-
-#### C. `[H]` task placement
-`[H]` tasks must derive from:
-
-- `Human-Task and Operator Boundaries`
-- explicit external dependency constraints
-
-Do not invent `[H]` tasks from vague prose.
-
-#### D. `file:symbol` annotations
-Task `file:symbol` annotations must derive from:
-
-- touched files and touched symbols in design slices,
-- symbol/interface notes in sketch,
-- net-new file/symbol creation notes when applicable.
-
-Do not invent unstable or line-number-based references.
-
-#### E. Command/script/template/manifest work
-If the sketch identifies necessary work against:
-
-- commands,
-- scripts,
-- templates,
-- manifest-owned artifacts,
-- event flows,
-
-those must become explicit tasks when they are part of the approved design.
-
-Additionally, any command/script/template/manifest/event **deltas** listed in `Manifest Alignment Check` MUST map to one or more concrete tasks, or an explicit rationale for omission.
-
-#### F. Scope control
-No task may introduce:
-
-- a new seam,
-- a new interface,
-- a new artifact,
-- a new symbol family,
-- a new runtime surface,
-
-unless the sketch explicitly allows it or an explicit rationale is recorded.
-
-### 5. Generate `tasks.md`
-
-Pre-scaffold:
-
-```bash
-uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"
-```
-
-Then fill tasks from the sketch contract with:
-
-- phase/story grouping,
-- dependency ordering,
-- `[H]` task placement,
-- `[P]` only where true parallelism exists,
-- `file:symbol` annotations,
-- command/script/template/manifest tasks where required,
-- verification-oriented tasks where the sketch requires them.
-
-### 6. Task format rules
-
-Every task MUST follow:
-
-`- [ ] TNNN [P?] [H?] [USN?] Description — file:symbol`
-
-Rules:
-
-- `[P]` only if parallelizable with no incomplete dependencies
-- `[H]` only if external human action is required; mutually exclusive with `[P]`
-- `[USN]` required in user-story phases
-- `file:symbol` required unless net-new file has no symbol yet
-
-### 7. Estimate/breakdown subprocess loop (mandatory)
-
-- Invoke `/speckit.estimate` against current `tasks.md`
-- If any task scores 8/13, invoke `/speckit.breakdown`, then re-run estimate
-- Repeat until no 8/13 tasks remain
-- Emit **one aggregated** `estimation_completed` event for the final settled task set
-
-### 8. Deterministic tasks format gate (mandatory)
+### 5. Deterministic tasks format gate (required)
 
 Run:
-
-```bash
-      uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
-```
+- `uv run --no-sync python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json`
 
 If non-zero exit, fix and re-run before continuing.
 
-### 9. Generate HUDs only after tasks are stable
+### 6. HUD + acceptance generation (post-stabilization only)
 
-**Code task HUD**
-```bash
-uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-code \
-  --feature-dir "$FEATURE_DIR" \
-  TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
-```
+Generate HUD scaffolds only after task stabilization + format gate pass:
+- `.specify/scripts/pipeline-scaffold.py` for `speckit.tasking.hud-code`
+- `.specify/scripts/pipeline-scaffold.py` for `speckit.tasking.hud-runbook`
+- `uv run --no-sync python scripts/speckit_remake_huds.py --feature-dir "$FEATURE_DIR"`
 
-**Human task HUD**
-```bash
-uv run python .specify/scripts/pipeline-scaffold.py speckit.tasking.hud-runbook \
-  --feature-dir "$FEATURE_DIR" \
-  TASK_ID=T0XX DESCRIPTION="[Task description]" FEATURE_ID="[feature-id]"
-```
+Generate acceptance tests:
+- `.specify/scripts/acceptance-test-scaffold.py`
+- keep assertions deterministic PASS/FAIL and traceable to story/task criteria
 
-After scaffolding, hydrate missing/template HUD bodies directly from `tasks.md` without clobbering populated HUDs:
+### 7. Event + reporting
 
-```bash
-uv run python scripts/speckit_remake_huds.py --feature-dir "$FEATURE_DIR"
-```
+Return completion payload to the runner/driver only after sections 1-6 pass.
+`tasking_completed` append is driver-owned (pipeline route), not command-doc-owned.
 
-### 10. Generate acceptance tests
-
-Use `.specify/scripts/acceptance-test-scaffold.py` to create `.speckit/acceptance-tests/story-N.py` from the task graph, then fill in the story-specific deterministic assertions from:
-
-- Independent Test Criteria in `tasks.md`
-- verification intent preserved from sketch
-- acceptance traceability preserved from sketch
-
-Tests must be deterministic PASS/FAIL oracles.
-
-### 11. Emit pipeline event
-
-Append:
-
-```json
-{"event": "tasking_completed", "feature_id": "NNN", "phase": "solution", "task_count": N, "story_count": N, "actor": "<agent-id>", "timestamp_utc": "..."}
-```
-
-to `.speckit/pipeline-ledger.jsonl`.
-
-### 12. Report
-
-Report:
-
-- path to `tasks.md`
-- settled estimate summary
-- HUD count and acceptance-test count
-- whether command/script/template/manifest work was included as tasks
+Report at end:
+- `tasks.md` path
+- settled estimate/breakdown outcome
+- HUD and acceptance-test counts
+- whether command/script/template/manifest work was retained
 - whether `[H]` tasks were derived from explicit sketch boundaries
-- suggested next: `/speckit.analyze`
 
 ## Behavior rules
 
-- Do not create HUDs before estimate/breakdown stabilization.
-- Do not skip deterministic format validation.
-- Do not mutate `sketch.md`; treat it as input contract.
-- Do not let tasking invent major architecture absent from sketch.
-- Preserve the construction strategy and safety invariants of the sketch when decomposing.
+- Do not treat `sketch.md` as optional inspiration; it is the tasking contract.
+- Do not skip `speckit_tasking_chain.py`; tasking must include estimate/breakdown stabilization logic.
+- Do not generate HUDs before task format gate passes.
+- Do not append completion events before deterministic checks pass.

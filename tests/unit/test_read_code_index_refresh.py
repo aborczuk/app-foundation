@@ -651,14 +651,15 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
 
 
 def test_split_context_window_biases_post_anchor_budget() -> None:
-    pre_lines, post_lines = read_code._split_context_window(125)
+    max_lines = read_code.READ_CODE_MAX_LINES
+    pre_lines, post_lines = read_code._split_context_window(max_lines)
     expected_pre = min(
-        max(1, int(125 * read_code.READ_CODE_CONTEXT_PRE_FRACTION)),
+        max(1, int(max_lines * read_code.READ_CODE_CONTEXT_PRE_FRACTION)),
         read_code.READ_CODE_CONTEXT_PRE_CAP,
-        124,
+        max_lines - 1,
     )
     assert pre_lines == expected_pre
-    assert post_lines == 125 - expected_pre
+    assert post_lines == max_lines - expected_pre
 
     pre_lines_small, post_lines_small = read_code._split_context_window(3)
     assert pre_lines_small == 1
@@ -697,15 +698,19 @@ def test_read_code_context_applies_asymmetric_window_bounds(monkeypatch, tmp_pat
 
     monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
 
-    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "125"])
+    max_lines = read_code.READ_CODE_MAX_LINES
+    exit_code = read_code.read_code_context([str(code_file), "run_pipeline", str(max_lines)])
 
     assert exit_code == 0
     expected_pre = min(
-        max(1, int(125 * read_code.READ_CODE_CONTEXT_PRE_FRACTION)),
+        max(1, int(max_lines * read_code.READ_CODE_CONTEXT_PRE_FRACTION)),
         read_code.READ_CODE_CONTEXT_PRE_CAP,
-        124,
+        max_lines - 1,
     )
-    assert bounds == {"start": 100 - expected_pre, "end": 100 + (125 - expected_pre)}
+    assert bounds == {
+        "start": 100 - expected_pre,
+        "end": 100 + (max_lines - expected_pre),
+    }
 
 
 def test_read_code_context_returns_error_for_out_of_range_candidate_index(monkeypatch, tmp_path: Path, capsys) -> None:

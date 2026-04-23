@@ -1132,6 +1132,86 @@ def test_main_allows_requested_phase_rerun(monkeypatch, capsys) -> None:
     assert payload["phase_state"]["phase"] == "implement"
 
 
+def test_main_passes_context_to_implement_step(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "023-deterministic-phase-orchestration",
+            "ledger_feature_id": "023",
+            "phase": "implement",
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "build_correlation_id",
+        lambda *args, **kwargs: "run-test:speckit.implement",
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "deterministic",
+            "command_id": "speckit.implement",
+            "route": {
+                "mode": "deterministic",
+                "script_path": "scripts/speckit_implement_step.py",
+                "timeout_seconds": 300,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "enforce_approval_breakpoint",
+        lambda *args, **kwargs: {
+            "ok": True,
+            "breakpoint_enforced": True,
+            "approval_granted": True,
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    observed: dict[str, object] = {}
+
+    def _fake_run_step(command, *, timeout_seconds, correlation_id, **kwargs):  # noqa: ANN001
+        observed["command"] = list(command)
+        observed["timeout_seconds"] = timeout_seconds
+        observed["correlation_id"] = correlation_id
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": "closed",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+        }
+
+    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+
+    exit_code = pipeline_driver.main(
+        ["--feature-id", "023-deterministic-phase-orchestration", "--phase", "implement"]
+    )
+
+    assert exit_code == 0
+    assert observed["timeout_seconds"] == 300
+    assert observed["correlation_id"] == "run-test:speckit.implement"
+    assert observed["command"] == [
+        "scripts/speckit_implement_step.py",
+        "--feature-id",
+        "023",
+        "--phase",
+        "implement",
+        "--correlation-id",
+        "run-test:speckit.implement",
+    ]
+
+
 def test_main_rejects_invalid_phase_input(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         pipeline_driver,
@@ -1506,7 +1586,7 @@ def test_run_generative_handoff_executes_runner_and_captures_metadata(tmp_path: 
     assert result["generated_artifact"]["line_count"] == 3
 
 
-def test_run_generative_handoff_returns_handoff_when_runner_not_configured(tmp_path: Path) -> None:
+def test_run_generative_handoff_fails_when_runner_not_configured(tmp_path: Path) -> None:
     handoff = {
         "handoff_id": "handoff-no-runner",
         "step_name": "speckit.plan",
@@ -1522,13 +1602,15 @@ def test_run_generative_handoff_returns_handoff_when_runner_not_configured(tmp_p
         phase="plan",
         correlation_id="run_20260410T120000Z_019:speckit.plan",
         handoff_runner=None,
+        cwd=tmp_path,
+        sidecar_dir=tmp_path / "runtime-failures",
     )
 
-    assert result["ok"] is True
-    assert result["exit_code"] == 0
-    assert result["handoff_execution"] == "not_configured"
-    assert result["generated_artifact"]["path"] == str(tmp_path / "plan.md")
-    assert result["generated_artifact"]["exists"] is False
+    assert result["ok"] is False
+    assert result["exit_code"] == 2
+    assert result["error_code"] == "handoff_runner_not_configured"
+    assert result["debug_path"] is not None
+    assert "runtime_failure:handoff_runner_not_configured" in result["reasons"]
 
 
 def test_resolve_step_mapping_uses_real_manifest() -> None:
@@ -1558,6 +1640,12 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
             assert result["command_id"] == f"speckit.{phase}"
             if result["type"] == "generative":
                 assert "handoff" in result
+
+    routes = pipeline_driver_contracts.load_driver_routes(manifest_path)
+    assert routes["speckit.run"]["mode"] == "deterministic"
+    assert routes["speckit.run"]["script_path"]
+    assert routes["speckit.tasking"]["mode"] != "legacy"
+    assert routes["speckit.implement"]["mode"] != "legacy"
 
 
 def test_validate_generated_artifact_checks_completion_marker(tmp_path: Path) -> None:

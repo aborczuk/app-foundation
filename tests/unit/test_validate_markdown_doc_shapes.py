@@ -147,3 +147,55 @@ def test_command_doc_token_footprint_reduction() -> None:
     assert payload["matched_shape"] == "compact_expanded"
     assert current_tokens == repeated_tokens
     assert current_tokens * 10 <= baseline_tokens * 7
+
+
+def test_validate_markdown_doc_shape_enforces_required_command_set() -> None:
+    """Required command docs should validate cleanly when enforcement is enabled."""
+    repo_root = Path(__file__).resolve().parents[2]
+    seed_doc = repo_root / ".claude" / "commands" / "speckit.run.md"
+
+    payload = validator.validate_markdown_doc_shape(
+        markdown_file=seed_doc,
+        enforce_required_command_set=True,
+        repo_root=repo_root,
+    )
+
+    assert payload["ok"] is True
+    assert payload["required_command_docs"] is not None
+    assert payload["required_command_docs"]["missing_docs"] == []
+    assert payload["required_command_docs"]["shape_failures"] == []
+    assert payload["required_command_docs"]["marker_failures"] == []
+
+
+def test_validate_markdown_doc_shape_reports_missing_required_docs(tmp_path: Path) -> None:
+    """Enforcement should fail deterministically when required docs are missing."""
+    repo_root = tmp_path
+    command_dir = repo_root / ".claude" / "commands"
+    command_dir.mkdir(parents=True, exist_ok=True)
+    (repo_root / "command-manifest.yaml").write_text("commands: {}\n", encoding="utf-8")
+    seed_doc = command_dir / "speckit.run.md"
+    seed_doc.write_text(
+        "\n".join(
+            [
+                "# Title",
+                "## User Input",
+                "## Compact Contract (Load First)",
+                "## Expanded Guidance (Load On Demand)",
+                "## Behavior rules",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = validator.validate_markdown_doc_shape(
+        markdown_file=seed_doc,
+        enforce_required_command_set=True,
+        repo_root=repo_root,
+    )
+
+    assert payload["ok"] is False
+    assert "required_command_docs_missing" in payload["reasons"]
+    assert payload["required_command_docs"] is not None
+    assert "speckit.tasking" in payload["required_command_docs"]["missing_docs"]
+    assert "speckit.implement" in payload["required_command_docs"]["missing_docs"]

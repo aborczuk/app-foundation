@@ -109,10 +109,12 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first anchoring and how-to live in `scripts/read_markdown.sh` and `scripts/read_markdown.py`.
 - When the exact heading is not already known, run `read_markdown_headings` first, then `read_markdown_section` with the exact heading title.
 - Prefer `--help` once for unfamiliar helper scripts before trialing flags.
+- Single-file serialization is required: do not run parallel markdown reads against the same file.
+- Avoid overlapping section pulls from the same file in the same step; reuse already-read context instead.
 
 ### Code File Read Efficiency
 
-For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 125 lines is the max context_lines budget:
+For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 80 lines is the max context_lines budget:
 ```bash
 source scripts/read-code.sh
 read_code_symbols <file>
@@ -120,21 +122,29 @@ read_code_context <file> <symbol_or_pattern> [context_lines]
 ```
 Examples:
 - `read_code_symbols src/clickup_control_plane/webhook_auth.py`
-- `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 125`
+- `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 80`
 
 Use this workflow:
-1. Invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
-2. Use one of those exact symbols with `read_code_context` / `read_code_window` for seam anchoring.
-3. The helper resolves semantic lookup first and then performs exact bounded reads.
+1. If file seam/anchor is unknown, invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
+2. If file seam/anchor is already known, skip symbol dump and go directly to `read_code_context` / `read_code_window` with bounded context.
+3. Use exact symbols (or known anchors) with `read_code_context` / `read_code_window` for seam anchoring.
+4. The helper resolves semantic lookup first and then performs exact bounded reads.
    - `read_code_context` applies a fixed asymmetric split: small pre-anchor context and larger post-anchor context
-4. Run codegraph discovery checks for blast radius only after the seam is confirmed.
-5. Expand to additional windows only when needed to resolve ambiguity.
-6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
-7. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
-8. Vector stale handling is scope-aware and explicit:
+5. Run codegraph discovery checks for blast radius only after the seam is confirmed.
+6. Expand to additional windows only when needed to resolve ambiguity.
+7. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
+8. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
+9. Vector stale handling is scope-aware and explicit:
    - stale + overlap with requested scope => synchronous scoped refresh, then proceed/fail
    - stale + no overlap => warning remains visible, background scoped refresh starts, read proceeds
    - missing/unavailable/probe-failed => hard fail with remediation
+
+Verification/read intensity must scale with task size:
+- Single-constant or single-branch edits: one anchor read plus at most one follow-up window; avoid broad discovery.
+- Single-file, moderate edits: one symbol pass (only if seam unknown) and bounded seam windows; avoid repeated symbol dumps.
+- Multi-file/refactor/blast-radius changes: use codegraph discovery after seam confirmation to map impact.
+- Do not use broad `uv run cgc find content ...` for reassurance when file + seam are already known.
+- Single-file serialization is required for code reads as well: do not run parallel `read_code_*` calls against the same file.
 
 ### Read-Code Rules
 
@@ -149,6 +159,7 @@ Use the shortlist/body contract when reading code with the helper.
 - Strict matching is fallback-only and should run only when semantic cannot provide a strong anchor; strict ambiguity must not block a strong semantic anchor.
 - `read_code_symbols` has repeat-call enforcement for unchanged files; one symbol dump per file should be enough for most seams.
 - If a true second symbol dump is required, use `read_code_symbols <file> --allow-repeat` and state why before doing it.
+- `read_code_symbols` on large files is high-output; only use when seam is unknown, not for known-anchor verification.
 - `context_lines` is a total context budget with a fixed small-before/larger-after split.
 - The confidence cutoff for inline body output is `90/100` when `--inline-body` is requested.
 - A non-top candidate body should only be returned through the bounded follow-up helper path.
@@ -199,6 +210,11 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 ### Token efficiency
 
 After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
+- Large-token operations must be explicitly called out immediately after execution (for example: large `read_code_symbols` dumps, broad codegraph content searches, or full-table outputs).
+- Prefer bounded reads and narrow queries first; escalate to broad outputs only when smaller reads cannot resolve the decision.
+- Read budget guard is mandatory: cap combined helper read output at 160 lines per step (markdown + code).
+- If the step budget is reached, stop new reads and reuse previously captured context first.
+- Only exceed the budget on explicit necessity (`changed_file` or unresolved `ambiguity`), and state the reason before the extra read.
 
 ### Healing and improvment
 - Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix

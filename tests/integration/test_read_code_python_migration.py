@@ -118,7 +118,7 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
     assert not any(line.endswith("\t    return 1") for line in lines)
 
 
-def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
+def test_read_code_context_accepts_80_line_window_cap(tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     lines = [f"value_{idx} = {idx}" for idx in range(1, 231)]
     lines[99] = "def run_pipeline():"
@@ -130,7 +130,7 @@ def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
         "context",
         str(code_file),
         "run_pipeline",
-        "125",
+        "80",
         "--hud-symbol",
         env=_env_without_uv(),
     )
@@ -157,8 +157,8 @@ def test_read_code_context_accepts_125_line_window_cap(tmp_path: Path) -> None:
     assert before_count > 0
     assert after_count > 0
     assert before_count < after_count
-    assert before_count + after_count == 125
-    assert len(numbered_rows) == 126
+    assert before_count + after_count == 80
+    assert len(numbered_rows) == 81
 
 
 def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) -> None:

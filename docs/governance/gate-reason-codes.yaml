@@ -8,8 +8,8 @@
 # - Version-controlled alongside contract schema changes
 # - Enforced by parse_step_result and drill_down_failure functions
 
-version: "1.0.0"
-last_updated: "2026-04-10"
+version: "1.0.1"
+last_updated: "2026-04-23"
 
 gates:
   artifact_validation:
@@ -59,6 +59,15 @@ gates:
     description: "Implement preflight detected task-contract mismatch between current branch and main"
     reasons:
       - feature_branch_stale
+
+  implement_execution:
+    description: "Deterministic implement orchestration blocked before closeout"
+    reasons:
+      - feature_not_found
+      - gate_status_failed
+      - llm_runner_not_configured
+      - llm_handoff_failed
+      - phase_gate_failed
 
 standard_error_codes:
   description: "Non-gate errors that indicate runtime failures requiring verbose rerun"

@@ -54,12 +54,18 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - Targeted QA passed for the driver flow, contract surface, and unit coverage around the delta work.
 - Task ledger state for feature `023` is now fully closed for the current task graph.
 - Markdown doc-shape validation now rejects compact command docs that still embed executable gate/append procedures, so the producer-only command-doc cleanup stays enforced while the docs are migrated.
+- `speckit.implement` is now routed through deterministic script execution (`scripts/speckit_implement_step.py`) with structured stage telemetry persisted to `.speckit/runtime/implement/<correlation_id>.json`.
 
 ## Deterministic Operator Runbook Notes
+
+### Recovery Delta Validation Notes
 
 - Re-running the `implement` phase stays deterministic: when the ledger is already at `implement`, the driver continues along the valid path and advances to `closed` instead of re-running a later phase.
 - Forward overreach is blocked with a stable reason code: requesting `closed` directly from `implement` returns `gate=phase_drift` with `reasons=["requested_phase_mismatch"]`.
 - Duplicate terminal-event replay is idempotent: a second `implementation_completed` append reports `reason=event_already_recorded` and leaves the ledger with one terminal event.
+- Recovery delta now enforces a canonical trigger route: `speckit.run` is wired in the manifest with driver metadata and runtime step-result artifact contract.
+- Generative handoff now fails deterministically when no runner is configured: `error_code=handoff_runner_not_configured` and no success emit path is taken.
+- Required command docs (`speckit.run`, `speckit.tasking`, `speckit.implement`) are now shape-validated as a set with compact-section executable-marker rejection.
 
 ## Decision Log
 
@@ -67,6 +73,7 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - Kept the delta task lifecycle explicit in the task ledger with discovery, QA, and close events.
 - Updated the operator quickstart to point readers at `tasks.md` for the combined base + delta plan.
 - Tightened command-doc validation so executable gate/append procedures are rejected instead of slipping through under a compact/expanded heading shape.
+- Added canonical `speckit.run` trigger contract and migrated `speckit.tasking` + `speckit.implement` to driver-managed non-legacy route contracts.
 
 ---
 
@@ -131,6 +138,7 @@ The solution phase is a producer-vs-driver ownership boundary: `/speckit.solutio
 | Missing canonical manifest | `manifest not found: .../command-manifest.yaml` | Ensure root `command-manifest.yaml` exists and is committed. |
 | Feature branch created from wrong base | Feature branch ancestry does not include latest `main` | Use `.specify/scripts/bash/create-new-feature.sh --base main ...` or rely on new default behavior. |
 | Plan gate fails | `missing_requirements_checklist` or incomplete checklist items | Complete `specs/023.../checklists/requirements.md` and rerun gate. |
+| Implement step blocked | `gate=implement_execution` with reasons such as `gate_status_failed` or `phase_gate_failed` | Open the `debug_path` file from the step result and inspect stage-level `stdout_tail` / `stderr_tail` for the failing gate. |
 
 ---
 

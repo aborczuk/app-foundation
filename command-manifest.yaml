@@ -1,8 +1,8 @@
-version: 1.1.1
-last_updated: '2026-04-13T00:00:00Z'
+version: 1.1.2
+last_updated: '2026-04-23T00:00:00Z'
 manifest:
-  version: 1.1.1
-  updated_utc: '2026-04-13T00:00:00Z'
+  version: 1.1.2
+  updated_utc: '2026-04-23T00:00:00Z'
   ledger_sync_policy:
   - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
     emitted event contract changes, update this manifest in the same PR.
@@ -28,6 +28,23 @@ commands:
     emits:
     - event: backlog_registered
       required_fields: []
+  speckit.run:
+    description: Canonical Codex trigger for deterministic phase orchestration via pipeline driver
+    driver:
+      mode: deterministic
+      script_path: scripts/pipeline_driver.py
+      timeout_seconds: 300
+      canonical_trigger: speckit.run
+    scripts:
+    - scripts/pipeline_driver.py
+    - scripts/pipeline_driver_contracts.py
+    - scripts/pipeline_ledger.py
+    artifacts:
+    - output_path: .speckit/runtime/${FEATURE_ID}/${RUN_SCOPE}-step-result.json
+      produced_by: scripts/pipeline_driver.py
+      consumed_by:
+      - speckit.checkpoint
+    emits: []
   speckit.clarify:
     description: Ask targeted clarification questions and encode answers into spec
     mode: legacy
@@ -151,10 +168,14 @@ commands:
   speckit.tasking:
     description: Decompose an approved sketch.md into tasks.md, then perform estimate/breakdown
       stabilization and generate HUDs + acceptance tests
-    mode: legacy
+    driver:
+      mode: generative
+      timeout_seconds: 300
+      canonical_trigger: speckit.run
     scripts:
       - .specify/scripts/bash/check-prerequisites.sh
       - .specify/scripts/pipeline-scaffold.py
+      - scripts/speckit_tasking_chain.py
       - scripts/speckit_remake_huds.py
       - .specify/scripts/acceptance-test-scaffold.py
       - scripts/speckit_tasks_gate.py
@@ -318,14 +339,20 @@ commands:
   speckit.implement:
     description: Execute the implementation plan through driver-owned approval, validation,
       QA, and closeout sequencing
-    mode: legacy
+    driver:
+      mode: deterministic
+      script_path: scripts/speckit_implement_step.py
+      timeout_seconds: 300
+      canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/bash/check-prerequisites.sh
+    - scripts/speckit_implement_step.py
     - scripts/speckit_gate_status.py
     - scripts/speckit_implement_gate.py
     - scripts/speckit_prepare_ignores.py
     - scripts/speckit_offline_qa_handoff.py
     - scripts/offline_qa.py
+    - scripts/speckit_implement_docs.py
     - scripts/task_ledger.py
     - scripts/cgc_safe_index.sh
     artifacts: []

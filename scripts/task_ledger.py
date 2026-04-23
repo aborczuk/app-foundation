@@ -80,8 +80,8 @@ ALLOWED_TRANSITIONS = {
     "task_started": {None},
     "discovery_completed": {"task_started", "discovery_completed"},
     "lld_recorded": {"discovery_completed"},
-    "quality_guards_passed": {"discovery_completed", "lld_recorded"},
-    "functional_goal_achieved": {"discovery_completed", "lld_recorded", "quality_guards_passed"},
+    "quality_guards_passed": {"discovery_completed", "lld_recorded", "human_action_verified"},
+    "functional_goal_achieved": {"discovery_completed", "lld_recorded", "quality_guards_passed", "human_action_verified"},
     "tests_failed": {
         "task_started", "discovery_completed", "lld_recorded", "quality_guards_passed",
         "functional_goal_achieved", "tests_failed", "fix_started", "fix_completed"
@@ -107,7 +107,7 @@ ALLOWED_TRANSITIONS = {
     "fix_completed": {"fix_started"},
     "merge_approved": {"qa_verdict"},
     "merged": {"merge_approved"},
-    "task_closed": {"offline_qa_passed", "merged", "human_action_verified", "e2e_passed"},
+    "task_closed": {"offline_qa_passed", "merged", "human_action_verified", "e2e_passed", "functional_goal_achieved"},
 }
 
 

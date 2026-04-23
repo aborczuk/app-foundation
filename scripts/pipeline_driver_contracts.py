@@ -46,6 +46,7 @@ ERROR_CODES: set[str] = {
     "exit_code_mismatch",
     "correlation_id_mismatch",
     "script_timeout",
+    "handoff_runner_not_configured",
 }
 
 ARTIFACT_VALIDATION_REASONS: set[str] = {

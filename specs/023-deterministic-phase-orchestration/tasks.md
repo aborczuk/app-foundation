@@ -184,6 +184,20 @@
 - [X] T048 [P] Add runner-adapter stdin/stdout envelope contract coverage ensuring parse failures cannot emit completion events — `scripts/pipeline_driver_contracts.py:parse_step_result`
 - [X] T049 [H] Perform operator dry-run/live-run validation pass and capture deterministic rerun/forward-block reason-code evidence in quickstart notes — `specs/023-deterministic-phase-orchestration/quickstart.md:Deterministic Operator Runbook Notes`
 
+### Delta Phase 8: Recovery Delta - Contract Realignment
+
+**Goal**: Close spec drift by enforcing canonical Codex trigger artifacts, required migration route states, runner-required generative handoff, and command-contract coverage gates.
+
+**Independent Test**: Run deterministic contract checks and verify canonical trigger artifact+route exist, required commands are non-legacy, missing runner fails generative execution pre-emit, and required command docs satisfy compact contract validation scope.
+
+- [ ] T050 Add canonical Codex trigger route contract and artifact (`speckit.run`) with deterministic manifest wiring — `./command-manifest.yaml`
+- [ ] T051 Enforce runner-required generative handoff (missing runner must fail/no emit) — `scripts/pipeline_driver.py:run_generative_handoff`
+- [ ] T052 Migrate required recovery commands (`speckit.tasking`, `speckit.implement`) to non-legacy driver-managed routes — `./command-manifest.yaml`
+- [ ] T053 Add/extend contract tests for canonical trigger artifact+route and non-legacy required command coverage — `tests/unit/test_pipeline_driver.py:test_resolve_step_mapping_uses_real_manifest`
+- [ ] T054 Normalize required migrated command docs to compact producer-only contract shape and remove executable procedure drift — `.claude/commands/speckit.implement.md:Compact Contract (Load First)`
+- [ ] T055 Harden markdown contract validator scope to enforce required command set and reject executable procedure markers in enforced sections — `scripts/validate_markdown_doc_shapes.py:validate_markdown_doc_shape`
+- [ ] T056 [H] Execute deterministic recovery validation runbook and record evidence in quickstart/changelog — `specs/023-deterministic-phase-orchestration/quickstart.md:Recovery Delta Validation Notes`
+
 ---
 
 ## Dependencies & Execution Order
@@ -197,12 +211,14 @@
 - Phase 5 (US3): Depends on Phase 2 and aligns manifest/doc ownership against stable runtime seams.
 - Phase 6 (Polish): Depends on completion of Phases 3-5.
 - Delta phases: appended after the original graph and intended as additive follow-on work.
+- Delta Phase 8 (Recovery): Depends on prior delta completion and serves as contract realignment before feature closeout.
 
 ### User Story Dependencies
 
 - US1 (P1): No story dependency after foundational prerequisites.
 - US2 (P2): Depends on US1 runtime envelope/transition guarantees.
 - US3 (P3): Depends on US1 runtime behavior and US2 approval-state boundaries.
+- Recovery Delta (P4): Depends on prior US migrations and revalidates canonical trigger + route/doc enforcement boundaries.
 
 ### Within Each User Story
 
@@ -216,6 +232,7 @@
 - T012 and T013 can run in parallel before US2 implementation tasks.
 - T017, T018, and T019 can run in parallel before US3 implementation tasks.
 - T024, T025, T027, and T028 can run in parallel after the story phases complete.
+- T053 and T055 can run in parallel once T050-T052 seams are in place.
 
 ---
 

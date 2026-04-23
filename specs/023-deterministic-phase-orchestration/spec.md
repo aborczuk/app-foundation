@@ -79,6 +79,23 @@ All phase progression is entered through one deterministic trigger, while direct
 
 ---
 
+### User Story 5 - Recovery Delta Contract Completion (Priority: P4)
+
+The repository completes the outstanding canonical-trigger and migration contract work through the same deterministic Speckit pipeline artifacts (`spec -> sketch -> tasks -> huds -> implement`) with no ad-hoc bypass.
+
+**Why this priority**: This closes the observed spec drift by making contract completeness measurable and gate-enforced, rather than implied by partial green tests.
+
+**Independent Test**: Execute canonical trigger from Codex entrypoint (`speckit.run`) and verify route exists, non-legacy migration coverage for required commands, runner-required generative handoff behavior, and contract-shape command docs pass deterministic validation.
+
+**Acceptance Scenarios**:
+
+1. **Given** a recovery execution request, **When** `speckit.run` is invoked from Codex, **Then** deterministic orchestration starts through driver-managed routing.
+2. **Given** migrated commands required by this feature (`speckit.tasking`, `speckit.implement`), **When** manifest routes are loaded, **Then** they are not `legacy`.
+3. **Given** a generative phase route, **When** no runner is configured, **Then** execution deterministically fails and no completion event is emitted.
+4. **Given** command contract docs, **When** deterministic shape validation runs, **Then** required command docs pass producer-only compact contract checks.
+
+---
+
 ### Edge Cases
 
 - What happens when validation dependencies are temporarily unavailable during the validate step?
@@ -167,6 +184,11 @@ flowchart TD
 - **FR-020**: System MUST define explicit driver route metadata for each migrated phase command (mode, script ownership, timeout, and emit contract fields) in the canonical manifest.
 - **FR-021**: System MUST normalize command docs to producer-only compact contracts that exclude executable gate/ledger procedures.
 - **FR-022**: System MUST allow deterministic rerun of current or earlier steps via direct phase-command invocation without requiring ledger rewind, while still enforcing validate-before-emit and idempotent terminal outcomes.
+- **FR-023**: System MUST provide a Codex-native canonical trigger contract (`speckit.run`) with manifest routing metadata and executable command artifact wiring.
+- **FR-024**: System MUST require configured runner execution for generative routes; missing runner configuration MUST return deterministic failure and MUST NOT emit completion events.
+- **FR-025**: System MUST migrate `speckit.tasking` and `speckit.implement` to non-legacy manifest modes under driver-managed orchestration.
+- **FR-026**: System MUST enforce required command artifact presence and route registration as contract gates, including canonical trigger artifact + manifest entry checks.
+- **FR-027**: System MUST validate command-doc contract shape coverage for required migrated command docs and fail deterministic gates on shape mismatch.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -189,6 +211,9 @@ flowchart TD
 - **SC-005**: 100% of phase execution requests that attempt forward progression beyond the allowed latest step are blocked or redirected to canonical orchestration, while deterministic direct reruns at or below the latest allowed step remain permitted.
 - **SC-006**: 100% of successful implement-phase closures emit exactly one `implementation_completed` event and 0 emissions when phase-close gates fail.
 - **SC-007**: 100% of speckit command docs conform to compact producer-only contract shape after migration.
+- **SC-008**: 100% of canonical trigger checks pass for Codex entrypoint (`speckit.run`) with both artifact and manifest route presence.
+- **SC-009**: 100% of required migration commands for this feature (`speckit.tasking`, `speckit.implement`) resolve as non-legacy routes.
+- **SC-010**: 100% of generative runs with missing runner configuration deterministically fail before emit.
 
 ## Definition of Done *(mandatory)*
 

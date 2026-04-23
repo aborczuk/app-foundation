@@ -344,9 +344,11 @@ def test_command_docs_share_the_compact_expanded_shape(tmp_path: Path) -> None:
         "## Behavior rules",
     ]
     for rel_path in [
+        ".claude/commands/speckit.run.md",
+        ".claude/commands/speckit.tasking.md",
+        ".claude/commands/speckit.implement.md",
         ".claude/commands/speckit.solution.md",
         ".claude/commands/speckit.feasibilityspike.md",
-        ".claude/commands/speckit.tasking.md",
     ]:
         result = _run_read_markdown(
             repo_root,

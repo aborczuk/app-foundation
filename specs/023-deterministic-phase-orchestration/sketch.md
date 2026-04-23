@@ -696,6 +696,82 @@ Downstream `/speckit.tasking` may refine:
 
 ---
 
+### Recovery Delta Slices (Post-Drift Realignment)
+
+### Slice SK-09: Canonical Codex trigger artifact + manifest route
+
+- **Objective**: Add Codex-native canonical trigger contract (`speckit.run`) as a concrete artifact + manifest route, not metadata-only inference.
+- **Primary seam**: `command-manifest.yaml:commands.speckit.run`
+- **Touched files**:
+  - `command-manifest.yaml`
+  - `.claude/commands/speckit.run.md`
+  - `tests/unit/test_pipeline_driver.py`
+- **Touched symbols**:
+  - `scripts/pipeline_driver.py:resolve_step_mapping`
+  - `tests/unit/test_pipeline_driver.py:test_resolve_step_mapping_uses_real_manifest`
+- **Likely net-new files**:
+  - `.claude/commands/speckit.run.md`
+- **Reuse / Modify / Create**: Modify existing + create canonical trigger command doc artifact.
+- **Major constraints / invariants**:
+  - Canonical trigger must resolve deterministically from manifest contracts.
+  - Trigger artifact presence must be machine-checkable.
+
+### Slice SK-10: Runner-required generative execution enforcement
+
+- **Objective**: Remove permissive `handoff_execution: not_configured` success path; missing runner must be a deterministic failure state with no append.
+- **Primary seam**: `scripts/pipeline_driver.py:run_generative_handoff`
+- **Touched files**:
+  - `scripts/pipeline_driver.py`
+  - `tests/unit/test_pipeline_driver.py`
+- **Touched symbols**:
+  - `scripts/pipeline_driver.py:run_generative_handoff`
+  - `tests/unit/test_pipeline_driver.py:test_run_generative_handoff_returns_handoff_when_runner_not_configured`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Missing runner must fail with deterministic gate/error_code.
+  - Failure path must not allow completion append.
+
+### Slice SK-11: Required migration routes no longer legacy
+
+- **Objective**: Migrate `speckit.tasking` and `speckit.implement` route contracts to non-legacy driver-managed modes with explicit route metadata.
+- **Primary seam**: `command-manifest.yaml` command route entries
+- **Touched files**:
+  - `command-manifest.yaml`
+  - `scripts/pipeline_driver_contracts.py`
+  - `tests/unit/test_pipeline_driver.py`
+  - `tests/integration/test_pipeline_driver_feature_flow.py`
+- **Touched symbols**:
+  - `scripts/pipeline_driver_contracts.py:load_driver_routes`
+  - `scripts/pipeline_driver.py:route_legacy_step`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Recovery work must keep deterministic rerun-at/below-current behavior.
+  - Forward overreach remains blocked/redirected.
+
+### Slice SK-12: Command-contract normalization enforcement hardening
+
+- **Objective**: Normalize command docs and strengthen contract validators so required docs failing compact/expanded shape or executable-procedure bans fail deterministically.
+- **Primary seam**: `scripts/validate_markdown_doc_shapes.py:validate_markdown_doc_shape`
+- **Touched files**:
+  - `scripts/validate_markdown_doc_shapes.py`
+  - `.claude/commands/speckit*.md` (required migrated command set)
+  - `tests/unit/test_validate_markdown_doc_shapes.py`
+- **Touched symbols**:
+  - `scripts/validate_markdown_doc_shapes.py:_find_forbidden_procedure_markers`
+  - `tests/unit/test_validate_markdown_doc_shapes.py:test_validate_markdown_doc_shape_accepts_compact_expanded`
+- **Likely net-new files**:
+  - `None`
+- **Reuse / Modify / Create**: Modify existing.
+- **Major constraints / invariants**:
+  - Doc-shape gate must validate the required migrated surface, not a hand-picked subset.
+  - Contract enforcement scope must be explicit and reproducible.
+
+---
+
 ## Sketch Completion Summary
 
 ### Review Readiness
@@ -711,4 +787,4 @@ If any item is unchecked, sketch is not ready for `/speckit.solutionreview`.
 
 ### Suggested Next Step
 
-- Run `/speckit.solutionreview`
+- Run `/speckit.tasking` to append recovery delta tasks (T050+), then execute `/speckit.implement` on that appended set.
