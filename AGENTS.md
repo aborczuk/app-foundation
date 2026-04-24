@@ -211,10 +211,5 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 
 After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
 - Large-token operations must be explicitly called out immediately after execution (for example: large `read_code_symbols` dumps, broad codegraph content searches, or full-table outputs).
-- Prefer bounded reads and narrow queries first; escalate to broad outputs only when smaller reads cannot resolve the decision.
-- Read budget guard is mandatory: cap combined helper read output at 160 lines per step (markdown + code).
-- If the step budget is reached, stop new reads and reuse previously captured context first.
-- Only exceed the budget on explicit necessity (`changed_file` or unresolved `ambiguity`), and state the reason before the extra read.
+- report any slow steps using read-code
 
-### Healing and improvment
-- Do not swallow errors or inconsistencies with scripts. if things break do not just fall back to inventing new tools. stop and propose a fix

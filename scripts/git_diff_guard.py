@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run git diff with bounded output for deterministic token usage."""
+"""Run git diff with bounded summary output for deterministic token usage."""
 
 from __future__ import annotations
 
@@ -37,7 +37,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--stat",
         action="store_true",
-        help="Show diffstat summary.",
+        help="Show diffstat summary (default output).",
+    )
+    parser.add_argument(
+        "--patch",
+        action="store_true",
+        help="Show unified patch output instead of the default summary.",
     )
     parser.add_argument(
         "--unified",
@@ -86,10 +91,10 @@ def _build_git_diff_command(args: argparse.Namespace, paths: Sequence[str]) -> l
         command.append("--cached")
     if args.name_only:
         command.append("--name-only")
-    elif args.stat:
-        command.append("--stat")
-    else:
+    elif args.patch:
         command.append(f"--unified={args.unified}")
+    else:
+        command.append("--stat")
     if paths:
         command.extend(["--", *paths])
     return command
@@ -123,6 +128,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if args.unified < 0:
         print("ERROR: --unified must be >= 0", file=sys.stderr)
+        return 2
+    if args.name_only and args.stat:
+        print("ERROR: --name-only and --stat are mutually exclusive", file=sys.stderr)
+        return 2
+    if args.name_only and args.patch:
+        print("ERROR: --name-only and --patch are mutually exclusive", file=sys.stderr)
+        return 2
+    if args.stat and args.patch:
+        print("ERROR: --stat and --patch are mutually exclusive", file=sys.stderr)
         return 2
 
     try:

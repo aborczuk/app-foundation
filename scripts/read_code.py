@@ -101,6 +101,31 @@ class _AnchorResolution:
     line_num: int | None
 
 
+@dataclass(frozen=True)
+class _ContextArgs:
+    """Parsed and validated arguments for read_code_context."""
+
+    file_path: Path
+    pattern: str
+    context: int
+    allow_fallback: bool
+    show_shortlist: bool
+    inline_body: bool
+    candidate_index: int
+
+
+@dataclass(frozen=True)
+class _WindowArgs:
+    """Parsed and validated arguments for read_code_window."""
+
+    file_path: Path
+    start_line: int
+    line_count: int
+    pattern: str
+    use_hud_fast_path: bool
+    allow_fallback: bool
+
+
 _VECTOR_RUNTIME_NOTE: str | None = None
 _CODEGRAPH_SESSION_PROBE_DONE = False
 _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
@@ -299,6 +324,28 @@ def _should_launch_background_refresh(scope_path: Path, *, channel: str) -> bool
     return True
 
 
+def _make_vector_probe(
+    status: str,
+    *,
+    stale_reason: str = "",
+    stale_reason_class: str = "none",
+    stale_drift_paths: tuple[str, ...] = (),
+    stale_signal_source: str = "git",
+    stale_signal_available: bool = True,
+    stale_signal_error: str = "",
+) -> _VectorIndexProbe:
+    """Construct a normalized vector probe payload with consistent defaults."""
+    return _VectorIndexProbe(
+        status=status,
+        stale_reason=str(stale_reason or ""),
+        stale_reason_class=str(stale_reason_class or "none"),
+        stale_drift_paths=tuple(stale_drift_paths),
+        stale_signal_source=str(stale_signal_source or "git"),
+        stale_signal_available=bool(stale_signal_available),
+        stale_signal_error=str(stale_signal_error or ""),
+    )
+
+
 def _vector_probe_from_payload(payload: object) -> _VectorIndexProbe | None:
     """Decode a cached vector probe payload when it is structurally valid."""
     if not isinstance(payload, dict):
@@ -312,14 +359,14 @@ def _vector_probe_from_payload(payload: object) -> _VectorIndexProbe | None:
     stale_signal_available = payload.get("stale_signal_available", True)
     stale_signal_error = payload.get("stale_signal_error", "")
     stale_drift_paths = payload.get("stale_drift_paths", [])
-    return _VectorIndexProbe(
+    return _make_vector_probe(
         status=status,
-        stale_reason=str(stale_reason or ""),
-        stale_reason_class=str(stale_reason_class or "none"),
+        stale_reason=stale_reason,
+        stale_reason_class=stale_reason_class,
         stale_drift_paths=_normalize_vector_drift_paths(stale_drift_paths),
-        stale_signal_source=str(stale_signal_source or "git"),
-        stale_signal_available=bool(stale_signal_available),
-        stale_signal_error=str(stale_signal_error or ""),
+        stale_signal_source=stale_signal_source,
+        stale_signal_available=stale_signal_available,
+        stale_signal_error=stale_signal_error,
     )
 
 
@@ -588,6 +635,22 @@ def _vector_command_env() -> dict[str, str]:
     env = repo_uv_env()
     env.setdefault("HF_HUB_OFFLINE", "1")
     return env
+
+
+def _vector_indexer_cmd(project_root: Path, action: str, *args: str) -> list[str]:
+    """Build a deterministic vector indexer command for the requested action."""
+    return [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(project_root),
+        action,
+        *args,
+    ]
 
 
 def _normalize_vector_drift_paths(payload: object) -> tuple[str, ...]:
@@ -891,28 +954,18 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
         _set_vector_runtime_note("uv is not available")
         return _remember_vector_probe(
             session_id,
-            _VectorIndexProbe(
-            status="unavailable",
-            stale_reason="uv is not available",
-            stale_reason_class="probe-unavailable",
-            stale_drift_paths=(),
-            stale_signal_source="git",
-            stale_signal_available=False,
-            stale_signal_error="uv is not available",
+            _make_vector_probe(
+                status="unavailable",
+                stale_reason="uv is not available",
+                stale_reason_class="probe-unavailable",
+                stale_drift_paths=(),
+                stale_signal_source="git",
+                stale_signal_available=False,
+                stale_signal_error="uv is not available",
             ),
         )
 
-    cmd = [
-        "uv",
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "src.mcp_codebase.indexer",
-        "--repo-root",
-        str(root),
-        "status",
-    ]
+    cmd = _vector_indexer_cmd(root, "status")
     proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
@@ -922,14 +975,14 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             _set_vector_runtime_note(f"index status probe failed with exit code {proc.returncode}")
         return _remember_vector_probe(
             session_id,
-            _VectorIndexProbe(
-            status="probe-failed",
-            stale_reason=stderr or f"index status probe failed with exit code {proc.returncode}",
-            stale_reason_class="probe-failed",
-            stale_drift_paths=(),
-            stale_signal_source="git",
-            stale_signal_available=False,
-            stale_signal_error=stderr or f"exit code {proc.returncode}",
+            _make_vector_probe(
+                status="probe-failed",
+                stale_reason=stderr or f"index status probe failed with exit code {proc.returncode}",
+                stale_reason_class="probe-failed",
+                stale_drift_paths=(),
+                stale_signal_source="git",
+                stale_signal_available=False,
+                stale_signal_error=stderr or f"exit code {proc.returncode}",
             ),
         )
 
@@ -937,14 +990,14 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
     if payload in {"", "null"}:
         return _remember_vector_probe(
             session_id,
-            _VectorIndexProbe(
-            status="missing",
-            stale_reason=f"index snapshot missing at {VECTOR_DB_DIR}",
-            stale_reason_class="missing-index",
-            stale_drift_paths=(),
-            stale_signal_source="git",
-            stale_signal_available=False,
-            stale_signal_error="index snapshot missing",
+            _make_vector_probe(
+                status="missing",
+                stale_reason=f"index snapshot missing at {VECTOR_DB_DIR}",
+                stale_reason_class="missing-index",
+                stale_drift_paths=(),
+                stale_signal_source="git",
+                stale_signal_available=False,
+                stale_signal_error="index snapshot missing",
             ),
         )
 
@@ -953,34 +1006,34 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
         _set_vector_runtime_note("index status probe returned non-JSON output")
         return _remember_vector_probe(
             session_id,
-            _VectorIndexProbe(
-            status="probe-failed",
-            stale_reason="index status probe returned non-JSON output",
-            stale_reason_class="probe-failed",
-            stale_drift_paths=(),
-            stale_signal_source="git",
-            stale_signal_available=False,
-            stale_signal_error="non-json status payload",
+            _make_vector_probe(
+                status="probe-failed",
+                stale_reason="index status probe returned non-JSON output",
+                stale_reason_class="probe-failed",
+                stale_drift_paths=(),
+                stale_signal_source="git",
+                stale_signal_available=False,
+                stale_signal_error="non-json status payload",
             ),
         )
     if status_payload is None:
         _set_vector_runtime_note("index status probe returned unexpected payload shape")
         return _remember_vector_probe(
             session_id,
-            _VectorIndexProbe(
-            status="probe-failed",
-            stale_reason="index status probe returned unexpected payload shape",
-            stale_reason_class="probe-failed",
-            stale_drift_paths=(),
-            stale_signal_source="git",
-            stale_signal_available=False,
-            stale_signal_error="unexpected payload shape",
+            _make_vector_probe(
+                status="probe-failed",
+                stale_reason="index status probe returned unexpected payload shape",
+                stale_reason_class="probe-failed",
+                stale_drift_paths=(),
+                stale_signal_source="git",
+                stale_signal_available=False,
+                stale_signal_error="unexpected payload shape",
             ),
         )
     is_stale = bool(status_payload.get("is_stale", False))
     return _remember_vector_probe(
         session_id,
-        _VectorIndexProbe(
+        _make_vector_probe(
             status="stale" if is_stale else "healthy",
             stale_reason=str(status_payload.get("stale_reason", "") or ""),
             stale_reason_class=str(status_payload.get("stale_reason_class", "none") or "none"),
@@ -1071,18 +1124,7 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         f"refreshing targeted index for {path}",
         file=sys.stderr,
     )
-    cmd = [
-        "uv",
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "src.mcp_codebase.indexer",
-        "--repo-root",
-        str(REPO_ROOT),
-        "refresh",
-        str(path),
-    ]
+    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
     proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
@@ -1106,18 +1148,7 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
                 ),
             )
             if _should_launch_background_refresh(path, channel="vector"):
-                followup_cmd = [
-                    "uv",
-                    "run",
-                    "--no-sync",
-                    "python",
-                    "-m",
-                    "src.mcp_codebase.indexer",
-                    "--repo-root",
-                    str(REPO_ROOT),
-                    "refresh",
-                    str(path),
-                ]
+                followup_cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
                 try:
                     subprocess.Popen(
                         followup_cmd,
@@ -1484,15 +1515,8 @@ def _vector_query_candidates(
         _set_vector_runtime_note("uv is not available")
         return []
 
-    cmd = [
-        "uv",
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "src.mcp_codebase.indexer",
-        "--repo-root",
-        str(REPO_ROOT),
+    cmd = _vector_indexer_cmd(
+        REPO_ROOT,
         "query",
         query,
         "--file-path",
@@ -1501,7 +1525,7 @@ def _vector_query_candidates(
         scope,
         "--top-k",
         "20",
-    ]
+    )
     proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
@@ -1541,17 +1565,6 @@ def _vector_query_candidates(
     return sorted(matches, key=_vector_anchor_rank, reverse=True)[:5]
 
 
-def _vector_find_line_num(
-    file_path: Path,
-    raw_pattern: str,
-    normalized_pattern: str,
-    scope: str,
-) -> _VectorMatch | None:
-    """Return top-ranked semantic match from the shared candidate fallback query."""
-    candidates = _vector_find_candidates(file_path, raw_pattern, normalized_pattern, scope)
-    return candidates[0] if candidates else None
-
-
 def _vector_find_candidates(
     file_path: Path,
     raw_pattern: str,
@@ -1574,18 +1587,7 @@ def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
         _set_vector_runtime_note("uv is not available")
         return []
 
-    cmd = [
-        "uv",
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "src.mcp_codebase.indexer",
-        "--repo-root",
-        str(REPO_ROOT),
-        "list-file-symbols",
-        str(file_path),
-    ]
+    cmd = _vector_indexer_cmd(REPO_ROOT, "list-file-symbols", str(file_path))
     proc = _run_command_capture(cmd)
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
@@ -1950,6 +1952,170 @@ def _resolve_pattern_anchor(
     )
 
 
+def _validate_file_and_positive_int(
+    file_arg: str,
+    value_raw: str,
+    *,
+    value_label: str,
+) -> tuple[Path, int] | None:
+    """Validate an existing file path plus a positive integer argument."""
+    file_path = Path(file_arg)
+    if not file_path.is_file():
+        print(f"ERROR: File not found: {file_arg}", file=sys.stderr)
+        return None
+    if not value_raw.isdigit() or int(value_raw, 10) <= 0:
+        print(f"ERROR: {value_label} must be a positive integer: {value_raw}", file=sys.stderr)
+        return None
+    return file_path, int(value_raw, 10)
+
+
+def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
+    """Parse and validate read_code_context arguments."""
+    if len(argv) < 2:
+        print(
+            "ERROR: read_code_context requires: <file_path> <symbol_or_pattern> [context_lines]",
+            file=sys.stderr,
+        )
+        return None
+
+    file_arg = argv[0]
+    pattern = argv[1]
+    extra = argv[2:]
+
+    context = READ_CODE_DEFAULT_CONTEXT_LINES
+    context_set = False
+    allow_fallback = False
+    show_shortlist = False
+    inline_body = False
+    candidate_index = 0
+    expect_candidate_index = False
+
+    for token in extra:
+        if expect_candidate_index:
+            if not token.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {token}", file=sys.stderr)
+                return None
+            candidate_index = int(token, 10)
+            expect_candidate_index = False
+        elif token == "--hud-symbol":
+            continue
+        elif token == "--allow-fallback":
+            allow_fallback = True
+        elif token == "--show-shortlist":
+            show_shortlist = True
+        elif token == "--inline-body":
+            inline_body = True
+        elif token == "--next-candidate":
+            candidate_index += 1
+        elif token == "--candidate-index":
+            expect_candidate_index = True
+        elif token.startswith("--candidate-index="):
+            _, _, value = token.partition("=")
+            if not value.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
+                return None
+            candidate_index = int(value, 10)
+        elif token.isdigit() and not context_set:
+            context = int(token, 10)
+            context_set = True
+        else:
+            print(f"ERROR: Unexpected argument for context mode: {token}", file=sys.stderr)
+            return None
+    if expect_candidate_index:
+        print("ERROR: --candidate-index requires a value", file=sys.stderr)
+        return None
+
+    validated = _validate_file_and_positive_int(file_arg, str(context), value_label="context_lines")
+    if validated is None:
+        return None
+    file_path, context_value = validated
+    if context_value > READ_CODE_MAX_LINES:
+        print(f"ERROR: context_lines exceeds max ({READ_CODE_MAX_LINES}): {context_value}", file=sys.stderr)
+        return None
+
+    return _ContextArgs(
+        file_path=file_path,
+        pattern=pattern,
+        context=context_value,
+        allow_fallback=allow_fallback,
+        show_shortlist=show_shortlist,
+        inline_body=inline_body,
+        candidate_index=candidate_index,
+    )
+
+
+def _parse_window_args(argv: list[str]) -> _WindowArgs | None:
+    """Parse and validate read_code_window arguments."""
+    if len(argv) < 2:
+        print(
+            "ERROR: read_code_window requires: <file_path> <start_line> [line_count]",
+            file=sys.stderr,
+        )
+        return None
+
+    file_arg = argv[0]
+    start_line_raw = argv[1]
+    extra = argv[2:]
+
+    line_count = READ_CODE_DEFAULT_WINDOW_LINES
+    line_count_set = False
+    pattern = ""
+    hud_flag = False
+    allow_fallback = False
+
+    for token in extra:
+        if token == "--hud-symbol":
+            hud_flag = True
+        elif token == "--allow-fallback":
+            allow_fallback = True
+        elif token.isdigit() and not line_count_set:
+            line_count = int(token, 10)
+            line_count_set = True
+        elif not pattern:
+            pattern = token
+        else:
+            print(f"ERROR: Unexpected argument for window mode: {token}", file=sys.stderr)
+            return None
+
+    validated = _validate_file_and_positive_int(file_arg, start_line_raw, value_label="start_line")
+    if validated is None:
+        return None
+    file_path, start_line = validated
+
+    line_count_raw = str(line_count)
+    if not line_count_raw.isdigit() or int(line_count_raw, 10) <= 0:
+        print(f"ERROR: line_count must be a positive integer: {line_count}", file=sys.stderr)
+        return None
+    line_count_value = int(line_count_raw, 10)
+    if line_count_value > READ_CODE_MAX_LINES:
+        print(f"ERROR: line_count exceeds max ({READ_CODE_MAX_LINES}): {line_count_value}", file=sys.stderr)
+        return None
+
+    return _WindowArgs(
+        file_path=file_path,
+        start_line=start_line,
+        line_count=line_count_value,
+        pattern=pattern,
+        use_hud_fast_path=hud_flag,
+        allow_fallback=allow_fallback,
+    )
+
+
+def _render_resolution_extras(
+    pattern: str,
+    vector_candidates: list[_VectorMatch],
+    vector_match: _VectorMatch | None,
+    *,
+    show_shortlist: bool,
+    inline_body: bool,
+) -> None:
+    """Render optional shortlist/body output after anchor resolution."""
+    if vector_candidates and show_shortlist:
+        _render_candidate_shortlist(vector_candidates, pattern)
+    if inline_body and vector_match is not None and vector_match.confidence >= 90:
+        _render_candidate_body(vector_match)
+
+
 def read_code_symbols(argv: list[str]) -> int:
     """Debug-only symbol dump for maintenance and break-glass investigation."""
     if not _symbol_dump_enabled():
@@ -1992,81 +2158,19 @@ def read_code_symbols(argv: list[str]) -> int:
 
 def read_code_context(argv: list[str]) -> int:
     """Resolve an anchor and print bounded context with post-anchor bias."""
-    if len(argv) < 2:
-        print(
-            "ERROR: read_code_context requires: <file_path> <symbol_or_pattern> [context_lines]",
-            file=sys.stderr,
-        )
+    parsed = _parse_context_args(argv)
+    if parsed is None:
         return 1
 
-    file_arg = argv[0]
-    pattern = argv[1]
-    extra = argv[2:]
-
-    context = READ_CODE_DEFAULT_CONTEXT_LINES
-    context_set = False
-    allow_fallback = False
-    show_shortlist = False
-    inline_body = False
-    candidate_index = 0
-    expect_candidate_index = False
-
-    for token in extra:
-        if expect_candidate_index:
-            if not token.isdigit():
-                print(f"ERROR: --candidate-index expects a non-negative integer: {token}", file=sys.stderr)
-                return 1
-            candidate_index = int(token, 10)
-            expect_candidate_index = False
-        elif token == "--hud-symbol":
-            continue
-        elif token == "--allow-fallback":
-            allow_fallback = True
-        elif token == "--show-shortlist":
-            show_shortlist = True
-        elif token == "--inline-body":
-            inline_body = True
-        elif token == "--next-candidate":
-            candidate_index += 1
-        elif token == "--candidate-index":
-            expect_candidate_index = True
-        elif token.startswith("--candidate-index="):
-            _, _, value = token.partition("=")
-            if not value.isdigit():
-                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
-                return 1
-            candidate_index = int(value, 10)
-        elif token.isdigit() and not context_set:
-            context = int(token, 10)
-            context_set = True
-        else:
-            print(f"ERROR: Unexpected argument for context mode: {token}", file=sys.stderr)
-            return 1
-    if expect_candidate_index:
-        print("ERROR: --candidate-index requires a value", file=sys.stderr)
+    if not _refresh_indexes_for_read(parsed.file_path):
         return 1
-
-    file_path = Path(file_arg)
-    if not file_path.is_file():
-        print(f"ERROR: File not found: {file_arg}", file=sys.stderr)
-        return 1
-
-    if context <= 0:
-        print(f"ERROR: context_lines must be a positive integer: {context}", file=sys.stderr)
-        return 1
-    if context > READ_CODE_MAX_LINES:
-        print(f"ERROR: context_lines exceeds max ({READ_CODE_MAX_LINES}): {context}", file=sys.stderr)
-        return 1
-
-    if not _refresh_indexes_for_read(file_path):
-        return 1
-    normalized_pattern = normalize_symbol_pattern(pattern)
+    normalized_pattern = normalize_symbol_pattern(parsed.pattern)
     resolution = _resolve_pattern_anchor(
-        file_path,
-        pattern,
+        parsed.file_path,
+        parsed.pattern,
         normalized_pattern,
-        candidate_index=candidate_index,
-        allow_fallback=allow_fallback,
+        candidate_index=parsed.candidate_index,
+        allow_fallback=parsed.allow_fallback,
         show_shortlist_hint=True,
     )
     if resolution is None:
@@ -2077,85 +2181,40 @@ def read_code_context(argv: list[str]) -> int:
     line_num = resolution.line_num
 
     if line_num is None:
-        _emit_strict_resolution_failure(pattern, strict_status)
+        _emit_strict_resolution_failure(parsed.pattern, strict_status)
         return 1
 
-    if vector_candidates and show_shortlist:
-        _render_candidate_shortlist(vector_candidates, pattern)
-        if inline_body and vector_match is not None and vector_match.confidence >= 90:
-            _render_candidate_body(vector_match)
-    elif inline_body and vector_match is not None and vector_match.confidence >= 90:
-        _render_candidate_body(vector_match)
+    _render_resolution_extras(
+        parsed.pattern,
+        vector_candidates,
+        vector_match,
+        show_shortlist=parsed.show_shortlist,
+        inline_body=parsed.inline_body,
+    )
 
-    pre_lines, post_lines = _split_context_window(context)
+    pre_lines, post_lines = _split_context_window(parsed.context)
     start = max(1, line_num - pre_lines)
     end = line_num + post_lines
-    _render_numbered_window(file_path, start, end)
+    _render_numbered_window(parsed.file_path, start, end)
     return 0
 
 
 def read_code_window(argv: list[str]) -> int:
-    """Print a numbered bounded window, optionally soft-checking a symbol/pattern anchor."""
-    if len(argv) < 2:
-        print(
-            "ERROR: read_code_window requires: <file_path> <start_line> [line_count]",
-            file=sys.stderr,
-        )
+    """Print a numbered bounded window and ignore out-of-window semantic anchors."""
+    parsed = _parse_window_args(argv)
+    if parsed is None:
         return 1
 
-    file_arg = argv[0]
-    start_line_raw = argv[1]
-    extra = argv[2:]
-
-    line_count = READ_CODE_DEFAULT_WINDOW_LINES
-    line_count_set = False
-    pattern = ""
-    hud_flag = False
-    allow_fallback = False
-
-    for token in extra:
-        if token == "--hud-symbol":
-            hud_flag = True
-        elif token == "--allow-fallback":
-            allow_fallback = True
-        elif token.isdigit() and not line_count_set:
-            line_count = int(token, 10)
-            line_count_set = True
-        elif not pattern:
-            pattern = token
-        else:
-            print(f"ERROR: Unexpected argument for window mode: {token}", file=sys.stderr)
+    if parsed.pattern:
+        if not _refresh_indexes_for_read(parsed.file_path):
             return 1
-
-    file_path = Path(file_arg)
-    if not file_path.is_file():
-        print(f"ERROR: File not found: {file_arg}", file=sys.stderr)
-        return 1
-
-    if not start_line_raw.isdigit() or int(start_line_raw, 10) <= 0:
-        print(f"ERROR: start_line must be a positive integer: {start_line_raw}", file=sys.stderr)
-        return 1
-    start_line = int(start_line_raw, 10)
-
-    if line_count <= 0:
-        print(f"ERROR: line_count must be a positive integer: {line_count}", file=sys.stderr)
-        return 1
-    if line_count > READ_CODE_MAX_LINES:
-        print(f"ERROR: line_count exceeds max ({READ_CODE_MAX_LINES}): {line_count}", file=sys.stderr)
-        return 1
-
-    use_hud_fast_path = hud_flag
-
-    if pattern:
-        if not _refresh_indexes_for_read(file_path):
-            return 1
-        normalized_pattern = normalize_symbol_pattern(pattern)
+        normalized_pattern = normalize_symbol_pattern(parsed.pattern)
         resolution = _resolve_pattern_anchor(
-            file_path,
-            pattern,
+            parsed.file_path,
+            parsed.pattern,
             normalized_pattern,
             candidate_index=0,
-            allow_fallback=allow_fallback,
+            allow_fallback=parsed.allow_fallback,
             show_shortlist_hint=False,
         )
         if resolution is None:
@@ -2164,19 +2223,10 @@ def read_code_window(argv: list[str]) -> int:
         line_num = resolution.line_num
 
         if line_num is None:
-            _emit_strict_resolution_failure(pattern, strict_status)
+            _emit_strict_resolution_failure(parsed.pattern, strict_status)
             return 1
 
-        anchor_line = int(line_num)
-        window_end = start_line + line_count - 1
-        if anchor_line < start_line or anchor_line > window_end:
-            print(
-                "WARN: resolved anchor line "
-                f"{anchor_line} for '{pattern}' is outside requested window {start_line}-{window_end}; "
-                "returning requested window unchanged.",
-                file=sys.stderr,
-            )
-    elif is_large_code_file(file_path) and not use_hud_fast_path:
+    elif is_large_code_file(parsed.file_path) and not parsed.use_hud_fast_path:
         print(
             f"ERROR: symbol_or_pattern is required for files >{CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path.",
             file=sys.stderr,
@@ -2187,8 +2237,8 @@ def read_code_window(argv: list[str]) -> int:
         )
         return 1
 
-    end_line = start_line + line_count - 1
-    _render_numbered_window(file_path, start_line, end_line)
+    end_line = parsed.start_line + parsed.line_count - 1
+    _render_numbered_window(parsed.file_path, parsed.start_line, end_line)
     return 0
 
 

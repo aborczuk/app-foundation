@@ -23,7 +23,7 @@ def _completed(returncode: int, *, stdout: str = "", stderr: str = "") -> subpro
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-def test_main_builds_default_patch_command(monkeypatch) -> None:
+def test_main_builds_default_stat_command(monkeypatch) -> None:
     calls: list[list[str]] = []
 
     def fake_run(cmd, **kwargs):
@@ -33,6 +33,21 @@ def test_main_builds_default_patch_command(monkeypatch) -> None:
     monkeypatch.setattr(git_diff_guard.subprocess, "run", fake_run)
 
     exit_code = git_diff_guard.main(["scripts/read_code.py"])
+
+    assert exit_code == 0
+    assert calls == [["git", "diff", "--no-color", "--stat", "--", "scripts/read_code.py"]]
+
+
+def test_main_supports_explicit_patch_output(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return _completed(0)
+
+    monkeypatch.setattr(git_diff_guard.subprocess, "run", fake_run)
+
+    exit_code = git_diff_guard.main(["--patch", "scripts/read_code.py"])
 
     assert exit_code == 0
     assert calls == [["git", "diff", "--no-color", "--unified=3", "--", "scripts/read_code.py"]]

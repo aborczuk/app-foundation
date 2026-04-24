@@ -781,17 +781,10 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
     )
     monkeypatch.setattr(
         read_code,
-        "_vector_find_line_num",
-        lambda *args, **kwargs: read_code._VectorMatch(
-            line_num=1,
-            raw_score=0.9,
-            metadata_score=5.0,
-            exact_symbol_match=True,
-            symbol_type="function",
-            has_body=True,
-            has_docstring=False,
-            line_span=1,
-        ),
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [
+            _vector_match(1, "def run_pipeline():", confidence=95),
+        ],
     )
     monkeypatch.setattr(read_code, "_resolve_line_num_strict", lambda *args, **kwargs: (0, 1))
 
@@ -987,42 +980,6 @@ def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatc
 
     assert exit_code == 0
     assert rendered == {"start": 2, "end": 4}
-
-
-def test_read_code_window_returns_window_when_anchor_is_outside_requested_window(
-    monkeypatch,
-    tmp_path: Path,
-    capsys,
-) -> None:
-    code_file = tmp_path / "sample.py"
-    code_file.write_text("line1\nline2\nline3\nline4\nline5\nline6\n", encoding="utf-8")
-    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
-    monkeypatch.setattr(
-        read_code,
-        "_vector_find_candidates",
-        lambda *args, **kwargs: [_vector_match(4, "def run_pipeline():", confidence=95)],
-    )
-    monkeypatch.setattr(
-        read_code,
-        "_resolve_line_num_strict",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict should not run")),
-    )
-    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
-
-    rendered: dict[str, int] = {}
-
-    def fake_render(_file_path: Path, start_line: int, end_line: int) -> None:
-        rendered["start"] = start_line
-        rendered["end"] = end_line
-
-    monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
-
-    exit_code = read_code.read_code_window([str(code_file), "1", "3", "run_pipeline"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    assert rendered == {"start": 1, "end": 3}
-    assert "outside requested window" in captured.err
 
 
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:

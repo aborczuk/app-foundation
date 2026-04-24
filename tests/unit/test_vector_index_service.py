@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Sequence
 
 import pytest
@@ -342,6 +343,175 @@ def current_name() -> str:
     status = service.status()
     assert status is not None
     assert status.indexed_commit == "rev-a"
+
+
+def test_store_write_snapshot_batches_upserts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """write_snapshot should chunk upserts to respect collection batch-size limits."""
+    store = ChromaIndexStore(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    metadata = IndexMetadata(
+        source_root=tmp_path,
+        indexed_commit="rev-a",
+        current_commit="rev-a",
+        indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+        entry_count=5,
+        snapshot_path=str(tmp_path / "snapshot"),
+        collection_name="test-collection",
+    )
+
+    chunks = [
+        SimpleNamespace(
+            record_id=f"record-{idx}",
+            document=f"doc-{idx}",
+            embedding=[float(idx), 1.0],
+            metadata={"file_path": (tmp_path / "src" / f"f{idx}.py").as_posix(), "scope": IndexScope.CODE.value},
+        )
+        for idx in range(5)
+    ]
+    monkeypatch.setattr(store, "_prepare_chunks", lambda _: chunks)
+
+    upsert_batch_sizes: list[int] = []
+    activated_paths: list[Path] = []
+
+    class _FakeClient:
+        max_batch_size = 2
+
+    class _FakeCollection:
+        def __init__(self) -> None:
+            self._client = _FakeClient()
+
+        def upsert(self, *, ids, documents, embeddings, metadatas):
+            upsert_batch_sizes.append(len(ids))
+            assert len(ids) == len(documents) == len(embeddings) == len(metadatas)
+
+    fake_collection = _FakeCollection()
+    monkeypatch.setattr(store, "_open_collection", lambda *args, **kwargs: fake_collection)
+    monkeypatch.setattr(store, "_activate_snapshot", lambda path: activated_paths.append(Path(path)))
+
+    refreshed = store.write_snapshot([], metadata)
+
+    assert upsert_batch_sizes == [2, 2, 1]
+    assert activated_paths
+    assert Path(refreshed.snapshot_path) == activated_paths[0]
+
+
+def test_refresh_changed_snapshot_clones_and_patches_changed_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """refresh_changed_snapshot should clone active snapshot and patch only changed-path records."""
+    store = ChromaIndexStore(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    active_snapshot = tmp_path / ".codegraphcontext" / "global" / "db" / "vector-index" / "staging" / "active"
+    active_snapshot.mkdir(parents=True, exist_ok=True)
+    marker_file = active_snapshot / "marker.txt"
+    marker_file.write_text("active", encoding="utf-8")
+
+    active_metadata = IndexMetadata(
+        source_root=tmp_path,
+        indexed_commit="rev-a",
+        current_commit="rev-a",
+        indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+        entry_count=2,
+        code_symbol_count=2,
+        markdown_section_count=0,
+        embedding_model="local-default",
+        collection_name="active-collection",
+        snapshot_path=str(active_snapshot),
+    )
+    store._write_manifest(active_metadata)
+
+    refresh_metadata = IndexMetadata(
+        source_root=tmp_path,
+        indexed_commit="rev-b",
+        current_commit="rev-b",
+        indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+        entry_count=2,
+        code_symbol_count=2,
+        markdown_section_count=0,
+        embedding_model="local-default",
+        collection_name="new-collection",
+        snapshot_path="",
+    )
+
+    changed_file = (tmp_path / "src" / "alpha.py").resolve()
+    unchanged_file = (tmp_path / "src" / "beta.py").resolve()
+    changed_symbol = CodeSymbol(
+        symbol_name="alpha",
+        qualified_name="alpha",
+        file_path=changed_file,
+        line_start=1,
+        line_end=2,
+        signature="def alpha():",
+        preview="def alpha():",
+    )
+    changed_chunk = SimpleNamespace(
+        record_id="new-alpha",
+        document="def alpha(): pass",
+        embedding=[1.0, 2.0, 3.0],
+        metadata={"file_path": changed_file.as_posix(), "scope": IndexScope.CODE.value},
+    )
+    monkeypatch.setattr(store, "_prepare_chunks", lambda units: [changed_chunk])
+
+    delete_batches: list[list[str]] = []
+    upsert_batches: list[list[str]] = []
+    opened_collections: list[tuple[Path, str, bool]] = []
+
+    class _FakeCollection:
+        def get(self, *, include):
+            assert include == ["metadatas"]
+            return {
+                "ids": ["old-alpha", "old-beta"],
+                "metadatas": [
+                    {"file_path": changed_file.as_posix()},
+                    {"file_path": unchanged_file.as_posix()},
+                ],
+            }
+
+        def delete(self, *, ids):
+            delete_batches.append(list(ids))
+
+        def upsert(self, *, ids, documents, embeddings, metadatas):
+            upsert_batches.append(list(ids))
+            assert len(ids) == len(documents) == len(embeddings) == len(metadatas)
+
+    fake_collection = _FakeCollection()
+
+    def _fake_open_collection(collection_dir: Path, collection_name: str, *, create: bool):
+        opened_collections.append((Path(collection_dir), collection_name, create))
+        return fake_collection
+
+    monkeypatch.setattr(store, "_open_collection", _fake_open_collection)
+
+    activated_paths: list[Path] = []
+    monkeypatch.setattr(store, "_activate_snapshot", lambda path: activated_paths.append(Path(path)))
+
+    refreshed = store.refresh_changed_snapshot(
+        changed_paths=[changed_file],
+        changed_units=[changed_symbol],
+        metadata=refresh_metadata,
+    )
+
+    assert opened_collections
+    opened_path, opened_name, opened_create = opened_collections[0]
+    assert opened_name == "active-collection"
+    assert opened_create is False
+    assert delete_batches == [["old-alpha"]]
+    assert upsert_batches == [["new-alpha"]]
+    assert activated_paths
+    assert refreshed.collection_name == "active-collection"
+    assert Path(refreshed.snapshot_path) == activated_paths[0]
+    assert (Path(refreshed.snapshot_path) / "marker.txt").read_text(encoding="utf-8") == "active"
+    assert Path(refreshed.snapshot_path) != active_snapshot
 
 
 def test_list_file_code_symbols_uses_conjunctive_chroma_filter(

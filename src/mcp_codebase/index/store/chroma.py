@@ -38,6 +38,7 @@ _NO_OP_TELEMETRY_IMPL = "src.mcp_codebase.index.telemetry.NoOpProductTelemetry"
 _MIN_QUERY_SCORE = 0.55
 _HIGH_CONFIDENCE_QUERY_SCORE = 0.8
 _MARKDOWN_COMMAND_DOC_PENALTY = 0.25
+_UPSERT_BATCH_SIZE_FALLBACK = 1000
 logger = logging.getLogger(__name__)
 
 
@@ -146,12 +147,7 @@ class ChromaIndexStore:
             if chunks:
                 upsert_start = monotonic()
                 logger.info("vector-index: upserting %d chunks", len(chunks))
-                collection.upsert(
-                    ids=[chunk.record_id for chunk in chunks],
-                    documents=[chunk.document for chunk in chunks],
-                    embeddings=[chunk.embedding for chunk in chunks],
-                    metadatas=[chunk.metadata for chunk in chunks],
-                )
+                self._upsert_chunks_in_batches(collection, chunks)
                 del collection
                 gc.collect()
                 logger.info(
@@ -192,90 +188,53 @@ class ChromaIndexStore:
         changed_units: Sequence[CodeSymbol | MarkdownSection],
         metadata: IndexMetadata,
     ) -> IndexMetadata:
-        """Refresh changed paths while reusing unchanged embeddings from the active snapshot."""
-        snapshot = self.load_snapshot()
-        if snapshot is None:
+        """Refresh changed paths by cloning active snapshot and patching changed records only."""
+        active_metadata = self._load_active_metadata()
+        if active_metadata is None:
             return self.write_snapshot(changed_units, metadata)
 
-        active_metadata, _ = snapshot
         active_snapshot_path = Path(active_metadata.snapshot_path)
-        active_collection = self._open_collection(active_snapshot_path, active_metadata.collection_name, create=False)
-        payload = active_collection.get(include=["metadatas", "documents", "embeddings"])
-
         changed_path_set = {
             _normalize_index_path(path, self._config.repo_root)
             for path in changed_paths
         }
-        ids = _payload_sequence(payload, "ids")
-        metadatas = _payload_sequence(payload, "metadatas")
-        documents = _payload_sequence(payload, "documents")
-        embeddings = _payload_sequence(payload, "embeddings")
-
-        retained_ids: list[str] = []
-        retained_metadatas: list[dict[str, object]] = []
-        retained_documents: list[str] = []
-        retained_embeddings: list[list[float]] = []
-
-        for index, record_id in enumerate(ids):
-            metadata_payload = metadatas[index] if index < len(metadatas) else None
-            if not isinstance(metadata_payload, dict):
-                continue
-            file_path = str(metadata_payload.get("file_path", ""))
-            if file_path in changed_path_set:
-                continue
-
-            retained_ids.append(str(record_id))
-            retained_metadatas.append(metadata_payload)
-
-            document = documents[index] if index < len(documents) else ""
-            retained_documents.append(str(document or ""))
-
-            embedding_vector = embeddings[index] if index < len(embeddings) else None
-            if embedding_vector is None:
-                embedding_vector = self._embed_texts([retained_documents[-1]])[0]
-            retained_embeddings.append([float(value) for value in embedding_vector])
-
-        logger.info(
-            "vector-index: reusing %d unchanged embeddings; embedding %d changed texts",
-            len(retained_ids),
-            len(changed_units),
-        )
-        changed_chunks = self._prepare_chunks(changed_units)
 
         staging_run_dir = self._staging_root / uuid.uuid4().hex
         self._db_root.mkdir(parents=True, exist_ok=True)
-        staging_run_dir.mkdir(parents=True, exist_ok=False)
         try:
             start = monotonic()
-            total_entries = len(retained_ids) + len(changed_chunks)
             logger.info(
-                "vector-index: staging snapshot entries=%d target=%s",
-                total_entries,
+                "vector-index: cloning active snapshot source=%s target=%s",
+                active_snapshot_path,
                 staging_run_dir,
             )
-            collection = self._open_collection(staging_run_dir, metadata.collection_name, create=True)
-            if retained_ids:
-                upsert_start = monotonic()
-                logger.info("vector-index: upserting %d reused chunks", len(retained_ids))
-                collection.upsert(
-                    ids=retained_ids,
-                    documents=retained_documents,
-                    embeddings=retained_embeddings,
-                    metadatas=retained_metadatas,
-                )
-                logger.info(
-                    "vector-index: reused chunk upsert complete in %.2fs",
-                    monotonic() - upsert_start,
-                )
+            shutil.copytree(active_snapshot_path, staging_run_dir, dirs_exist_ok=False)
+
+            collection = self._open_collection(
+                staging_run_dir,
+                active_metadata.collection_name,
+                create=False,
+            )
+            payload = collection.get(include=["metadatas"])
+            ids = _payload_sequence(payload, "ids")
+            metadatas = _payload_sequence(payload, "metadatas")
+            delete_ids: list[str] = []
+            for index, record_id in enumerate(ids):
+                metadata_payload = metadatas[index] if index < len(metadatas) else None
+                if not isinstance(metadata_payload, dict):
+                    continue
+                file_path = str(metadata_payload.get("file_path", ""))
+                if file_path in changed_path_set:
+                    delete_ids.append(str(record_id))
+            if delete_ids:
+                logger.info("vector-index: deleting %d changed-path chunks", len(delete_ids))
+                self._delete_ids_in_batches(collection, delete_ids)
+
+            changed_chunks = self._prepare_chunks(changed_units)
             if changed_chunks:
                 upsert_start = monotonic()
                 logger.info("vector-index: upserting %d changed chunks", len(changed_chunks))
-                collection.upsert(
-                    ids=[chunk.record_id for chunk in changed_chunks],
-                    documents=[chunk.document for chunk in changed_chunks],
-                    embeddings=[chunk.embedding for chunk in changed_chunks],
-                    metadatas=[chunk.metadata for chunk in changed_chunks],
-                )
+                self._upsert_chunks_in_batches(collection, changed_chunks)
                 logger.info(
                     "vector-index: changed chunk upsert complete in %.2fs",
                     monotonic() - upsert_start,
@@ -286,7 +245,13 @@ class ChromaIndexStore:
             activate_start = monotonic()
             logger.info("vector-index: activating snapshot")
             self._activate_snapshot(staging_run_dir)
-            self._write_manifest(metadata.model_copy(update={"snapshot_path": str(staging_run_dir)}))
+            next_metadata = metadata.model_copy(
+                update={
+                    "snapshot_path": str(staging_run_dir),
+                    "collection_name": active_metadata.collection_name,
+                }
+            )
+            self._write_manifest(next_metadata)
             logger.info(
                 "vector-index: snapshot activated in %.2fs",
                 monotonic() - activate_start,
@@ -299,7 +264,18 @@ class ChromaIndexStore:
             "vector-index: staged snapshot complete in %.2fs",
             monotonic() - start,
         )
-        return metadata.model_copy(update={"snapshot_path": str(staging_run_dir)})
+        return next_metadata
+
+    def _load_active_metadata(self) -> IndexMetadata | None:
+        """Return active snapshot metadata without decoding full collection contents."""
+        if not self._active_manifest_path.exists():
+            return None
+        metadata = IndexMetadata.model_validate(
+            json.loads(self._active_manifest_path.read_text(encoding="utf-8"))
+        )
+        if not Path(metadata.snapshot_path).exists():
+            return None
+        return metadata
 
     def load_snapshot(self) -> tuple[IndexMetadata, list[CodeSymbol | MarkdownSection]] | None:
         """Load the active snapshot if present."""
@@ -489,6 +465,40 @@ class ChromaIndexStore:
             return client.get_collection(name=collection_name)
         except Exception as exc:  # pragma: no cover - safety net for partially initialized collections
             raise RuntimeError(f"Vector index collection is not available at {collection_dir}") from exc
+
+    def _collection_batch_size(self, collection: Any) -> int:
+        """Return the largest safe per-call mutation batch size for the active Chroma client."""
+        for candidate in (
+            getattr(collection, "max_batch_size", None),
+            getattr(getattr(collection, "_client", None), "max_batch_size", None),
+        ):
+            value = candidate() if callable(candidate) else candidate
+            if isinstance(value, int) and value > 0:
+                return value
+        return _UPSERT_BATCH_SIZE_FALLBACK
+
+    def _delete_ids_in_batches(self, collection: Any, ids: Sequence[str]) -> None:
+        """Delete record ids in bounded batches to avoid backend mutation limits."""
+        if not ids:
+            return
+        batch_size = self._collection_batch_size(collection)
+        for start in range(0, len(ids), batch_size):
+            batch_ids = list(ids[start : start + batch_size])
+            collection.delete(ids=batch_ids)
+
+    def _upsert_chunks_in_batches(self, collection: Any, chunks: Sequence[_PreparedChunk]) -> None:
+        """Upsert prepared chunks in bounded batches to avoid backend mutation limits."""
+        if not chunks:
+            return
+        batch_size = self._collection_batch_size(collection)
+        for start in range(0, len(chunks), batch_size):
+            batch = chunks[start : start + batch_size]
+            collection.upsert(
+                ids=[chunk.record_id for chunk in batch],
+                documents=[chunk.document for chunk in batch],
+                embeddings=[chunk.embedding for chunk in batch],
+                metadatas=[chunk.metadata for chunk in batch],
+            )
 
     def _activate_snapshot(self, staging_run_dir: Path) -> None:
         return None

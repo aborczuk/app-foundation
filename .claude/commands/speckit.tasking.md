@@ -99,7 +99,6 @@ Generate acceptance tests:
 ### 7. Event + reporting
 
 Return completion payload to the runner/driver only after sections 1-6 pass.
-`tasking_completed` append is driver-owned (pipeline route), not command-doc-owned.
 
 Report at end:
 - `tasks.md` path
