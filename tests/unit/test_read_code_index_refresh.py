@@ -37,6 +37,7 @@ def _reset_read_code_session_state(monkeypatch, tmp_path: Path) -> Iterator[None
     monkeypatch.setattr(read_code, "CODEGRAPH_DB_DIR", tmp_path / "codegraph-db")
     setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
+    setattr(read_code, "_CODEGRAPH_PREFLIGHT_LAUNCHED", False)
     setattr(read_code, "_VECTOR_RUNTIME_NOTE", None)
     read_code._invalidate_vector_probe_cache("test-session")
     yield
@@ -418,31 +419,23 @@ def test_codegraph_health_probe_returns_detail_and_recovery_command(monkeypatch)
     assert probe.recovery_command == "scripts/cgc_safe_index.sh /tmp/repo"
 
 
-def test_refresh_indexes_for_read_probes_codegraph_once_per_session(monkeypatch, tmp_path: Path) -> None:
-    """Read preflight should probe codegraph once without forcing codegraph refresh."""
+def test_refresh_indexes_for_read_launches_async_codegraph_preflight_once_per_session(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Read preflight should launch async codegraph preflight once per session."""
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
-    probe_calls = {"count": 0}
-    cache_file = tmp_path / "probe-cache.json"
+    launch_calls = {"count": 0}
 
     monkeypatch.setattr(read_code, "_is_repo_local_path", lambda _path: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda _path: True)
-    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "unit-session")
-    monkeypatch.setattr(read_code, "_codegraph_session_probe_cache_path", lambda _sid: cache_file)
+    monkeypatch.setattr(read_code, "_load_codegraph_session_probe_cache", lambda _sid: None)
     monkeypatch.setattr(
         read_code,
-        "codegraph_health_probe",
-        lambda _root=None: (
-            probe_calls.__setitem__("count", probe_calls["count"] + 1),
-            read_code._CodegraphHealthProbe(status="healthy", detail="", recovery_command=""),
-        )[1],
+        "_launch_codegraph_preflight_background",
+        lambda _path, _sid: launch_calls.__setitem__("count", launch_calls["count"] + 1) or True,
     )
     monkeypatch.setattr(read_code, "vector_refresh_if_needed", lambda _path: True)
-    monkeypatch.setattr(
-        read_code,
-        "codegraph_refresh_if_needed",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("codegraph refresh should not run")),
-    )
     monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
 
@@ -451,33 +444,24 @@ def test_refresh_indexes_for_read_probes_codegraph_once_per_session(monkeypatch,
 
     assert first is True
     assert second is True
-    assert probe_calls["count"] == 1
+    assert launch_calls["count"] == 1
 
 
-def test_refresh_indexes_for_read_continues_when_codegraph_probe_is_unavailable(
+def test_refresh_indexes_for_read_uses_cached_unavailable_without_blocking(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
-    """Read preflight should continue with vector/local anchoring when codegraph probe is unavailable."""
+    """Read preflight should continue when cached codegraph availability is false."""
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
-    probe_calls = {"count": 0}
-    cache_file = tmp_path / "probe-cache.json"
+    launch_calls = {"count": 0}
 
     monkeypatch.setattr(read_code, "_is_repo_local_path", lambda _path: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda _path: True)
-    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "unit-session")
-    monkeypatch.setattr(read_code, "_codegraph_session_probe_cache_path", lambda _sid: cache_file)
+    monkeypatch.setattr(read_code, "_load_codegraph_session_probe_cache", lambda _sid: False)
     monkeypatch.setattr(
         read_code,
-        "codegraph_health_probe",
-        lambda _root=None: (
-            probe_calls.__setitem__("count", probe_calls["count"] + 1),
-            read_code._CodegraphHealthProbe(
-                status="probe-failed",
-                detail="doctor probe failed",
-                recovery_command="scripts/cgc_safe_index.sh src",
-            ),
-        )[1],
+        "_launch_codegraph_preflight_background",
+        lambda _path, _sid: launch_calls.__setitem__("count", launch_calls["count"] + 1) or True,
     )
     monkeypatch.setattr(read_code, "vector_refresh_if_needed", lambda _path: True)
     monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
@@ -487,30 +471,27 @@ def test_refresh_indexes_for_read_continues_when_codegraph_probe_is_unavailable(
     stderr = capsys.readouterr().err
 
     assert result is True
-    assert probe_calls["count"] == 1
-    assert "continuing read preflight with vector/local anchoring" in stderr
+    assert launch_calls["count"] == 1
+    assert stderr == ""
 
 
 def test_refresh_indexes_for_read_uses_persisted_session_probe_cache(monkeypatch, tmp_path: Path) -> None:
-    """Read preflight should reuse persisted session probe cache across helper invocations."""
+    """Read preflight should reuse persisted cache while launching async preflight once."""
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
-    probe_calls = {"count": 0}
-    cache_file = tmp_path / "probe-cache.json"
+    popen_calls = {"count": 0}
 
     monkeypatch.setattr(read_code, "_is_repo_local_path", lambda _path: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda _path: True)
+    monkeypatch.setattr(read_code, "_load_codegraph_session_probe_cache", lambda _sid: True)
     monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "unit-session")
-    monkeypatch.setattr(read_code, "_codegraph_session_probe_cache_path", lambda _sid: cache_file)
-    monkeypatch.setattr(
-        read_code,
-        "codegraph_health_probe",
-        lambda _root=None: (
-            probe_calls.__setitem__("count", probe_calls["count"] + 1),
-            read_code._CodegraphHealthProbe(status="healthy", detail="", recovery_command=""),
-        )[1],
-    )
     monkeypatch.setattr(read_code, "vector_refresh_if_needed", lambda _path: True)
+    monkeypatch.setattr(read_code, "_vector_command_env", lambda: {})
+    monkeypatch.setattr(
+        read_code.subprocess,
+        "Popen",
+        lambda *args, **kwargs: popen_calls.__setitem__("count", popen_calls["count"] + 1) or object(),
+    )
 
     monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
@@ -523,7 +504,7 @@ def test_refresh_indexes_for_read_uses_persisted_session_probe_cache(monkeypatch
 
     assert first is True
     assert second is True
-    assert probe_calls["count"] == 1
+    assert popen_calls["count"] == 1
 
 
 def test_codegraph_edit_signature_file_uses_codegraphcontext(tmp_path: Path) -> None:
@@ -1008,7 +989,7 @@ def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatc
     assert rendered == {"start": 2, "end": 4}
 
 
-def test_read_code_window_returns_error_when_anchor_is_outside_requested_window(
+def test_read_code_window_returns_window_when_anchor_is_outside_requested_window(
     monkeypatch,
     tmp_path: Path,
     capsys,
@@ -1028,10 +1009,19 @@ def test_read_code_window_returns_error_when_anchor_is_outside_requested_window(
     )
     monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
 
+    rendered: dict[str, int] = {}
+
+    def fake_render(_file_path: Path, start_line: int, end_line: int) -> None:
+        rendered["start"] = start_line
+        rendered["end"] = end_line
+
+    monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
+
     exit_code = read_code.read_code_window([str(code_file), "1", "3", "run_pipeline"])
     captured = capsys.readouterr()
 
-    assert exit_code == 1
+    assert exit_code == 0
+    assert rendered == {"start": 1, "end": 3}
     assert "outside requested window" in captured.err
 
 

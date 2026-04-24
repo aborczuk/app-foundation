@@ -132,8 +132,7 @@ Use this workflow:
 6. Expand to additional windows only when needed to resolve ambiguity.
 7. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
 8. Read preflight hard-fail is vector-owned for repo-local reads; do not continue when vector health is failing.
-9. Codegraph read preflight is session-scoped availability probe only (no per-read codegraph refresh).
-10. Vector stale handling is scope-aware and explicit:
+9. Vector stale handling is scope-aware and explicit:
    - stale + overlap with requested scope => synchronous scoped refresh, then proceed/fail
    - stale + no overlap => warning remains visible, no refresh is launched, read proceeds
    - missing/unavailable/probe-failed => hard fail with remediation
@@ -153,7 +152,6 @@ Use the shortlist/body contract when reading code with the helper.
 - The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
 - Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
 - Anchor policy is semantic-first: if semantic returns a strong candidate, that candidate is the anchor of record and the bounded window is rendered from that line.
-- Codegraph refresh is discovery-owned: run codegraph refresh when invoking codegraph discovery features, not as a per-read window preflight.
 - Use broad discovery only when the target file is unknown; once the file is known, semantic retrieval must stay file-scoped for seam anchoring.
 - If the selected semantic candidate is weak, evaluate the next ranked semantic candidate(s) before strict matching.
 - Strict matching is fallback-only and should run only when semantic cannot provide a strong anchor; strict ambiguity must not block a strong semantic anchor.
@@ -188,6 +186,7 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 - Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run --no-sync python scripts/ruff_guard.py <python-paths>` when applicable.
 - Raw `ruff` CLI invocations are blocked by PreToolUse hook; use `edit_validate` or `scripts/ruff_guard.py`.
 - Raw `pytest`, `pyright`, and `hook_refresh_indexes.py` CLI invocations are blocked by PreToolUse hook; use `edit_validate` / `edit_sync` flow (or `scripts/pytest_guard.py` where explicitly needed).
+- Raw `git diff` CLI invocations are blocked by PreToolUse hook; use `python scripts/git_diff_guard.py [diff args]` for bounded diff inspection.
 - Do not advance past an edit batch until its validation loop passes or the failure is understood and intentionally deferred.
 - Verify once after the patch set is complete as a final end-to-end pass, not instead of batch-level validation.
 - Treat a completed edit as the basic unit of work: keep the patch set coherent, verify it, then hand it off as one synced change.

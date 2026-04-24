@@ -46,6 +46,11 @@
           },
           {
             "type": "command",
+            "command": "python3 scripts/hook_enforce_git_diff_guard.py",
+            "statusMessage": "Enforcing guarded git diff execution..."
+          },
+          {
+            "type": "command",
             "command": "python3 scripts/hook_enforce_gh_cli.py",
             "statusMessage": "Enforcing low-payload GitHub CLI policy..."
           }

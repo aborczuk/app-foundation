@@ -97,6 +97,7 @@ class _VectorIndexProbe:
 _VECTOR_RUNTIME_NOTE: str | None = None
 _CODEGRAPH_SESSION_PROBE_DONE = False
 _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
+_CODEGRAPH_PREFLIGHT_LAUNCHED = False
 _VECTOR_PROBE_CACHE: _VectorIndexProbe | None = None
 _VECTOR_PROBE_CACHE_AT = 0.0
 
@@ -147,6 +148,11 @@ def _session_safe_key(session_id: str) -> str:
 def _codegraph_session_probe_cache_path(session_id: str) -> Path:
     """Return session-scoped cache file path for codegraph availability probe results."""
     return CODEGRAPH_DB_DIR / f"read-code-codegraph-probe-{_session_safe_key(session_id)}.json"
+
+
+def _codegraph_preflight_launch_flag_path(session_id: str) -> Path:
+    """Return session-scoped launch marker for async codegraph preflight."""
+    return CODEGRAPH_DB_DIR / f"read-code-codegraph-preflight-launched-{_session_safe_key(session_id)}.flag"
 
 
 def _vector_session_probe_cache_path(session_id: str) -> Path:
@@ -360,8 +366,100 @@ def _persist_codegraph_session_probe_cache(session_id: str, *, available: bool) 
         return
 
 
+def _mark_codegraph_preflight_launched(session_id: str) -> bool:
+    """Mark async codegraph preflight as launched once per session."""
+    global _CODEGRAPH_PREFLIGHT_LAUNCHED
+    if _CODEGRAPH_PREFLIGHT_LAUNCHED:
+        return False
+    marker = _codegraph_preflight_launch_flag_path(session_id)
+    if marker.is_file():
+        _CODEGRAPH_PREFLIGHT_LAUNCHED = True
+        return False
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(str(time.time()), encoding="utf-8")
+    except OSError:
+        _CODEGRAPH_PREFLIGHT_LAUNCHED = True
+        return False
+    _CODEGRAPH_PREFLIGHT_LAUNCHED = True
+    return True
+
+
+def _launch_codegraph_preflight_background(file_path: Path, session_id: str) -> bool:
+    """Launch one async codegraph preflight worker for the current session."""
+    if not codegraph_supports_file(file_path):
+        return False
+    if not _mark_codegraph_preflight_launched(session_id):
+        return False
+    worker_cmd = [
+        sys.executable,
+        str(SOURCE_PATH),
+        "codegraph-preflight-worker",
+        str(file_path),
+        "--session-id",
+        session_id,
+    ]
+    env = _vector_command_env()
+    env["READ_CODE_SESSION_ID"] = session_id
+    try:
+        subprocess.Popen(
+            worker_cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=env,
+        )
+    except OSError as exc:
+        print(f"WARN: codegraph async preflight launch failed: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def run_codegraph_preflight_worker(argv: list[str]) -> int:
+    """Run asynchronous codegraph preflight and one scoped refresh warm-up."""
+    if not argv:
+        print("ERROR: codegraph-preflight-worker requires: <scope_path> [--session-id <id>]", file=sys.stderr)
+        return 1
+
+    scope_raw = argv[0]
+    session_id: str | None = None
+    extras = argv[1:]
+    if extras:
+        if len(extras) == 2 and extras[0] == "--session-id":
+            session_id = extras[1].strip() or None
+        else:
+            print("ERROR: invalid codegraph-preflight-worker arguments", file=sys.stderr)
+            return 1
+
+    if session_id:
+        os.environ["READ_CODE_SESSION_ID"] = session_id
+    active_session_id = session_id or _read_code_session_id()
+    scope_path = Path(scope_raw).expanduser()
+    if not scope_path.is_absolute():
+        scope_path = (REPO_ROOT / scope_path).resolve()
+    else:
+        scope_path = scope_path.resolve()
+
+    init_codegraph_env()
+    safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
+    if safe_index.is_file() and os.access(safe_index, os.X_OK):
+        subprocess.run(
+            [str(safe_index), str(scope_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=_vector_command_env(),
+        )
+
+    probe = codegraph_health_probe(REPO_ROOT)
+    available = probe.status in {"healthy", "stale", "locked"}
+    _persist_codegraph_session_probe_cache(active_session_id, available=available)
+    return 0
+
+
 def _ensure_codegraph_session_available(file_path: Path) -> bool:
-    """Probe codegraph availability once per process without triggering refresh."""
+    """Start async codegraph preflight once per session without blocking read preflight."""
     global _CODEGRAPH_SESSION_PROBE_DONE
     global _CODEGRAPH_SESSION_PROBE_AVAILABLE
     if _CODEGRAPH_SESSION_PROBE_DONE:
@@ -371,32 +469,15 @@ def _ensure_codegraph_session_available(file_path: Path) -> bool:
     if cached is not None:
         _CODEGRAPH_SESSION_PROBE_DONE = True
         _CODEGRAPH_SESSION_PROBE_AVAILABLE = cached
-        return cached
-    _CODEGRAPH_SESSION_PROBE_DONE = True
-
+    else:
+        _CODEGRAPH_SESSION_PROBE_DONE = True
+        _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
+        _persist_codegraph_session_probe_cache(session_id, available=True)
     if not codegraph_supports_file(file_path):
-        _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
-        _persist_codegraph_session_probe_cache(session_id, available=True)
-        return True
+        return _CODEGRAPH_SESSION_PROBE_AVAILABLE
 
-    probe = codegraph_health_probe(REPO_ROOT)
-    if probe.status in {"healthy", "stale", "locked"}:
-        _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
-        _persist_codegraph_session_probe_cache(session_id, available=True)
-        return True
-
-    _CODEGRAPH_SESSION_PROBE_AVAILABLE = False
-    _persist_codegraph_session_probe_cache(session_id, available=False)
-    reason = probe.detail or probe.status
-    print(
-        "WARN: codegraph session probe unavailable "
-        f"({reason}); continuing read preflight with vector/local anchoring. "
-        "Codegraph discovery may fail until refreshed.",
-        file=sys.stderr,
-    )
-    if probe.recovery_command:
-        print(f"WARN: codegraph recovery hint: {probe.recovery_command}", file=sys.stderr)
-    return False
+    _launch_codegraph_preflight_background(file_path, session_id)
+    return _CODEGRAPH_SESSION_PROBE_AVAILABLE
 
 
 def _emit_vector_fallback_notice(
@@ -1044,8 +1125,7 @@ def _refresh_indexes_for_read(file_path: Path) -> bool:
         if runtime_note:
             print(f"ERROR: {runtime_note}", file=sys.stderr)
         print(
-            "ERROR: read-code preflight requires a healthy vector index; run "
-            f"`{VECTOR_BOOTSTRAP_COMMAND}`",
+            "ERROR: read-code preflight requires a healthy vector index.",
             file=sys.stderr,
         )
         return False
@@ -2077,7 +2157,7 @@ def read_code_context(argv: list[str]) -> int:
 
 
 def read_code_window(argv: list[str]) -> int:
-    """Print a numbered bounded window, optionally validated by symbol/pattern."""
+    """Print a numbered bounded window, optionally soft-checking a symbol/pattern anchor."""
     if len(argv) < 2:
         print(
             "ERROR: read_code_window requires: <file_path> <start_line> [line_count]",
@@ -2202,12 +2282,11 @@ def read_code_window(argv: list[str]) -> int:
         window_end = start_line + line_count - 1
         if anchor_line < start_line or anchor_line > window_end:
             print(
-                "ERROR: resolved anchor line "
+                "WARN: resolved anchor line "
                 f"{anchor_line} for '{pattern}' is outside requested window {start_line}-{window_end}; "
-                "adjust start_line or omit symbol_or_pattern.",
+                "returning requested window unchanged.",
                 file=sys.stderr,
             )
-            return 1
     elif is_large_code_file(file_path) and not use_hud_fast_path:
         print(
             f"ERROR: symbol_or_pattern is required for files >{CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path.",
@@ -2237,7 +2316,7 @@ def _print_usage() -> None:
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
     print(
-        "                   (when symbol_or_pattern is supplied, the resolved anchor must fall inside the requested window)"
+        "                   (when symbol_or_pattern is supplied, out-of-window anchors are treated as advisory; the requested window is returned unchanged)"
     )
 
 
@@ -2260,6 +2339,8 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
+    if mode == "codegraph-preflight-worker":
+        return run_codegraph_preflight_worker(args)
 
     print(f"ERROR: Unknown mode '{mode}'. Use: context | window", file=sys.stderr)
     return 1
