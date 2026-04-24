@@ -31,6 +31,21 @@
           },
           {
             "type": "command",
+            "command": "python3 scripts/hook_enforce_ruff_guard.py",
+            "statusMessage": "Enforcing guarded ruff execution..."
+          },
+          {
+            "type": "command",
+            "command": "python3 scripts/hook_enforce_pyright_guard.py",
+            "statusMessage": "Enforcing guarded pyright execution..."
+          },
+          {
+            "type": "command",
+            "command": "python3 scripts/hook_enforce_refresh_guard.py",
+            "statusMessage": "Enforcing guarded refresh execution..."
+          },
+          {
+            "type": "command",
             "command": "python3 scripts/hook_enforce_gh_cli.py",
             "statusMessage": "Enforcing low-payload GitHub CLI policy..."
           }

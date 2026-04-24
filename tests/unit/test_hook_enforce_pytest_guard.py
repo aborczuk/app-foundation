@@ -26,6 +26,7 @@ def test_direct_pytest_is_denied() -> None:
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "Direct pytest calls are denied" in decision["permissionDecisionReason"]
+    assert "edit_validate" in decision["permissionDecisionReason"]
     assert "pytest_guard.py run" in decision["permissionDecisionReason"]
 
 

@@ -29,6 +29,13 @@ _run_read_markdown_entrypoint() {
         return 1
     fi
 
+    if [[ -z "${READ_MARKDOWN_SESSION_ID:-}" ]]; then
+        export READ_MARKDOWN_SESSION_ID="$$"
+    fi
+    if [[ -z "${READ_MARKDOWN_STEP_BUDGET:-}" ]]; then
+        export READ_MARKDOWN_STEP_BUDGET="160"
+    fi
+
     if command -v uv >/dev/null 2>&1; then
         if [[ -z "${UV_CACHE_DIR:-}" ]]; then
             export UV_CACHE_DIR="$DEFAULT_UV_CACHE_DIR"

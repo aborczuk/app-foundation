@@ -186,7 +186,9 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 - Use scripted transforms for repetitive mechanical edits across many files; do not hand-edit the same mechanical change file-by-file.
 - Reread only on concrete signals: patch failure, failing tests/lint/LSP diagnostics, or explicit ambiguity from the diff.
 - After each edit batch, run a validation loop before starting the next batch.
-- Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` on the touched Python paths when applicable.
+- Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run --no-sync python scripts/ruff_guard.py <python-paths>` when applicable.
+- Raw `ruff` CLI invocations are blocked by PreToolUse hook; use `edit_validate` or `scripts/ruff_guard.py`.
+- Raw `pytest`, `pyright`, and `hook_refresh_indexes.py` CLI invocations are blocked by PreToolUse hook; use `edit_validate` / `edit_sync` flow (or `scripts/pytest_guard.py` where explicitly needed).
 - Do not advance past an edit batch until its validation loop passes or the failure is understood and intentionally deferred.
 - Verify once after the patch set is complete as a final end-to-end pass, not instead of batch-level validation.
 - Treat a completed edit as the basic unit of work: keep the patch set coherent, verify it, then hand it off as one synced change.
@@ -202,7 +204,7 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
   - targeted tests for the touched behavior
   - tests run through `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`
   - `codebase-lsp` diagnostics for touched Python files
-  - `uv run ruff check` on touched Python paths when applicable
+  - `uv run --no-sync python scripts/ruff_guard.py <python-paths>` on touched Python paths when applicable
   - `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin
   - commit the coherent edit unit
   - push so the branch is synced

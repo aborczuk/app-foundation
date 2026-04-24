@@ -25,14 +25,23 @@ Validation:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - fcntl is unavailable on non-POSIX platforms.
+    fcntl = None  # type: ignore[assignment]
 
 SOURCE_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SOURCE_PATH.parent
@@ -40,6 +49,19 @@ REPO_ROOT = SCRIPT_DIR.parent
 
 
 VECTOR_BOOTSTRAP_COMMAND = "uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap"
+READ_MARKDOWN_LOCK_DIR_ENV = "READ_MARKDOWN_LOCK_DIR"
+READ_MARKDOWN_LOCK_BASENAME = "markdown-read"
+READ_MARKDOWN_BUDGET_BASENAME = "markdown-budget"
+READ_MARKDOWN_STEP_BUDGET_ENV = "READ_MARKDOWN_STEP_BUDGET"
+READ_MARKDOWN_SESSION_ID_ENV = "READ_MARKDOWN_SESSION_ID"
+READ_MARKDOWN_BUDGET_RESET_SECONDS_ENV = "READ_MARKDOWN_BUDGET_RESET_SECONDS"
+DEFAULT_READ_MARKDOWN_STEP_BUDGET = 160
+DEFAULT_READ_MARKDOWN_BUDGET_RESET_SECONDS = 120
+DEFAULT_READ_MARKDOWN_LOCK_DIR = (
+    Path(tempfile.gettempdir())
+    / "app-foundation-read-locks"
+    / hashlib.sha1(str(REPO_ROOT).encode("utf-8")).hexdigest()[:12]
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +89,172 @@ def _is_repo_local_path(file_path: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _markdown_lock_dir() -> Path:
+    """Return the lock directory used for markdown read-guard files."""
+    override = os.environ.get(READ_MARKDOWN_LOCK_DIR_ENV, "").strip()
+    if override:
+        return Path(override).expanduser()
+    return DEFAULT_READ_MARKDOWN_LOCK_DIR
+
+
+def _markdown_lock_path(file_path: Path) -> Path:
+    """Return the deterministic lock path for a target markdown file."""
+    digest = hashlib.sha1(str(file_path).encode("utf-8")).hexdigest()
+    return _markdown_lock_dir() / f"{READ_MARKDOWN_LOCK_BASENAME}-{digest}.lock"
+
+
+def _read_markdown_step_budget() -> int:
+    """Return the markdown helper line budget for a single read session."""
+    raw = os.environ.get(READ_MARKDOWN_STEP_BUDGET_ENV, str(DEFAULT_READ_MARKDOWN_STEP_BUDGET)).strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return DEFAULT_READ_MARKDOWN_STEP_BUDGET
+    return parsed if parsed > 0 else DEFAULT_READ_MARKDOWN_STEP_BUDGET
+
+
+def _read_markdown_budget_reset_seconds() -> int:
+    """Return idle seconds after which the markdown helper budget resets."""
+    raw = os.environ.get(
+        READ_MARKDOWN_BUDGET_RESET_SECONDS_ENV,
+        str(DEFAULT_READ_MARKDOWN_BUDGET_RESET_SECONDS),
+    ).strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return DEFAULT_READ_MARKDOWN_BUDGET_RESET_SECONDS
+    return parsed if parsed > 0 else DEFAULT_READ_MARKDOWN_BUDGET_RESET_SECONDS
+
+
+def _read_markdown_session_id() -> str:
+    """Return session identifier used to accumulate helper read budget usage."""
+    configured = os.environ.get(READ_MARKDOWN_SESSION_ID_ENV, "").strip()
+    if configured:
+        return configured
+    return str(os.getppid())
+
+
+def _markdown_budget_state_path(session_id: str) -> Path:
+    """Return the state-file path used for markdown budget accounting."""
+    digest = hashlib.sha1(session_id.encode("utf-8")).hexdigest()
+    return _markdown_lock_dir() / f"{READ_MARKDOWN_BUDGET_BASENAME}-{digest}.json"
+
+
+def _reserve_markdown_budget(output_lines: int) -> bool:
+    """Reserve read-budget lines for the current session before rendering output."""
+    if output_lines <= 0:
+        return True
+
+    session_id = _read_markdown_session_id()
+    budget = _read_markdown_step_budget()
+    reset_seconds = _read_markdown_budget_reset_seconds()
+    state_path = _markdown_budget_state_path(session_id)
+    now = time.time()
+
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"ERROR: Unable to create markdown budget directory {state_path.parent}: {exc}", file=sys.stderr)
+        return False
+
+    used_lines = 0
+    updated_at = 0.0
+    if state_path.exists():
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                raw_used = payload.get("used_lines", 0)
+                raw_updated_at = payload.get("updated_at", 0.0)
+                if isinstance(raw_used, int):
+                    used_lines = max(raw_used, 0)
+                if isinstance(raw_updated_at, int | float):
+                    updated_at = float(raw_updated_at)
+        except (OSError, json.JSONDecodeError):
+            used_lines = 0
+            updated_at = 0.0
+
+    if now - updated_at > reset_seconds:
+        used_lines = 0
+
+    next_total = used_lines + output_lines
+    if next_total > budget:
+        print(
+            (
+                "ERROR: read_markdown budget exceeded for this session; "
+                f"used={used_lines}, requested={output_lines}, budget={budget}. "
+                "Reuse existing context first or wait for budget reset."
+            ),
+            file=sys.stderr,
+        )
+        return False
+
+    state_payload = {"used_lines": next_total, "updated_at": now}
+    try:
+        state_path.write_text(json.dumps(state_payload), encoding="utf-8")
+    except OSError as exc:
+        print(f"ERROR: Unable to persist markdown budget state {state_path}: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def _acquire_markdown_read_lock(file_path: Path) -> tuple[bool, TextIO | None]:
+    """Acquire a non-blocking file-scoped lock to prevent concurrent markdown reads."""
+    if fcntl is None:
+        return True, None
+
+    lock_path = _markdown_lock_path(file_path)
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(
+            f"ERROR: Unable to create markdown lock directory {lock_path.parent}: {exc}",
+            file=sys.stderr,
+        )
+        return False, None
+
+    try:
+        handle = lock_path.open("a+", encoding="utf-8")
+    except OSError as exc:
+        print(f"ERROR: Unable to open markdown lock file {lock_path}: {exc}", file=sys.stderr)
+        return False, None
+
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        print(
+            f"ERROR: read_markdown guard blocked concurrent read for {file_path}",
+            file=sys.stderr,
+        )
+        return False, None
+    except OSError as exc:
+        handle.close()
+        print(
+            f"ERROR: Unable to acquire markdown read lock for {file_path}: {exc}",
+            file=sys.stderr,
+        )
+        return False, None
+
+    return True, handle
+
+
+def _release_markdown_read_lock(handle: TextIO | None) -> None:
+    """Release a markdown read lock handle created by _acquire_markdown_read_lock."""
+    if handle is None:
+        return
+    lock_name = getattr(handle, "name", "")
+    try:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+        if lock_name:
+            try:
+                Path(lock_name).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _vector_command_env() -> dict[str, str]:
@@ -621,31 +809,40 @@ def read_markdown_section(file_path: str, section: str) -> int:
         return 1
 
     resolved_file = target_file.resolve()
-    if not _refresh_indexes_for_read(resolved_file):
+    lock_ok, lock_handle = _acquire_markdown_read_lock(resolved_file)
+    if not lock_ok:
         return 1
-    line_num = _vector_markdown_line_num(resolved_file, section)
-    if line_num is None:
-        line_num = _fallback_heading_line_num(resolved_file, section)
+    try:
+        if not _refresh_indexes_for_read(resolved_file):
+            return 1
+        line_num = _vector_markdown_line_num(resolved_file, section)
+        if line_num is None:
+            line_num = _fallback_heading_line_num(resolved_file, section)
 
-    if line_num is None:
-        heading_hint = _format_heading_hint(_markdown_heading_lines(resolved_file))
-        print(
-            (
-                f"ERROR: Section '## {section}' not found in {file_path}. "
-                f"Use read_markdown_headings {file_path} to inspect headings. "
-                f"Available headings: {heading_hint}"
-            ),
-            file=sys.stderr,
-        )
-        return 1
+        if line_num is None:
+            heading_hint = _format_heading_hint(_markdown_heading_lines(resolved_file))
+            print(
+                (
+                    f"ERROR: Section '## {section}' not found in {file_path}. "
+                    f"Use read_markdown_headings {file_path} to inspect headings. "
+                    f"Available headings: {heading_hint}"
+                ),
+                file=sys.stderr,
+            )
+            return 1
 
-    window_size = 50
-    content = resolved_file.read_text(encoding="utf-8").split("\n")
-    start_idx = max(line_num - 1, 0)
-    end_idx = min(start_idx + window_size, len(content))
-    for index in range(start_idx, end_idx):
-        print(f"{index + 1}\t{content[index]}")
-    return 0
+        window_size = 50
+        content = resolved_file.read_text(encoding="utf-8").split("\n")
+        start_idx = max(line_num - 1, 0)
+        end_idx = min(start_idx + window_size, len(content))
+        line_count = end_idx - start_idx
+        if not _reserve_markdown_budget(line_count):
+            return 1
+        for index in range(start_idx, end_idx):
+            print(f"{index + 1}\t{content[index]}")
+        return 0
+    finally:
+        _release_markdown_read_lock(lock_handle)
 
 
 def read_markdown_headings(file_path: str) -> int:
@@ -660,11 +857,20 @@ def read_markdown_headings(file_path: str) -> int:
         return 1
 
     resolved_file = target_file.resolve()
-    if not _refresh_indexes_for_read(resolved_file):
+    lock_ok, lock_handle = _acquire_markdown_read_lock(resolved_file)
+    if not lock_ok:
         return 1
-    for line_num, heading in _markdown_heading_lines(resolved_file):
-        print(f"{line_num}\t{heading}")
-    return 0
+    try:
+        if not _refresh_indexes_for_read(resolved_file):
+            return 1
+        headings = _markdown_heading_lines(resolved_file)
+        if not _reserve_markdown_budget(len(headings)):
+            return 1
+        for line_num, heading in headings:
+            print(f"{line_num}\t{heading}")
+        return 0
+    finally:
+        _release_markdown_read_lock(lock_handle)
 
 
 def main(argv: list[str]) -> int:

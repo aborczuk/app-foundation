@@ -75,8 +75,8 @@ def test_validate_runs_pytest_guard_ruff_and_pyright(monkeypatch) -> None:
         "uv",
         "run",
         "--no-sync",
-        "ruff",
-        "check",
+        "python",
+        "scripts/ruff_guard.py",
         "scripts/read_code.py",
     ]
     assert calls[2]["cmd"] == [
@@ -364,8 +364,8 @@ def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch) -> None:
         "uv",
         "run",
         "--no-sync",
-        "ruff",
-        "check",
+        "python",
+        "scripts/ruff_guard.py",
         "scripts/read_code.py",
     ]
     assert calls[3]["cmd"] == [

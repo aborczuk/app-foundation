@@ -288,7 +288,7 @@ def _run_validate(
     python_paths = _python_paths(lint_paths)
     if python_paths and not skip_ruff:
         rc = _run_command(
-            ["uv", "run", "--no-sync", "ruff", "check", *python_paths],
+            ["uv", "run", "--no-sync", "python", "scripts/ruff_guard.py", *python_paths],
             label="ruff_check",
         )
         if rc != 0:
