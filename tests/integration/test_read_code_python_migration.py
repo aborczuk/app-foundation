@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "read-code.sh"
@@ -76,7 +77,18 @@ def test_read_code_cli_usage_requires_mode_and_arguments(tmp_path: Path) -> None
     assert "Usage:" in result.stdout
     assert "read_code_context" in result.stdout
     assert "read_code_window" in result.stdout
-    assert "read_code_symbols" in result.stdout
+    assert "read_code_symbols" not in result.stdout
+
+
+def test_read_code_symbols_mode_is_rejected(tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    result = _run_read_code(tmp_path, "symbols", str(code_file), env=_env_without_uv())
+
+    assert result.returncode == 1
+    assert "debug-only" in result.stderr
+    assert "read_code_debug.py" in result.stderr
 
 
 def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> None:
@@ -490,7 +502,7 @@ def test_read_code_source_wrapper_exposes_functions(tmp_path: Path) -> None:
     assert any(line.endswith("\tdef target():") for line in result.stdout.splitlines())
 
 
-def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> None:
+def test_read_code_symbols_lists_vector_backed_file_symbols_with_break_glass_override(tmp_path: Path) -> None:
     code_file = tmp_path / "source_sample.py"
     code_file.write_text(
         "def target():\n"
@@ -533,11 +545,14 @@ def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> N
         ]
     )
 
-    result = _run_read_code(
-        tmp_path,
-        "symbols",
-        str(code_file),
-        env=_env_with_fake_uv(tmp_path, payload),
+    env = _env_with_fake_uv(tmp_path, payload)
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file)],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
     )
 
     assert result.returncode == 0, result.stderr
@@ -545,6 +560,20 @@ def test_read_code_symbols_lists_vector_backed_file_symbols(tmp_path: Path) -> N
     assert lines[0].startswith("# line_start")
     assert any("\ttarget\tdef target():" in line for line in lines[1:])
     assert any("\tother\tdef other():" in line for line in lines[1:])
+
+
+def test_read_code_symbols_is_blocked_by_default(tmp_path: Path) -> None:
+    code_file = tmp_path / "source_sample.py"
+    code_file.write_text("def target():\n    return 1\n", encoding="utf-8")
+    payload = json.dumps([])
+    env = _env_with_fake_uv(tmp_path, payload)
+    env.pop("READ_CODE_ALLOW_SYMBOL_DUMP", None)
+
+    result = _run_read_code(tmp_path, "symbols", str(code_file), env=env)
+
+    assert result.returncode == 1
+    assert "debug-only" in result.stderr
+    assert "read_code_debug.py" in result.stderr
 
 
 def test_read_code_symbols_repeat_guard_requires_explicit_override(tmp_path: Path) -> None:
@@ -573,26 +602,32 @@ def test_read_code_symbols_repeat_guard_requires_explicit_override(tmp_path: Pat
         ]
     )
     env = _env_with_fake_uv(tmp_path, payload)
+    env["READ_CODE_ALLOW_SYMBOL_DUMP"] = "1"
     env["SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS"] = "900"
 
-    first_result = _run_read_code(
-        tmp_path,
-        "symbols",
-        str(code_file),
+    first_result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file)],
+        cwd=tmp_path,
         env=env,
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    second_result = _run_read_code(
-        tmp_path,
-        "symbols",
-        str(code_file),
+    second_result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file)],
+        cwd=tmp_path,
         env=env,
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    override_result = _run_read_code(
-        tmp_path,
-        "symbols",
-        str(code_file),
-        "--allow-repeat",
+    override_result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file), "--allow-repeat"],
+        cwd=tmp_path,
         env=env,
+        check=False,
+        capture_output=True,
+        text=True,
     )
 
     assert first_result.returncode == 0, first_result.stderr
@@ -653,11 +688,16 @@ def test_read_code_yaml_symbols_and_context_flow(tmp_path: Path) -> None:
         ]
     )
 
-    symbols_result = _run_read_code(
-        tmp_path,
-        "symbols",
-        str(yaml_file),
-        env=_env_with_fake_uv(tmp_path, payload),
+    symbols_env = _env_with_fake_uv(tmp_path, payload)
+    symbols_env["READ_CODE_ALLOW_SYMBOL_DUMP"] = "1"
+
+    symbols_result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(yaml_file)],
+        cwd=tmp_path,
+        env=symbols_env,
+        check=False,
+        capture_output=True,
+        text=True,
     )
     assert symbols_result.returncode == 0, symbols_result.stderr
     assert "yaml_section" in symbols_result.stdout

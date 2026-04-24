@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
@@ -44,7 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Arguments forwarded to pytest (prefix with --).",
     )
 
-    show = subparsers.add_parser("show", help="Print a previously captured full pytest log")
+    show = subparsers.add_parser("show", help="Show a previously captured pytest log in compact form")
     show.add_argument("--log", type=Path, default=None, help="Explicit log file path.")
     show.add_argument(
         "--run-id",
@@ -62,6 +61,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--latest",
         action="store_true",
         help="Show the newest log file from --log-dir (default when no selector is given).",
+    )
+    show.add_argument(
+        "--full",
+        action="store_true",
+        help="Print the full stored log content (default is compact summary + first failure).",
     )
 
     return parser
@@ -189,12 +193,17 @@ def _resolve_show_log(*, log: Path | None, run_id: str, log_dir: Path, latest: b
 def _run_guarded_pytest(args: argparse.Namespace) -> int:
     """Execute guarded pytest, write full logs, and print compact failure output."""
     command = _build_pytest_command(args.pytest_args)
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from uv_env import repo_uv_env
+
     completed = subprocess.run(
         command,
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        env=os.environ.copy(),
+        env=repo_uv_env(),
     )
     output = f"{completed.stdout or ''}{completed.stderr or ''}"
     log_dir = _resolve_log_dir(args.log_dir)
@@ -214,8 +223,8 @@ def _run_guarded_pytest(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
-def _show_full_log(args: argparse.Namespace) -> int:
-    """Print the full stored pytest log selected by path, run-id, or latest."""
+def _show_log(args: argparse.Namespace) -> int:
+    """Print a compact or full stored pytest log selected by path, run-id, or latest."""
     log_file = _resolve_show_log(
         log=args.log,
         run_id=args.run_id.strip(),
@@ -228,7 +237,19 @@ def _show_full_log(args: argparse.Namespace) -> int:
     if not log_file.is_file():
         print(f"ERROR: log file not found: {log_file}", file=sys.stderr)
         return 1
-    print(log_file.read_text(encoding="utf-8"), end="")
+    output = log_file.read_text(encoding="utf-8")
+    if args.full:
+        print(output, end="")
+        return 0
+
+    summary = _summary_line(output, exit_code=1)
+    first_failure = _first_failure_block(output)
+    print(f"summary: {summary}")
+    print(f"log_file: {log_file}")
+    if first_failure:
+        print("--- first_failure ---")
+        print(first_failure)
+        print("--- end_first_failure ---")
     return 0
 
 
@@ -239,7 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "run":
         return _run_guarded_pytest(args)
     if args.command == "show":
-        return _show_full_log(args)
+        return _show_log(args)
     raise ValueError(f"unknown command {args.command}")
 
 

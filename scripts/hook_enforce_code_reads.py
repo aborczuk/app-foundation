@@ -199,6 +199,19 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
     return mode, path_text, requested_lines, allow_fallback
 
 
+def _uses_legacy_symbol_dump(tokens: list[str]) -> bool:
+    """Return whether the command targets the deprecated normal symbols route."""
+    for idx, token in enumerate(tokens):
+        name = Path(token).name
+        if name == "read_code_symbols":
+            return True
+        if name == "read_code.py" and idx + 1 < len(tokens) and tokens[idx + 1] == "symbols":
+            return True
+        if name == "read-code.sh" and idx + 1 < len(tokens) and tokens[idx + 1] == "symbols":
+            return True
+    return False
+
+
 def main() -> int:
     """Evaluate command payload and enforce helper-only code/doc reads."""
     try:
@@ -210,13 +223,25 @@ def main() -> int:
     if not command:
         return 0
 
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return 0
+
+    if _uses_legacy_symbol_dump(tokens):
+        _emit_deny(
+            "Legacy read_code_symbols invocations are denied. Use scripts/read_code_debug.py "
+            "<file_path> [--allow-repeat] for maintenance/debug only."
+        )
+        return 0
+
     find_policy = _extract_find_policy(command)
     if find_policy is not None:
         broad_root, code_doc_target = find_policy
         if broad_root and code_doc_target:
             _emit_deny(
                 "Broad root-level file scans are denied (for example `find . -name '*.py'`). "
-                "Use scripts/read-code.sh (read_code_context/read_code_window/read_code_symbols) for code reads, "
+                "Use scripts/read-code.sh (read_code_context/read_code_window) for code reads, "
                 "use scripts/read-markdown.sh (read_markdown_headings/read_markdown_section) for markdown reads, "
                 "or scope inventory to explicit directories (for example `find src tests -name '*.py'`)."
             )
@@ -248,7 +273,7 @@ def main() -> int:
         if _is_repo_code_doc_file(candidate):
             _emit_deny(
                 "Code/doc-file reads must use scripts/read-code.sh "
-                "(read_code_context/read_code_window/read_code_symbols) or scripts/read-markdown.sh "
+                "(read_code_context/read_code_window) or scripts/read-markdown.sh "
                 "(read_markdown_headings/read_markdown_section). "
                 "Direct shell reads are denied."
             )

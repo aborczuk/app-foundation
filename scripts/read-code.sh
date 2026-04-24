@@ -25,6 +25,18 @@ _run_read_code_entrypoint() {
         return 1
     fi
 
+    if [[ -z "${READ_CODE_SESSION_ID:-}" ]]; then
+        if [[ -n "${CODEX_SESSION_ID:-}" ]]; then
+            export READ_CODE_SESSION_ID="$CODEX_SESSION_ID"
+        elif [[ -n "${TERM_SESSION_ID:-}" ]]; then
+            export READ_CODE_SESSION_ID="$TERM_SESSION_ID"
+        elif [[ -n "${PPID:-}" ]]; then
+            export READ_CODE_SESSION_ID="ppid-${PPID}"
+        else
+            export READ_CODE_SESSION_ID="pid-$$"
+        fi
+    fi
+
     if command -v uv >/dev/null 2>&1; then
         if [[ -z "${UV_CACHE_DIR:-}" ]]; then
             export UV_CACHE_DIR="$DEFAULT_UV_CACHE_DIR"
@@ -42,10 +54,6 @@ read_code_context() {
 
 read_code_window() {
     _run_read_code_entrypoint window "$@"
-}
-
-read_code_symbols() {
-    _run_read_code_entrypoint symbols "$@"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

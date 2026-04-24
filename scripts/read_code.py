@@ -42,6 +42,16 @@ CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY
 CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
     os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
 )
+READ_CODE_ALLOW_SYMBOL_DUMP_ENV = "READ_CODE_ALLOW_SYMBOL_DUMP"
+READ_CODE_PROBE_CACHE_TTL_SECONDS = float(
+    os.environ.get("SPECKIT_READ_CODE_PROBE_CACHE_TTL_SECONDS", "10") or "10"
+)
+READ_CODE_BACKGROUND_REFRESH_DEBOUNCE_SECONDS = float(
+    os.environ.get("SPECKIT_READ_CODE_BACKGROUND_REFRESH_DEBOUNCE_SECONDS", "5") or "5"
+)
+READ_CODE_WARN_ONCE_TTL_SECONDS = float(
+    os.environ.get("SPECKIT_READ_CODE_WARN_ONCE_TTL_SECONDS", "15") or "15"
+)
 
 
 @dataclass(frozen=True)
@@ -85,6 +95,10 @@ class _VectorIndexProbe:
 
 
 _VECTOR_RUNTIME_NOTE: str | None = None
+_CODEGRAPH_SESSION_PROBE_DONE = False
+_CODEGRAPH_SESSION_PROBE_AVAILABLE = True
+_VECTOR_PROBE_CACHE: _VectorIndexProbe | None = None
+_VECTOR_PROBE_CACHE_AT = 0.0
 
 
 def _set_vector_runtime_note(note: str) -> None:
@@ -106,6 +120,283 @@ def _consume_vector_runtime_note() -> str | None:
     note = _VECTOR_RUNTIME_NOTE
     _VECTOR_RUNTIME_NOTE = None
     return note
+
+
+def _read_code_session_id() -> str:
+    """Return session identifier used to cache read preflight probes across helper calls."""
+    configured = os.environ.get("READ_CODE_SESSION_ID", "").strip()
+    if configured:
+        return configured
+    return str(os.getppid())
+
+
+def _symbol_dump_enabled() -> bool:
+    """Return whether break-glass symbol-dump mode is explicitly enabled."""
+    raw = os.environ.get(READ_CODE_ALLOW_SYMBOL_DUMP_ENV, "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _session_safe_key(session_id: str) -> str:
+    """Return a filesystem-safe cache key derived from a session identifier."""
+    safe = "".join(ch for ch in session_id if ch.isalnum() or ch in ("-", "_", "."))
+    if not safe:
+        safe = "default"
+    return safe[:96]
+
+
+def _codegraph_session_probe_cache_path(session_id: str) -> Path:
+    """Return session-scoped cache file path for codegraph availability probe results."""
+    return CODEGRAPH_DB_DIR / f"read-code-codegraph-probe-{_session_safe_key(session_id)}.json"
+
+
+def _vector_session_probe_cache_path(session_id: str) -> Path:
+    """Return session-scoped cache file path for vector probe results."""
+    return CODEGRAPH_DB_DIR / f"read-code-vector-probe-{_session_safe_key(session_id)}.json"
+
+
+def _read_code_warn_once_cache_path(session_id: str) -> Path:
+    """Return session-scoped cache path for warning suppression."""
+    return CODEGRAPH_DB_DIR / f"read-code-warn-once-{_session_safe_key(session_id)}.json"
+
+
+def _read_code_refresh_debounce_cache_path(session_id: str) -> Path:
+    """Return session-scoped cache path for background refresh debounce state."""
+    return CODEGRAPH_DB_DIR / f"read-code-refresh-debounce-{_session_safe_key(session_id)}.json"
+
+
+def _load_session_state(path: Path) -> dict[str, float]:
+    """Load a float-valued session state mapping from JSON."""
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    state: dict[str, float] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(value, (int, float)):
+            state[key] = float(value)
+    return state
+
+
+def _persist_session_state(path: Path, state: dict[str, float]) -> None:
+    """Persist a float-valued session state mapping to JSON."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _scope_cache_key(scope_path: Path) -> str:
+    """Return a stable cache key for a requested scope path."""
+    try:
+        return scope_path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(scope_path.resolve())
+
+
+def _emit_session_warning_once(key: str, message: str, *, ttl_seconds: float | None = None) -> None:
+    """Emit a warning once per session key within a TTL window."""
+    ttl = READ_CODE_WARN_ONCE_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+    if ttl <= 0:
+        print(message, file=sys.stderr)
+        return
+    session_id = _read_code_session_id()
+    cache_path = _read_code_warn_once_cache_path(session_id)
+    state = _load_session_state(cache_path)
+    now = time.time()
+    last = state.get(key, 0.0)
+    if now - last < ttl:
+        return
+    state[key] = now
+    state = {name: ts for name, ts in state.items() if now - ts <= max(ttl * 4, 60.0)}
+    _persist_session_state(cache_path, state)
+    print(message, file=sys.stderr)
+
+
+def _should_launch_background_refresh(scope_path: Path, *, channel: str) -> bool:
+    """Return whether a background refresh should start based on debounce policy."""
+    debounce = READ_CODE_BACKGROUND_REFRESH_DEBOUNCE_SECONDS
+    if debounce <= 0:
+        return True
+    session_id = _read_code_session_id()
+    cache_path = _read_code_refresh_debounce_cache_path(session_id)
+    state = _load_session_state(cache_path)
+    key = f"{channel}:{_scope_cache_key(scope_path)}"
+    now = time.time()
+    last = state.get(key, 0.0)
+    if now - last < debounce:
+        return False
+    state[key] = now
+    state = {name: ts for name, ts in state.items() if now - ts <= max(debounce * 6, 60.0)}
+    _persist_session_state(cache_path, state)
+    return True
+
+
+def _vector_probe_from_payload(payload: object) -> _VectorIndexProbe | None:
+    """Decode a cached vector probe payload when it is structurally valid."""
+    if not isinstance(payload, dict):
+        return None
+    status = payload.get("status")
+    if not isinstance(status, str) or not status:
+        return None
+    stale_reason = payload.get("stale_reason", "")
+    stale_reason_class = payload.get("stale_reason_class", "none")
+    stale_signal_source = payload.get("stale_signal_source", "git")
+    stale_signal_available = payload.get("stale_signal_available", True)
+    stale_signal_error = payload.get("stale_signal_error", "")
+    stale_drift_paths = payload.get("stale_drift_paths", [])
+    return _VectorIndexProbe(
+        status=status,
+        stale_reason=str(stale_reason or ""),
+        stale_reason_class=str(stale_reason_class or "none"),
+        stale_drift_paths=_normalize_vector_drift_paths(stale_drift_paths),
+        stale_signal_source=str(stale_signal_source or "git"),
+        stale_signal_available=bool(stale_signal_available),
+        stale_signal_error=str(stale_signal_error or ""),
+    )
+
+
+def _load_vector_probe_cache(session_id: str) -> _VectorIndexProbe | None:
+    """Load cached vector probe result when present and within TTL."""
+    global _VECTOR_PROBE_CACHE
+    global _VECTOR_PROBE_CACHE_AT
+    ttl = READ_CODE_PROBE_CACHE_TTL_SECONDS
+    now = time.time()
+    if ttl > 0 and _VECTOR_PROBE_CACHE is not None and now - _VECTOR_PROBE_CACHE_AT <= ttl:
+        return _VECTOR_PROBE_CACHE
+    cache_path = _vector_session_probe_cache_path(session_id)
+    if not cache_path.is_file():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    ts_raw = payload.get("cached_at")
+    if not isinstance(ts_raw, (int, float)):
+        return None
+    cached_at = float(ts_raw)
+    if ttl > 0 and now - cached_at > ttl:
+        return None
+    probe = _vector_probe_from_payload(payload.get("probe"))
+    if probe is None:
+        return None
+    _VECTOR_PROBE_CACHE = probe
+    _VECTOR_PROBE_CACHE_AT = cached_at
+    return probe
+
+
+def _remember_vector_probe(session_id: str, probe: _VectorIndexProbe) -> _VectorIndexProbe:
+    """Persist and memoize vector probe results for short-lived reuse."""
+    global _VECTOR_PROBE_CACHE
+    global _VECTOR_PROBE_CACHE_AT
+    now = time.time()
+    _VECTOR_PROBE_CACHE = probe
+    _VECTOR_PROBE_CACHE_AT = now
+    cache_path = _vector_session_probe_cache_path(session_id)
+    payload = {
+        "cached_at": now,
+        "probe": {
+            "status": probe.status,
+            "stale_reason": probe.stale_reason,
+            "stale_reason_class": probe.stale_reason_class,
+            "stale_drift_paths": list(probe.stale_drift_paths),
+            "stale_signal_source": probe.stale_signal_source,
+            "stale_signal_available": probe.stale_signal_available,
+            "stale_signal_error": probe.stale_signal_error,
+        },
+    }
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(payload), encoding="utf-8")
+    except OSError:
+        return probe
+    return probe
+
+
+def _invalidate_vector_probe_cache(session_id: str | None = None) -> None:
+    """Clear in-memory and session-cached vector probe state."""
+    global _VECTOR_PROBE_CACHE
+    global _VECTOR_PROBE_CACHE_AT
+    _VECTOR_PROBE_CACHE = None
+    _VECTOR_PROBE_CACHE_AT = 0.0
+    active_session = session_id or _read_code_session_id()
+    cache_path = _vector_session_probe_cache_path(active_session)
+    try:
+        cache_path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+
+
+def _load_codegraph_session_probe_cache(session_id: str) -> bool | None:
+    """Load cached session probe availability when present."""
+    cache_file = _codegraph_session_probe_cache_path(session_id)
+    if not cache_file.is_file():
+        return None
+    try:
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    available = payload.get("available") if isinstance(payload, dict) else None
+    return available if isinstance(available, bool) else None
+
+
+def _persist_codegraph_session_probe_cache(session_id: str, *, available: bool) -> None:
+    """Persist session-scoped codegraph probe availability for subsequent helper calls."""
+    cache_file = _codegraph_session_probe_cache_path(session_id)
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps({"available": available}), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _ensure_codegraph_session_available(file_path: Path) -> bool:
+    """Probe codegraph availability once per process without triggering refresh."""
+    global _CODEGRAPH_SESSION_PROBE_DONE
+    global _CODEGRAPH_SESSION_PROBE_AVAILABLE
+    if _CODEGRAPH_SESSION_PROBE_DONE:
+        return _CODEGRAPH_SESSION_PROBE_AVAILABLE
+    session_id = _read_code_session_id()
+    cached = _load_codegraph_session_probe_cache(session_id)
+    if cached is not None:
+        _CODEGRAPH_SESSION_PROBE_DONE = True
+        _CODEGRAPH_SESSION_PROBE_AVAILABLE = cached
+        return cached
+    _CODEGRAPH_SESSION_PROBE_DONE = True
+
+    if not codegraph_supports_file(file_path):
+        _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
+        _persist_codegraph_session_probe_cache(session_id, available=True)
+        return True
+
+    probe = codegraph_health_probe(REPO_ROOT)
+    if probe.status in {"healthy", "stale", "locked"}:
+        _CODEGRAPH_SESSION_PROBE_AVAILABLE = True
+        _persist_codegraph_session_probe_cache(session_id, available=True)
+        return True
+
+    _CODEGRAPH_SESSION_PROBE_AVAILABLE = False
+    _persist_codegraph_session_probe_cache(session_id, available=False)
+    reason = probe.detail or probe.status
+    print(
+        "WARN: codegraph session probe unavailable "
+        f"({reason}); continuing read preflight with vector/local anchoring. "
+        "Codegraph discovery may fail until refreshed.",
+        file=sys.stderr,
+    )
+    if probe.recovery_command:
+        print(f"WARN: codegraph recovery hint: {probe.recovery_command}", file=sys.stderr)
+    return False
 
 
 def _emit_vector_fallback_notice(
@@ -164,10 +455,11 @@ def _coerce_line(value: object) -> int | None:
 
 def _vector_command_env() -> dict[str, str]:
     """Return deterministic env for vector subprocess calls with repo-local uv cache."""
-    env = os.environ.copy()
-    cache_dir = Path(env.get("UV_CACHE_DIR", str(CODEGRAPH_CONTEXT_DIR / ".uv-cache"))).expanduser()
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    env["UV_CACHE_DIR"] = str(cache_dir)
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from uv_env import repo_uv_env
+
+    env = repo_uv_env()
     env.setdefault("HF_HUB_OFFLINE", "1")
     return env
 
@@ -390,12 +682,14 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
     if probe.status == "healthy":
         return True
     if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
-        print(
-            f"WARN: codegraph stale drift does not overlap requested scope ({path}); refreshing scoped index in background",
-            file=sys.stderr,
+        _emit_session_warning_once(
+            key=f"codegraph-stale-nonoverlap:{_scope_cache_key(path)}",
+            message=f"WARN: codegraph stale drift does not overlap requested scope ({path}); refreshing scoped index in background",
         )
         safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
-        if safe_index.is_file() and os.access(safe_index, os.X_OK):
+        if safe_index.is_file() and os.access(safe_index, os.X_OK) and _should_launch_background_refresh(
+            path, channel="codegraph"
+        ):
             try:
                 subprocess.Popen(
                     [str(safe_index), str(path)],
@@ -470,9 +764,15 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
 def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
     """Return parsed vector freshness payload for deterministic refresh decisions."""
     root = project_root or REPO_ROOT
+    session_id = _read_code_session_id()
+    cached_probe = _load_vector_probe_cache(session_id)
+    if cached_probe is not None:
+        return cached_probe
     if not _command_exists("uv"):
         _set_vector_runtime_note("uv is not available")
-        return _VectorIndexProbe(
+        return _remember_vector_probe(
+            session_id,
+            _VectorIndexProbe(
             status="unavailable",
             stale_reason="uv is not available",
             stale_reason_class="probe-unavailable",
@@ -480,6 +780,7 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_source="git",
             stale_signal_available=False,
             stale_signal_error="uv is not available",
+            ),
         )
 
     cmd = [
@@ -506,7 +807,9 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             _set_vector_runtime_note(f"index status probe failed: {stderr.splitlines()[0]}")
         else:
             _set_vector_runtime_note(f"index status probe failed with exit code {proc.returncode}")
-        return _VectorIndexProbe(
+        return _remember_vector_probe(
+            session_id,
+            _VectorIndexProbe(
             status="probe-failed",
             stale_reason=stderr or f"index status probe failed with exit code {proc.returncode}",
             stale_reason_class="probe-failed",
@@ -514,11 +817,14 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_source="git",
             stale_signal_available=False,
             stale_signal_error=stderr or f"exit code {proc.returncode}",
+            ),
         )
 
     payload = (proc.stdout or "").strip()
     if payload in {"", "null"}:
-        return _VectorIndexProbe(
+        return _remember_vector_probe(
+            session_id,
+            _VectorIndexProbe(
             status="missing",
             stale_reason=f"index snapshot missing at {VECTOR_DB_DIR}",
             stale_reason_class="missing-index",
@@ -526,13 +832,16 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_source="git",
             stale_signal_available=False,
             stale_signal_error="index snapshot missing",
+            ),
         )
 
     try:
         status_payload = json.loads(payload)
     except json.JSONDecodeError:
         _set_vector_runtime_note("index status probe returned non-JSON output")
-        return _VectorIndexProbe(
+        return _remember_vector_probe(
+            session_id,
+            _VectorIndexProbe(
             status="probe-failed",
             stale_reason="index status probe returned non-JSON output",
             stale_reason_class="probe-failed",
@@ -540,10 +849,13 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_source="git",
             stale_signal_available=False,
             stale_signal_error="non-json status payload",
+            ),
         )
     if not isinstance(status_payload, dict):
         _set_vector_runtime_note("index status probe returned unexpected payload shape")
-        return _VectorIndexProbe(
+        return _remember_vector_probe(
+            session_id,
+            _VectorIndexProbe(
             status="probe-failed",
             stale_reason="index status probe returned unexpected payload shape",
             stale_reason_class="probe-failed",
@@ -551,17 +863,21 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_source="git",
             stale_signal_available=False,
             stale_signal_error="unexpected payload shape",
+            ),
         )
 
     is_stale = bool(status_payload.get("is_stale", False))
-    return _VectorIndexProbe(
-        status="stale" if is_stale else "healthy",
-        stale_reason=str(status_payload.get("stale_reason", "") or ""),
-        stale_reason_class=str(status_payload.get("stale_reason_class", "none") or "none"),
-        stale_drift_paths=_normalize_vector_drift_paths(status_payload.get("stale_drift_paths")),
-        stale_signal_source=str(status_payload.get("stale_signal_source", "git") or "git"),
-        stale_signal_available=bool(status_payload.get("stale_signal_available", True)),
-        stale_signal_error=str(status_payload.get("stale_signal_error", "") or ""),
+    return _remember_vector_probe(
+        session_id,
+        _VectorIndexProbe(
+            status="stale" if is_stale else "healthy",
+            stale_reason=str(status_payload.get("stale_reason", "") or ""),
+            stale_reason_class=str(status_payload.get("stale_reason_class", "none") or "none"),
+            stale_drift_paths=_normalize_vector_drift_paths(status_payload.get("stale_drift_paths")),
+            stale_signal_source=str(status_payload.get("stale_signal_source", "git") or "git"),
+            stale_signal_available=bool(status_payload.get("stale_signal_available", True)),
+            stale_signal_error=str(status_payload.get("stale_signal_error", "") or ""),
+        ),
     )
 
 
@@ -626,35 +942,15 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
     detail = probe.stale_reason or "no stale reason provided"
     signal = probe.stale_signal_source or "git"
     if overlap is False:
-        print(
-            "WARN: vector index is stale; "
-            f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
-            f"drift_paths={list(probe.stale_drift_paths)}; "
-            f"refreshing scoped index in background for {path}",
-            file=sys.stderr,
+        _emit_session_warning_once(
+            key=f"vector-stale-nonoverlap:{_scope_cache_key(path)}:{cause}",
+            message=(
+                "WARN: vector index is stale; "
+                f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
+                f"drift_paths={list(probe.stale_drift_paths)}; "
+                f"proceeding without refresh because scope does not overlap request ({path})"
+            ),
         )
-        refresh_cmd = [
-            "uv",
-            "run",
-            "--no-sync",
-            "python",
-            "-m",
-            "src.mcp_codebase.indexer",
-            "--repo-root",
-            str(REPO_ROOT),
-            "refresh",
-            str(path),
-        ]
-        try:
-            subprocess.Popen(
-                refresh_cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-                env=_vector_command_env(),
-            )
-        except OSError as exc:
-            print(f"WARN: vector background refresh could not start: {exc}", file=sys.stderr)
         return True
 
     print(
@@ -692,37 +988,41 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
         return False
 
+    _invalidate_vector_probe_cache()
     refreshed_probe = vector_index_probe(REPO_ROOT)
     if refreshed_probe.status != "healthy":
         refreshed_overlap = _scope_needs_vector_refresh(path, refreshed_probe.stale_drift_paths)
         if refreshed_probe.status == "stale" and refreshed_overlap is False:
-            print(
-                "WARN: vector index remains stale after scoped refresh, but stale drift does not overlap "
-                f"requested scope ({path}); proceeding and refreshing in background",
-                file=sys.stderr,
+            _emit_session_warning_once(
+                key=f"vector-post-refresh-stale-nonoverlap:{_scope_cache_key(path)}",
+                message=(
+                    "WARN: vector index remains stale after scoped refresh, but stale drift does not overlap "
+                    f"requested scope ({path}); proceeding and refreshing in background"
+                ),
             )
-            followup_cmd = [
-                "uv",
-                "run",
-                "--no-sync",
-                "python",
-                "-m",
-                "src.mcp_codebase.indexer",
-                "--repo-root",
-                str(REPO_ROOT),
-                "refresh",
-                str(path),
-            ]
-            try:
-                subprocess.Popen(
-                    followup_cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                    env=_vector_command_env(),
-                )
-            except OSError as exc:
-                print(f"WARN: vector follow-up background refresh could not start: {exc}", file=sys.stderr)
+            if _should_launch_background_refresh(path, channel="vector"):
+                followup_cmd = [
+                    "uv",
+                    "run",
+                    "--no-sync",
+                    "python",
+                    "-m",
+                    "src.mcp_codebase.indexer",
+                    "--repo-root",
+                    str(REPO_ROOT),
+                    "refresh",
+                    str(path),
+                ]
+                try:
+                    subprocess.Popen(
+                        followup_cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                        env=_vector_command_env(),
+                    )
+                except OSError as exc:
+                    print(f"WARN: vector follow-up background refresh could not start: {exc}", file=sys.stderr)
             return True
 
         _set_vector_runtime_note(f"index status after refresh is {refreshed_probe.status}")
@@ -735,11 +1035,10 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
 
 
 def _refresh_indexes_for_read(file_path: Path) -> bool:
-    """Run read preflight checks and require both codegraph/vector indexes to be healthy."""
+    """Run read preflight checks with vector hard-gate and session-scoped codegraph probe."""
     if not _is_repo_local_path(file_path):
         return True
-    if codegraph_supports_file(file_path) and not codegraph_refresh_if_needed(file_path.parent):
-        return False
+    _ensure_codegraph_session_available(file_path)
     if not vector_refresh_if_needed(file_path):
         runtime_note = _consume_vector_runtime_note()
         if runtime_note:
@@ -1550,7 +1849,15 @@ def _select_semantic_anchor_candidate(
 
 
 def read_code_symbols(argv: list[str]) -> int:
-    """List deterministic file symbols before choosing an anchor for context/window reads."""
+    """Debug-only symbol dump for maintenance and break-glass investigation."""
+    if not _symbol_dump_enabled():
+        print(
+            "ERROR: read_code_symbols is disabled by policy. Use semantic anchor reads via "
+            "`read_code_context`/`read_code_window`. Break-glass override: "
+            f"set {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1 for maintenance/debug only.",
+            file=sys.stderr,
+        )
+        return 1
     if len(argv) < 1:
         print("ERROR: read_code_symbols requires: <file_path>", file=sys.stderr)
         return 1
@@ -1770,7 +2077,7 @@ def read_code_context(argv: list[str]) -> int:
 
 
 def read_code_window(argv: list[str]) -> int:
-    """Print a numbered bounded window, optionally anchored by symbol/pattern."""
+    """Print a numbered bounded window, optionally validated by symbol/pattern."""
     if len(argv) < 2:
         print(
             "ERROR: read_code_window requires: <file_path> <start_line> [line_count]",
@@ -1891,7 +2198,16 @@ def read_code_window(argv: list[str]) -> int:
                 )
             return 1
 
-        start_line = int(line_num)
+        anchor_line = int(line_num)
+        window_end = start_line + line_count - 1
+        if anchor_line < start_line or anchor_line > window_end:
+            print(
+                "ERROR: resolved anchor line "
+                f"{anchor_line} for '{pattern}' is outside requested window {start_line}-{window_end}; "
+                "adjust start_line or omit symbol_or_pattern.",
+                file=sys.stderr,
+            )
+            return 1
     elif is_large_code_file(file_path) and not use_hud_fast_path:
         print(
             f"ERROR: symbol_or_pattern is required for files >{CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path.",
@@ -1920,9 +2236,8 @@ def _print_usage() -> None:
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
     )
-    print("  read_code_symbols <file_path> [--allow-repeat]")
     print(
-        "                   (bounded follow-up helper may return a non-top candidate body without widening scope)"
+        "                   (when symbol_or_pattern is supplied, the resolved anchor must fall inside the requested window)"
     )
 
 
@@ -1939,9 +2254,14 @@ def main(argv: list[str]) -> int:
     if mode == "window":
         return read_code_window(args)
     if mode == "symbols":
-        return read_code_symbols(args)
+        print(
+            "ERROR: symbols mode is debug-only. Use scripts/read_code_debug.py <file_path> "
+            f"[--allow-repeat] with {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1 for maintenance/debug.",
+            file=sys.stderr,
+        )
+        return 1
 
-    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | symbols", file=sys.stderr)
+    print(f"ERROR: Unknown mode '{mode}'. Use: context | window", file=sys.stderr)
     return 1
 
 

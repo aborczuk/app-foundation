@@ -6,7 +6,10 @@ import importlib.util
 import json
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+
+import pytest
 
 
 def _load_module(module_name: str, script_name: str):
@@ -25,6 +28,19 @@ def _load_module(module_name: str, script_name: str):
 
 
 read_code = _load_module("read_code_index_refresh", "read_code.py")
+
+
+@pytest.fixture(autouse=True)
+def _reset_read_code_session_state(monkeypatch, tmp_path: Path) -> Iterator[None]:
+    """Isolate session-scoped probe/debounce caches between tests."""
+    monkeypatch.setenv("READ_CODE_SESSION_ID", "test-session")
+    monkeypatch.setattr(read_code, "CODEGRAPH_DB_DIR", tmp_path / "codegraph-db")
+    setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
+    setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
+    setattr(read_code, "_VECTOR_RUNTIME_NOTE", None)
+    read_code._invalidate_vector_probe_cache("test-session")
+    yield
+    read_code._invalidate_vector_probe_cache("test-session")
 
 
 def _completed(returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
@@ -145,6 +161,24 @@ def test_vector_index_probe_parses_stale_payload_with_cause_details(monkeypatch)
     assert "src/sample.py" in probe.stale_reason
 
 
+def test_vector_index_probe_uses_short_ttl_cache(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def fake_run(*args, **kwargs):
+        calls["count"] += 1
+        return _completed(0, stdout='{"is_stale": false}\n')
+
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+
+    first = read_code.vector_index_probe()
+    second = read_code.vector_index_probe()
+
+    assert first.status == "healthy"
+    assert second.status == "healthy"
+    assert calls["count"] == 1
+
+
 def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkeypatch) -> None:
     monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
     monkeypatch.setattr(read_code.subprocess, "run", lambda *args, **kwargs: _completed(0, stdout='{"is_stale": false}\n'))
@@ -227,7 +261,7 @@ def test_vector_refresh_if_needed_refreshes_stale_index_for_overlap(monkeypatch,
     assert "overlap=yes" in captured.err
 
 
-def test_vector_refresh_if_needed_background_refreshes_when_scope_is_unaffected(
+def test_vector_refresh_if_needed_skips_background_refresh_when_scope_is_unaffected(
     monkeypatch,
     tmp_path: Path,
     capsys,
@@ -257,9 +291,37 @@ def test_vector_refresh_if_needed_background_refreshes_when_scope_is_unaffected(
     captured = capsys.readouterr()
 
     assert result is True
-    assert calls
+    assert calls == []
     assert "cause=git-path-drift" in captured.err
     assert "overlap=no" in captured.err
+
+
+def test_vector_refresh_if_needed_nonoverlap_never_launches_background_refresh(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        read_code,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(
+            status="stale",
+            stale_reason="indexable git drift paths: docs/guide.md",
+            stale_reason_class="git-path-drift",
+            stale_drift_paths=("docs/guide.md",),
+        ),
+    )
+    monkeypatch.setattr(read_code, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+
+    calls: list[list[str]] = []
+
+    def fake_popen(cmd, **kwargs):
+        calls.append(cmd)
+        return object()
+
+    monkeypatch.setattr(read_code.subprocess, "Popen", fake_popen)
+
+    target = tmp_path / "src" / "sample.py"
+    assert read_code.vector_refresh_if_needed(target) is True
+    assert read_code.vector_refresh_if_needed(target) is True
+    assert calls == []
 
 
 def test_vector_refresh_if_needed_proceeds_when_post_refresh_stale_is_out_of_scope(
@@ -354,6 +416,114 @@ def test_codegraph_health_probe_returns_detail_and_recovery_command(monkeypatch)
     assert probe.status == "locked"
     assert "lock marker present" in probe.detail
     assert probe.recovery_command == "scripts/cgc_safe_index.sh /tmp/repo"
+
+
+def test_refresh_indexes_for_read_probes_codegraph_once_per_session(monkeypatch, tmp_path: Path) -> None:
+    """Read preflight should probe codegraph once without forcing codegraph refresh."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    probe_calls = {"count": 0}
+    cache_file = tmp_path / "probe-cache.json"
+
+    monkeypatch.setattr(read_code, "_is_repo_local_path", lambda _path: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda _path: True)
+    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "unit-session")
+    monkeypatch.setattr(read_code, "_codegraph_session_probe_cache_path", lambda _sid: cache_file)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda _root=None: (
+            probe_calls.__setitem__("count", probe_calls["count"] + 1),
+            read_code._CodegraphHealthProbe(status="healthy", detail="", recovery_command=""),
+        )[1],
+    )
+    monkeypatch.setattr(read_code, "vector_refresh_if_needed", lambda _path: True)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_refresh_if_needed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("codegraph refresh should not run")),
+    )
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
+
+    first = read_code._refresh_indexes_for_read(code_file)
+    second = read_code._refresh_indexes_for_read(code_file)
+
+    assert first is True
+    assert second is True
+    assert probe_calls["count"] == 1
+
+
+def test_refresh_indexes_for_read_continues_when_codegraph_probe_is_unavailable(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """Read preflight should continue with vector/local anchoring when codegraph probe is unavailable."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    probe_calls = {"count": 0}
+    cache_file = tmp_path / "probe-cache.json"
+
+    monkeypatch.setattr(read_code, "_is_repo_local_path", lambda _path: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda _path: True)
+    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "unit-session")
+    monkeypatch.setattr(read_code, "_codegraph_session_probe_cache_path", lambda _sid: cache_file)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda _root=None: (
+            probe_calls.__setitem__("count", probe_calls["count"] + 1),
+            read_code._CodegraphHealthProbe(
+                status="probe-failed",
+                detail="doctor probe failed",
+                recovery_command="scripts/cgc_safe_index.sh src",
+            ),
+        )[1],
+    )
+    monkeypatch.setattr(read_code, "vector_refresh_if_needed", lambda _path: True)
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
+
+    result = read_code._refresh_indexes_for_read(code_file)
+    stderr = capsys.readouterr().err
+
+    assert result is True
+    assert probe_calls["count"] == 1
+    assert "continuing read preflight with vector/local anchoring" in stderr
+
+
+def test_refresh_indexes_for_read_uses_persisted_session_probe_cache(monkeypatch, tmp_path: Path) -> None:
+    """Read preflight should reuse persisted session probe cache across helper invocations."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    probe_calls = {"count": 0}
+    cache_file = tmp_path / "probe-cache.json"
+
+    monkeypatch.setattr(read_code, "_is_repo_local_path", lambda _path: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda _path: True)
+    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "unit-session")
+    monkeypatch.setattr(read_code, "_codegraph_session_probe_cache_path", lambda _sid: cache_file)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_health_probe",
+        lambda _root=None: (
+            probe_calls.__setitem__("count", probe_calls["count"] + 1),
+            read_code._CodegraphHealthProbe(status="healthy", detail="", recovery_command=""),
+        )[1],
+    )
+    monkeypatch.setattr(read_code, "vector_refresh_if_needed", lambda _path: True)
+
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
+    first = read_code._refresh_indexes_for_read(code_file)
+
+    # Simulate a subsequent helper call in a fresh process.
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_DONE", False)
+    monkeypatch.setattr(read_code, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
+    second = read_code._refresh_indexes_for_read(code_file)
+
+    assert first is True
+    assert second is True
+    assert probe_calls["count"] == 1
 
 
 def test_codegraph_edit_signature_file_uses_codegraphcontext(tmp_path: Path) -> None:
@@ -832,10 +1002,37 @@ def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatc
 
     monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
 
-    exit_code = read_code.read_code_window([str(code_file), "1", "3", "run_pipeline"])
+    exit_code = read_code.read_code_window([str(code_file), "2", "3", "run_pipeline"])
 
     assert exit_code == 0
-    assert rendered == {"start": 4, "end": 6}
+    assert rendered == {"start": 2, "end": 4}
+
+
+def test_read_code_window_returns_error_when_anchor_is_outside_requested_window(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("line1\nline2\nline3\nline4\nline5\nline6\n", encoding="utf-8")
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [_vector_match(4, "def run_pipeline():", confidence=95)],
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_line_num_strict",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict should not run")),
+    )
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
+
+    exit_code = read_code.read_code_window([str(code_file), "1", "3", "run_pipeline"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "outside requested window" in captured.err
 
 
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:
@@ -848,9 +1045,39 @@ def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_p
     assert exit_code == 1
 
 
+def test_read_code_main_rejects_symbols_mode(tmp_path: Path, capsys) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    exit_code = read_code.main(["symbols", str(code_file)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "debug-only" in captured.err
+    assert "read_code_debug.py" in captured.err
+
+
+def test_read_code_symbols_is_blocked_without_break_glass_override(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.delenv(read_code.READ_CODE_ALLOW_SYMBOL_DUMP_ENV, raising=False)
+
+    exit_code = read_code.read_code_symbols([str(code_file)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "disabled by policy" in captured.err
+    assert read_code.READ_CODE_ALLOW_SYMBOL_DUMP_ENV in captured.err
+
+
 def test_read_code_symbols_runs_preflight_and_renders_rows(monkeypatch, tmp_path: Path, capsys) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setenv(read_code.READ_CODE_ALLOW_SYMBOL_DUMP_ENV, "1")
 
     calls: list[Path] = []
     monkeypatch.setattr(
@@ -886,6 +1113,7 @@ def test_read_code_symbols_runs_preflight_and_renders_rows(monkeypatch, tmp_path
 def test_read_code_symbols_repeat_guard_blocks_unchanged_file(monkeypatch, tmp_path: Path, capsys) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setenv(read_code.READ_CODE_ALLOW_SYMBOL_DUMP_ENV, "1")
     monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
     monkeypatch.setattr(
         read_code,
@@ -918,6 +1146,7 @@ def test_read_code_symbols_repeat_guard_blocks_unchanged_file(monkeypatch, tmp_p
 def test_read_code_symbols_repeat_guard_allows_override(monkeypatch, tmp_path: Path, capsys) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setenv(read_code.READ_CODE_ALLOW_SYMBOL_DUMP_ENV, "1")
     monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
     monkeypatch.setattr(
         read_code,
@@ -953,6 +1182,7 @@ def test_read_code_symbols_returns_error_when_vector_symbols_missing(
 ) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setenv(read_code.READ_CODE_ALLOW_SYMBOL_DUMP_ENV, "1")
     monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
     monkeypatch.setattr(read_code, "_vector_list_code_symbols", lambda file_path: [])
 

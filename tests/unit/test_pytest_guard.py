@@ -54,10 +54,13 @@ def test_run_writes_full_log_and_prints_first_failure(monkeypatch, tmp_path: Pat
     )
 
     monkeypatch.setattr(guard, "_build_pytest_command", lambda args: ["pytest", "dummy"])
+    seen_envs: list[dict[str, str]] = []
     monkeypatch.setattr(
         guard.subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args=["pytest"], returncode=1, stdout=failure_output, stderr=""),
+        lambda *args, **kwargs: seen_envs.append(kwargs["env"]) or subprocess.CompletedProcess(
+            args=["pytest"], returncode=1, stdout=failure_output, stderr=""
+        ),
     )
 
     exit_code = guard.main(
@@ -82,9 +85,11 @@ def test_run_writes_full_log_and_prints_first_failure(monkeypatch, tmp_path: Pat
     assert "--- first_failure ---" in stdout
     assert "test_first" in stdout
     assert "test_second" not in stdout
+    assert seen_envs
+    assert seen_envs[0]["UV_CACHE_DIR"] == str(Path(__file__).resolve().parents[2] / ".codegraphcontext" / ".uv-cache")
 
 
-def test_show_latest_prints_full_log(tmp_path: Path, capsys) -> None:
+def test_show_latest_prints_compact_log_by_default(tmp_path: Path, capsys) -> None:
     guard = _load_module()
     log_dir = tmp_path / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -92,6 +97,21 @@ def test_show_latest_prints_full_log(tmp_path: Path, capsys) -> None:
     log_file.write_text("full output line\n", encoding="utf-8")
 
     exit_code = guard.main(["show", "--log-dir", str(log_dir), "--latest"])
+    stdout = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "summary: full output line" in stdout
+    assert f"log_file: {log_file}" in stdout
+
+
+def test_show_latest_with_full_prints_full_log(tmp_path: Path, capsys) -> None:
+    guard = _load_module()
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "pytest-20260101T000000Z-sample.log"
+    log_file.write_text("full output line\n", encoding="utf-8")
+
+    exit_code = guard.main(["show", "--log-dir", str(log_dir), "--latest", "--full"])
     stdout = capsys.readouterr().out
 
     assert exit_code == 0

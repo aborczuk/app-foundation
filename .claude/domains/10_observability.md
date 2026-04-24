@@ -12,6 +12,7 @@
 - **Actionable Alerts**: Alerts MUST be actionable and tied to a runbook or documented response.
 - **Detect Stalls and Missing Signals**: The absence of expected events (stall) MUST be detectable.
 - **Long-Running Work Must Be Visible**: Long-running build, index, embed, and write paths MUST emit stage markers, batch counts, and completion timing so silence is not the only signal.
+- **Concise-By-Default CLI Logs**: Success-path command logging MUST be concise by default; full commands/arguments/path lists MUST be opt-in via explicit verbose mode.
 - **Redaction and Privacy**: Sensitive data MUST be consistently redacted from logs/traces.
 - **Forensic Reconstruction**: It MUST be possible to reconstruct major lifecycle events for critical operations from telemetry.
 - **Minimum Metrics**: Critical paths MUST emit at least latency, error rate, and throughput metrics; saturation signals (queue depth, concurrency, DB busy) SHOULD be emitted where applicable.
@@ -35,6 +36,7 @@
 - [ ] Are alerts actionable and linked to a runbook/response?
 - [ ] Can stalls/missing signals be detected?
 - [ ] Do long-running build/index/embed/write paths emit stage markers, batch counts, and completion timing?
+- [ ] Are default success logs concise, with full command/path detail emitted only in explicit verbose mode?
 - [ ] Are secrets and sensitive values redacted?
 - [ ] Can critical flows be reconstructed from logs/metrics?
 - [ ] Do critical paths emit latency + error rate + throughput metrics?

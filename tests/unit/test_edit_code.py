@@ -54,6 +54,7 @@ def test_validate_runs_pytest_guard_ruff_and_pyright(monkeypatch) -> None:
             "AGENTS.md",
             "--tests",
             "tests/unit/test_read_code_index_refresh.py",
+            "--all-paths",
         ]
     )
 
@@ -83,7 +84,8 @@ def test_validate_runs_pytest_guard_ruff_and_pyright(monkeypatch) -> None:
         "uv",
         "run",
         "--no-sync",
-        "pyright",
+        "python",
+        "scripts/pyright_guard.py",
         "scripts/read_code.py",
     ]
 
@@ -161,7 +163,13 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
     )
 
     assert exit_code == 0
-    assert calls[0]["cmd"][:7] == [
+    assert calls[0]["cmd"] == [
+        "git",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+    ]
+    assert calls[1]["cmd"][:7] == [
         "uv",
         "run",
         "--no-sync",
@@ -170,29 +178,17 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
         "run",
         "--",
     ]
-    assert calls[1]["cmd"] == [
-        "git",
-        "status",
-        "--porcelain",
-        "--untracked-files=normal",
-    ]
     assert calls[2]["cmd"] == [
-        "git",
-        "status",
-        "--porcelain",
-        "--untracked-files=normal",
-        "--",
-        "scripts/read_code.py",
-    ]
-    assert calls[3]["cmd"] == [
         "uv",
         "run",
         "--no-sync",
         "python",
         "scripts/hook_refresh_indexes.py",
     ]
-    assert calls[4]["cmd"] == ["git", "add", "scripts/read_code.py"]
-    assert calls[5]["cmd"] == [
+    sync_payload = json.loads(str(calls[2]["input"]))
+    assert sync_payload == {"tool_input": {"paths": ["scripts/read_code.py"]}}
+    assert calls[3]["cmd"] == ["git", "add", "scripts/read_code.py"]
+    assert calls[4]["cmd"] == [
         "git",
         "diff",
         "--cached",
@@ -200,9 +196,9 @@ def test_sync_runs_validate_refresh_and_git_without_push_when_disabled(monkeypat
         "--",
         "scripts/read_code.py",
     ]
-    assert calls[6]["cmd"] == ["git", "commit", "-m", "test commit"]
-    assert len(calls) == 7
-    assert status_calls["count"] == 2
+    assert calls[5]["cmd"] == ["git", "commit", "-m", "test commit"]
+    assert len(calls) == 6
+    assert status_calls["count"] == 1
 
 
 def test_refresh_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
@@ -265,22 +261,13 @@ def test_sync_skips_when_paths_are_clean(monkeypatch, capsys) -> None:
 
     assert exit_code == 0
     assert "sync skipped: nothing changed in requested paths" in captured.out
-    assert calls[0]["cmd"][:7] == [
-        "uv",
-        "run",
-        "--no-sync",
-        "python",
-        "scripts/pytest_guard.py",
-        "run",
-        "--",
-    ]
-    assert calls[1]["cmd"] == [
+    assert calls[0]["cmd"] == [
         "git",
         "status",
         "--porcelain",
         "--untracked-files=normal",
     ]
-    assert len(calls) == 2
+    assert len(calls) == 1
 
 
 def test_sync_retries_git_add_on_index_lock(monkeypatch) -> None:
@@ -321,7 +308,7 @@ def test_sync_retries_git_add_on_index_lock(monkeypatch) -> None:
     assert add_attempts["count"] == 2
 
 
-def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch) -> None:
+def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch, capsys) -> None:
     calls: list[_RunCall] = []
 
     def fake_run(cmd, **kwargs):
@@ -349,9 +336,11 @@ def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch) -> None:
             "--changed-only",
         ]
     )
+    captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert calls[1]["cmd"] == [
+    assert "2 changed path(s)" in captured.out
+    assert calls[0]["cmd"] == [
         "git",
         "status",
         "--porcelain",
@@ -359,6 +348,19 @@ def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch) -> None:
         "--",
         "scripts/read_code.py",
         "AGENTS.md",
+    ]
+    assert calls[1]["cmd"] == [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "scripts/pytest_guard.py",
+        "run",
+        "--",
+        "-q",
+        "--maxfail=1",
+        "--tb=short",
+        "tests/unit/test_read_code_index_refresh.py",
     ]
     assert calls[2]["cmd"] == [
         "uv",
@@ -372,9 +374,37 @@ def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch) -> None:
         "uv",
         "run",
         "--no-sync",
-        "pyright",
+        "python",
+        "scripts/pyright_guard.py",
         "scripts/read_code.py",
     ]
+
+
+def test_validate_skips_pytest_for_non_runtime_paths(monkeypatch, capsys) -> None:
+    calls: list[_RunCall] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(
+        [
+            "validate",
+            "--paths",
+            "README.md",
+            "constitution.md",
+            "--tests",
+            "tests/unit/test_read_code_index_refresh.py",
+            "--all-paths",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "pytest_guard skipped" in captured.out
+    assert calls == []
 
 
 def test_sync_warns_for_unrelated_dirty_paths(monkeypatch, capsys) -> None:
@@ -430,6 +460,29 @@ def test_run_command_defaults_repo_local_uv_cache(monkeypatch) -> None:
 
     assert exit_code == 0
     assert seen_env["UV_CACHE_DIR"] == str(edit_code.REPO_ROOT / ".codegraphcontext" / ".uv-cache")
+
+
+def test_run_command_hides_full_command_by_default(monkeypatch, capsys) -> None:
+    monkeypatch.delenv(edit_code.EDIT_CODE_VERBOSE_ENV, raising=False)
+    monkeypatch.setattr(edit_code.subprocess, "run", lambda *args, **kwargs: _completed(0))
+
+    exit_code = edit_code._run_command(["uv", "run", "--no-sync", "python", "--version"], label="probe")
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "[edit-code] probe" in captured.out
+    assert "[edit-code] cmd:" not in captured.out
+
+
+def test_run_command_shows_full_command_in_verbose_mode(monkeypatch, capsys) -> None:
+    monkeypatch.setenv(edit_code.EDIT_CODE_VERBOSE_ENV, "1")
+    monkeypatch.setattr(edit_code.subprocess, "run", lambda *args, **kwargs: _completed(0))
+
+    exit_code = edit_code._run_command(["uv", "run", "--no-sync", "python", "--version"], label="probe")
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "[edit-code] cmd: uv run --no-sync python --version" in captured.out
 
 
 def test_paths_outside_repo_are_rejected(tmp_path: Path, capsys) -> None:

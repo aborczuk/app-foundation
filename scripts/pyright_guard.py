@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Deterministic Ruff wrapper that blocks invalid targets and caps error output volume."""
+"""Run pyright with deterministic path validation and bounded failure output."""
 
 from __future__ import annotations
 
@@ -16,12 +15,12 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
 from uv_env import repo_uv_env
 
 DEFAULT_MAX_OUTPUT_LINES = 120
-MAX_OUTPUT_LINES_ENV = "RUFF_GUARD_MAX_OUTPUT_LINES"
+MAX_OUTPUT_LINES_ENV = "PYRIGHT_GUARD_MAX_OUTPUT_LINES"
 PYTHON_SUFFIXES = {".py", ".pyi"}
 
 
 def _max_output_lines() -> int:
-    """Return the configured output-line cap for failing ruff runs."""
+    """Return the configured output-line cap for failing pyright runs."""
     raw = os.environ.get(MAX_OUTPUT_LINES_ENV, str(DEFAULT_MAX_OUTPUT_LINES)).strip()
     try:
         parsed = int(raw)
@@ -31,11 +30,11 @@ def _max_output_lines() -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for guarded Ruff checks."""
+    """Build the CLI parser for guarded Pyright checks."""
     parser = argparse.ArgumentParser(
-        description="Run ruff check with deterministic path validation and bounded failure output."
+        description="Run pyright with deterministic path validation and bounded failure output."
     )
-    parser.add_argument("paths", nargs="+", help="Python file paths to lint")
+    parser.add_argument("paths", nargs="+", help="Python file paths to type-check")
     return parser
 
 
@@ -57,7 +56,7 @@ def _validate_paths(raw_paths: Sequence[str]) -> tuple[list[str], list[str]]:
 
 def _emit_failure_output(stdout: str, stderr: str, *, cap: int) -> None:
     """Print bounded failure output and summarize omitted lines when truncated."""
-    combined_lines = []
+    combined_lines: list[str] = []
     if stdout.strip():
         combined_lines.extend(stdout.splitlines())
     if stderr.strip():
@@ -72,7 +71,7 @@ def _emit_failure_output(stdout: str, stderr: str, *, cap: int) -> None:
     print("\n".join(visible), file=sys.stderr)
     print(
         (
-            f"... output truncated by ruff_guard ({omitted} lines omitted; "
+            f"... output truncated by pyright_guard ({omitted} lines omitted; "
             f"set {MAX_OUTPUT_LINES_ENV} to adjust cap)"
         ),
         file=sys.stderr,
@@ -80,22 +79,24 @@ def _emit_failure_output(stdout: str, stderr: str, *, cap: int) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Validate targets, run Ruff, and bound output for deterministic token usage."""
+    """Validate targets, run Pyright, and bound output for deterministic token usage."""
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     valid_paths, errors = _validate_paths(args.paths)
     if errors:
-        print("ERROR: ruff_guard rejected one or more inputs:", file=sys.stderr)
+        print("ERROR: pyright_guard rejected one or more inputs:", file=sys.stderr)
         for detail in errors:
             print(f"- {detail}", file=sys.stderr)
         return 2
 
-    cmd = ["uv", "run", "--no-sync", "ruff", "check", *valid_paths]
+    cmd = ["uv", "run", "--no-sync", "pyright", *valid_paths]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False, env=repo_uv_env())
     if result.returncode == 0:
         if result.stdout.strip():
             print(result.stdout, end="")
+        if result.stderr.strip():
+            print(result.stderr, end="", file=sys.stderr)
         return 0
 
     _emit_failure_output(result.stdout, result.stderr, cap=_max_output_lines())

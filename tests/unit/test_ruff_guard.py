@@ -49,16 +49,21 @@ def test_main_runs_ruff_for_python_paths(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / "sample.py"
     target.write_text("def f() -> int:\n    return 1\n", encoding="utf-8")
     calls: list[list[str]] = []
+    seen_envs: list[dict[str, str]] = []
 
     def fake_run(cmd, **_kwargs):
         calls.append(list(cmd))
+        seen_envs.append(_kwargs["env"])
         return _completed(0)
 
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     monkeypatch.setattr(ruff_guard.subprocess, "run", fake_run)
     rc = ruff_guard.main([str(target)])
 
     assert rc == 0
     assert calls == [["uv", "run", "--no-sync", "ruff", "check", str(target)]]
+    assert seen_envs
+    assert seen_envs[0]["UV_CACHE_DIR"] == str(Path(__file__).resolve().parents[2] / ".codegraphcontext" / ".uv-cache")
 
 
 def test_main_truncates_long_failure_output(monkeypatch, tmp_path: Path, capsys) -> None:

@@ -114,34 +114,33 @@ For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first an
 
 ### Code File Read Efficiency
 
-For any code file, use `scripts/read-code.sh` to enforce symbol-first, windowed reads. 80 lines is the max context_lines budget:
+For any code file, use `scripts/read-code.sh` to enforce semantic-first, windowed reads. 80 lines is the max context_lines budget:
 ```bash
 source scripts/read-code.sh
-read_code_symbols <file>
 read_code_context <file> <symbol_or_pattern> [context_lines]
 ```
 Examples:
-- `read_code_symbols src/clickup_control_plane/webhook_auth.py`
 - `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 80`
 
 Use this workflow:
-1. If file seam/anchor is unknown, invoke `read_code_symbols` first to list deterministic file-local symbols (header/signature + line bounds) from the vector snapshot.
-2. If file seam/anchor is already known, skip symbol dump and go directly to `read_code_context` / `read_code_window` with bounded context.
+1. If file seam/anchor is unknown, run `read_code_context` with the best likely anchor and use semantic ranking (`--next-candidate` / `--candidate-index`) to iterate candidates.
+2. If file seam/anchor is already known, go directly to `read_code_context` / `read_code_window` with bounded context.
 3. Use exact symbols (or known anchors) with `read_code_context` / `read_code_window` for seam anchoring.
 4. The helper resolves semantic lookup first and then performs exact bounded reads.
    - `read_code_context` applies a fixed asymmetric split: small pre-anchor context and larger post-anchor context
 5. Run codegraph discovery checks for blast radius only after the seam is confirmed.
 6. Expand to additional windows only when needed to resolve ambiguity.
 7. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
-8. Read preflight is strict hard-fail for repo-local reads; do not continue on fallback warnings.
-9. Vector stale handling is scope-aware and explicit:
+8. Read preflight hard-fail is vector-owned for repo-local reads; do not continue when vector health is failing.
+9. Codegraph read preflight is session-scoped availability probe only (no per-read codegraph refresh).
+10. Vector stale handling is scope-aware and explicit:
    - stale + overlap with requested scope => synchronous scoped refresh, then proceed/fail
-   - stale + no overlap => warning remains visible, background scoped refresh starts, read proceeds
+   - stale + no overlap => warning remains visible, no refresh is launched, read proceeds
    - missing/unavailable/probe-failed => hard fail with remediation
 
 Verification/read intensity must scale with task size:
 - Single-constant or single-branch edits: one anchor read plus at most one follow-up window; avoid broad discovery.
-- Single-file, moderate edits: one symbol pass (only if seam unknown) and bounded seam windows; avoid repeated symbol dumps.
+- Single-file, moderate edits: bounded seam windows and candidate stepping; avoid broad reads.
 - Multi-file/refactor/blast-radius changes: use codegraph discovery after seam confirmation to map impact.
 - Do not use broad `uv run cgc find content ...` for reassurance when file + seam are already known.
 - Single-file serialization is required for code reads as well: do not run parallel `read_code_*` calls against the same file.
@@ -154,12 +153,12 @@ Use the shortlist/body contract when reading code with the helper.
 - The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
 - Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
 - Anchor policy is semantic-first: if semantic returns a strong candidate, that candidate is the anchor of record and the bounded window is rendered from that line.
+- Codegraph refresh is discovery-owned: run codegraph refresh when invoking codegraph discovery features, not as a per-read window preflight.
 - Use broad discovery only when the target file is unknown; once the file is known, semantic retrieval must stay file-scoped for seam anchoring.
 - If the selected semantic candidate is weak, evaluate the next ranked semantic candidate(s) before strict matching.
 - Strict matching is fallback-only and should run only when semantic cannot provide a strong anchor; strict ambiguity must not block a strong semantic anchor.
-- `read_code_symbols` has repeat-call enforcement for unchanged files; one symbol dump per file should be enough for most seams.
-- If a true second symbol dump is required, use `read_code_symbols <file> --allow-repeat` and state why before doing it.
-- `read_code_symbols` on large files is high-output; only use when seam is unknown, not for known-anchor verification.
+- Symbol dumps are not part of standard workflow; use semantic anchor + bounded window reads instead.
+- Break-glass symbol dumps live only in `scripts/read_code_debug.py` and require explicit maintenance intent.
 - `context_lines` is a total context budget with a fixed small-before/larger-after split.
 - The confidence cutoff for inline body output is `90/100` when `--inline-body` is requested.
 - A non-top candidate body should only be returned through the bounded follow-up helper path.
