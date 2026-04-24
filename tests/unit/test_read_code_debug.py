@@ -25,9 +25,9 @@ def test_main_enables_break_glass_and_delegates(monkeypatch) -> None:
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     monkeypatch.setattr(debug, "read_code_symbols", lambda args: (seen_args.append(list(args)), 0)[1])
 
-    exit_code = debug.main(["scripts/read_code.py", "--allow-repeat"])
+    exit_code = debug.main(["scripts/read_code.py"])
 
     assert exit_code == 0
-    assert seen_args == [["scripts/read_code.py", "--allow-repeat"]]
+    assert seen_args == [["scripts/read_code.py"]]
     assert os.environ[debug.READ_CODE_ALLOW_SYMBOL_DUMP_ENV] == "1"
     assert os.environ["UV_CACHE_DIR"].endswith(".codegraphcontext/.uv-cache")

@@ -231,7 +231,7 @@ def main() -> int:
     if _uses_legacy_symbol_dump(tokens):
         _emit_deny(
             "Legacy read_code_symbols invocations are denied. Use scripts/read_code_debug.py "
-            "<file_path> [--allow-repeat] for maintenance/debug only."
+            "<file_path> for maintenance/debug only."
         )
         return 0
 

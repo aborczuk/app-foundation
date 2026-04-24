@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,15 +30,11 @@ READ_CODE_CONTEXT_PRE_CAP = 25
 READ_CODE_SEMANTIC_MIN_CONFIDENCE = int(
     os.environ.get("SPECKIT_READ_CODE_SEMANTIC_MIN_CONFIDENCE", "70") or "70"
 )
-READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS = int(
-    os.environ.get("SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS", "900") or "900"
-)
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
 )
 LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-edit-signature.txt"
-READ_CODE_SYMBOLS_USAGE_FILE = CODEGRAPH_DB_DIR / "read-code-symbols-usage.json"
 CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_ATTEMPTS", "2") or "2")
 CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
     os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
@@ -92,6 +89,16 @@ class _VectorIndexProbe:
     stale_signal_source: str
     stale_signal_available: bool
     stale_signal_error: str
+
+
+@dataclass(frozen=True)
+class _AnchorResolution:
+    """Shared anchor resolution result for context and window read entrypoints."""
+
+    vector_candidates: list[_VectorMatch]
+    vector_match: _VectorMatch | None
+    strict_status: int
+    line_num: int | None
 
 
 _VECTOR_RUNTIME_NOTE: str | None = None
@@ -170,20 +177,72 @@ def _read_code_refresh_debounce_cache_path(session_id: str) -> Path:
     return CODEGRAPH_DB_DIR / f"read-code-refresh-debounce-{_session_safe_key(session_id)}.json"
 
 
-def _load_session_state(path: Path) -> dict[str, float]:
-    """Load a float-valued session state mapping from JSON."""
+def _load_json_object(path: Path) -> dict[str, object] | None:
+    """Load a JSON object from disk, returning None on missing/invalid payloads."""
     if not path.is_file():
-        return {}
+        return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _persist_json_object(
+    path: Path,
+    payload: dict[str, object],
+    *,
+    ensure_ascii: bool = True,
+    sort_keys: bool = False,
+) -> None:
+    """Persist a JSON object without raising filesystem write errors."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=ensure_ascii, sort_keys=sort_keys),
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
+def _run_command_capture(
+    cmd: list[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command with deterministic capture defaults for probe/discovery flows."""
+    return subprocess.run(
+        cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def _parse_json_dict_payload(payload: str) -> tuple[dict[str, object] | None, bool]:
+    """Parse a JSON dict payload and report whether parsing itself failed."""
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return None, True
+    return (data, False) if isinstance(data, dict) else (None, False)
+
+
+def _load_string_keyed_mapping(path: Path) -> dict[str, object]:
+    """Load a JSON object and keep only string-keyed entries."""
+    payload = _load_json_object(path)
+    if payload is None:
         return {}
-    if not isinstance(payload, dict):
-        return {}
+    return {key: value for key, value in payload.items() if isinstance(key, str)}
+
+
+def _load_session_state(path: Path) -> dict[str, float]:
+    """Load a float-valued session state mapping from JSON."""
+    payload = _load_string_keyed_mapping(path)
     state: dict[str, float] = {}
     for key, value in payload.items():
-        if not isinstance(key, str):
-            continue
         if isinstance(value, (int, float)):
             state[key] = float(value)
     return state
@@ -191,11 +250,7 @@ def _load_session_state(path: Path) -> dict[str, float]:
 
 def _persist_session_state(path: Path, state: dict[str, float]) -> None:
     """Persist a float-valued session state mapping to JSON."""
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state), encoding="utf-8")
-    except OSError:
-        return
+    _persist_json_object(path, dict(state))
 
 
 def _scope_cache_key(scope_path: Path) -> str:
@@ -346,24 +401,17 @@ def _invalidate_vector_probe_cache(session_id: str | None = None) -> None:
 def _load_codegraph_session_probe_cache(session_id: str) -> bool | None:
     """Load cached session probe availability when present."""
     cache_file = _codegraph_session_probe_cache_path(session_id)
-    if not cache_file.is_file():
+    payload = _load_json_object(cache_file)
+    if payload is None:
         return None
-    try:
-        payload = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    available = payload.get("available") if isinstance(payload, dict) else None
+    available = payload.get("available")
     return available if isinstance(available, bool) else None
 
 
 def _persist_codegraph_session_probe_cache(session_id: str, *, available: bool) -> None:
     """Persist session-scoped codegraph probe availability for subsequent helper calls."""
     cache_file = _codegraph_session_probe_cache_path(session_id)
-    try:
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps({"available": available}), encoding="utf-8")
-    except OSError:
-        return
+    _persist_json_object(cache_file, {"available": available})
 
 
 def _mark_codegraph_preflight_launched(session_id: str) -> bool:
@@ -444,11 +492,8 @@ def run_codegraph_preflight_worker(argv: list[str]) -> int:
     init_codegraph_env()
     safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
     if safe_index.is_file() and os.access(safe_index, os.X_OK):
-        subprocess.run(
+        _run_command_capture(
             [str(safe_index), str(scope_path)],
-            check=False,
-            capture_output=True,
-            text=True,
             env=_vector_command_env(),
         )
 
@@ -595,7 +640,7 @@ def codegraph_cached_edit_signature(project_root: Path | None = None) -> str:
 def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     """Return the current non-ignored git status signature."""
     root = project_root or REPO_ROOT
-    proc = subprocess.run(
+    proc = _run_command_capture(
         [
             "git",
             "-C",
@@ -603,10 +648,7 @@ def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
             "status",
             "--porcelain",
             "--untracked-files=normal",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
+        ]
     )
     if proc.returncode != 0:
         return ""
@@ -704,7 +746,7 @@ def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealth
             detail="uv is not available",
             recovery_command=f"{SCRIPT_DIR / 'cgc_safe_index.sh'} {root}",
         )
-    proc = subprocess.run(
+    proc = _run_command_capture(
         [
             "uv",
             "run",
@@ -716,9 +758,6 @@ def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealth
             "--project-root",
             str(root),
         ],
-        check=False,
-        capture_output=True,
-        text=True,
     )
 
     payload = (proc.stdout or "").strip()
@@ -726,17 +765,16 @@ def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealth
     detail = ""
     recovery_command = ""
     if payload:
-        try:
-            data = json.loads(payload)
-            if isinstance(data, dict):
-                status = str(data.get("status", ""))
-                detail = str(data.get("detail", "") or "")
-                recovery_hint = data.get("recovery_hint")
-                if isinstance(recovery_hint, dict):
-                    recovery_command = str(recovery_hint.get("command", "") or "")
-        except json.JSONDecodeError:
+        data, parse_error = _parse_json_dict_payload(payload)
+        if parse_error:
             print("WARN: codegraph health probe returned non-JSON output", file=sys.stderr)
             status = ""
+        elif data is not None:
+            status = str(data.get("status", ""))
+            detail = str(data.get("detail", "") or "")
+            recovery_hint = data.get("recovery_hint")
+            if isinstance(recovery_hint, dict):
+                recovery_command = str(recovery_hint.get("command", "") or "")
 
     if not status:
         doctor_err = (proc.stderr or "").strip()
@@ -813,7 +851,7 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
                 print(f"ERROR: doctor suggested: {probe.recovery_command}", file=sys.stderr)
             return False
 
-        proc = subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
+        proc = _run_command_capture([str(safe_index), str(path)])
         if proc.returncode != 0:
             stderr = (proc.stderr or "").strip()
             if stderr:
@@ -875,13 +913,7 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
         str(root),
         "status",
     ]
-    proc = subprocess.run(
-        cmd,
-        check=False,
-        capture_output=True,
-        text=True,
-        env=_vector_command_env(),
-    )
+    proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         if stderr:
@@ -916,9 +948,8 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             ),
         )
 
-    try:
-        status_payload = json.loads(payload)
-    except json.JSONDecodeError:
+    status_payload, parse_error = _parse_json_dict_payload(payload)
+    if parse_error:
         _set_vector_runtime_note("index status probe returned non-JSON output")
         return _remember_vector_probe(
             session_id,
@@ -932,7 +963,7 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_error="non-json status payload",
             ),
         )
-    if not isinstance(status_payload, dict):
+    if status_payload is None:
         _set_vector_runtime_note("index status probe returned unexpected payload shape")
         return _remember_vector_probe(
             session_id,
@@ -946,7 +977,6 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
             stale_signal_error="unexpected payload shape",
             ),
         )
-
     is_stale = bool(status_payload.get("is_stale", False))
     return _remember_vector_probe(
         session_id,
@@ -1053,13 +1083,7 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         "refresh",
         str(path),
     ]
-    proc = subprocess.run(
-        cmd,
-        check=False,
-        capture_output=True,
-        text=True,
-        env=_vector_command_env(),
-    )
+    proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         if stderr:
@@ -1194,13 +1218,7 @@ def codegraph_discover_or_fail(
         return False
 
     cmd = ["uv", "run", "--no-sync", "cgc", "find", "pattern", "--", pattern]
-    proc = subprocess.run(
-        cmd,
-        check=False,
-        capture_output=True,
-        text=True,
-        env=_vector_command_env(),
-    )
+    proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode == 0:
         return True
 
@@ -1208,8 +1226,8 @@ def codegraph_discover_or_fail(
     safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
     has_self_heal_pattern = "Database Connection Error" in output or "No index metadata" in output
     if has_self_heal_pattern and safe_index.is_file() and os.access(safe_index, os.X_OK):
-        subprocess.run([str(safe_index), str(path)], check=False, capture_output=True, text=True)
-        second = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        _run_command_capture([str(safe_index), str(path)])
+        second = _run_command_capture(cmd)
         if second.returncode == 0:
             return True
         output = (second.stdout or "") + (second.stderr or "")
@@ -1233,15 +1251,11 @@ def normalize_symbol_pattern(raw: str) -> str:
     return normalized
 
 
-def _resolve_candidate_file(item: dict[str, object]) -> str | None:
-    candidate = item.get("file_path")
-    if isinstance(candidate, str) and candidate:
-        return candidate
+def _candidate_nested_value(item: dict[str, object], key: str) -> object | None:
+    """Return candidate content[key] when a nested content mapping is present."""
     content = item.get("content")
     if isinstance(content, dict):
-        nested = content.get("file_path")
-        if isinstance(nested, str) and nested:
-            return nested
+        return content.get(key)
     return None
 
 
@@ -1249,21 +1263,16 @@ def _resolve_candidate_line(item: dict[str, object]) -> int | None:
     line = _coerce_line(item.get("line_start"))
     if line is not None:
         return line
-    content = item.get("content")
-    if isinstance(content, dict):
-        return _coerce_line(content.get("line_start"))
-    return None
+    return _coerce_line(_candidate_nested_value(item, "line_start"))
 
 
 def _candidate_text(item: dict[str, object], key: str) -> str:
     value = item.get(key)
     if isinstance(value, str):
         return value
-    content = item.get("content")
-    if isinstance(content, dict):
-        nested = content.get(key)
-        if isinstance(nested, str):
-            return nested
+    nested = _candidate_nested_value(item, key)
+    if isinstance(nested, str):
+        return nested
     return ""
 
 
@@ -1273,13 +1282,11 @@ def _candidate_int(item: dict[str, object], key: str) -> int | None:
         return value
     if isinstance(value, str) and value.isdigit():
         return int(value, 10)
-    content = item.get("content")
-    if isinstance(content, dict):
-        nested = content.get(key)
-        if isinstance(nested, int):
-            return nested
-        if isinstance(nested, str) and nested.isdigit():
-            return int(nested, 10)
+    nested = _candidate_nested_value(item, key)
+    if isinstance(nested, int):
+        return nested
+    if isinstance(nested, str) and nested.isdigit():
+        return int(nested, 10)
     return None
 
 
@@ -1287,11 +1294,9 @@ def _candidate_string_list(item: dict[str, object], key: str) -> list[str]:
     value = item.get(key)
     if isinstance(value, list):
         return [str(part) for part in value if str(part)]
-    content = item.get("content")
-    if isinstance(content, dict):
-        nested = content.get(key)
-        if isinstance(nested, list):
-            return [str(part) for part in nested if str(part)]
+    nested = _candidate_nested_value(item, key)
+    if isinstance(nested, list):
+        return [str(part) for part in nested if str(part)]
     return []
 
 
@@ -1299,19 +1304,16 @@ def _candidate_raw_score(item: dict[str, object]) -> float:
     value = item.get("score")
     if isinstance(value, (int, float)):
         return float(value)
-    content = item.get("content")
-    if isinstance(content, dict):
-        nested = content.get("score")
-        if isinstance(nested, (int, float)):
-            return float(nested)
+    nested_score = _candidate_nested_value(item, "score")
+    if isinstance(nested_score, (int, float)):
+        return float(nested_score)
 
     distance = item.get("distance")
     if isinstance(distance, (int, float)):
         return max(0.0, 1.0 - float(distance))
-    if isinstance(content, dict):
-        nested = content.get("distance")
-        if isinstance(nested, (int, float)):
-            return max(0.0, 1.0 - float(nested))
+    nested_distance = _candidate_nested_value(item, "distance")
+    if isinstance(nested_distance, (int, float)):
+        return max(0.0, 1.0 - float(nested_distance))
     return 0.0
 
 
@@ -1500,13 +1502,7 @@ def _vector_query_candidates(
         "--top-k",
         "20",
     ]
-    proc = subprocess.run(
-        cmd,
-        check=False,
-        capture_output=True,
-        text=True,
-        env=_vector_command_env(),
-    )
+    proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         if stderr:
@@ -1529,7 +1525,7 @@ def _vector_query_candidates(
     for item in payload:
         if not isinstance(item, dict):
             continue
-        candidate = _resolve_candidate_file(item)
+        candidate = _candidate_text(item, "file_path")
         if not candidate:
             continue
         try:
@@ -1545,28 +1541,15 @@ def _vector_query_candidates(
     return sorted(matches, key=_vector_anchor_rank, reverse=True)[:5]
 
 
-def _vector_query_line_num(file_path: Path, query: str, normalized_query: str, scope: str) -> _VectorMatch | None:
-    candidates = _vector_query_candidates(file_path, query, normalized_query, scope)
-    return candidates[0] if candidates else None
-
-
 def _vector_find_line_num(
     file_path: Path,
     raw_pattern: str,
     normalized_pattern: str,
     scope: str,
 ) -> _VectorMatch | None:
-    _clear_vector_runtime_note()
-    match = None
-    if raw_pattern:
-        match = _vector_query_line_num(file_path, raw_pattern, normalized_pattern, scope)
-    if (
-        match is None
-        and normalized_pattern
-        and normalized_pattern != raw_pattern
-    ):
-        match = _vector_query_line_num(file_path, normalized_pattern, normalized_pattern, scope)
-    return match
+    """Return top-ranked semantic match from the shared candidate fallback query."""
+    candidates = _vector_find_candidates(file_path, raw_pattern, normalized_pattern, scope)
+    return candidates[0] if candidates else None
 
 
 def _vector_find_candidates(
@@ -1603,7 +1586,7 @@ def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
         "list-file-symbols",
         str(file_path),
     ]
-    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    proc = _run_command_capture(cmd)
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         if stderr:
@@ -1628,14 +1611,19 @@ def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
     return symbols
 
 
-def _find_first_literal_line(file_path: Path, literal: str) -> int | None:
+def _iter_literal_hits(file_path: Path, literal: str) -> Iterator[int]:
+    """Yield 1-based line numbers that contain the requested literal."""
     if not literal:
-        return None
+        return
     with file_path.open(encoding="utf-8") as handle:
         for idx, line in enumerate(handle, start=1):
             if literal in line:
-                return idx
-    return None
+                yield idx
+
+
+def _find_first_literal_line(file_path: Path, literal: str) -> int | None:
+    """Return the first matching line for a literal, when one exists."""
+    return next(_iter_literal_hits(file_path, literal), None)
 
 
 def _find_line_num(file_path: Path, raw_pattern: str, normalized_pattern: str) -> int | None:
@@ -1652,14 +1640,8 @@ def _find_line_num(file_path: Path, raw_pattern: str, normalized_pattern: str) -
 
 
 def _collect_literal_hits(file_path: Path, literal: str) -> list[int]:
-    if not literal:
-        return []
-    hits: list[int] = []
-    with file_path.open(encoding="utf-8") as handle:
-        for idx, line in enumerate(handle, start=1):
-            if literal in line:
-                hits.append(idx)
-    return hits
+    """Return every matching line number for a literal within a file."""
+    return list(_iter_literal_hits(file_path, literal))
 
 
 def _resolve_line_num_strict(file_path: Path, raw_pattern: str, normalized_pattern: str) -> tuple[int, int | None]:
@@ -1796,92 +1778,6 @@ def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | N
     return candidate.body
 
 
-def _load_symbols_usage_state() -> dict[str, dict[str, object]]:
-    """Load persisted read_code_symbols usage telemetry for repeat-call guarding."""
-    if not READ_CODE_SYMBOLS_USAGE_FILE.is_file():
-        return {}
-    try:
-        payload = json.loads(READ_CODE_SYMBOLS_USAGE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    normalized: dict[str, dict[str, object]] = {}
-    for key, value in payload.items():
-        if isinstance(key, str) and isinstance(value, dict):
-            normalized[key] = value
-    return normalized
-
-
-def _persist_symbols_usage_state(state: dict[str, dict[str, object]]) -> None:
-    """Persist read_code_symbols usage telemetry without failing the read path."""
-    try:
-        READ_CODE_SYMBOLS_USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        READ_CODE_SYMBOLS_USAGE_FILE.write_text(
-            json.dumps(state, ensure_ascii=True, sort_keys=True),
-            encoding="utf-8",
-        )
-    except OSError:
-        return
-
-
-def _check_symbols_repeat_guard(file_path: Path, *, allow_repeat: bool) -> tuple[bool, str]:
-    """Enforce a cooldown on repeated symbol dumps for unchanged files."""
-    if allow_repeat or READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS <= 0:
-        return False, ""
-    try:
-        stat = file_path.stat()
-    except OSError:
-        return False, ""
-    current_mtime_ns = int(stat.st_mtime_ns)
-    current_size = int(stat.st_size)
-    now = time.time()
-    key = str(file_path.resolve())
-    state = _load_symbols_usage_state()
-    entry = state.get(key)
-    if isinstance(entry, dict):
-        recorded_mtime_raw = entry.get("mtime_ns")
-        recorded_size_raw = entry.get("size")
-        recorded_ts_raw = entry.get("last_called_ts")
-        recorded_mtime_ns = (
-            int(recorded_mtime_raw)
-            if isinstance(recorded_mtime_raw, (int, float))
-            else -1
-        )
-        recorded_size = (
-            int(recorded_size_raw)
-            if isinstance(recorded_size_raw, (int, float))
-            else -1
-        )
-        recorded_ts = (
-            float(recorded_ts_raw)
-            if isinstance(recorded_ts_raw, (int, float))
-            else 0.0
-        )
-        elapsed = now - recorded_ts
-        if (
-            recorded_mtime_ns == current_mtime_ns
-            and recorded_size == current_size
-            and elapsed >= 0
-            and elapsed < READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS
-        ):
-            remaining = int(READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS - elapsed)
-            return (
-                True,
-                (
-                    f"read_code_symbols repeat guard: {file_path} was listed {int(elapsed)}s ago and is unchanged; "
-                    f"use read_code_context/read_code_window or pass --allow-repeat (cooldown remaining: {remaining}s)."
-                ),
-            )
-    state[key] = {
-        "mtime_ns": current_mtime_ns,
-        "size": current_size,
-        "last_called_ts": now,
-    }
-    _persist_symbols_usage_state(state)
-    return False, ""
-
-
 def _select_vector_candidate(candidates: list[_VectorMatch], index: int) -> tuple[_VectorMatch | None, str | None]:
     """Select a ranked candidate index while returning actionable selection errors."""
     if index < 0:
@@ -1928,6 +1824,132 @@ def _select_semantic_anchor_candidate(
     return None, None
 
 
+def _emit_strict_resolution_failure(pattern: str, strict_status: int) -> None:
+    """Emit deterministic strict-resolution failure messaging."""
+    if strict_status == 2:
+        print(
+            "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
+            file=sys.stderr,
+        )
+        return
+    print(
+        f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
+        file=sys.stderr,
+    )
+
+
+def _query_semantic_anchor_candidate(
+    file_path: Path,
+    pattern: str,
+    normalized_pattern: str,
+    *,
+    candidate_index: int,
+    show_shortlist_hint: bool,
+) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
+    """Query ranked candidates and select a semantic anchor with standardized error handling."""
+    vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
+    if candidate_error is not None:
+        print(f"ERROR: {candidate_error}", file=sys.stderr)
+        if show_shortlist_hint and vector_candidates:
+            print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+        return vector_candidates, None, False
+    return vector_candidates, vector_match, True
+
+
+def _resolve_pattern_anchor(
+    file_path: Path,
+    pattern: str,
+    normalized_pattern: str,
+    *,
+    candidate_index: int,
+    allow_fallback: bool,
+    show_shortlist_hint: bool,
+) -> _AnchorResolution | None:
+    """Resolve pattern anchor via semantic-first and strict fallback flow."""
+    vector_candidates, vector_match, selection_ok = _query_semantic_anchor_candidate(
+        file_path,
+        pattern,
+        normalized_pattern,
+        candidate_index=candidate_index,
+        show_shortlist_hint=show_shortlist_hint,
+    )
+    if not selection_ok:
+        return None
+
+    strict_status = 1
+    strict_line_num: int | None = None
+    line_num: int | None = None
+    if vector_match is not None:
+        line_num = vector_match.line_num
+    else:
+        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+        if strict_status == 0:
+            line_num = strict_line_num
+        elif allow_fallback:
+            line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+    if line_num is None and strict_status != 0:
+        if codegraph_supports_file(file_path):
+            discover_pattern = (
+                normalized_pattern
+                if normalized_pattern and normalized_pattern != pattern
+                else pattern
+            )
+            if not codegraph_discover_or_fail(
+                discover_pattern,
+                file_path.parent,
+                skip_preflight_refresh=True,
+            ):
+                return None
+
+        refreshed_candidates, refreshed_match, selection_ok = _query_semantic_anchor_candidate(
+            file_path,
+            pattern,
+            normalized_pattern,
+            candidate_index=candidate_index,
+            show_shortlist_hint=show_shortlist_hint,
+        )
+        if not selection_ok:
+            return None
+        if refreshed_candidates:
+            vector_candidates = refreshed_candidates
+            vector_match = refreshed_match
+            if vector_match is not None:
+                line_num = vector_match.line_num
+
+        if line_num is None:
+            strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
+            if strict_status == 0:
+                line_num = strict_line_num
+            elif allow_fallback:
+                line_num = _find_line_num(file_path, pattern, normalized_pattern)
+
+    if line_num is not None and not vector_candidates:
+        vector_candidates, vector_match, selection_ok = _query_semantic_anchor_candidate(
+            file_path,
+            pattern,
+            normalized_pattern,
+            candidate_index=candidate_index,
+            show_shortlist_hint=show_shortlist_hint,
+        )
+        if not selection_ok:
+            return None
+
+    _emit_vector_fallback_notice(
+        file_path=file_path,
+        pattern=pattern,
+        vector_match=vector_match,
+        resolved_line=line_num,
+    )
+    return _AnchorResolution(
+        vector_candidates=vector_candidates,
+        vector_match=vector_match,
+        strict_status=strict_status,
+        line_num=line_num,
+    )
+
+
 def read_code_symbols(argv: list[str]) -> int:
     """Debug-only symbol dump for maintenance and break-glass investigation."""
     if not _symbol_dump_enabled():
@@ -1941,21 +1963,13 @@ def read_code_symbols(argv: list[str]) -> int:
     if len(argv) < 1:
         print("ERROR: read_code_symbols requires: <file_path>", file=sys.stderr)
         return 1
-    allow_repeat = False
     for token in argv[1:]:
-        if token == "--allow-repeat":
-            allow_repeat = True
-            continue
         print(f"ERROR: Unexpected argument(s) for symbols mode: {token}", file=sys.stderr)
         return 1
 
     file_path = Path(argv[0])
     if not file_path.is_file():
         print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
-        return 1
-    repeat_blocked, repeat_message = _check_symbols_repeat_guard(file_path, allow_repeat=allow_repeat)
-    if repeat_blocked:
-        print(f"ERROR: {repeat_message}", file=sys.stderr)
         return 1
     if not _refresh_indexes_for_read(file_path):
         return 1
@@ -2047,99 +2061,23 @@ def read_code_context(argv: list[str]) -> int:
     if not _refresh_indexes_for_read(file_path):
         return 1
     normalized_pattern = normalize_symbol_pattern(pattern)
-    vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-    vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
-    if candidate_error is not None:
-        print(f"ERROR: {candidate_error}", file=sys.stderr)
-        if vector_candidates:
-            print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
-        return 1
-
-    strict_status = 1
-    strict_line_num: int | None = None
-    line_num: int | None = None
-    if vector_match is not None:
-        line_num = vector_match.line_num
-    else:
-        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-        if strict_status == 0:
-            line_num = strict_line_num
-        elif allow_fallback:
-            line_num = _find_line_num(file_path, pattern, normalized_pattern)
-
-    if line_num is None and strict_status != 0:
-        if codegraph_supports_file(file_path):
-            discover_pattern = (
-                normalized_pattern
-                if normalized_pattern and normalized_pattern != pattern
-                else pattern
-            )
-            if not codegraph_discover_or_fail(
-                discover_pattern,
-                file_path.parent,
-                skip_preflight_refresh=True,
-            ):
-                return 1
-            refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-            if refreshed_candidates:
-                vector_candidates = refreshed_candidates
-                vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
-                if candidate_error is not None:
-                    print(f"ERROR: {candidate_error}", file=sys.stderr)
-                    print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
-                    return 1
-                if vector_match is not None:
-                    line_num = vector_match.line_num
-        else:
-            refreshed_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-            if refreshed_candidates:
-                vector_candidates = refreshed_candidates
-                vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
-                if candidate_error is not None:
-                    print(f"ERROR: {candidate_error}", file=sys.stderr)
-                    print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
-                    return 1
-                if vector_match is not None:
-                    line_num = vector_match.line_num
-
-        if line_num is None:
-            strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-            if strict_status == 0:
-                line_num = strict_line_num
-            elif allow_fallback:
-                line_num = _find_line_num(file_path, pattern, normalized_pattern)
-
-    if line_num is not None and not vector_candidates:
-        vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-        if vector_candidates and vector_match is None:
-            vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
-            if candidate_error is not None:
-                print(f"ERROR: {candidate_error}", file=sys.stderr)
-                print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
-                return 1
-
-    _emit_vector_fallback_notice(
-        file_path=file_path,
-        pattern=pattern,
-        vector_match=vector_match,
-        resolved_line=line_num,
+    resolution = _resolve_pattern_anchor(
+        file_path,
+        pattern,
+        normalized_pattern,
+        candidate_index=candidate_index,
+        allow_fallback=allow_fallback,
+        show_shortlist_hint=True,
     )
-
-    if line_num is None:
-        if strict_status == 2:
-            print(
-                "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
-                file=sys.stderr,
-            )
+    if resolution is None:
         return 1
+    vector_candidates = resolution.vector_candidates
+    vector_match = resolution.vector_match
+    strict_status = resolution.strict_status
+    line_num = resolution.line_num
 
     if line_num is None:
-        print(f"ERROR: Pattern not found after one bounded fallback: {pattern} in {file_arg}", file=sys.stderr)
+        _emit_strict_resolution_failure(pattern, strict_status)
         return 1
 
     if vector_candidates and show_shortlist:
@@ -2207,75 +2145,26 @@ def read_code_window(argv: list[str]) -> int:
         return 1
 
     use_hud_fast_path = hud_flag
-    vector_match = None
 
     if pattern:
         if not _refresh_indexes_for_read(file_path):
             return 1
         normalized_pattern = normalize_symbol_pattern(pattern)
-        vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-        vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, 0)
-        if candidate_error is not None:
-            print(f"ERROR: {candidate_error}", file=sys.stderr)
-            return 1
-
-        strict_status = 1
-        strict_line_num: int | None = None
-        line_num: int | None = None
-        if vector_match is not None:
-            line_num = vector_match.line_num
-        else:
-            strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-            if strict_status == 0:
-                line_num = int(strict_line_num or 0)
-            elif allow_fallback:
-                line_num = _find_line_num(file_path, pattern, normalized_pattern)
-
-        if line_num is None and strict_status != 0:
-            if codegraph_supports_file(file_path):
-                discover_pattern = (
-                    normalized_pattern
-                    if normalized_pattern and normalized_pattern != pattern
-                    else pattern
-                )
-                if not codegraph_discover_or_fail(
-                    discover_pattern,
-                    file_path.parent,
-                    skip_preflight_refresh=True,
-                ):
-                    return 1
-            vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-            vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, 0)
-            if candidate_error is not None:
-                print(f"ERROR: {candidate_error}", file=sys.stderr)
-                return 1
-            if vector_match is not None:
-                line_num = vector_match.line_num
-            else:
-                strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-                if strict_status == 0:
-                    line_num = int(strict_line_num or 0)
-                elif allow_fallback:
-                    line_num = _find_line_num(file_path, pattern, normalized_pattern)
-
-        _emit_vector_fallback_notice(
-            file_path=file_path,
-            pattern=pattern,
-            vector_match=vector_match,
-            resolved_line=line_num,
+        resolution = _resolve_pattern_anchor(
+            file_path,
+            pattern,
+            normalized_pattern,
+            candidate_index=0,
+            allow_fallback=allow_fallback,
+            show_shortlist_hint=False,
         )
+        if resolution is None:
+            return 1
+        strict_status = resolution.strict_status
+        line_num = resolution.line_num
 
         if line_num is None:
-            if strict_status == 2:
-                print(
-                    "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
-                    file=sys.stderr,
-                )
+            _emit_strict_resolution_failure(pattern, strict_status)
             return 1
 
         anchor_line = int(line_num)
@@ -2335,7 +2224,7 @@ def main(argv: list[str]) -> int:
     if mode == "symbols":
         print(
             "ERROR: symbols mode is debug-only. Use scripts/read_code_debug.py <file_path> "
-            f"[--allow-repeat] with {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1 for maintenance/debug.",
+            f"with {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1 for maintenance/debug.",
             file=sys.stderr,
         )
         return 1

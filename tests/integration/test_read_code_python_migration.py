@@ -576,67 +576,6 @@ def test_read_code_symbols_is_blocked_by_default(tmp_path: Path) -> None:
     assert "read_code_debug.py" in result.stderr
 
 
-def test_read_code_symbols_repeat_guard_requires_explicit_override(tmp_path: Path) -> None:
-    code_file = tmp_path / "source_sample.py"
-    code_file.write_text(
-        "def target():\n"
-        "    return 1\n",
-        encoding="utf-8",
-    )
-    payload = json.dumps(
-        [
-            {
-                "file_path": str(code_file),
-                "line_start": 1,
-                "line_end": 2,
-                "scope": "code",
-                "record_type": "code",
-                "symbol_name": "target",
-                "qualified_name": "source_sample.target",
-                "signature": "def target():",
-                "docstring": "",
-                "body": "def target():\n    return 1\n",
-                "preview": "def target():",
-                "symbol_type": "function",
-            }
-        ]
-    )
-    env = _env_with_fake_uv(tmp_path, payload)
-    env["READ_CODE_ALLOW_SYMBOL_DUMP"] = "1"
-    env["SPECKIT_READ_CODE_SYMBOLS_REPEAT_COOLDOWN_SECONDS"] = "900"
-
-    first_result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file)],
-        cwd=tmp_path,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    second_result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file)],
-        cwd=tmp_path,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    override_result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve().parents[2] / "scripts" / "read_code_debug.py"), str(code_file), "--allow-repeat"],
-        cwd=tmp_path,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert first_result.returncode == 0, first_result.stderr
-    assert second_result.returncode == 1
-    assert "repeat guard" in second_result.stderr
-    assert "--allow-repeat" in second_result.stderr
-    assert override_result.returncode == 0, override_result.stderr
-
-
 def test_read_code_yaml_symbols_and_context_flow(tmp_path: Path) -> None:
     yaml_file = tmp_path / "command-manifest.yaml"
     yaml_file.write_text(

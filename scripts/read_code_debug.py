@@ -24,9 +24,7 @@ from uv_env import repo_uv_env
 def _print_usage() -> None:
     """Print the debug-only usage string."""
     print("Usage:")
-    print(
-        f"  read_code_debug.py <file_path> [--allow-repeat] (sets {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1)"
-    )
+    print(f"  read_code_debug.py <file_path> (sets {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1)")
     print("                   (break-glass maintenance/debug only)")
 
 
