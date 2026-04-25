@@ -32,7 +32,7 @@ End-to-end information already existed, but it was split:
 | Template scaffolding engine | `.specify/scripts/pipeline-scaffold.py` |
 | Feature bootstrap/setup scripts | `.specify/scripts/bash/*.sh` |
 | Pipeline event validation and transition enforcement | `scripts/pipeline_ledger.py` |
-| Deterministic gate scripts | `scripts/speckit_gate_status.py`, `scripts/speckit_tasks_gate.py`, `scripts/speckit_implement_gate.py` |
+| Deterministic gate scripts | `scripts/speckit_gate_status.py`, `scripts/speckit_tasks_gate.py`, `scripts/speckit_implement_gate.py`, `scripts/speckit_behavioral_qa.py` |
 | Runtime artifacts and ledgers | `.speckit/` |
 
 ## End-to-End Lifecycle
@@ -46,7 +46,7 @@ Key hard-gate facts:
 - `research.md` must exist before `/speckit.plan`.
 - `plan_approved` must occur before solution steps.
 - `analysis_completed` must occur before `/speckit.e2e`.
-- `offline_qa_passed` is required before task close.
+- `offline_qa_passed` is required before task close. The QA agent (`scripts/speckit_behavioral_qa.py`) verifies acceptance criteria, runs tests, and checks for implementation drift. Tasks with `FIX_REQUIRED` cannot close.
 
 For exact matrix and event semantics, use `constitution.md`.
 

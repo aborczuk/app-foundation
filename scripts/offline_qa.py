@@ -6,12 +6,21 @@ The runner evaluates a task handoff payload and emits a deterministic verdict:
 - FIX_REQUIRED
 
 This is intentionally local/offline and does not require network calls.
+
+Behavioral Verification (v2):
+In addition to schema validation, this runner now invokes the behavioral QA agent
+(speckit_behavioral_qa.py) which:
+- Reads HUD acceptance criteria
+- Runs actual tests for changed files
+- Checks implementation drift against the task contract
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -143,19 +152,61 @@ def evaluate_payload(payload: dict[str, Any]) -> tuple[str, str, list[str], list
     return feature_id, task_id, findings, [summary, *warnings]
 
 
-def build_result(payload: dict[str, Any]) -> dict[str, Any]:
-    """Build the final QA verdict payload for stdout/result-file emission."""
-    feature_id, task_id, findings, messages = evaluate_payload(payload)
-    verdict = VERDICT_PASS if not findings else VERDICT_FIX_REQUIRED
+def run_behavioral_qa(payload_path: Path) -> dict[str, Any]:
+    """Run the behavioral QA agent and return its result."""
+    repo_root = Path(__file__).resolve().parent.parent
+    cmd = [
+        sys.executable,
+        str(repo_root / "scripts" / "speckit_behavioral_qa.py"),
+        "--payload-file",
+        str(payload_path),
+        "--json",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        return json.loads(proc.stdout.strip())
+    except json.JSONDecodeError:
+        return {
+            "verdict": VERDICT_FIX_REQUIRED,
+            "findings": [f"Behavioral QA failed to produce valid JSON: {proc.stderr}"],
+            "warnings": [],
+            "test_runs": [],
+        }
+
+
+def build_result(payload: dict[str, Any], behavioral_result: dict[str, Any] | None) -> dict[str, Any]:
+    """Build the final QA verdict payload combining schema and behavioral checks."""
+    feature_id, task_id, schema_findings, schema_messages = evaluate_payload(payload)
+
+    # Merge behavioral QA findings
+    all_findings = list(schema_findings)
+    all_messages = list(schema_messages)
+
+    if behavioral_result:
+        if behavioral_result.get("verdict") == VERDICT_FIX_REQUIRED:
+            behavioral_findings = behavioral_result.get("findings", [])
+            all_findings.extend(behavioral_findings)
+        all_messages.extend(behavioral_result.get("warnings", []))
+
+    verdict = VERDICT_PASS if not all_findings else VERDICT_FIX_REQUIRED
     result: dict[str, Any] = {
         "timestamp_utc": utc_now_iso(),
         "qa_run_id": build_qa_run_id(task_id),
         "feature_id": feature_id,
         "task_id": task_id,
         "verdict": verdict,
-        "findings": findings,
-        "messages": messages,
+        "findings": all_findings,
+        "messages": all_messages,
     }
+
+    if behavioral_result:
+        result["behavioral_qa"] = {
+            "verdict": behavioral_result.get("verdict"),
+            "test_runs": behavioral_result.get("test_runs", []),
+            "acceptance_criteria": behavioral_result.get("acceptance_criteria", ""),
+            "file_symbol": behavioral_result.get("file_symbol", ""),
+        }
+
     return result
 
 
@@ -173,6 +224,12 @@ def parse_args() -> argparse.Namespace:
         "--result-file",
         help="Optional path to write verdict JSON.",
     )
+    parser.add_argument(
+        "--skip-behavioral",
+        action="store_true",
+        help="Skip behavioral QA (schema validation only).",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON only.")
     return parser.parse_args()
 
 
@@ -190,7 +247,6 @@ def main() -> int:
 
     try:
         payload = read_payload(payload_path)
-        result = build_result(payload)
     except ValueError as exc:
         result = {
             "timestamp_utc": utc_now_iso(),
@@ -201,8 +257,18 @@ def main() -> int:
             "findings": [str(exc)],
             "messages": ["Offline QA failed to parse handoff payload."],
         }
+        print(json.dumps(result, sort_keys=True))
+        if result_path:
+            write_result(result_path, result)
+        return 1
 
-    output = json.dumps(result, sort_keys=True)
+    behavioral_result = None
+    if not args.skip_behavioral:
+        behavioral_result = run_behavioral_qa(payload_path)
+
+    result = build_result(payload, behavioral_result)
+
+    output = json.dumps(result, indent=2 if args.json else None, sort_keys=True)
     print(output)
 
     if result_path:
