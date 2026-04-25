@@ -73,12 +73,16 @@ Require:
 
 - `FEATURE_DIR/sketch.md`
 - `FEATURE_DIR/spec.md`
-- `FEATURE_DIR/plan.md`
+
+Routing-aware requirement:
+
+- If `spec.md` routes `plan_profile != skip`, require `FEATURE_DIR/plan.md`.
+- If `spec.md` routes `plan_profile = skip`, treat `plan.md` as intentionally absent.
 
 If `sketch.md` is missing: **STOP** with  
 `No sketch blueprint found. Run /speckit.sketch first.`
 
-If `plan.md` contains unresolved `## Open Feasibility Questions`, **STOP** and route to `/speckit.feasibilityspike`.
+If `plan_profile != skip` and `plan.md` contains unresolved `## Open Feasibility Questions`, **STOP** and route to `/speckit.feasibilityspike`.
 
 ### 3. Load review context
 
@@ -86,10 +90,10 @@ Read required artifacts:
 
 - `sketch.md`
 - `spec.md`
-- `plan.md`
 
 Read optional artifacts if present:
 
+- `plan.md` when `plan_profile != skip`
 - `research.md`
 - `spike.md`
 - `data-model.md`
@@ -112,29 +116,24 @@ Verify that `sketch.md` contains all required sections.
 
 At minimum, require:
 
-1. **Feature Solution Frame**
-2. **Solution Narrative**
-3. **Construction Strategy**
-4. **Acceptance Traceability**
-5. **Work-Type Classification**
-6. **Current-System Inventory**
-7. **Command / Script Surface Map**
-8. **CodeGraphContext Findings**
-9. **Blast Radius**
-10. **Reuse / Modify / Create Matrix**
-11. **Manifest Alignment Check**
-12. **Architecture Flow Delta**
-13. **Component and Boundary Design**
-14. **Interface, Symbol, and Contract Notes**
-15. **State / Lifecycle / Failure Model**
-16. **Non-Functional Design Implications**
-17. **Human-Task and Operator Boundaries**
-18. **Verification Strategy**
-19. **Domain Guardrails**
-20. **LLD Decision Log**
-21. **Design Gaps and Repo Contradictions**
-22. **Design-to-Tasking Contract**
-23. **Decomposition-Ready Design Slices**
+1. **Coverage**
+2. **Current → Target**
+3. **Primary Seam**
+4. **Required Edit / Solution**
+5. **Verification**
+6. **Constraints / Preserve**
+7. **Implementation Directive**
+8. **Design-to-Tasking Contract**
+9. **Sketch Completion Summary**
+
+Only require the conditional sketch sections when routing or scope triggers them:
+
+- **Repo Grounding**
+- **Contract / Artifact / Event Impact**
+- **Runtime / State / Failure Notes**
+- **Human / Operator Boundaries**
+- **Design Gaps and Repo Contradictions**
+- **Decomposition-Ready Design Slices** for multi-task or decomposition-heavy work
 
 If a required section is missing, empty, or clearly placeholder-level, raise at least HIGH severity; use CRITICAL if the missing section blocks meaningful task decomposition.
 
@@ -158,14 +157,14 @@ Severity guidance:
 
 ### 6. Plan-to-sketch fidelity review (mandatory)
 
-Review whether the sketch faithfully refines the plan rather than re-planning it.
+Review whether the sketch faithfully refines the approved upstream decisions rather than re-planning them.
 
 Check:
 
-- the sketch preserves plan-level architecture decisions,
-- `Architecture Flow Delta` is used correctly instead of silently replacing the plan’s Architecture Flow,
-- manifest/runtime/integration implications are consistent with the plan,
-- sketch does not re-open decisions already settled by plan or feasibility spike,
+- when `plan_profile != skip`, the sketch preserves plan-level architecture decisions and does not silently diverge from them,
+- when `plan_profile = skip`, the sketch preserves the spec routing contract and does not invent a larger skipped plan,
+- manifest/runtime/integration implications are consistent with the upstream plan when present, or with spec routing when plan is intentionally absent,
+- sketch does not re-open decisions already settled by plan, feasibility spike, or routed skip/lite choices,
 - sketch identifies real repo contradictions when plan assumptions do not match codebase reality.
 
 Severity guidance:

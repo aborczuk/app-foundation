@@ -10,7 +10,12 @@ $ARGUMENTS
 
 Generate `tasks.md` from an approved `sketch.md` and stabilize the downstream task graph with deterministic script-owned checks.
 
-1. Decompose `sketch.md` into `tasks.md` (authoritative source: sketch design slices).
+Respect the spec routing contract throughout this command:
+
+- `plan.md` is required only when `plan_profile != skip`.
+- The core sketch sections are sufficient when `sketch_profile = core`.
+
+1. Decompose `sketch.md` into `tasks.md` (authoritative source: the routed sketch design contract, including slices only when present).
 2. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py`.
 3. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
 4. Generate/hydrate HUDs via scaffold + `scripts/speckit_remake_huds.py`.
@@ -35,28 +40,30 @@ Generate `tasks.md` from an approved `sketch.md` and stabilize the downstream ta
 Required:
 - `sketch.md`
 - `spec.md`
-- `plan.md`
 
 Optional:
+- `plan.md` when `plan_profile != skip`
 - `research.md`
 - `catalog.yaml`
 - `command-manifest.yaml`
 
-When deriving tasks, treat the following sketch sections as authoritative:
-- `Solution Narrative`
-- `Construction Strategy`
-- `Acceptance Traceability`
-- `Command / Script Surface Map`
-- `Manifest Alignment Check`
-- `CodeGraphContext Findings`
-- `Blast Radius`
-- `Interface, Symbol, and Contract Notes`
-- `Human-Task and Operator Boundaries`
-- `Verification Strategy`
+When deriving tasks, treat the current sketch template's core sections as authoritative:
+- `Coverage`
+- `Current → Target`
+- `Primary Seam`
+- `Required Edit / Solution`
+- `Verification`
+- `Constraints / Preserve`
+- `Implementation Directive`
+- `Design-to-Tasking Contract`
+- `Sketch Completion Summary`
+
+Treat conditional sketch sections as authoritative only when they are present or explicitly enabled by `conditional_sketch_sections`.
 
 ### 3. Task derivation rules (required)
 
 - Read the routing contract from `spec.md` first; use `sketch_profile` and `conditional_sketch_sections` to decide how much of the sketch must be turned into tasks and HUDs.
+- Do not require `plan.md` or omitted conditional sketch sections when the routing contract intentionally selected the smaller path.
 - Use `tasking_route` to decide whether each non-`[H]` task needs a fresh HUD or attaches to an existing feature stream.
 - Derive tasks from sketch contracts first; do not invent major architecture not present in sketch.
 - Preserve execution order and dependency rules from sketch + tasks graph.

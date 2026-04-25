@@ -30,6 +30,8 @@ def test_extract_spec_routing_contract_parses_and_normalizes_contract() -> None:
     spec_text = """
     # Example
 
+    ## Routing Contract
+
     ```json
     {
       "routing": {
@@ -39,7 +41,7 @@ def test_extract_spec_routing_contract_parses_and_normalizes_contract() -> None:
         "tasking_route": "required",
         "estimate_route": "required_after_tasking",
         "routing_reason": "Repo-local implementation change.",
-        "conditional_sketch_sections": ["Implementation Directive"]
+        "conditional_sketch_sections": ["repo grounding"]
       },
       "risk": {
         "requirement_clarity": "Low",
@@ -60,9 +62,110 @@ def test_extract_spec_routing_contract_parses_and_normalizes_contract() -> None:
     assert contract["routing"]["research_route"] == "skip"
     assert contract["routing"]["plan_profile"] == "full"
     assert contract["routing"]["sketch_profile"] == "core"
-    assert contract["routing"]["conditional_sketch_sections"] == ["Implementation Directive"]
+    assert contract["routing"]["conditional_sketch_sections"] == ["Repo Grounding"]
     assert contract["risk"]["requirement_clarity"] == "low"
     assert contract["risk"]["repo_uncertainty"] == "medium"
+
+
+def test_extract_spec_routing_contract_prefers_routing_contract_section() -> None:
+    spec_text = """
+    # Example
+
+    ```json
+    {
+      "routing": {
+        "research_route": "[Skip / Required]",
+        "plan_profile": "[Skip / Lite / Full]",
+        "sketch_profile": "[Core / Expanded]",
+        "tasking_route": "[Required / Attach]",
+        "estimate_route": "[Required / Reuse]",
+        "routing_reason": "[Why]",
+        "conditional_sketch_sections": []
+      },
+      "risk": {
+        "requirement_clarity": "[Low / Medium / High]",
+        "repo_uncertainty": "[Low / Medium / High]",
+        "external_dependency_uncertainty": "[Low / Medium / High]",
+        "state_data_migration_risk": "[Low / Medium / High]",
+        "runtime_side_effect_risk": "[Low / Medium / High]",
+        "human_operator_dependency": "[Low / Medium / High]"
+      }
+    }
+    ```
+
+    ## Routing Contract
+
+    ```json
+    {
+      "routing": {
+        "research_route": "skip",
+        "plan_profile": "lite",
+        "sketch_profile": "core",
+        "tasking_route": "required",
+        "estimate_route": "required_after_tasking",
+        "routing_reason": "Use the smaller routed path.",
+        "conditional_sketch_sections": ["Repo Grounding"]
+      },
+      "risk": {
+        "requirement_clarity": "low",
+        "repo_uncertainty": "low",
+        "external_dependency_uncertainty": "low",
+        "state_data_migration_risk": "low",
+        "runtime_side_effect_risk": "low",
+        "human_operator_dependency": "low"
+      }
+    }
+    ```
+    """
+
+    contract, reasons = spec_routing.extract_spec_routing_contract(spec_text)
+
+    assert reasons == []
+    assert contract is not None
+    assert contract["routing"]["plan_profile"] == "lite"
+    assert contract["routing"]["routing_reason"] == "Use the smaller routed path."
+
+
+def test_validate_routing_gate_rejects_unknown_conditional_sketch_section(tmp_path: Path) -> None:
+    spec_file = tmp_path / "spec.md"
+    spec_file.write_text(
+        "\n".join(
+            [
+                "# Spec",
+                "",
+                "## Routing Contract",
+                "",
+                "```json",
+                "{",
+                '  "routing": {',
+                '    "research_route": "skip",',
+                '    "plan_profile": "skip",',
+                '    "sketch_profile": "core",',
+                '    "tasking_route": "required",',
+                '    "estimate_route": "required_after_tasking",',
+                '    "routing_reason": "Repo-local tasking/HUD behavior change using existing architecture.",',
+                '    "conditional_sketch_sections": ["Implementation Directive"]',
+                "  },",
+                '  "risk": {',
+                '    "requirement_clarity": "low",',
+                '    "repo_uncertainty": "low",',
+                '    "external_dependency_uncertainty": "low",',
+                '    "state_data_migration_risk": "low",',
+                '    "runtime_side_effect_risk": "low",',
+                '    "human_operator_dependency": "low"',
+                "  }",
+                "}",
+                "```",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code, payload = speckit_spec_gate._validate_routing(spec_file)
+
+    assert exit_code != 0
+    assert payload["ok"] is False
+    assert "invalid_conditional_sketch_section:0:Implementation Directive" in payload["reasons"]
 
 
 def test_validate_routing_gate_accepts_complete_contract(tmp_path: Path) -> None:
@@ -71,6 +174,8 @@ def test_validate_routing_gate_accepts_complete_contract(tmp_path: Path) -> None
         "\n".join(
             [
                 "# Spec",
+                "",
+                "## Routing Contract",
                 "",
                 "```json",
                 "{",

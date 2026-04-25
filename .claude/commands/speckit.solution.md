@@ -25,7 +25,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 Top-level LLD phase for sketch-first planning. Produce the `solution_approved` payload and keep the sketch/review/tasking/analyze sequence driver-owned.
 
 - Resolve `FEATURE_DIR`, `IMPL_PLAN`, and `AVAILABLE_DOCS` from the feature workspace.
-- Use the approved plan and the repository-grounded sketch/review outputs as the solution inputs.
+- Read the spec routing contract first and treat it as authoritative for plan/sketch size.
+- Use `plan.md` as a required input only when `plan_profile != skip`; otherwise ground the solution flow in `spec.md`, the routing contract, and repo reality.
 - Preserve the downstream handoff contract that yields `solution_approved` for pipeline orchestration.
 - Keep the detailed repo-grounding and auto-invoke sequence in the expanded guidance.
 
@@ -37,8 +38,13 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse 
 
 ### 2. Hard-block gate (MANDATORY)
 
-- Read `## Open Feasibility Questions` in `plan.md`.
-- If any unchecked items remain, stop and route to `/speckit.feasibilityspike`.
+- Read the routing contract from `spec.md` first.
+- If `plan_profile != skip`:
+  - Read `## Open Feasibility Questions` in `plan.md`.
+  - If any unchecked items remain, stop and route to `/speckit.feasibilityspike`.
+- If `plan_profile = skip`:
+  - Do not require `plan.md`.
+  - Do not route to `/speckit.feasibilityspike` only because the skipped plan artifact is absent.
 
 ### 2a. Read hierarchy gate (MANDATORY for this phase and all auto-invoked subcommands)
 
@@ -54,13 +60,18 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse 
 ### 3. Auto-invoke `/speckit.sketch`
 
 - Produce `FEATURE_DIR/sketch.md`.
-- Sketch must include the contract sections required by the current sketch template, especially:
-  - `Solution Narrative`
-  - `Construction Strategy`
-  - `Command / Script Surface Map`
-  - `Manifest Alignment Check`
-  - `Design-to-Tasking Contract`
-  - `Decomposition-Ready Design Slices`
+- Sketch must include the current template's core sections:
+  - Coverage
+  - Current → Target
+  - Primary Seam
+  - Required Edit / Solution
+  - Verification
+  - Constraints / Preserve
+  - Implementation Directive
+  - Design-to-Tasking Contract
+  - Sketch Completion Summary
+- Conditional sketch sections are only required when the routing contract or actual repo context triggers them.
+- If `sketch_profile = core`, do not require the expanded conditional sections just to satisfy the review loop.
 
 ### 4. Auto-invoke `/speckit.solutionreview`
 
@@ -70,6 +81,8 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse 
 ### 5. Auto-invoke `/speckit.tasking`
 
 - Decompose approved sketch into `tasks.md`.
+- Treat the core sketch contract as sufficient input when `sketch_profile = core`.
+- Only require the expanded/conditional sketch sections when the routing contract enables them or the work truly needs them.
 - Run estimate/breakdown subprocess loop to settle points.
 - Run deterministic tasks format gate.
 - Generate HUDs and acceptance tests only after stabilization.
@@ -84,7 +97,7 @@ The command doc describes the `solution_approved` payload only. The pipeline dri
 
 ### 7. Auto-invoke `/speckit.analyze`
 
-- Analyze consistency across `spec -> plan -> sketch -> tasks`.
+- Analyze consistency across `spec -> sketch -> tasks`, and include `plan.md` in that chain only when routing kept the plan phase enabled.
 - `analysis_completed` remains a separate event emitted by `/speckit.analyze`.
 
 ### 8. Report

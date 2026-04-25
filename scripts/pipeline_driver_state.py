@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from spec_routing import extract_event_routing_contract
+from spec_routing import extract_event_routing_contract, load_spec_routing_contract
 
 EVENT_TO_PHASE: dict[str, str] = {
     "backlog_registered": "specify",
@@ -84,6 +84,47 @@ def _feature_id_candidates(feature_id: str) -> tuple[str, ...]:
         if prefix and prefix != normalized:
             candidates.append(prefix)
     return tuple(dict.fromkeys(candidates))
+
+
+def _resolve_feature_spec_file(
+    feature_id: str, *, feature_dir: Path | None = None
+) -> Path | None:
+    """Return the canonical spec.md path for a feature when it can be located."""
+    if feature_dir is not None:
+        direct_spec = feature_dir / "spec.md"
+        if direct_spec.exists():
+            return direct_spec.resolve()
+
+    specs_dir = Path("specs")
+    if not specs_dir.is_dir():
+        return None
+
+    direct_dir_spec = specs_dir / feature_id / "spec.md"
+    if direct_dir_spec.exists():
+        return direct_dir_spec.resolve()
+
+    matches: list[Path] = []
+    for candidate in _feature_id_candidates(feature_id):
+        candidate_matches = sorted(specs_dir.glob(f"{candidate}-*/spec.md"))
+        if len(candidate_matches) == 1:
+            return candidate_matches[0].resolve()
+        matches.extend(candidate_matches)
+
+    unique_matches = sorted({match.resolve() for match in matches})
+    if len(unique_matches) == 1:
+        return unique_matches[0]
+    return None
+
+
+def _load_feature_routing_contract(
+    feature_id: str, *, feature_dir: Path | None = None
+) -> dict[str, Any] | None:
+    """Load the spec-level routing contract for feature_id when spec.md exists."""
+    spec_file = _resolve_feature_spec_file(feature_id, feature_dir=feature_dir)
+    if spec_file is None:
+        return None
+    contract, _reasons = load_spec_routing_contract(spec_file)
+    return contract
 
 
 def _hint_exceeds_derived_phase(*, hinted_phase: str, derived_phase: str) -> bool:
@@ -337,6 +378,9 @@ def resolve_phase_state(
         resolved_feature_dir = Path(feature_dir).resolve()
     elif isinstance(state.get("feature_dir"), str) and state["feature_dir"]:
         resolved_feature_dir = Path(str(state["feature_dir"])).resolve()
+    routing_contract = _load_feature_routing_contract(
+        feature_id, feature_dir=resolved_feature_dir
+    )
 
     try:
         pipeline_ledger = _load_pipeline_ledger_module()
@@ -356,6 +400,10 @@ def resolve_phase_state(
                     ledger_feature_id = candidate
                     feature_events = candidate_events
                     break
+        if routing_contract is None:
+            routing_contract = _load_feature_routing_contract(
+                ledger_feature_id, feature_dir=resolved_feature_dir
+            )
         event_count = len(feature_events)
 
         if feature_events:
@@ -371,7 +419,8 @@ def resolve_phase_state(
             raw_last_event = feature_events[-1].get("event")
             if isinstance(raw_last_event, str) and raw_last_event:
                 last_event = raw_last_event
-                routing_contract = extract_event_routing_contract(feature_events[-1])
+                if routing_contract is None:
+                    routing_contract = extract_event_routing_contract(feature_events[-1])
     except SystemExit:
         drift_reasons.append("ledger_read_failed")
         drift_reason_details.append({"code": "ledger_read_failed"})

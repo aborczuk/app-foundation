@@ -30,9 +30,12 @@ Run these steps first; only load expanded guidance when a gate fails or the user
     - `uv run python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
     - `uv run python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json`
     - `uv run python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --spec-file "$FEATURE_SPEC" --json`
-    - `uv run python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json`
+    - `uv run python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --spec-file "$FEATURE_SPEC" --json`
     - `uv run python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
-    - If the routing contract says `plan_profile=skip`, treat the plan gate result as a routed bypass and hand off directly to `/speckit.sketch`.
+    - Start from the machine-readable routing contract in `spec.md`.
+    - If `plan_profile=skip`, treat both research and plan-section gates as routed bypasses and hand off directly to `/speckit.sketch`.
+    - If `plan_profile=lite`, require only the core plan sections plus any conditional sections actually triggered by the plan template.
+    - If `plan_profile=full`, require the core plan plus the additional conditional sections the current feature truly needs; do not invent optional sections just to pad the artifact.
 3. Scaffold plan artifacts immediately:
     - `uv run python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
    - This creates `plan.md`, `data-model.md`, and `quickstart.md` from the manifest templates.
@@ -76,6 +79,12 @@ Keep the generated artifacts table-driven and compact:
 - `data-model.md`: entity/state tables only; keep prose minimal
 - `quickstart.md`: runnable local steps, smoke test, common issues, and next steps
 
+`plan.md` is routing-aware:
+
+- Always emit the core plan sections from the current template.
+- Emit conditional sections only when the selected `plan_profile` or the actual feature scope triggers them.
+- If `plan_profile=skip`, do not force-fit a full plan body just to satisfy an outdated checklist.
+
 ### 3. Orchestration rules
 
 - The pipeline driver already owns phase transitions and event sequencing.
@@ -87,20 +96,25 @@ Keep the generated artifacts table-driven and compact:
 
 ### 4. Plan content expectations
 
-`plan.md` must stay table-heavy. The important sections are:
+`plan.md` must stay proportional to the selected profile.
+
+Always require the current template's core sections:
 
 - Summary
-- Technical Context
-- Reuse-First Architecture Decision
-- Pipeline Architecture Model
-- Artifact / Event Contract Architecture
-- Architecture Flow
-- External Ingress + Runtime Readiness Gate
-- State / Storage / Reliability Model
-- Constitution Check
-- Behavior Map Sync Gate
-- Open Feasibility Questions
+- Plan Routing
+- Existing Coverage and Reuse
 - Handoff Contract to Sketch
+- Plan Completion Summary
+
+Conditional sections are only required when they are triggered by the feature and selected profile:
+
+- Architecture Direction
+- Technical Context
+- Runtime / State / Contract Impact
+- Artifact, Event, and Surface Impact
+- External Ingress and Runtime Readiness
+- Feasibility and Research Questions
+- Human / Operator Boundary Check
 
 When a section is uncertain, mark it clearly instead of inventing detail.
 

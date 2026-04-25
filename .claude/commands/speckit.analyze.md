@@ -36,10 +36,13 @@ Identify inconsistencies, duplications, ambiguities, and underspecified items ac
 Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
 
 - SPEC = FEATURE_DIR/spec.md
-- PLAN = FEATURE_DIR/plan.md
+- SKETCH = FEATURE_DIR/sketch.md
+- PLAN = FEATURE_DIR/plan.md (optional when `spec.md` routes `plan_profile = skip`)
 - TASKS = FEATURE_DIR/tasks.md
 
-Abort with an error message if any required file is missing (instruct the user to run missing prerequisite command).
+Read the routing contract from `spec.md` immediately after resolving paths.
+
+Abort with an error message if any required file is missing (instruct the user to run missing prerequisite command). `plan.md` is only a required prerequisite when the routing contract keeps the plan phase enabled.
 Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 Immediately scaffold the traceable analysis artifact:
@@ -61,10 +64,11 @@ This creates `FEATURE_DIR/analysis.md` from `.specify/templates/analysis-templat
 
 ### 1b. External Ingress + Runtime Readiness Gate (MANDATORY when ingress applies)
 
-- Inspect `plan.md` for `## External Ingress + Runtime Readiness Gate`.
-- Detect whether ingress/webhook/callback/public endpoint behavior is in scope using `spec.md`, `plan.md`, and `tasks.md`.
+- If `plan.md` exists, inspect `## External Ingress and Runtime Readiness`.
+- Detect whether ingress/webhook/callback/public endpoint behavior is in scope using `spec.md`, `plan.md` when present, `sketch.md`, and `tasks.md`.
 - If ingress applies:
-  - ERROR if the gate section is missing.
+  - ERROR if `plan.md` exists and the gate section is missing.
+  - ERROR if `plan_profile != skip` and the plan phase should have produced the ingress gate but did not.
   - ERROR if any gate row is blank.
   - Treat any `❌ Fail` row as a **CRITICAL** blocker for implementation readiness.
 - If ingress does not apply:
@@ -81,6 +85,13 @@ Load only the minimal necessary context from each artifact:
 - Non-Functional Requirements
 - User Stories
 - Edge Cases (if present)
+
+**From plan.md when `plan_profile != skip`:**
+
+- core plan sections
+- any conditional plan sections that were actually emitted
+
+If `plan_profile = skip`, do not fail analysis only because `plan.md` is absent. Analyze the routed smaller path instead of inventing the missing plan.
 
 **From plan.md:**
 

@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
+HEADING_RE = re.compile(r"^\s*(?P<hashes>#{2,6})\s+(?P<title>.+?)\s*$")
 JSON_FENCE_RE = re.compile(r"```json\s*(?P<body>.*?)```", re.IGNORECASE | re.DOTALL)
 
 ROUTING_VALUE_SETS = {
@@ -27,6 +28,17 @@ RISK_FIELDS = (
     "runtime_side_effect_risk",
     "human_operator_dependency",
 )
+CONDITIONAL_SKETCH_SECTION_NAMES = (
+    "Repo Grounding",
+    "Contract / Artifact / Event Impact",
+    "Runtime / State / Failure Notes",
+    "Human / Operator Boundaries",
+    "Design Gaps and Repo Contradictions",
+    "Decomposition-Ready Design Slices",
+)
+CONDITIONAL_SKETCH_SECTION_LOOKUP = {
+    name.lower(): name for name in CONDITIONAL_SKETCH_SECTION_NAMES
+}
 
 
 def _normalize_lower(value: Any) -> str:
@@ -51,10 +63,43 @@ def _normalize_string_list(value: Any) -> list[str]:
     return normalized
 
 
+def _normalize_conditional_sketch_sections(value: Any) -> list[str]:
+    """Return canonical conditional sketch section titles when recognized."""
+    normalized: list[str] = []
+    for text in _normalize_string_list(value):
+        normalized.append(CONDITIONAL_SKETCH_SECTION_LOOKUP.get(text.lower(), text))
+    return normalized
+
+
 def _looks_placeholder(value: str) -> bool:
     """Return True when a contract field still looks templated."""
     stripped = value.strip()
     return stripped.startswith("[") and stripped.endswith("]")
+
+
+def _extract_markdown_section(text: str, heading_title: str) -> str:
+    """Return the markdown section for heading_title, preserving nested content."""
+    lines = text.splitlines()
+    target_idx = None
+    target_level = None
+    for index, line in enumerate(lines):
+        match = HEADING_RE.match(line)
+        if not match:
+            continue
+        if match.group("title").strip() == heading_title:
+            target_idx = index
+            target_level = len(match.group("hashes"))
+            break
+    if target_idx is None or target_level is None:
+        return ""
+
+    end = len(lines)
+    for index in range(target_idx + 1, len(lines)):
+        match = HEADING_RE.match(lines[index])
+        if match and len(match.group("hashes")) <= target_level:
+            end = index
+            break
+    return "\n".join(lines[target_idx:end])
 
 
 def normalize_spec_routing_contract(contract: Mapping[str, Any]) -> dict[str, Any]:
@@ -71,7 +116,7 @@ def normalize_spec_routing_contract(contract: Mapping[str, Any]) -> dict[str, An
             "tasking_route": _normalize_lower(routing.get("tasking_route", "")),
             "estimate_route": _normalize_lower(routing.get("estimate_route", "")),
             "routing_reason": _normalize_text(routing.get("routing_reason", "")),
-            "conditional_sketch_sections": _normalize_string_list(
+            "conditional_sketch_sections": _normalize_conditional_sketch_sections(
                 routing.get("conditional_sketch_sections", [])
             ),
         },
@@ -120,6 +165,8 @@ def validate_spec_routing_contract(contract: Mapping[str, Any]) -> list[str]:
                 reasons.append(f"blank_conditional_sketch_section:{index}")
             elif _looks_placeholder(text):
                 reasons.append(f"placeholder_conditional_sketch_section:{index}")
+            elif text.lower() not in CONDITIONAL_SKETCH_SECTION_LOOKUP:
+                reasons.append(f"invalid_conditional_sketch_section:{index}:{text}")
 
     if isinstance(risk, Mapping):
         for field in RISK_FIELDS:
@@ -139,7 +186,9 @@ def validate_spec_routing_contract(contract: Mapping[str, Any]) -> list[str]:
 def extract_spec_routing_contract(spec_text: str) -> tuple[dict[str, Any] | None, list[str]]:
     """Extract the first valid routing contract block from spec markdown."""
     parse_reasons: list[str] = []
-    for match in JSON_FENCE_RE.finditer(spec_text):
+    section_text = _extract_markdown_section(spec_text, "Routing Contract")
+    candidate_text = section_text or spec_text
+    for match in JSON_FENCE_RE.finditer(candidate_text):
         body = match.group("body").strip()
         if not body:
             continue

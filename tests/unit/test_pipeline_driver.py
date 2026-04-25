@@ -1039,6 +1039,81 @@ def test_resolve_phase_state_uses_routing_contract_for_skip_path(tmp_path: Path)
     assert state["next_phase"] == "solution"
 
 
+def test_resolve_phase_state_reload_spec_routing_after_nonrouting_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Later ledger events should not erase the spec-level routing contract."""
+    monkeypatch.chdir(tmp_path)
+    feature_dir = tmp_path / "specs" / "019-routing-fix"
+    feature_dir.mkdir(parents=True)
+    (feature_dir / "spec.md").write_text(
+        "\n".join(
+            [
+                "# Spec",
+                "",
+                "## Routing Contract",
+                "",
+                "```json",
+                "{",
+                '  "routing": {',
+                '    "research_route": "skip",',
+                '    "plan_profile": "skip",',
+                '    "sketch_profile": "core",',
+                '    "tasking_route": "required",',
+                '    "estimate_route": "required_after_tasking",',
+                '    "routing_reason": "Use the routed smaller path.",',
+                '    "conditional_sketch_sections": []',
+                "  },",
+                '  "risk": {',
+                '    "requirement_clarity": "low",',
+                '    "repo_uncertainty": "low",',
+                '    "external_dependency_uncertainty": "low",',
+                '    "state_data_migration_risk": "low",',
+                '    "runtime_side_effect_risk": "low",',
+                '    "human_operator_dependency": "low"',
+                "  }",
+                "}",
+                "```",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    ledger_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    _ledger_event(
+                        "backlog_registered",
+                        timestamp_utc="2026-04-10T00:00:00Z",
+                    ),
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    _ledger_event(
+                        "spec_clarified",
+                        timestamp_utc="2026-04-10T00:01:00Z",
+                    ),
+                    sort_keys=True,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "specify", "blocked": False},
+        ledger_path=ledger_path,
+    )
+
+    assert state["last_event"] == "spec_clarified"
+    assert state["routing_contract"] is not None
+    assert state["routing_contract"]["routing"]["plan_profile"] == "skip"
+    assert state["next_phase"] == "solution"
+
+
 def test_resolve_phase_state_falls_back_to_numeric_prefix_for_slug(tmp_path: Path) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [

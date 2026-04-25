@@ -22,12 +22,14 @@ RESEARCH_REQUIRED_SECTIONS = (
 )
 
 PLAN_REQUIRED_SECTIONS = (
-    "## External Ingress + Runtime Readiness Gate",
-    "## Constitution Check",
-    "## Architecture Flow",
+    "## Summary",
+    "## Plan Routing",
+    "## Existing Coverage and Reuse",
+    "## Handoff Contract to Sketch",
+    "## Plan Completion Summary",
 )
+OPTIONAL_INGRESS_SECTION = "External Ingress and Runtime Readiness"
 
-STATUS_RE = re.compile(r"(✅\s*Pass|❌\s*Fail|N/A|⚠️\s*Conditional)")
 LEGACY_FEATURE_ID_MAX_DEFAULT = 17
 LEGACY_SOFT_REASONS = {
     "missing_functional_requirements_section",
@@ -70,6 +72,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "plan-sections", help="Validate required plan sections and ingress status rows."
     )
     plan_sections.add_argument("--plan-file", required=True)
+    plan_sections.add_argument("--spec-file")
     plan_sections.add_argument("--json", action="store_true")
 
     artifacts = sub.add_parser(
@@ -261,10 +264,52 @@ def _spec_core_action(
     return (0 if payload["ok"] else 2, payload)
 
 
-def _plan_sections(plan_file: Path) -> tuple[int, dict[str, Any]]:
+def _plan_sections(
+    plan_file: Path, spec_file: Path | None = None
+) -> tuple[int, dict[str, Any]]:
+    """Validate the core plan shape while permitting routing-dependent omissions."""
     reasons: list[str] = []
     missing_sections: list[str] = []
     blank_status_rows: list[str] = []
+    routing_contract: dict[str, Any] | None = None
+    plan_profile = ""
+    resolved_spec_file = spec_file.resolve() if spec_file is not None else plan_file.parent / "spec.md"
+
+    if resolved_spec_file.exists():
+        contract, routing_reasons = load_spec_routing_contract(resolved_spec_file)
+        if contract is not None:
+            routing_contract = contract
+            routing = contract.get("routing", {})
+            if isinstance(routing, dict):
+                plan_profile = str(routing.get("plan_profile", "")).strip().lower()
+        if routing_reasons:
+            reasons.extend(routing_reasons)
+            payload = {
+                "mode": "plan_sections",
+                "plan_file": str(plan_file),
+                "spec_file": str(resolved_spec_file),
+                "routing_contract": routing_contract,
+                "plan_profile": plan_profile,
+                "missing_sections": missing_sections,
+                "blank_status_rows": blank_status_rows,
+                "reasons": reasons,
+                "ok": False,
+            }
+            return (2, payload)
+
+    if plan_profile == "skip":
+        payload = {
+            "mode": "plan_sections",
+            "plan_file": str(plan_file),
+            "spec_file": str(resolved_spec_file) if resolved_spec_file.exists() else None,
+            "routing_contract": routing_contract,
+            "plan_profile": plan_profile,
+            "missing_sections": [],
+            "blank_status_rows": [],
+            "reasons": ["plan_skipped_by_routing"],
+            "ok": True,
+        }
+        return (0, payload)
 
     if not plan_file.exists():
         reasons.append("missing_plan_file")
@@ -273,6 +318,9 @@ def _plan_sections(plan_file: Path) -> tuple[int, dict[str, Any]]:
             "plan_file": str(plan_file),
             "missing_sections": list(PLAN_REQUIRED_SECTIONS),
             "blank_status_rows": [],
+            "spec_file": str(resolved_spec_file) if resolved_spec_file.exists() else None,
+            "routing_contract": routing_contract,
+            "plan_profile": plan_profile,
             "reasons": reasons,
             "ok": False,
         }
@@ -284,7 +332,7 @@ def _plan_sections(plan_file: Path) -> tuple[int, dict[str, Any]]:
             missing_sections.append(section)
             reasons.append(f"missing_plan_section:{section}")
 
-    ingress = _extract_section(text, "External Ingress + Runtime Readiness Gate")
+    ingress = _extract_section(text, OPTIONAL_INGRESS_SECTION)
     if ingress:
         for line in ingress.splitlines():
             stripped = line.strip()
@@ -292,7 +340,10 @@ def _plan_sections(plan_file: Path) -> tuple[int, dict[str, Any]]:
                 continue
             if stripped.startswith("|---") or "Status" in stripped:
                 continue
-            if not STATUS_RE.search(stripped):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            status = cells[1].lower() if len(cells) > 1 else ""
+            normalized = status.lstrip("✅❌⚠️").strip()
+            if normalized not in {"pass", "fail", "conditional", "n/a", "na"}:
                 blank_status_rows.append(stripped)
         if blank_status_rows:
             reasons.append("ingress_gate_rows_missing_status")
@@ -300,6 +351,9 @@ def _plan_sections(plan_file: Path) -> tuple[int, dict[str, Any]]:
     payload = {
         "mode": "plan_sections",
         "plan_file": str(plan_file),
+        "spec_file": str(resolved_spec_file) if resolved_spec_file.exists() else None,
+        "routing_contract": routing_contract,
+        "plan_profile": plan_profile,
         "missing_sections": missing_sections,
         "blank_status_rows": blank_status_rows,
         "reasons": reasons,
@@ -348,7 +402,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             legacy_max_feature_id=int(args.legacy_max_feature_id),
         )
     elif args.subcommand == "plan-sections":
-        exit_code, payload = _plan_sections(Path(args.plan_file).resolve())
+        exit_code, payload = _plan_sections(
+            Path(args.plan_file).resolve(),
+            Path(args.spec_file).resolve() if args.spec_file else None,
+        )
     elif args.subcommand == "design-artifacts":
         exit_code, payload = _design_artifacts(
             Path(args.feature_dir).resolve(), require_contracts=args.require_contracts

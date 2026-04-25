@@ -31,6 +31,8 @@ def _write_spec(spec_file: Path, *, research_route: str, plan_profile: str) -> N
             [
                 "# Spec",
                 "",
+                "## Routing Contract",
+                "",
                 "```json",
                 "{",
                 '  "routing": {',
@@ -52,6 +54,27 @@ def _write_spec(spec_file: Path, *, research_route: str, plan_profile: str) -> N
                 "  }",
                 "}",
                 "```",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_core_plan(plan_file: Path) -> None:
+    plan_file.write_text(
+        "\n".join(
+            [
+                "# Implementation Plan",
+                "",
+                "## Summary",
+                "",
+                "## Plan Routing",
+                "",
+                "## Existing Coverage and Reuse",
+                "",
+                "## Handoff Contract to Sketch",
+                "",
+                "## Plan Completion Summary",
             ]
         ),
         encoding="utf-8",
@@ -85,3 +108,34 @@ def test_research_prereq_requires_research_when_routing_says_required(
     assert exit_code != 0
     assert payload["ok"] is False
     assert "missing_research_md" in payload["reasons"]
+
+
+def test_plan_sections_accepts_core_lite_plan(tmp_path: Path) -> None:
+    feature_dir = tmp_path / "feature"
+    feature_dir.mkdir()
+    spec_file = feature_dir / "spec.md"
+    plan_file = feature_dir / "plan.md"
+    _write_spec(spec_file, research_route="skip", plan_profile="lite")
+    _write_core_plan(plan_file)
+
+    exit_code, payload = speckit_plan_gate._plan_sections(plan_file, spec_file)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["missing_sections"] == []
+    assert payload["plan_profile"] == "lite"
+
+
+def test_plan_sections_bypass_when_plan_is_skipped(tmp_path: Path) -> None:
+    feature_dir = tmp_path / "feature"
+    feature_dir.mkdir()
+    spec_file = feature_dir / "spec.md"
+    plan_file = feature_dir / "plan.md"
+    _write_spec(spec_file, research_route="skip", plan_profile="skip")
+
+    exit_code, payload = speckit_plan_gate._plan_sections(plan_file, spec_file)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["reasons"] == ["plan_skipped_by_routing"]
+    assert payload["plan_profile"] == "skip"
