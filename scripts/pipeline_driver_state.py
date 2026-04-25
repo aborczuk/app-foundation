@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from spec_routing import extract_event_routing_contract
+
 EVENT_TO_PHASE: dict[str, str] = {
     "backlog_registered": "specify",
     "spec_clarified": "specify",
@@ -45,6 +47,31 @@ PHASE_INDEX: dict[str, int] = {phase: index for index, phase in enumerate(PHASE_
 def advance_phase(current_phase: str) -> str:
     """Return the next pipeline phase after current_phase."""
     return PHASE_TRANSITIONS.get(current_phase, current_phase)
+
+
+def determine_next_phase(
+    current_phase: str, *, routing_contract: Mapping[str, Any] | None = None
+) -> str:
+    """Return the next phase, honoring spec-driven routing when present."""
+    routing = routing_contract.get("routing", {}) if routing_contract else {}
+    if isinstance(routing, Mapping):
+        plan_profile = str(routing.get("plan_profile", "")).strip().lower()
+        research_route = str(routing.get("research_route", "")).strip().lower()
+    else:
+        plan_profile = ""
+        research_route = ""
+
+    if current_phase == "specify":
+        if plan_profile == "skip":
+            return "solution"
+        if research_route == "skip":
+            return "plan"
+        return "research"
+    if current_phase == "research":
+        if plan_profile == "skip":
+            return "solution"
+        return "plan"
+    return advance_phase(current_phase)
 
 
 def _feature_id_candidates(feature_id: str) -> tuple[str, ...]:
@@ -303,6 +330,7 @@ def resolve_phase_state(
     approved_plan = False
     approved_solution = False
     ledger_feature_id = feature_id
+    routing_contract: dict[str, Any] | None = None
 
     resolved_feature_dir: Path | None = None
     if feature_dir is not None:
@@ -343,6 +371,7 @@ def resolve_phase_state(
             raw_last_event = feature_events[-1].get("event")
             if isinstance(raw_last_event, str) and raw_last_event:
                 last_event = raw_last_event
+                routing_contract = extract_event_routing_contract(feature_events[-1])
     except SystemExit:
         drift_reasons.append("ledger_read_failed")
         drift_reason_details.append({"code": "ledger_read_failed"})
@@ -388,6 +417,7 @@ def resolve_phase_state(
 
     drift_detected = bool(drift_reasons)
     drift_reason_codes = sorted({detail["code"] for detail in drift_reason_details})
+    next_phase = determine_next_phase(phase, routing_contract=routing_contract)
     return {
         "feature_id": feature_id,
         "ledger_feature_id": ledger_feature_id,
@@ -396,6 +426,8 @@ def resolve_phase_state(
         "ledger_event_count": event_count,
         "approved_plan": approved_plan,
         "approved_solution": approved_solution,
+        "routing_contract": routing_contract,
+        "next_phase": next_phase,
         "blocked": drift_detected,
         "drift_detected": drift_detected,
         "drift_reason_codes": drift_reason_codes,

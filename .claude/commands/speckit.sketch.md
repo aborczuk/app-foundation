@@ -26,6 +26,7 @@ This phase owns `sketch.md` only. It is **design-only**.
 ## Inputs
 
 - Approved planning context for the active feature
+- The machine-readable `routing` + `risk` contract from `spec.md`
 - The scaffolded `sketch.md` template
 - Repo and codebase discovery outputs available to this phase
 - Any required gate results for entering sketch
@@ -33,6 +34,7 @@ This phase owns `sketch.md` only. It is **design-only**.
 ## Execution
 
 - Ground the sketch in the approved planning context and repo-discovery outputs.
+- If `spec.md` routes `plan_profile=skip`, ground the sketch directly in the spec routing contract and repo reality rather than waiting on a plan artifact.
 - Scaffold and complete `sketch.md` for the feature without changing the artifact shape.
 - Capture the implementation surfaces, reuse seams, symbol boundaries, and blast radius needed for downstream tasking.
 - Hand off the completed sketch to `/speckit.solutionreview` through the manifest-declared completion event.
@@ -68,6 +70,7 @@ The sketch must:
 ## Required handoff contract to tasking
 
 `sketch.md` must be concrete enough that `/speckit.tasking` does not need to invent major architecture.
+If the routing contract says `sketch_profile=core`, the core sketch sections are the minimum required handoff; conditional sections only appear when the routing contract enables them.
 
 Every decomposition-ready design slice must identify, at minimum:
 
@@ -80,8 +83,28 @@ Every decomposition-ready design slice must identify, at minimum:
 - major constraints and invariants
 - dependency relationship to other slices
 - verification or regression concern
+- implementation directive with current behavior, target behavior, concrete edit mechanics, contract/data changes, allowed and forbidden side effects, preservation requirements, and test oracle
 
 If the available artifacts and repo context are not sufficient to determine the solution shape, seams, boundaries, or decomposition-ready slices, stop and surface the gap rather than guessing.
+
+## Implementation directive requirements
+
+Every decomposition-ready design slice must include an `Implementation Directive` subsection. This subsection is the required bridge from architecture-level sketch to implementation-ready tasking.
+
+Each `Implementation Directive` must include:
+
+- **Current repo behavior**: what bounded repo reads show the current symbol/path does today.
+- **Target behavior**: what must be true after implementation.
+- **Concrete edit mechanics**: the branch, condition, parser, schema, return envelope, manifest field, command-doc section, or side-effect path expected to change.
+- **Contract / data changes**: reason codes, fields, payload shapes, manifest keys, emitted events, CLI outputs, or artifact state that must change or be preserved.
+- **Side effects allowed**: writes, event appends, generated artifacts, sidecars, or subprocess execution that are permitted after validation.
+- **Side effects forbidden**: writes, event appends, generated artifacts, sidecars, or subprocess execution that must not happen on blocked/error paths.
+- **Preserve behavior**: compatibility paths, legacy routes, existing valid success cases, idempotency behavior, or operator-visible output that must remain unchanged.
+- **Test oracle**: the exact scenario and assertion shape downstream tasking must carry into the HUD.
+
+Do not use generic implementation directives such as "harden behavior", "normalize contract", "wire route", or "add tests" unless paired with concrete behavior, symbols, contracts, and assertions.
+
+If bounded reads do not validate current behavior for a slice, write `BLOCKED: current behavior not validated from repo reads.` in the implementation directive instead of guessing.
 
 ## Behavior rules
 

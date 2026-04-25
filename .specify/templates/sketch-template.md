@@ -5,365 +5,194 @@ _Feature: `[FEATURE_ID]`_
 _Source Plan: `plan.md`_  
 _Artifact: `sketch.md`_
 
-## Feature Solution Frame
+---
 
-### Core Capability
+## Section Map
 
-[Describe the capability or change surface being implemented.]
+### Always Emit
 
-### Current → Target Transition
+- Core Sketch
+  - Coverage
+  - Current → Target
+  - Primary Seam
+  - Required Edit / Solution
+  - Verification
+  - Constraints / Preserve
+  - Implementation Directive
+  - Design-to-Tasking Contract
+  - Sketch Completion Summary
 
-[Describe what exists today, what the approved plan intends, and what changes in the target state.]
+### Emit Only If Triggered
 
-### Dominant Execution Model
+- Conditional Sketch Additions
+  - Repo Grounding — emit when multiple surfaces/symbols are involved, the seam is non-obvious, or tasking needs repo-grounded symbol context.
+  - Contract / Artifact / Event Impact — emit when public interfaces, artifacts, events, manifests, schemas, CLI/API output, command docs, templates, or generated files change.
+  - Runtime / State / Failure Notes — emit when state, lifecycle, retry, rollback, idempotency, migration, async, ordering, or side effects matter.
+  - Human / Operator Boundaries — emit when manual, external-console, credential, approval, deployment, or operator action is required.
+  - Design Gaps and Repo Contradictions — emit when bounded repo reads reveal missing seams, unsupported assumptions, contradictions, or blocking issues.
+  - Decomposition-Ready Design Slices — emit when the work requires multiple implementation tasks.
 
-[Describe the main control model.]
+### Omission Rules
 
-### Main Design Pressures
-
-- [Constraint / pressure 1]
-- [Constraint / pressure 2]
-- [Constraint / pressure 3]
+- Omit unused conditional sections entirely.
+- Do not leave placeholder headings.
+- Do not emit empty or “N/A” tables for conditional sections.
+- Every generated sketch must include the core implementation bridge.
+- Do not use decomposition slices for one-task work unless needed to preserve safety-critical detail.
+- If current behavior cannot be verified from bounded repo reads, mark the sketch blocked instead of guessing.
 
 ---
 
-## Solution Narrative
+# 1. Core Sketch
 
-[Explain what is being built, what is being reused, what is being introduced, and how the solution comes together.]
+## Coverage
 
----
+### Existing Spec / Feature
 
-## Construction Strategy
+- Existing spec / feature: `[ID or N/A]`
+- Coverage status: `[Full / Partial / None]`
+- Relationship to existing work: `[New feature / Existing feature delta / Bug / Refactor / Docs / Test-only / Ops]`
 
-1. [First major construction move]
-2. [Second major construction move]
-3. [Third major construction move]
-4. [Additional moves as needed]
+### Source Requirement / Backlog Item
 
-### Construction Notes
+[Restate the backlog item or requirement being solved.]
 
-- [Sequencing note]
-- [Dependency note]
-- [Risk note]
+### Scope Boundary
 
----
+In scope:
+- [Item]
 
-## Acceptance Traceability
-
-| Story / Requirement / Constraint | Design Element(s) That Satisfy It | Reuse / Modify / Create | Verification / Migration Note |
-|----------------------------------|-----------------------------------|-------------------------|-------------------------------|
-| [FR / Story / Constraint] | [Design anchor] | [Reuse / Modify / Create] | [Note] |
+Out of scope:
+- [Item]
 
 ---
 
-## Work-Type Classification
+## Current → Target
 
-| Capability / Story Area | Work Type(s) | Dominant Pattern in Repo | Reuse-First / Extension-First / Net-New | Special Constraints |
-|-------------------------|--------------|---------------------------|-----------------------------------------|--------------------|
-| [Area] | [Types] | [Pattern] | [Mode] | [Constraints] |
+### Current Behavior
 
----
+[Describe what exists today, based on the spec, plan, and bounded repo reads.]
 
-## Current-System Inventory
+If current behavior was not verified from repo reads, write exactly:
 
-| Surface | Type | Role Today | Relationship to Feature | Condition | Primary Seam or Blast Radius Only |
-|---------|------|------------|--------------------------|-----------|-----------------------------------|
-| [Name / file / module / artifact] | [module/script/template/config/etc.] | [What it does] | [How feature uses or affects it] | [Reusable / Extension-friendly / Brittle / Mismatched] | [Primary / Blast radius] |
+`BLOCKED: current behavior not validated from repo reads.`
 
----
+### Target Behavior
 
-## Command / Script Surface Map
+[Describe what must be true after implementation.]
 
-| Name | Owning File / Script / Template | Pipeline Role | Classification | Inputs | Outputs / Artifacts | Events | Extension Seam | Planned Change |
-|------|---------------------------------|---------------|----------------|--------|----------------------|--------|----------------|----------------|
-| [Command / script / manifest entry] | [Owner] | [Role] | [Deterministic / Human / External / Hybrid] | [Inputs] | [Outputs] | [Events] | [Seam] | [Reuse / Wrap / Modify / New] |
+### Behavior Delta
+
+[Describe the smallest meaningful change from current to target.]
 
 ---
 
-## CodeGraphContext Findings
+## Primary Seam
 
-### Seed Symbols
+### Main Edit Surface
 
-- `[file.py:symbol_name]` — [why it is a seed]
-- `[file.py:symbol_name]` — [why it is a seed]
+- `[file:symbol or artifact path]` — [why this is the primary seam]
 
-### Primary Implementation Surfaces
+### Secondary Surfaces
 
-| File | Symbol(s) | Why This Surface Is Primary | Planned Change Type |
-|------|-----------|-----------------------------|---------------------|
-| [file] | [symbols] | [reason] | [Reuse / Modify / Create] |
+- `[file:symbol or artifact path]` — [why affected]
+- `[file:symbol or artifact path]` — [why affected]
 
-### Secondary Affected Surfaces
+If none, write:
 
-| File / Surface | Why It Is Affected | Type of Impact |
-|----------------|--------------------|----------------|
-| [file / surface] | [reason] | [Blast radius / regression / observability / rollout / operator / docs] |
-
-### Caller / Callee / Dependency Notes
-
-- [Important relationship]
-- [Important relationship]
-
-### Missing Seams or Contradictions
-
-- [Contradiction between plan and repo reality]
-- [Missing seam that the design depends on]
+- None.
 
 ---
 
-## Blast Radius
+## Required Edit / Solution
 
-### Direct Implementation Surfaces
+[Describe the concrete solution. This must say what to change, not only where to change it.]
 
-- [Surface 1]
-- [Surface 2]
+Required solution detail must identify applicable items from this list:
 
-### Indirect Affected Surfaces
+- branch or condition to change
+- function, parser, schema, command, template, manifest, or return envelope to change
+- new reason code, field, payload key, output, event, or artifact state
+- allowed side effects
+- forbidden side effects
+- behavior to preserve
+- test oracle
 
-- [Surface 1]
-- [Surface 2]
+Invalid examples:
+- “Harden behavior.”
+- “Normalize the contract.”
+- “Update the docs.”
+- “Wire implementation.”
+- “Add tests.”
 
-### Regression-Sensitive Neighbors
-
-- [Neighbor 1]
-- [Neighbor 2]
-
-### Rollout / Compatibility Impact
-
-- [Impact 1]
-- [Impact 2]
-
-### Operator / Runbook / Deployment Impact
-
-- [Impact 1]
-- [Impact 2]
+Valid example shape:
+- “In `[file:symbol]`, detect `[condition]` before `[side effect]`, return `[result shape]`, and preserve `[existing behavior]`.”
 
 ---
 
-## Reuse / Modify / Create Matrix
+## Verification
 
-### Reuse Unchanged
+### Required Test / Check
 
-- [Component / file / script / artifact]
+- Test file or command: `[path or command]`
+- Scenario: [Given / When / Then summary]
+- Assertion: [Exact expected result, event, artifact state, or output]
 
-### Modify / Extend Existing
+### Regression Check
 
-- [Component / file / script / artifact]
+- [Existing behavior that must still pass.]
 
-### Compose from Existing Pieces
+### Deterministic Oracle
 
-- [Composed solution element]
-
-### Create Net-New
-
-- [New seam / module / interface / artifact]
-
-### Reuse Rationale
-
-[Explain why this mix is the best realization of the approved plan in the actual repo.]
+- [Observable condition that proves success.]
 
 ---
 
-## Manifest Alignment Check
+## Constraints / Preserve
 
-| Affected Command / Phase | Existing Manifest Coverage? | New Artifact Needed? | New Event / Field Needed? | Handoff / Event Flow Impact | Status |
-|--------------------------|-----------------------------|----------------------|---------------------------|-----------------------------|--------|
-| [Command / phase] | [Yes / No / Partial] | [artifact or N/A] | [event/field or N/A] | [impact] | [Aligned / Needs update / Blocking] |
-
-### Manifest Alignment Notes
-
-- [Important note]
+- [Invariant or behavior that must not change.]
+- [Compatibility path that must remain valid.]
+- [Side effect that must not occur on blocked/error paths.]
 
 ---
 
-## Architecture Flow Delta
+## Implementation Directive
 
-Choose one:
+### Current Repo Behavior
 
-- **No Architecture Flow delta**
-- **Architecture Flow refined**
+[What bounded repo reads show the current symbol/path/artifact does today.]
 
-### Delta Summary
+If not verified, write exactly:
 
-[If no delta, state that the plan-level Architecture Flow remains correct. If refined, describe only what changed.]
+`BLOCKED: current behavior not validated from repo reads.`
 
-### Added / Refined Nodes, Edges, or Boundaries
+### Target Behavior
 
-| Change | Why Needed at LLD Level | Must Preserve in Tasking / Implementation |
-|--------|--------------------------|-------------------------------------------|
-| [Node / edge / boundary change] | [reason] | [constraint] |
+[What must be true after implementation.]
 
----
+### Concrete Edit Mechanics
 
-## Component and Boundary Design
+- [Branch, condition, parser, schema, return envelope, manifest field, command-doc section, template block, or side-effect path expected to change.]
 
-| Component / Boundary | Responsibility | Owning or Likely Touched File(s) | Likely Touched Symbol(s) | Reuse / Modify / Create | Inbound Dependencies | Outbound Dependencies |
-|----------------------|----------------|----------------------------------|--------------------------|-------------------------|---------------------|----------------------|
-| [Component] | [responsibility] | [files] | [symbols] | [mode] | [deps] | [deps] |
+### Contract / Data Changes
 
-### Control Flow Notes
+- [Reason code, field, payload shape, manifest key, emitted event, CLI/API output, artifact state, or template output that must change or be preserved.]
 
-- [Important control-flow detail]
+### Side Effects Allowed
 
-### Data Flow Notes
+- [Writes, appends, generated artifacts, sidecars, subprocess execution, or external calls permitted after validation.]
 
-- [Important data-flow detail]
+### Side Effects Forbidden
 
----
+- [Writes, appends, generated artifacts, sidecars, subprocess execution, or external calls forbidden on blocked/error paths.]
 
-## Interface, Symbol, and Contract Notes
+### Preserve Behavior
 
-### Public Interfaces and Contracts
+- [Compatibility path, legacy route, valid success case, idempotency behavior, operator-visible output, or existing test behavior that must remain unchanged.]
 
-| Interface / Contract | Purpose | Owner | Validation Point | Failure / Error Shape |
-|----------------------|---------|-------|------------------|-----------------------|
-| [Interface / schema / contract] | [purpose] | [owner] | [where validated] | [error/result shape] |
+### Test Oracle
 
-### New or Changed Public Symbols
-
-| Symbol | Change Type | Exact Intended Signature | Layer / Module | Responsibility | Notes |
-|--------|-------------|---------------------------|----------------|----------------|------|
-| [symbol] | [New / Changed / Preserved] | `[exact signature]` | [layer/module] | [responsibility] | [notes] |
-
-### Ownership Boundaries
-
-- [Boundary 1]
-- [Boundary 2]
-
----
-
-## State / Lifecycle / Failure Model
-
-### State Authority
-
-| State / Field / Lifecycle Area | Authoritative Source | Reconciliation Rule | Notes |
-|--------------------------------|----------------------|---------------------|------|
-| [state area] | [source of truth] | [rule] | [notes] |
-
-### Lifecycle / State Transitions
-
-| Transition | Allowed? | Trigger | Validation / Guard | Failure Handling |
-|------------|----------|---------|--------------------|------------------|
-| [A -> B] | [Yes / No] | [trigger] | [guard] | [handling] |
-
-### Retry / Replay / Ordering / Cancellation
-
-- Retry behavior: [description]
-- Duplicate / replay handling: [description]
-- Out-of-order handling: [description]
-- Cancellation / timeout behavior: [description]
-
-### Degraded Modes / Fallbacks / Recovery
-
-- [Degraded mode 1]
-- [Fallback rule 1]
-- [Recovery expectation 1]
-
----
-
-## Non-Functional Design Implications
-
-| Concern | Design Implication | Affected Surface(s) | Notes |
-|---------|--------------------|---------------------|-------|
-| [Latency / throughput / concurrency / observability / security / rollout / config] | [implication] | [surfaces] | [notes] |
-
----
-
-## Migration / Rollback Notes
-
-### Migration / Cutover Requirements
-
-- [Requirement 1]
-- [Requirement 2]
-
-### Rollback Triggers
-
-- [Trigger 1]
-- [Trigger 2]
-
-### Rollback Constraints
-
-- [Constraint 1]
-- [Constraint 2]
-
----
-
-## Human-Task and Operator Boundaries
-
-| Boundary | Why Human / Operator Action Is Required | Preconditions | Artifact / Evidence Consumed | Downstream `[H]` Implication | Failure / Escalation Path |
-|----------|-----------------------------------------|---------------|------------------------------|------------------------------|---------------------------|
-| [Boundary] | [reason] | [preconditions] | [artifact/evidence] | [tasking implication] | [path] |
-
----
-
-## Verification Strategy
-
-### Unit-Testable Seams
-
-- [Seam 1]
-
-### Contract Verification Needs
-
-- [Need 1]
-
-### Integration / Reality-Check Paths
-
-- [Path 1]
-
-### Lifecycle / Retry / Duplicate Coverage Needs
-
-- [Need 1]
-
-### Deterministic Oracles (if known)
-
-- [Oracle 1]
-
-### Regression-Sensitive Areas
-
-- [Area 1]
-
----
-
-## Domain Guardrails
-
-| Domain | Why Touched | MUST Constraints | Forbidden Shortcuts | Invariants to Preserve |
-|--------|-------------|------------------|---------------------|------------------------|
-| [Domain number + name] | [why] | [constraints] | [shortcuts] | [invariants] |
-
----
-
-## LLD Decision Log
-
-| Subject | Status | Rationale | Downstream Implication | May Tasking Proceed? |
-|---------|--------|-----------|------------------------|----------------------|
-| [decision subject] | [Decided / Assumed / Deferred / Blocked / Needs manifest update / Needs human confirmation] | [rationale] | [implication] | [Yes / No / Conditional] |
-
----
-
-## Design Gaps and Repo Contradictions
-
-### Missing Seams
-
-- [Gap 1]
-
-### Unsupported Assumptions
-
-- [Assumption 1]
-
-### Plan vs Repo Contradictions
-
-- [Contradiction 1]
-
-### Blocking Design Issues
-
-- [Blocking issue 1]
-
----
-
-## Out-of-Scope / Preserve-As-Is Boundaries
-
-- [Boundary or surface intentionally left unchanged]
-- [Boundary or surface tasking/implementation must not widen without rationale]
+- [Exact scenario and assertion shape downstream tasking must carry into the HUD.]
 
 ---
 
@@ -371,18 +200,125 @@ Choose one:
 
 Tasking must follow these rules:
 
-- Every decomposition-ready design slice must produce at least one task unless an explicit omission rationale is recorded.
-- No task may introduce scope, seams, symbols, interfaces, or artifacts absent from this sketch without explicit rationale.
-- `[H]` tasks may only come from identified human/operator boundaries or explicit external dependency constraints.
-- `file:symbol` annotations in tasks must trace back to symbol targets or symbol-creation notes in this sketch.
-- Acceptance artifacts must derive from the verification intent and acceptance traceability in this sketch.
-- Large-point tasks that require later breakdown must preserve the originating design slice and its safety invariants.
-- Tasking must preserve declared inter-slice dependencies unless an explicit rationale is recorded.
+- Every implementation task must trace to this sketch.
+- No task may introduce scope, seams, symbols, interfaces, artifacts, or events absent from this sketch without explicit rationale.
+- `file:symbol` annotations in tasks must trace back to this sketch.
+- Acceptance artifacts must derive from the verification intent in this sketch.
+- Tasking must preserve declared dependencies and invariants.
 - Tasking must not create tasks against surfaces explicitly marked preserve-as-is unless a rationale is recorded.
+- Every non-`[H]` task must produce a HUD implementation ticket with current behavior, target behavior, required edits, touched symbols, tests, constraints, dependencies, and done criteria.
 
-### Additional Tasking Notes
+---
 
-- [Additional rule or note]
+## Sketch Completion Summary
+
+### Ready for Tasking?
+
+- [ ] Existing spec coverage is explicit.
+- [ ] Current behavior is verified or explicitly blocked.
+- [ ] Target behavior is explicit.
+- [ ] Primary seam is explicit.
+- [ ] Required edit / solution is concrete.
+- [ ] Verification oracle is explicit.
+- [ ] Constraints and preserve-as-is behavior are explicit.
+- [ ] Contract/artifact/event impact is included or not applicable.
+- [ ] Runtime/state/failure impact is included or not applicable.
+- [ ] Human/operator boundary is included or not applicable.
+- [ ] Multi-task work is decomposed into design slices when needed.
+- [ ] Every slice has an implementation directive when slices exist.
+- [ ] No blocking repo contradiction remains unresolved.
+
+### Suggested Next Step
+
+`/speckit.tasking`
+
+---
+
+# 2. Conditional Sketch Additions
+
+<!--
+Emit only the conditional sections that are triggered.
+Omit all unused conditional sections from generated sketch.md.
+-->
+
+## Repo Grounding
+
+### Primary Surfaces
+
+| Surface | Current Role | Planned Change | Symbols | Reuse / Modify / Create | Verification Concern |
+|---------|--------------|----------------|---------|--------------------------|----------------------|
+| [file/artifact/module] | [role today] | [change] | [symbols] | [Reuse / Modify / Create] | [concern] |
+
+### Secondary / Blast-Radius Surfaces
+
+| Surface | Why Affected | Risk | Required Regression Check |
+|---------|--------------|------|---------------------------|
+| [surface] | [reason] | [risk] | [check] |
+
+### Caller / Callee / Dependency Notes
+
+- [Important relationship.]
+- [Important relationship.]
+
+---
+
+## Contract / Artifact / Event Impact
+
+| Contract / Artifact / Symbol / Event | Current Shape | Target Shape | Owner | Failure Shape / Invariant | Verification |
+|--------------------------------------|---------------|--------------|-------|---------------------------|--------------|
+| [surface] | [current] | [target] | [owner] | [failure/invariant] | [verification] |
+
+### Manifest / Registry / Template Notes
+
+- [Manifest, registry, routing, scaffold, or template impact.]
+
+---
+
+## Runtime / State / Failure Notes
+
+| Concern | Applies? | Design Decision | Verification / Rollback Note |
+|---------|----------|-----------------|------------------------------|
+| State authority | [Yes / No] | [decision] | [note] |
+| Lifecycle transition | [Yes / No] | [decision] | [note] |
+| Retry / replay / duplicate handling | [Yes / No] | [decision] | [note] |
+| Rollback / migration | [Yes / No] | [decision] | [note] |
+| Async / cancellation / timeout | [Yes / No] | [decision] | [note] |
+| Side-effect ordering | [Yes / No] | [decision] | [note] |
+
+### Forbidden Failure Modes
+
+- [Failure mode implementation must prevent.]
+- [Failure mode implementation must prevent.]
+
+---
+
+## Human / Operator Boundaries
+
+| Boundary | Why Human / Operator Action Is Required | Preconditions | Evidence / Verification | Downstream `[H]` Task? |
+|----------|-----------------------------------------|---------------|--------------------------|------------------------|
+| [boundary] | [reason] | [preconditions] | [evidence] | [Yes / No] |
+
+---
+
+## Design Gaps and Repo Contradictions
+
+### Missing Seams
+
+- [Gap.]
+
+### Unsupported Assumptions
+
+- [Assumption.]
+
+### Plan vs Repo Contradictions
+
+- [Contradiction.]
+
+### Blocking Design Issues
+
+- [Blocking issue.]
+
+If any blocking issue exists, tasking must not proceed until resolved.
 
 ---
 
@@ -393,6 +329,9 @@ Tasking must follow these rules:
 **Objective**  
 [What this slice accomplishes.]
 
+**Primary Seam**  
+`[file:symbol or artifact path]`
+
 **Touched Files**  
 - `[path/to/file.ext]`
 
@@ -401,53 +340,72 @@ Tasking must follow these rules:
 
 **Likely Net-New Files**  
 - `[path/to/new_file.ext]`
-
-**Primary Seam**  
-[Primary seam]
-
-**Blast-Radius Neighbors**  
-- `[neighbor surface]`
+- If none, write: None.
 
 **Reuse / Modify / Create Classification**  
 [Reuse / Modify / Create]
 
-**Required Public Symbols / Interfaces**  
-- `[symbol or interface]`
-
-**Major Constraints**  
-- [Constraint 1]
-
 **Dependencies on Other Slices**  
-- [Dependency 1]
+- [Dependency, or None.]
+
+**Constraints / Invariants**  
+- [Constraint.]
 
 **Primary Verification Intent**  
 [What downstream validation must prove for this slice.]
 
-**Operator Impact**  
-[None / Describe impact]
+**Implementation Directive**
 
-**Likely Verification / Regression Concern**  
-[What downstream verification must pay special attention to.]
-
-_Add as many slices as needed, using stable IDs (`SK-02`, `SK-03`, ...)._
+- **Current repo behavior**: [What this slice’s seam does today.]
+- **Target behavior**: [What must be true after this slice.]
+- **Concrete edit mechanics**: [Branch/condition/schema/return envelope/template/artifact path to change.]
+- **Contract / data changes**: [Fields/events/reason codes/payloads/artifact states.]
+- **Side effects allowed**: [Allowed side effects.]
+- **Side effects forbidden**: [Forbidden side effects.]
+- **Preserve behavior**: [Behavior to preserve.]
+- **Test oracle**: [Scenario and assertion shape.]
 
 ---
 
-## Sketch Completion Summary
+### Slice SK-02: [Slice Name]
 
-### Review Readiness
+**Objective**  
+[What this slice accomplishes.]
 
-- [ ] The solution narrative is clear
-- [ ] The construction strategy is coherent
-- [ ] Acceptance traceability is complete
-- [ ] Touched files and symbols are concrete enough for tasking
-- [ ] Reuse / modify / create choices are explicit
-- [ ] Manifest alignment is explicit where relevant
-- [ ] Human-task boundaries are explicit where relevant
-- [ ] Verification intent is sufficient for downstream artifact generation
-- [ ] Domain MUST rules are preserved
-- [ ] No blocking design contradiction remains unresolved
+**Primary Seam**  
+`[file:symbol or artifact path]`
 
-### Suggested Next Step
+**Touched Files**  
+- `[path/to/file.ext]`
 
-`/speckit.solutionreview`
+**Touched Symbols**  
+- `[file.py:symbol_name]`
+
+**Likely Net-New Files**  
+- `[path/to/new_file.ext]`
+- If none, write: None.
+
+**Reuse / Modify / Create Classification**  
+[Reuse / Modify / Create]
+
+**Dependencies on Other Slices**  
+- [Dependency, or None.]
+
+**Constraints / Invariants**  
+- [Constraint.]
+
+**Primary Verification Intent**  
+[What downstream validation must prove for this slice.]
+
+**Implementation Directive**
+
+- **Current repo behavior**: [What this slice’s seam does today.]
+- **Target behavior**: [What must be true after this slice.]
+- **Concrete edit mechanics**: [Branch/condition/schema/return envelope/template/artifact path to change.]
+- **Contract / data changes**: [Fields/events/reason codes/payloads/artifact states.]
+- **Side effects allowed**: [Allowed side effects.]
+- **Side effects forbidden**: [Forbidden side effects.]
+- **Preserve behavior**: [Behavior to preserve.]
+- **Test oracle**: [Scenario and assertion shape.]
+
+_Add more slices only when required._

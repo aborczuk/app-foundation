@@ -204,7 +204,122 @@ flowchart TD
   threshold stated in the acceptance scenarios if one exists.
 -->
 
+
 [Single sentence: observable state in production that means this feature is shipped]
+
+## Delivery Routing & Rough Size *(mandatory)*
+
+<!--
+  REQUIRED: This section routes the backlog item through the right amount of downstream process.
+  This is NOT the implementation estimate. It is a rough sizing and risk screen used to decide
+  whether research, plan, and full sketch are needed.
+
+  Sizing intent:
+  - XS/S/M/L/XL = process size and uncertainty, not story points.
+  - Final task points belong in estimate.md after sketch + tasking/HUDs exist.
+
+  Routing principles:
+  - Research can be skipped when no external dependency, prior art, package/API choice,
+    security/regulatory ambiguity, or unfamiliar technology needs investigation.
+  - Plan can be skipped when existing architecture, state model, contracts, runtime flow,
+    and trust boundaries already cover the item.
+  - Sketch is required for every implementation item that reaches tasking, but should be
+    proportional to size. XS items may use only the core sketch sections.
+  - Existing-spec coverage should be preferred over creating a new spec when the backlog item
+    is a delta, clarification, bug, refactor, test-only change, docs/template update, or ops task.
+-->
+
+### Item Classification
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| Work type | `[New feature / Existing feature delta / Bug / Refactor / Docs / Test-only / Ops]` | [Why] |
+| Existing spec coverage | `[Full / Partial / None]` | [Relevant feature/spec ID or N/A] |
+| Required spec action | `[None / Clarification / New requirement / New acceptance scenario / New spec]` | [Why] |
+
+### Rough Size
+
+T-shirt size: `[XS / S / M / L / XL]`
+
+Reasoning:
+- [One short paragraph explaining process size, uncertainty, and expected downstream complexity.]
+
+Use this calibration:
+
+| Size | Meaning | Typical Routing |
+|------|---------|-----------------|
+| XS | One obvious repo-local change, usually one seam, no new architecture or research | Research skip, Plan skip, Sketch core only |
+| S | Small repo-local change using existing architecture, small contract/test detail | Research skip, Plan skip or lite, Sketch core plus any triggered sections |
+| M | Multiple seams or one meaningful design decision, existing architecture mostly applies | Research skip unless unknowns, Plan lite, Sketch expanded |
+| L | New or materially changed architecture, state, interface, workflow, or artifact/event lifecycle | Research as needed, Plan full, Sketch expanded with slices |
+| XL | Cross-cutting, external, security/data-heavy, unclear feasibility, or likely multi-feature work | Research required, Plan full, Sketch expanded; consider splitting spec |
+
+### Risk / Uncertainty
+
+| Dimension | Level | Reason |
+|-----------|-------|--------|
+| Requirement clarity | `[Low / Medium / High]` | [Why] |
+| Repo uncertainty | `[Low / Medium / High]` | [Why] |
+| External dependency uncertainty | `[Low / Medium / High]` | [Why] |
+| State / data / migration risk | `[Low / Medium / High]` | [Why] |
+| Runtime / side-effect risk | `[Low / Medium / High]` | [Why] |
+| Human/operator dependency | `[Low / Medium / High]` | [Why] |
+
+### Phase Routing
+
+| Downstream Phase | Decision | Reason |
+|------------------|----------|--------|
+| Research | `[Skip / Required]` | [Why] |
+| Plan | `[Skip / Lite / Full]` | [Why] |
+| Sketch | `[Required]` | [Why; every implementation item that reaches tasking needs at least the core sketch] |
+| Tasking | `[Required / Attach to existing feature]` | [Why] |
+| Estimate | `[Required after tasking / Reuse existing estimate]` | [Why] |
+
+### Routing Contract
+
+Fill this block with the same routing and risk decisions above. Downstream automation reads this block.
+
+```json
+{
+  "routing": {
+    "research_route": "",
+    "plan_profile": "",
+    "sketch_profile": "",
+    "tasking_route": "",
+    "estimate_route": "",
+    "routing_reason": "",
+    "conditional_sketch_sections": []
+  },
+  "risk": {
+    "requirement_clarity": "",
+    "repo_uncertainty": "",
+    "external_dependency_uncertainty": "",
+    "state_data_migration_risk": "",
+    "runtime_side_effect_risk": "",
+    "human_operator_dependency": ""
+  }
+}
+```
+
+### Existing-Spec Attachment
+
+If this item is covered by an existing spec, state how it should attach:
+
+- Existing feature/spec: `[ID or N/A]`
+- Attach as: `[Acceptance clarification / New acceptance scenario / Task candidate / Bug against existing behavior / Refactor / Docs-template update / Duplicate]`
+- New spec required? `[Yes / No]`
+- Rationale: [Why]
+
+### Routing Gate
+
+- [ ] Work type is classified.
+- [ ] Existing spec coverage is checked.
+- [ ] Rough size is assigned.
+- [ ] Risk/uncertainty dimensions are assigned.
+- [ ] Research route is justified.
+- [ ] Plan route is justified.
+- [ ] Sketch is required and right-sized.
+- [ ] Tasking/estimate route is justified.
 
 ## Open Questions *(include if any unresolved decisions exist)*
 

@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+from spec_routing import load_spec_routing_contract
+
 HEADING_RE = re.compile(r"^\s*(?P<hashes>#{2,6})\s+(?P<title>.+?)\s*$")
 
 RESEARCH_REQUIRED_SECTIONS = (
@@ -38,9 +40,11 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
     research = sub.add_parser(
-        "research-prereq", help="Validate research.md presence and required sections."
+        "research-prereq",
+        help="Validate research prerequisites, honoring spec-driven routing when provided.",
     )
     research.add_argument("--feature-dir", required=True)
+    research.add_argument("--spec-file", default=None)
     research.add_argument("--json", action="store_true")
 
     core_action = sub.add_parser(
@@ -87,9 +91,65 @@ def _emit(payload: dict[str, Any], as_json: bool) -> None:
 
 
 def _research_prereq(feature_dir: Path) -> tuple[int, dict[str, Any]]:
+    """Validate research prerequisites without an explicit routing contract."""
+    return _research_prereq_with_spec(feature_dir, None)
+
+
+def _research_prereq_with_spec(
+    feature_dir: Path, spec_file: Path | None
+) -> tuple[int, dict[str, Any]]:
+    """Validate research prerequisites against spec-driven routing when available."""
     reasons: list[str] = []
     research = feature_dir / "research.md"
     found_sections: list[str] = []
+    routing_contract: dict[str, Any] | None = None
+
+    if spec_file is not None:
+        contract, routing_reasons = load_spec_routing_contract(spec_file)
+        if contract is not None:
+            routing_contract = contract
+        if routing_reasons:
+            reasons.extend(routing_reasons)
+            payload = {
+                "mode": "research_prereq",
+                "feature_dir": str(feature_dir),
+                "spec_file": str(spec_file),
+                "routing_contract": routing_contract,
+                "research_file": str(research),
+                "found_sections": found_sections,
+                "reasons": reasons,
+                "ok": False,
+            }
+            return (2, payload)
+
+    if routing_contract is not None:
+        routing = routing_contract.get("routing", {})
+        if isinstance(routing, dict):
+            if routing.get("plan_profile") == "skip":
+                payload = {
+                    "mode": "research_prereq",
+                    "feature_dir": str(feature_dir),
+                    "spec_file": str(spec_file) if spec_file is not None else None,
+                    "routing_contract": routing_contract,
+                    "research_file": str(research),
+                    "found_sections": [],
+                    "reasons": ["plan_skipped_by_routing"],
+                    "ok": True,
+                }
+                return (0, payload)
+            if routing.get("research_route") == "skip":
+                payload = {
+                    "mode": "research_prereq",
+                    "feature_dir": str(feature_dir),
+                    "spec_file": str(spec_file) if spec_file is not None else None,
+                    "routing_contract": routing_contract,
+                    "research_file": str(research),
+                    "found_sections": [],
+                    "reasons": ["research_skipped_by_routing"],
+                    "ok": True,
+                }
+                return (0, payload)
+
     if not research.exists():
         reasons.append("missing_research_md")
     else:
@@ -103,6 +163,8 @@ def _research_prereq(feature_dir: Path) -> tuple[int, dict[str, Any]]:
     payload = {
         "mode": "research_prereq",
         "feature_dir": str(feature_dir),
+        "spec_file": str(spec_file) if spec_file is not None else None,
+        "routing_contract": routing_contract,
         "research_file": str(research),
         "found_sections": found_sections,
         "reasons": reasons,
@@ -275,7 +337,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run selected /speckit.plan deterministic gate check."""
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args.subcommand == "research-prereq":
-        exit_code, payload = _research_prereq(Path(args.feature_dir).resolve())
+        spec_file = Path(args.spec_file).resolve() if args.spec_file else None
+        exit_code, payload = _research_prereq_with_spec(
+            Path(args.feature_dir).resolve(), spec_file
+        )
     elif args.subcommand == "spec-core-action":
         exit_code, payload = _spec_core_action(
             Path(args.spec_file).resolve(),

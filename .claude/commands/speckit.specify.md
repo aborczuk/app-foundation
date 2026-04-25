@@ -106,10 +106,17 @@ Given that feature description, do this:
 8. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
    - In **default mode**, this writes the newly created spec file.
    - In **update mode**, this updates the existing `spec.md` in-place.
+   - Populate the Delivery Routing & Rough Size section with a machine-readable `routing` + `risk` JSON block so downstream gates can branch without re-parsing prose.
 
 9. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
 
-   a. **Create Spec Quality Checklist**: Pre-scaffold the checklist file from the template:
+   a. **Validate Routing Contract**:
+
+      1. Run: `uv run python scripts/speckit_spec_gate.py validate-routing --spec-file "$SPEC_FILE" --json`
+         - Confirms the machine-readable `routing` + `risk` block exists
+         - Parses the JSON block and rejects placeholder-only or incomplete routing values
+
+   b. **Create Spec Quality Checklist**: Pre-scaffold the checklist file from the template:
 
       1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
          - Reads `command-manifest.yaml` to resolve which artifacts speckit.specify owns
@@ -159,8 +166,8 @@ Given that feature description, do this:
    
    Emit `backlog_registered` to `.speckit/pipeline-ledger.jsonl`:
    ```json
-   {"event": "backlog_registered", "feature_id": "NNN", "phase": "spec", "actor": "<agent-id>", "timestamp_utc": "..."}
-   ```
+    {"event": "backlog_registered", "feature_id": "NNN", "phase": "spec", "actor": "<agent-id>", "timestamp_utc": "...", "routing": {"research_route": "skip", "plan_profile": "skip", "sketch_profile": "core", "tasking_route": "required", "estimate_route": "required_after_tasking", "routing_reason": "...", "conditional_sketch_sections": []}, "risk": {"requirement_clarity": "low", "repo_uncertainty": "low", "external_dependency_uncertainty": "low", "state_data_migration_risk": "low", "runtime_side_effect_risk": "low", "human_operator_dependency": "low"}}
+    ```
 
 12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase (`/speckit.research`).
    - In **update mode**, explicitly report that existing spec scope was updated in-place (no new branch created).

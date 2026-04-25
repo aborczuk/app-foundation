@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from pipeline_driver_contracts import parse_step_result, render_status_lines
-from pipeline_driver_state import advance_phase, resolve_phase_state
+from pipeline_driver_state import advance_phase, determine_next_phase, resolve_phase_state
 
 VALID_PIPELINE_PHASE_SEQUENCE = ("specify", "research", "plan", "solution", "implement", "closed")
 VALID_PIPELINE_PHASES = set(VALID_PIPELINE_PHASE_SEQUENCE)
@@ -806,6 +806,7 @@ def run_generative_handoff(
     feature_id: str,
     phase: str,
     correlation_id: str,
+    next_phase: str | None = None,
     timeout_seconds: int = 300,
     handoff_runner: str | None = None,
     cwd: str | Path | None = None,
@@ -950,7 +951,7 @@ def run_generative_handoff(
         "ok": True,
         "exit_code": 0,
         "correlation_id": correlation_id,
-        "next_phase": advance_phase(phase),
+        "next_phase": next_phase or advance_phase(phase),
         "gate": None,
         "reasons": [],
         "error_code": None,
@@ -1233,6 +1234,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     current_phase = phase_state.get("phase")
     if not isinstance(current_phase, str) or not current_phase:
         current_phase = "unknown"
+    route_next_phase = phase_state.get("next_phase")
+    if not isinstance(route_next_phase, str) or not route_next_phase:
+        route_next_phase = determine_next_phase(
+            current_phase, routing_contract=phase_state.get("routing_contract")
+        )
 
     if requested_phase is not None and requested_phase not in VALID_PIPELINE_PHASES:
         correlation_id = build_correlation_id(resolved_feature_id, requested_phase)
@@ -1314,7 +1320,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "ok": True,
             "exit_code": 0,
             "correlation_id": correlation_id,
-            "next_phase": advance_phase(current_phase),
+            "next_phase": route_next_phase,
             "gate": None,
             "reasons": [],
             "error_code": None,
@@ -1396,6 +1402,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             feature_id=resolved_feature_id,
             phase=effective_phase,
             correlation_id=correlation_id,
+            next_phase=route_next_phase,
             handoff_runner=args.handoff_runner,
         )
         if int(step_result.get("exit_code", 1)) == 0:
@@ -1455,7 +1462,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     resolved_current_phase = phase_state.get("phase")
                     if not isinstance(resolved_current_phase, str) or not resolved_current_phase:
                         resolved_current_phase = effective_phase
-                    step_result["next_phase"] = advance_phase(resolved_current_phase)
+                    step_result["next_phase"] = determine_next_phase(
+                        resolved_current_phase, routing_contract=phase_state.get("routing_contract")
+                    )
                     step_result["pipeline_event"] = append_result.get("event")
                 step_result["artifact_validation"] = {
                     "ok": True,

@@ -15,6 +15,7 @@ Execute implementation through deterministic script-owned gates, verification, Q
 3. Run verification gates before task closeout.
 4. Run offline QA handoff and canonical ledger closeout.
 5. Update quickstart runbook + decision log via `scripts/speckit_implement_docs.py`.
+6. Preserve GitHub sync handoff via `/speckit.checkpoint Phase [N]` compact status line; do not emit a prose summary.
 
 ## Expanded Guidance (Load On Demand)
 

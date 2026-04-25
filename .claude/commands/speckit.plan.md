@@ -29,13 +29,15 @@ Run these steps first; only load expanded guidance when a gate fails or the user
 2. Derive `FEATURE_DIR="$(dirname "$FEATURE_SPEC")"` and run deterministic gates:
     - `uv run python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
     - `uv run python scripts/speckit_plan_gate.py spec-core-action --spec-file "$FEATURE_SPEC" --legacy-ok --json`
-    - `uv run python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --json`
+    - `uv run python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --spec-file "$FEATURE_SPEC" --json`
     - `uv run python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --json`
     - `uv run python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
+    - If the routing contract says `plan_profile=skip`, treat the plan gate result as a routed bypass and hand off directly to `/speckit.sketch`.
 3. Scaffold plan artifacts immediately:
     - `uv run python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
    - This creates `plan.md`, `data-model.md`, and `quickstart.md` from the manifest templates.
-4. Fill the scaffolded artifacts using `spec.md`, `research.md`, and repo context with this mandatory read hierarchy:
+4. Fill the scaffolded artifacts using `spec.md`, the routing contract, `research.md` when required, and repo context with this mandatory read hierarchy:
+    - Start from the machine-readable routing contract in `spec.md`; if it says research is skipped, do not require `research.md` to exist for gating.
     - First, run the read helpers (entrypoint):
       - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
       - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`

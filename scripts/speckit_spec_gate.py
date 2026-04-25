@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+from spec_routing import load_spec_routing_contract
+
 CHECKBOX_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]")
 NEEDS_CLARIFICATION_RE = re.compile(r"\[NEEDS CLARIFICATION:\s*(?P<text>[^\]]+)\]")
 QUESTION_HEADER_RE = re.compile(r"^\s*##\s+Question\s+(?P<num>\d+)\s*:\s*(?P<title>.+?)\s*$")
@@ -43,6 +45,12 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     format_check.add_argument("--markdown-file", required=True)
     format_check.add_argument("--json", action="store_true")
+
+    routing_check = sub.add_parser(
+        "validate-routing", help="Validate the machine-readable routing contract in spec.md."
+    )
+    routing_check.add_argument("--spec-file", required=True)
+    routing_check.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -224,6 +232,20 @@ def _validate_clarification_questions(markdown_file: Path) -> tuple[int, dict[st
     return (0 if payload["ok"] else 2, payload)
 
 
+def _validate_routing(spec_file: Path) -> tuple[int, dict[str, Any]]:
+    """Validate that spec.md contains a parseable routing contract."""
+    contract, reasons = load_spec_routing_contract(spec_file)
+    payload: dict[str, Any] = {
+        "mode": "validate_routing",
+        "spec_file": str(spec_file),
+        "routing": contract.get("routing") if contract is not None else None,
+        "risk": contract.get("risk") if contract is not None else None,
+        "reasons": reasons,
+        "ok": len(reasons) == 0,
+    }
+    return (0 if payload["ok"] else 2, payload)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run selected /speckit.specify deterministic gate check."""
     args = _parse_args(argv if argv is not None else sys.argv[1:])
@@ -235,6 +257,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         exit_code, payload = _validate_clarification_questions(
             Path(args.markdown_file).resolve()
         )
+    elif args.subcommand == "validate-routing":
+        exit_code, payload = _validate_routing(Path(args.spec_file).resolve())
     else:
         return 2
 

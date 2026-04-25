@@ -3,21 +3,171 @@
 _Date: [DATE]_  
 _Feature: `[FEATURE_ID]`_  
 _Source Spec: `spec.md`_  
-_Artifact: `plan.md`_
+_Artifact: `plan.md`_  
+_Plan Profile: `[Skip / Lite / Full]`_
+
+---
+
+## Section Map
+
+### Always Emit
+
+- Core Plan
+  - Summary
+  - Plan Routing
+  - Existing Coverage and Reuse
+  - Handoff Contract to Sketch
+  - Plan Completion Summary
+
+### Emit Only If Triggered
+
+- Conditional Plan Additions
+  - Architecture Direction — emit for Lite/Full, or if Skip profile still needs one architecture assumption stated.
+  - Technical Context — emit for Full, or when technology/runtime/tooling choice matters.
+  - Runtime / State / Contract Impact — emit when state, storage, transactions, retry, idempotency, public contracts, artifact/event lifecycle, external dependencies, or trust boundaries change.
+  - Artifact, Event, and Surface Impact — emit when generated artifacts, events, manifests, command outputs, public contracts, templates, docs, or operator-visible surfaces change.
+  - External Ingress and Runtime Readiness — emit when external systems, credentials, webhooks, APIs, deployments, or non-repo configuration are involved.
+  - Feasibility and Research Questions — emit when research is required or unknowns remain.
+  - Human / Operator Boundary Check — emit when manual, external-console, credential, approval, deployment, or operator action may be required.
+
+### Omission Rules
+
+- Omit unused conditional sections entirely.
+- Do not leave placeholder headings.
+- Do not emit empty or “N/A” tables for conditional sections.
+- Keep the generated plan proportional to the selected profile.
+- Do not use Full profile when Skip or Lite would preserve the required decisions.
+
+---
+
+# 1. Core Plan
 
 ## Summary
 
 ### Feature Goal
 
-[Describe the feature in one paragraph from an architecture/planning perspective.]
+[Describe the feature or backlog item from an architecture/planning perspective.]
 
-### Architecture Direction
+### Plan Profile Decision
 
-[State the chosen architecture direction in plain language.]
+Selected profile: `[Skip / Lite / Full]`
+
+Reason:
+- [Why this profile is sufficient.]
+
+### Existing Spec Coverage
+
+- Existing spec / feature: `[ID or N/A]`
+- Coverage status: `[Full / Partial / None]`
+- Required spec update: `[None / Clarification / New requirement / New acceptance scenario / New spec]`
+
+---
+
+## Plan Routing
+
+| Downstream Phase | Decision | Reason |
+|------------------|----------|--------|
+| Research | `[Skip / Required]` | [Why] |
+| Plan | `[Skip / Lite / Full]` | [Why] |
+| Sketch | `[Required]` | [Why; every implementation item should have at least the minimum sketch] |
+| Tasking | `[Required / Attach to existing feature]` | [Why] |
+| Estimate | `[Required after tasking / Reuse existing estimate]` | [Why] |
+
+### Routing Notes
+
+- [Any important routing note.]
+- [If this item attaches to an existing feature, state where.]
+
+---
+
+## Existing Coverage and Reuse
+
+| Existing Surface / Spec / Plan / Pattern | What It Already Covers | Gap / Required Change | Reuse Decision |
+|------------------------------------------|-------------------------|-----------------------|----------------|
+| [surface/spec/pattern] | [coverage] | [gap] | [Reuse / Extend / Replace / N/A] |
+
+### Reuse Strategy
+
+[Describe what is reused as-is, what is extended, and what is net-new.]
+
+### Net-New Justification
+
+[Explain why any net-new architecture, artifact, interface, or runtime behavior is necessary. If none, write “None.”]
+
+---
+
+## Handoff Contract to Sketch
+
+### Settled by Plan
+
+- [Decision settled by this plan.]
+- [Decision settled by this plan.]
+
+### Sketch Must Preserve
+
+- [Architecture assumption.]
+- [Reuse decision.]
+- [Contract or artifact invariant.]
+- [Runtime/state/failure invariant.]
+
+### Sketch Must Determine
+
+- [Repo-grounded surfaces.]
+- [Touched files/symbols.]
+- [Implementation seams.]
+- [Concrete current → target behavior.]
+- [Verification or test oracle.]
+- [Whether the solution decomposes into one task or multiple design slices.]
+
+### Sketch Must Not Re-Decide
+
+- [Settled architecture choice.]
+- [Settled trust boundary.]
+- [Settled external dependency decision.]
+- [Settled artifact/event lifecycle decision.]
+
+---
+
+## Plan Completion Summary
+
+### Ready for Sketch?
+
+- [ ] Plan profile is explicit.
+- [ ] Existing spec coverage is explicit.
+- [ ] Downstream phase routing is explicit.
+- [ ] Reuse strategy is explicit.
+- [ ] Runtime/state/contract impact is explicit or not applicable.
+- [ ] Artifact/event/surface impact is explicit or not applicable.
+- [ ] Human/operator boundary is explicit or not applicable.
+- [ ] Open feasibility questions are isolated or marked None.
+- [ ] Handoff contract to sketch is explicit.
+
+### Suggested Next Step
+
+`/speckit.sketch`
+
+---
+
+# 2. Conditional Plan Additions
+
+<!--
+Emit only the conditional sections that are triggered.
+Omit all unused conditional sections from generated plan.md.
+-->
+
+## Architecture Direction
+
+### Chosen Direction
+
+[State the architecture direction in plain language.]
 
 ### Why This Direction
 
-[Explain why this architecture is the preferred fit for the feature, given requirements, research, and repo constraints.]
+[Explain why this direction fits the spec, existing architecture, and repo constraints.]
+
+### Architecture Delta From Existing System
+
+[State whether this item preserves existing architecture or changes it. If changed, describe the smallest meaningful delta.]
 
 ---
 
@@ -26,214 +176,70 @@ _Artifact: `plan.md`_
 | Area | Decision / Direction | Notes |
 |------|-----------------------|-------|
 | Language / Runtime | [value] | [notes] |
-| Technology Direction | [category + constraints] | [notes] |
 | Technology Selection | [chosen tools/libraries/platforms] | [notes / evidence] |
 | Storage | [value] | [notes] |
 | Testing | [value] | [notes] |
 | Target Platform | [value] | [notes] |
-| Project Type | [value] | [notes] |
-| Performance Goals | [value] | [notes] |
 | Constraints | [value] | [notes] |
 | Scale / Scope | [value] | [notes] |
 
-### Async Process Model
+---
 
-[Describe async/background/task-worker expectations, or state N/A.]
+## Runtime / State / Contract Impact
 
-### State Ownership / Reconciliation Model
+| Concern | Applies? | Decision / Impact | Notes |
+|---------|----------|-------------------|-------|
+| Async / background work | [Yes / No] | [decision] | [notes] |
+| State authority | [Yes / No] | [decision] | [notes] |
+| Storage / persistence | [Yes / No] | [decision] | [notes] |
+| Transactions / rollback | [Yes / No] | [decision] | [notes] |
+| Retry / idempotency | [Yes / No] | [decision] | [notes] |
+| Public API / CLI / command contract | [Yes / No] | [decision] | [notes] |
+| Artifact / event lifecycle | [Yes / No] | [decision] | [notes] |
+| External service / dependency | [Yes / No] | [decision] | [notes] |
+| Trust boundary / permissions | [Yes / No] | [decision] | [notes] |
 
-[Describe authoritative state, mirrored state, reconciliation checkpoints, and fail policy, or state N/A.]
+### Required Invariants
 
-### Local DB Transaction Model
-
-[Describe transaction boundaries, rollback/no-partial-write behavior, idempotency expectations, or state N/A.]
-
-### Venue-Constrained Discovery Model
-
-[Describe metadata-first discovery / validation model where applicable, or state N/A.]
-
-### Implementation Skills
-
-- [Skill / concern 1]
-- [Skill / concern 2]
-- [Skill / concern 3]
+- [Invariant the sketch/tasking/implementation must preserve.]
+- [Invariant the sketch/tasking/implementation must preserve.]
 
 ---
 
-## Repeated Architectural Unit Recognition
+## Artifact, Event, and Surface Impact
 
-### Does a repeated architectural unit exist?
+| Surface / Artifact / Event / Contract | Change? | Owner | Downstream Consumer | Verification |
+|--------------------------------------|---------|-------|---------------------|--------------|
+| [surface] | [Yes / No] | [owner] | [consumer] | [verification] |
 
-[Yes / No]
+### Manifest / Registry Impact
 
-### Chosen Abstraction
-
-[Name the repeated unit, e.g. Phase Contract / Artifact Contract / Pipeline Node, or explain why no explicit abstraction is needed.]
-
-### Why It Matters
-
-[Explain why this abstraction should be treated as first-class in the architecture.]
-
-### Defining Properties
-
-- [Property 1]
-- [Property 2]
-- [Property 3]
-- [Property 4]
+[State whether manifest, registry, routing, command-map, or configuration updates are expected.]
 
 ---
 
-## Reuse-First Architecture Decision
-
-### Existing Sources Considered
-
-| Source Type | Candidate | Covers Which FRs / Needs | Use Decision | Notes |
-|-------------|-----------|---------------------------|--------------|------|
-| [Repo / package / script / template / command / pattern] | [name] | [coverage] | [Reuse / Extend / Reject] | [notes] |
-
-### Preferred Reuse Strategy
-
-[Describe what is reused as-is, what is extended, and what is net-new.]
-
-### Net-New Architecture Justification
-
-[Explain why any net-new pieces are necessary.]
-
----
-
-## Pipeline Architecture Model
-
-### Recurring Unit Model
-
-[Describe how the recurring unit appears in the system architecture.]
-
-### Unit Properties
-
-| Property | Description |
-|----------|-------------|
-| Name | [value] |
-| Owned Artifacts | [value] |
-| Template / Scaffold Relationship | [value] |
-| Events | [value] |
-| Handoffs | [value] |
-| Completion Invariants | [value] |
-
-### Downstream Reliance
-
-[Explain what later phases may rely on if this unit completes successfully.]
-
----
-
-## Artifact / Event Contract Architecture
-
-| Architectural Unit / Phase | Owned Artifacts | Template / Scaffold | Emitted Events | Downstream Consumers | Notes |
-|----------------------------|----------------|---------------------|----------------|----------------------|------|
-| [unit / phase] | [artifacts] | [template/script] | [events] | [consumers] | [notes] |
-
-### Manifest Impact
-
-[State whether manifest updates are expected, not needed, or unknown pending later grounding.]
-
----
-
-## Architecture Flow
-
-### Major Components
-
-- [Component 1]
-- [Component 2]
-- [Component 3]
-
-### Trust Boundaries
-
-- [Boundary 1]
-- [Boundary 2]
-
-### Primary Automated Action
-
-[Name the primary automated action and where it appears in the flow.]
-
-### Architecture Flow Notes
-
-[Describe the main architecture/data/event flow in prose, or reference the diagram block below.]
-
-```mermaid
-flowchart TD
-    A[Trigger] --> B[Primary Automated Action]
-    B --> C[Internal Component]
-    C --> D[External Service / Store]
-    D --> E[Return Path / Result]
-```
-
----
-
-## External Ingress + Runtime Readiness Gate
+## External Ingress and Runtime Readiness
 
 | Gate Item | Status | Rationale |
 |-----------|--------|-----------|
-| [Gate row] | [✅ Pass / ❌ Fail / N/A] | [rationale] |
-| [Gate row] | [✅ Pass / ❌ Fail / N/A] | [rationale] |
+| [Gate row] | [Pass / Fail] | [rationale] |
 
 ### Readiness Blocking Summary
 
-[If any row is `❌ Fail`, state what blocks implementation readiness.]
+[If any row is Fail, state what blocks implementation readiness.]
 
 ---
 
-## State / Storage / Reliability Model
+## Feasibility and Research Questions
 
-### State Authority
+### Research Decision
 
-[Describe what system is authoritative for major state categories.]
+Research: `[Skip / Required]`
 
-### Persistence Model
+Reason:
+- [Why research is or is not required.]
 
-[Describe storage approach and persistence boundaries.]
-
-### Retry / Timeout / Failure Posture
-
-[Describe architecture-level failure handling expectations.]
-
-### Recovery / Degraded Mode Expectations
-
-[Describe recovery and degraded-mode expectations.]
-
----
-
-## Contracts and Planning Artifacts
-
-### Data Model
-
-[Summarize expected `data-model.md` scope.]
-
-### Contracts
-
-[Summarize expected `contracts/` scope.]
-
-### Quickstart
-
-[Summarize expected `quickstart.md` scope.]
-
----
-
-## Constitution Check
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| [Constitution rule] | [✅ Pass / ❌ Fail / N/A] | [notes] |
-| [Constitution rule] | [✅ Pass / ❌ Fail / N/A] | [notes] |
-
----
-
-## Behavior Map Sync Gate
-
-| Runtime / Config / Operator Surface | Impact? | Update Target | Notes |
-|------------------------------------|---------|---------------|-------|
-| [surface] | [Yes / No] | [target path or N/A] | [notes] |
-
----
-
-## Open Feasibility Questions
+### Open Feasibility Questions
 
 - [ ] **FQ-001**: [question]  
   **Probe:** [minimal proof needed]  
@@ -245,61 +251,8 @@ flowchart TD
 
 ---
 
-## Handoff Contract to Sketch
+## Human / Operator Boundary Check
 
-### Settled by Plan
-
-- [Decision 1]
-- [Decision 2]
-- [Decision 3]
-
-### Sketch Must Preserve
-
-- [Architecture Flow assumption]
-- [Trust boundary assumption]
-- [Artifact/event contract assumption]
-- [Reuse-first decision]
-
-### Sketch May Refine
-
-- [Repo-grounded surfaces]
-- [Touched files/symbols]
-- [Implementation seams]
-- [Design slices]
-
-### Sketch Must Not Re-Decide
-
-- [Settled architecture choice]
-- [Settled trust boundary]
-- [Settled primary automated action]
-- [Feasibility-proven technology decision]
-
----
-
-## Phase 1 Planning Artifacts Summary
-
-| Artifact | Status | Notes |
-|----------|--------|-------|
-| `plan.md` | [created/updated] | [notes] |
-| `data-model.md` | [created/updated/N/A] | [notes] |
-| `contracts/` | [created/updated/N/A] | [notes] |
-| `quickstart.md` | [created/updated/N/A] | [notes] |
-
----
-
-## Plan Completion Summary
-
-### Ready for Plan Review?
-
-- [ ] Architecture direction is explicit
-- [ ] Repeated architectural unit is modeled or explicitly unnecessary
-- [ ] Reuse-first decision is explicit
-- [ ] Architecture Flow is complete
-- [ ] Trust boundaries are explicit
-- [ ] Artifact/event contract architecture is explicit
-- [ ] Open feasibility questions are isolated
-- [ ] Sketch handoff contract is explicit
-
-### Suggested Next Step
-
-`/speckit.planreview`
+| Boundary | Why Human / Operator Action Is Required | Preconditions | Evidence / Verification | Downstream `[H]` Task? |
+|----------|-----------------------------------------|---------------|--------------------------|------------------------|
+| [boundary] | [reason] | [preconditions] | [evidence] | [Yes / No] |
