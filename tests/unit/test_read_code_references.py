@@ -724,6 +724,69 @@ def test_read_code_references_pages_reads_by_offset(
     assert "src/other.py:21-21 function:reader" not in captured.out
 
 
+def test_read_code_references_offset_only_affects_requested_kind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Offset should not affect callers/callees when requesting different kinds."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def read_code_read():\n    return 1\n", encoding="utf-8")
+
+    target = _make_match(
+        unit_id="function:read_code_read",
+        symbol_name="read_code_read",
+        symbol_type="function",
+        line_num=1,
+        line_end=2,
+        body="def read_code_read():\n    return 1\n",
+    )
+    resolution = read_code._ReadResolution(match=target, method="exact_symbol_name")
+    exact_record = {
+        "kind": ["Function"],
+        "uid": "graph-123",
+        "name": "read_code_read",
+        "path": str(code_file),
+        "line_number": 1,
+        "end_line": 2,
+    }
+    caller_records = [
+        {"kind": ["Function"], "uid": "function:caller_a", "name": "caller_a", "path": "tests/test_usage.py", "line_number": 10, "end_line": 11},
+        {"kind": ["Function"], "uid": "function:caller_b", "name": "caller_b", "path": "src/other.py", "line_number": 20, "end_line": 21},
+    ]
+
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda *_: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *_: True)
+    monkeypatch.setattr(read_code, "codegraph_refresh_if_needed", lambda *_: True)
+    monkeypatch.setattr(read_code, "_resolve_graph_target", lambda *_: resolution)
+    monkeypatch.setattr(read_code, "_reference_exact_node_records", lambda *_: ([exact_record], None))
+
+    captured_calls: list[tuple[int, int]] = []
+
+    def _mock_callers_track(*args: Any, **kwargs: Any) -> tuple[list[dict[str, object]], str | None]:
+        """Mock that records offset and limit parameters."""
+        offset = kwargs.get("offset", 0)
+        limit = kwargs.get("limit", 80)
+        captured_calls.append(("callers", offset, limit))
+        return (caller_records[offset : offset + limit], None)
+
+    monkeypatch.setattr(read_code, "_reference_direct_callers", _mock_callers_track)
+    monkeypatch.setattr(read_code, "_reference_direct_callees", lambda *args, **kwargs: ([], None))
+    monkeypatch.setattr(read_code, "_reference_direct_callers_total", lambda *_: (2, None))
+    monkeypatch.setattr(read_code, "_reference_direct_callees_total", lambda *_: (0, None))
+    monkeypatch.setattr(read_code, "_reference_variable_terms", lambda *args, **kwargs: [])
+    monkeypatch.setattr(read_code, "_reference_variable_records", lambda *args, **kwargs: ([], None))
+    monkeypatch.setattr(read_code, "_reference_usage_terms", lambda *args, **kwargs: [])
+    monkeypatch.setattr(read_code, "_reference_content_records", lambda *args, **kwargs: ([], None))
+
+    result = read_code.read_code_references([str(code_file), "read_code_read", "--kind=reads", "--offset=5"])
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert len(captured_calls) == 1
+    assert captured_calls[0] == ("callers", 0, 80), "callers should use offset=0 when requesting --kind=reads"
+
+
 @pytest.mark.parametrize(
     "kind",
     ["default", "all"],

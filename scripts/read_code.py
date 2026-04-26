@@ -3687,12 +3687,20 @@ def read_code_references(argv: list[str]) -> int:
         section="definition",
     )
 
-    callers_records, error = _reference_direct_callers(file_path, target, depth, offset=offset, limit=max_items if requested_kind == "callers" else READ_CODE_REFERENCES_MAX_ITEMS)
+    callers_records, error = _reference_direct_callers(
+        file_path, target, depth,
+        offset=offset if requested_kind == "callers" else 0,
+        limit=max_items if requested_kind == "callers" else READ_CODE_REFERENCES_MAX_ITEMS
+    )
     if error is not None:
         print(f"ERROR: references callers query failed: {error}", file=sys.stderr)
         return 1
 
-    callees_records, error = _reference_direct_callees(file_path, target, depth, offset=offset, limit=max_items if requested_kind == "callees" else READ_CODE_REFERENCES_MAX_ITEMS)
+    callees_records, error = _reference_direct_callees(
+        file_path, target, depth,
+        offset=offset if requested_kind == "callees" else 0,
+        limit=max_items if requested_kind == "callees" else READ_CODE_REFERENCES_MAX_ITEMS
+    )
     if error is not None:
         print(f"ERROR: references callees query failed: {error}", file=sys.stderr)
         return 1
