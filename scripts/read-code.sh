@@ -49,7 +49,7 @@ _run_read_code_entrypoint() {
 }
 
 read_code_context() {
-    _run_read_code_entrypoint context "$@"
+    _run_read_code_entrypoint source-context "$@"
 }
 
 read_code_window() {

@@ -70,14 +70,150 @@ def _run_read_code(
     )
 
 
+def _sample_indexed_units(code_file: Path) -> str:
+    """Return a fake vector-index payload with module units and one function."""
+    return json.dumps(
+        [
+            {
+                "file_path": str(code_file),
+                "line_start": 1,
+                "line_end": 1,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "docstring",
+                "qualified_name": f"{code_file.name}::module:docstring",
+                "signature": '"""Sample module."""',
+                "docstring": "Sample module.",
+                "body": '"""Sample module."""',
+                "preview": "Sample module.",
+                "symbol_type": "module",
+            },
+            {
+                "file_path": str(code_file),
+                "line_start": 3,
+                "line_end": 3,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "imports",
+                "qualified_name": f"{code_file.name}::module:imports",
+                "signature": "from pathlib import Path",
+                "docstring": "",
+                "body": "from pathlib import Path",
+                "preview": "from pathlib import Path",
+                "symbol_type": "module",
+            },
+            {
+                "file_path": str(code_file),
+                "line_start": 5,
+                "line_end": 6,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "constants",
+                "qualified_name": f"{code_file.name}::module:constants",
+                "signature": "READ_CODE_READ_MAX_CHARS = 6000",
+                "docstring": "",
+                "body": 'READ_CODE_READ_MAX_CHARS = 6000\nWATCHERS = ("stdout",)',
+                "preview": "READ_CODE_READ_MAX_CHARS = 6000",
+                "symbol_type": "module",
+            },
+            {
+                "file_path": str(code_file),
+                "line_start": 8,
+                "line_end": 9,
+                "scope": "code",
+                "record_type": "code",
+                "symbol_name": "read_code_read",
+                "qualified_name": "source_sample.read_code_read",
+                "signature": "def read_code_read() -> int:",
+                "docstring": "",
+                "body": "def read_code_read() -> int:\n    return READ_CODE_READ_MAX_CHARS",
+                "preview": "def read_code_read() -> int:",
+                "symbol_type": "function",
+            },
+        ]
+    )
+
+
 def test_read_code_cli_usage_requires_mode_and_arguments(tmp_path: Path) -> None:
     result = _run_read_code(tmp_path, env=_env_without_uv())
 
     assert result.returncode == 1
     assert "Usage:" in result.stdout
-    assert "read_code_context" in result.stdout
-    assert "read_code_window" in result.stdout
+    assert "read_code context <file_path> <target>" in result.stdout
+    assert "source-context" in result.stdout
+    assert "source-window" in result.stdout
     assert "read_code_symbols" not in result.stdout
+
+
+def test_read_code_outline_lists_indexed_units_without_bodies(tmp_path: Path) -> None:
+    """Outline mode renders unit ids and metadata without leaking indexed bodies."""
+    code_file = tmp_path / "source_sample.py"
+    code_file.write_text(
+        '"""Sample module."""\n\n'
+        "from pathlib import Path\n\n"
+        "READ_CODE_READ_MAX_CHARS = 6000\n"
+        'WATCHERS = ("stdout",)\n\n'
+        "def read_code_read() -> int:\n"
+        "    return READ_CODE_READ_MAX_CHARS\n",
+        encoding="utf-8",
+    )
+
+    result = _run_read_code(
+        tmp_path,
+        "outline",
+        str(code_file),
+        env=_env_with_fake_uv(tmp_path, _sample_indexed_units(code_file)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "module:docstring\tmodule\t1-1\tdocstring" in result.stdout
+    assert "module:constants\tmodule\t5-6\tconstants" in result.stdout
+    assert "function:read_code_read\tfunction\t8-9\tread_code_read" in result.stdout
+    assert 'WATCHERS = ("stdout",)' not in result.stdout
+    assert "return READ_CODE_READ_MAX_CHARS" not in result.stdout
+
+
+def test_read_code_read_prefers_exact_unit_and_name_resolution_before_semantics(tmp_path: Path) -> None:
+    """Read mode resolves exact ids, names, normalized names, and qualified suffixes first."""
+    code_file = tmp_path / "source_sample.py"
+    code_file.write_text(
+        '"""Sample module."""\n\n'
+        "from pathlib import Path\n\n"
+        "READ_CODE_READ_MAX_CHARS = 6000\n"
+        'WATCHERS = ("stdout",)\n\n'
+        "def read_code_read() -> int:\n"
+        "    return READ_CODE_READ_MAX_CHARS\n",
+        encoding="utf-8",
+    )
+    env = _env_with_fake_uv(tmp_path, _sample_indexed_units(code_file))
+
+    exact_symbol = _run_read_code(tmp_path, "read", str(code_file), "read_code_read", env=env)
+    assert exact_symbol.returncode == 0, exact_symbol.stderr
+    assert "id=function:read_code_read" in exact_symbol.stdout
+    assert "kind=function" in exact_symbol.stdout
+    assert "lines=8-9" in exact_symbol.stdout
+    assert "resolution_method=exact_symbol_name" in exact_symbol.stdout
+    assert "def read_code_read() -> int:" in exact_symbol.stdout
+
+    exact_unit = _run_read_code(tmp_path, "read", str(code_file), "function:read_code_read", env=env)
+    assert exact_unit.returncode == 0, exact_unit.stderr
+    assert "resolution_method=exact_unit_id" in exact_unit.stdout
+
+    normalized = _run_read_code(tmp_path, "read", str(code_file), "def read_code_read() -> int:", env=env)
+    assert normalized.returncode == 0, normalized.stderr
+    assert "resolution_method=normalized_symbol_name" in normalized.stdout
+
+    qualified = _run_read_code(tmp_path, "read", str(code_file), "source_sample.read_code_read", env=env)
+    assert qualified.returncode == 0, qualified.stderr
+    assert "resolution_method=qualified_name_suffix" in qualified.stdout
+
+    module_unit = _run_read_code(tmp_path, "read", str(code_file), "module:constants", env=env)
+    assert module_unit.returncode == 0, module_unit.stderr
+    assert "id=module:constants" in module_unit.stdout
+    assert "kind=module" in module_unit.stdout
+    assert "resolution_method=exact_unit_id" in module_unit.stdout
+    assert "READ_CODE_READ_MAX_CHARS = 6000" in module_unit.stdout
+    assert 'WATCHERS = ("stdout",)' in module_unit.stdout
 
 
 def test_read_code_symbols_mode_is_rejected(tmp_path: Path) -> None:
@@ -114,7 +250,7 @@ def test_read_code_context_renders_numbered_context_window(tmp_path: Path) -> No
 
     result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "3",
@@ -139,7 +275,7 @@ def test_read_code_context_accepts_80_line_window_cap(tmp_path: Path) -> None:
 
     result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "80",
@@ -183,7 +319,7 @@ def test_read_code_context_uses_local_exact_symbol_without_uv(tmp_path: Path) ->
 
     result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "2",
@@ -206,7 +342,7 @@ def test_read_code_context_requires_uv_only_when_no_local_anchor_exists(tmp_path
 
     result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "missing_pipeline",
         "2",
@@ -236,7 +372,7 @@ def test_read_code_context_uses_uv_branch_without_hud_fast_path(tmp_path: Path) 
 
     result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "2",
@@ -308,7 +444,7 @@ def test_read_code_context_hides_shortlist_by_default_and_supports_candidate_ste
 
     default_result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "2",
@@ -321,7 +457,7 @@ def test_read_code_context_hides_shortlist_by_default_and_supports_candidate_ste
 
     shortlist_result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "2",
@@ -334,7 +470,7 @@ def test_read_code_context_hides_shortlist_by_default_and_supports_candidate_ste
 
     inline_result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "2",
@@ -350,7 +486,7 @@ def test_read_code_context_hides_shortlist_by_default_and_supports_candidate_ste
 
     next_candidate_result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "run_pipeline",
         "2",
@@ -418,7 +554,7 @@ def test_read_code_context_prefers_exact_symbol_vector_hit_over_header_block(tmp
 
     result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(code_file),
         "read_code_window",
         "1",
@@ -485,17 +621,13 @@ def test_read_code_source_wrapper_exposes_functions(tmp_path: Path) -> None:
     )
     env = _env_without_uv()
 
-    result = subprocess.run(
-        [
-            "bash",
-            "-lc",
-            f"source '{SCRIPT_PATH}' && read_code_context '{code_file}' 'target' 1",
-        ],
-        cwd=tmp_path,
+    result = _run_read_code(
+        tmp_path,
+        "source-context",
+        str(code_file),
+        "target",
+        "1",
         env=env,
-        check=False,
-        capture_output=True,
-        text=True,
     )
 
     assert result.returncode == 0, result.stderr
@@ -644,7 +776,7 @@ def test_read_code_yaml_symbols_and_context_flow(tmp_path: Path) -> None:
 
     context_result = _run_read_code(
         tmp_path,
-        "context",
+        "source-context",
         str(yaml_file),
         "commands",
         "2",

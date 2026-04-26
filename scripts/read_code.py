@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any, cast
 
 SOURCE_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SOURCE_PATH.parent
@@ -50,12 +53,22 @@ READ_CODE_WARN_ONCE_TTL_SECONDS = float(
     os.environ.get("SPECKIT_READ_CODE_WARN_ONCE_TTL_SECONDS", "15") or "15"
 )
 
+READ_CODE_READ_MAX_CHARS = int(os.environ.get("SPECKIT_READ_CODE_READ_MAX_CHARS", "6000") or "6000")
+READ_CODE_OUTLINE_MAX_ITEMS = int(os.environ.get("SPECKIT_READ_CODE_OUTLINE_MAX_ITEMS", "150") or "150")
+READ_CODE_CONTEXT_MAX_ITEMS = int(os.environ.get("SPECKIT_READ_CODE_CONTEXT_MAX_ITEMS", "8") or "8")
+READ_CODE_REFERENCES_MAX_ITEMS = int(os.environ.get("SPECKIT_READ_CODE_REFERENCES_MAX_ITEMS", "80") or "80")
+SOURCE_WINDOW_ALLOWED_REASONS = {"stale-index", "post-edit", "debug-index"}
+
 
 @dataclass(frozen=True)
 class _VectorMatch:
     """Candidate vector hit plus ranking features used for anchoring."""
 
+    unit_id: str
+    symbol_name: str
+    qualified_name: str
     line_num: int
+    line_end: int
     raw_score: float
     metadata_score: float
     confidence: int
@@ -67,6 +80,36 @@ class _VectorMatch:
     body: str
     preview: str
     signature: str
+
+
+@dataclass(frozen=True)
+class _ReadResolution:
+    """Resolved indexed read target plus the method used to resolve it."""
+
+    match: _VectorMatch
+    method: str
+
+
+@dataclass(frozen=True)
+class _GraphEntry:
+    """One graph-neighborhood row plus a suggested follow-up read command."""
+
+    name: str
+    kind: str
+    location: str
+    read_command: str = ""
+
+
+@dataclass(frozen=True)
+class _ReferenceHit:
+    """One normalized reference hit plus a follow-up command."""
+
+    section: str
+    name: str
+    kind: str
+    location: str
+    command: str
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -1307,6 +1350,38 @@ def _candidate_text(item: dict[str, object], key: str) -> str:
     return ""
 
 
+def _candidate_unit_id(item: dict[str, object]) -> str:
+    """Return the stable `kind:name` identifier for an indexed unit."""
+    symbol_name = _candidate_text(item, "symbol_name")
+    symbol_type = _candidate_text(item, "symbol_type") or "symbol"
+    if not symbol_name:
+        return ""
+    return f"{symbol_type}:{symbol_name}"
+
+
+def _candidate_normalized_symbol_name(item: dict[str, object]) -> str:
+    """Return the normalized symbol name used for exact read fallback matching."""
+    return normalize_symbol_pattern(_candidate_text(item, "symbol_name"))
+
+
+def _qualified_name_suffix_matches(
+    qualified_name: str,
+    raw_target: str,
+    normalized_target: str,
+) -> bool:
+    """Return true when a qualified name matches the raw or normalized suffix target."""
+    qualified_lower = qualified_name.lower()
+    for token in (raw_target, normalized_target):
+        if not token:
+            continue
+        lowered = token.lower()
+        if qualified_lower == lowered:
+            return True
+        if qualified_lower.endswith(f".{lowered}") or qualified_lower.endswith(f"::{lowered}"):
+            return True
+    return False
+
+
 def _candidate_int(item: dict[str, object], key: str) -> int | None:
     value = item.get(key)
     if isinstance(value, int):
@@ -1351,6 +1426,7 @@ def _candidate_raw_score(item: dict[str, object]) -> float:
 def _candidate_metadata_score(item: dict[str, object], query: str, normalized_query: str) -> tuple[float, bool]:
     symbol_name = _candidate_text(item, "symbol_name")
     qualified_name = _candidate_text(item, "qualified_name")
+    unit_id = _candidate_unit_id(item)
     signature = _candidate_text(item, "signature")
     docstring = _candidate_text(item, "docstring")
     body = _candidate_text(item, "body")
@@ -1367,10 +1443,10 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
         if not token:
             continue
         lowered = token.lower()
-        if lowered == symbol_name.lower() or lowered == heading.lower():
+        if lowered == unit_id.lower() or lowered == symbol_name.lower() or lowered == heading.lower():
             exact_symbol_match = True
             break
-        if qualified_name.lower().endswith(f".{lowered}") or qualified_name.lower().endswith(f"::{lowered}"):
+        if _qualified_name_suffix_matches(qualified_name, token, token):
             exact_symbol_match = True
             break
 
@@ -1380,6 +1456,8 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
     if symbol_type in {"function", "method", "class"}:
         score += 5.0
     if symbol_name:
+        score += 1.0
+    if unit_id:
         score += 1.0
     if qualified_name:
         score += 1.0
@@ -1409,7 +1487,9 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
 
     if query:
         query_lower = query.lower()
-        if query_lower == symbol_name.lower() or query_lower == heading.lower():
+        if query_lower == unit_id.lower():
+            score += 6.0
+        elif query_lower == symbol_name.lower() or query_lower == heading.lower():
             score += 5.0
         elif query_lower in qualified_name.lower():
             score += 4.0
@@ -1425,7 +1505,7 @@ def _candidate_metadata_score(item: dict[str, object], query: str, normalized_qu
         if normalized_lower == symbol_name.lower() or normalized_lower == heading.lower():
             score += 4.0
             exact_symbol_match = True
-        elif normalized_lower in qualified_name.lower():
+        elif _qualified_name_suffix_matches(qualified_name, "", normalized_query):
             score += 2.5
             exact_symbol_match = True
 
@@ -1473,15 +1553,23 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
     if line_num is None:
         return None
 
+    symbol_name = _candidate_text(item, "symbol_name")
+    symbol_type = _candidate_text(item, "symbol_type")
+    qualified_name = _candidate_text(item, "qualified_name")
     raw_score = _candidate_raw_score(item)
     metadata_score, exact_symbol_match = _candidate_metadata_score(item, query, normalized_query)
     body = _candidate_text(item, "body")
     preview = _candidate_text(item, "preview")
     signature = _candidate_text(item, "signature")
     has_docstring = bool(_candidate_text(item, "docstring"))
-    line_span = max(0, (_candidate_int(item, "line_end") or 0) - line_num)
+    line_end = _candidate_int(item, "line_end") or line_num
+    line_span = max(0, line_end - line_num)
     return _VectorMatch(
+        unit_id=_candidate_unit_id(item),
+        symbol_name=symbol_name,
+        qualified_name=qualified_name,
         line_num=line_num,
+        line_end=line_end,
         raw_score=raw_score,
         metadata_score=metadata_score,
         confidence=_candidate_confidence(
@@ -1493,7 +1581,7 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
             line_span=line_span,
         ),
         exact_symbol_match=exact_symbol_match,
-        symbol_type=_candidate_text(item, "symbol_type"),
+        symbol_type=symbol_type,
         has_body=bool(body),
         has_docstring=has_docstring,
         line_span=line_span,
@@ -1581,8 +1669,9 @@ def _vector_find_candidates(
     return candidates
 
 
+
 def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
-    """Return deterministic code symbols for a file from the active vector snapshot."""
+    """Return deterministic indexed code units for a file from the active vector snapshot."""
     if not _command_exists("uv"):
         _set_vector_runtime_note("uv is not available")
         return []
@@ -1611,6 +1700,65 @@ def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
         if isinstance(item, dict):
             symbols.append(item)
     return symbols
+
+
+def _select_best_vector_match(
+    items: list[dict[str, object]],
+    pattern: str,
+    normalized_pattern: str,
+) -> _VectorMatch | None:
+    """Return the highest-ranked vector match from a filtered item set."""
+    matches: list[_VectorMatch] = []
+    for item in items:
+        match = _vector_match_for_item(item, pattern, normalized_pattern)
+        if match is not None:
+            matches.append(match)
+    if not matches:
+        return None
+    return sorted(matches, key=_vector_anchor_rank, reverse=True)[0]
+
+
+def _resolve_exact_indexed_candidate(
+    file_path: Path,
+    pattern: str,
+    normalized_pattern: str,
+) -> _ReadResolution | None:
+    """Resolve one indexed read target using exact id/name/suffix matching before semantics."""
+    symbols = _vector_list_code_symbols(file_path)
+    stripped_pattern = pattern.strip()
+    stripped_normalized = normalized_pattern.strip()
+    if not symbols:
+        return None
+
+    resolution_steps: tuple[tuple[str, Callable[[dict[str, object]], bool]], ...] = (
+        (
+            "exact_unit_id",
+            lambda item: stripped_pattern != "" and _candidate_unit_id(item) == stripped_pattern,
+        ),
+        (
+            "exact_symbol_name",
+            lambda item: stripped_pattern != "" and _candidate_text(item, "symbol_name") == stripped_pattern,
+        ),
+        (
+            "normalized_symbol_name",
+            lambda item: stripped_normalized != ""
+            and _candidate_normalized_symbol_name(item) == stripped_normalized,
+        ),
+        (
+            "qualified_name_suffix",
+            lambda item: _qualified_name_suffix_matches(
+                _candidate_text(item, "qualified_name"),
+                stripped_pattern,
+                stripped_normalized,
+            ),
+        ),
+    )
+    for method, predicate in resolution_steps:
+        filtered = [item for item in symbols if predicate(item)]
+        best_match = _select_best_vector_match(filtered, pattern, normalized_pattern)
+        if best_match is not None:
+            return _ReadResolution(match=best_match, method=method)
+    return None
 
 
 def _iter_literal_hits(file_path: Path, literal: str) -> Iterator[int]:
@@ -1762,12 +1910,31 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
         )
 
 
+
+def _truncate_one_line(value: str, limit: int) -> str:
+    """Return a single-line string capped to a display-safe length."""
+    normalized = " ".join(value.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)] + "…"
+
+
+def _render_capped_text(label: str, text: str, max_chars: int) -> None:
+    """Render text with a hard character cap."""
+    rendered = text.rstrip()
+    print(f"# {label}")
+    if len(rendered) <= max_chars:
+        print(rendered)
+        return
+    print(rendered[:max_chars].rstrip())
+    print(f"# {label}_truncated chars={len(rendered)} cap={max_chars}")
+
+
 def _render_candidate_body(candidate: _VectorMatch) -> None:
-    """Render an indexed symbol body when confidence clears the body-first threshold."""
+    """Render a capped indexed symbol body."""
     if not candidate.body:
         return
-    print("# body")
-    print(candidate.body.rstrip())
+    _render_capped_text("body", candidate.body, READ_CODE_READ_MAX_CHARS)
 
 
 def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | None:
@@ -2112,8 +2279,1156 @@ def _render_resolution_extras(
     """Render optional shortlist/body output after anchor resolution."""
     if vector_candidates and show_shortlist:
         _render_candidate_shortlist(vector_candidates, pattern)
-    if inline_body and vector_match is not None and vector_match.confidence >= 90:
+    if inline_body and vector_match is not None:
         _render_candidate_body(vector_match)
+
+
+def _graph_command_env() -> dict[str, str]:
+    """Return deterministic env for codegraph CLI calls."""
+    init_codegraph_env()
+    env = _vector_command_env()
+    env.setdefault("COLUMNS", "240")
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+    return env
+
+
+@lru_cache(maxsize=1)
+def _codegraph_db_manager():
+    """Return the cached codegraph database manager for direct Cypher queries."""
+    init_codegraph_env()
+    from codegraphcontext.core import get_database_manager
+
+    return get_database_manager()
+
+
+def _run_codegraph_cli(args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Run a codegraph CLI command with repo-local environment defaults."""
+    if not _command_exists("uv"):
+        return None
+    cmd = ["uv", "run", "--no-sync", "cgc", *args]
+    return _run_command_capture(cmd, env=_graph_command_env())
+
+
+def _parse_cgc_table_rows(output: str) -> list[list[str]]:
+    """Parse row cells from rich-table output emitted by cgc."""
+    rows: list[list[str]] = []
+    in_table = False
+    for line in output.splitlines():
+        if line.startswith("├"):
+            in_table = True
+            continue
+        if line.startswith("╰"):
+            in_table = False
+            continue
+        if not in_table or not line.startswith("│"):
+            continue
+        cells = [cell.strip() for cell in line.strip("│").split("│")]
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def _normalize_graph_kind(raw: str) -> str:
+    """Normalize cgc kind labels into stable prose."""
+    cleaned = re.sub(r"^[^\w]+", "", raw).strip()
+    return cleaned or raw.strip()
+
+
+def _location_file_path(location: str) -> str:
+    """Return the file path portion of a cgc location string."""
+    match = re.match(r"^(.*?):\d+(?::\d+)?$", location)
+    if match:
+        return match.group(1)
+    return location
+
+
+def _graph_entry(name: str, kind: str, location: str, *, read_file: str | None = None) -> _GraphEntry:
+    """Build one graph entry plus a suggested read command."""
+    file_path = read_file or _location_file_path(location)
+    return _GraphEntry(
+        name=name,
+        kind=_normalize_graph_kind(kind),
+        location=location,
+        read_command=f"read {file_path} {name}",
+    )
+
+
+def _dedupe_graph_entries(entries: list[_GraphEntry]) -> list[_GraphEntry]:
+    """Deduplicate graph entries while preserving the original order."""
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[_GraphEntry] = []
+    for entry in entries:
+        key = (entry.name, entry.kind, entry.location)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    return deduped
+
+
+def _run_graph_table_command(args: list[str]) -> tuple[list[list[str]], str | None]:
+    """Run a graph command and return parsed table rows or an error string."""
+    proc = _run_codegraph_cli(args)
+    if proc is None:
+        return [], "uv is not available"
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        detail = stderr.splitlines()[0] if stderr else stdout.splitlines()[0] if stdout else ""
+        return [], detail or f"exit code {proc.returncode}"
+    return _parse_cgc_table_rows(proc.stdout), None
+
+
+def _extract_cgc_json_payload(output: str) -> object | None:
+    """Extract the JSON payload from a cgc CLI response."""
+    lines = output.splitlines()
+    for start, line in enumerate(lines):
+        if not line.lstrip().startswith(("[", "{")):
+            continue
+        candidate = "\n".join(lines[start:]).strip()
+        if not candidate:
+            continue
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _run_graph_json_command(args: list[str]) -> tuple[list[dict[str, object]], str | None]:
+    """Run a graph command and return parsed JSON rows or an error string."""
+    proc = _run_codegraph_cli(args)
+    if proc is None:
+        return [], "uv is not available"
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        detail = stderr.splitlines()[0] if stderr else stdout.splitlines()[0] if stdout else ""
+        return [], detail or f"exit code {proc.returncode}"
+
+    payload = _extract_cgc_json_payload(proc.stdout or "")
+    if payload is None:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        detail = stderr.splitlines()[0] if stderr else stdout.splitlines()[0] if stdout else ""
+        return [], detail or "could not parse JSON payload"
+
+    if isinstance(payload, list):
+        rows = [row for row in payload if isinstance(row, dict)]
+        return rows, None
+    if isinstance(payload, dict):
+        return [payload], None
+    return [], "unexpected JSON payload"
+
+
+def _display_reference_path(raw_path: str) -> str:
+    """Render an absolute graph path relative to the current repository when possible."""
+    path = Path(raw_path)
+    if not path.is_absolute():
+        return raw_path
+    try:
+        return str(path.resolve().relative_to(Path.cwd().resolve()))
+    except Exception:
+        return raw_path
+
+
+def _graph_uid_for_match(file_path: Path, target: _VectorMatch) -> str:
+    """Build the graph uid used by the codegraph JSON queries."""
+    return f"{target.symbol_name}{file_path.resolve()}{target.line_num}"
+
+
+def _reference_location(path: str, line_start: int | None, line_end: int | None = None) -> str:
+    """Format a reference location without source bodies."""
+    if not path:
+        return ""
+    if line_start is None:
+        return path
+    end = line_end if line_end is not None else line_start
+    return f"{path}:{line_start}-{end}"
+
+
+def _reference_command(
+    display_path: str,
+    *,
+    name: str,
+    unit_id: str | None = None,
+    source_window_line: int | None = None,
+) -> str:
+    """Build a follow-up command for a reference hit."""
+    if unit_id and _is_vector_unit_id(unit_id):
+        return f"read {display_path} {unit_id}"
+    if source_window_line is not None:
+        return f"source-window {display_path} {source_window_line} --reason=debug-index"
+    return f"read {display_path} {name}"
+
+
+def _is_vector_unit_id(value: str) -> bool:
+    """Return true when a unit id uses the vector index style."""
+    prefix, separator, suffix = value.partition(":")
+    return bool(separator and suffix) and prefix in {"function", "async_function", "method", "class", "module", "variable"}
+
+
+def _reference_hit(
+    section: str,
+    name: str,
+    kind: str,
+    location: str,
+    command: str,
+    *,
+    note: str = "",
+) -> _ReferenceHit:
+    """Create one normalized reference hit."""
+    return _ReferenceHit(
+        section=section,
+        name=name,
+        kind=kind,
+        location=location,
+        command=command,
+        note=note,
+    )
+
+
+def _dedupe_reference_hits(hits: list[_ReferenceHit]) -> list[_ReferenceHit]:
+    """Deduplicate reference hits while preserving the original order."""
+    seen: set[tuple[str, str, str, str]] = set()
+    deduped: list[_ReferenceHit] = []
+    for hit in hits:
+        key = (hit.name, hit.kind, hit.location, hit.command)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(hit)
+    return deduped
+
+
+def _reference_kind(raw_kind: object) -> str:
+    """Normalize a graph label or label list into a lower-case reference kind."""
+    if isinstance(raw_kind, list):
+        for part in raw_kind:
+            if isinstance(part, str) and part.strip():
+                raw_kind = part
+                break
+        else:
+            raw_kind = ""
+    elif not isinstance(raw_kind, str):
+        raw_kind = str(raw_kind)
+    return _normalize_graph_kind(raw_kind).lower() or "symbol"
+
+
+def _reference_query_rows(query: str) -> tuple[list[dict[str, object]], str | None]:
+    """Execute one read-only Cypher query against the codegraph database."""
+    try:
+        from codegraphcontext.tools.handlers.query_handlers import execute_cypher_query
+
+        payload = execute_cypher_query(_codegraph_db_manager(), cypher_query=query)
+    except Exception as exc:
+        return [], str(exc)
+
+    if not isinstance(payload, dict):
+        return [], "unexpected codegraph query payload"
+
+    error = payload.get("error")
+    if isinstance(error, str):
+        detail = payload.get("details")
+        if isinstance(detail, str) and detail:
+            return [], detail
+        return [], error
+
+    rows = payload.get("results")
+    if not isinstance(rows, list):
+        return [], "unexpected codegraph query payload"
+    return [row for row in rows if isinstance(row, dict)], None
+
+
+def _reference_query_count(query: str) -> tuple[int | None, str | None]:
+    """Execute a Cypher count query and return the first integer total."""
+    rows, error = _reference_query_rows(query)
+    if error is not None:
+        return None, error
+    if not rows:
+        return 0, None
+
+    total_value = rows[0].get("total")
+    if total_value is None:
+        return None, "unexpected codegraph count payload"
+    if isinstance(total_value, int):
+        return total_value, None
+    if isinstance(total_value, str):
+        try:
+            return int(total_value, 10), None
+        except ValueError:
+            return None, "unexpected codegraph count payload"
+    try:
+        return int(cast(Any, total_value)), None
+    except (TypeError, ValueError):
+        return None, "unexpected codegraph count payload"
+
+
+def _reference_usage_terms(target: _VectorMatch, *, limit: int) -> list[str]:
+    """Return the terms used to discover usage references for a target."""
+    if target.symbol_type == "module":
+        terms = _extract_uppercase_tokens(target.body, limit=limit)
+        return terms
+    if target.symbol_name:
+        return [target.symbol_name]
+    return []
+
+
+def _reference_variable_terms(target: _VectorMatch, *, limit: int) -> list[str]:
+    """Return the terms used to discover variable references for a target."""
+    if target.symbol_type == "module":
+        return _extract_uppercase_tokens(target.body, limit=limit)
+    if target.symbol_type == "variable" and target.symbol_name:
+        return [target.symbol_name]
+    return []
+
+
+def _reference_exact_node_records(file_path: Path, target: _VectorMatch) -> tuple[list[dict[str, object]], str | None]:
+    """Resolve the exact graph node for a vector target when a uid exists."""
+    if target.symbol_type == "module":
+        return [], None
+    uid = _graph_uid_for_match(file_path, target)
+    query = (
+        f"MATCH (n {{uid: {_cypher_string_literal(uid)}}}) "
+        "RETURN DISTINCT "
+        "labels(n) as kind, "
+        "n.uid as uid, "
+        "n.name as name, "
+        "n.path as path, "
+        "n.line_number as line_number, "
+        "n.end_line as end_line, "
+        "n.source as source, "
+        "n.docstring as docstring, "
+        "n.value as value, "
+        "n.context as context "
+        "LIMIT 1"
+    )
+    return _reference_query_rows(query)
+
+
+def _reference_direct_callers(file_path: Path, target: _VectorMatch, depth: int) -> tuple[list[dict[str, object]], str | None]:
+    """Collect caller nodes for a function-like target."""
+    if target.symbol_type not in {"function", "async_function", "method"}:
+        return [], None
+    uid = _graph_uid_for_match(file_path, target)
+    if depth <= 1:
+        query = (
+            f"MATCH (caller)-[:CALLS]->(target {{uid: {_cypher_string_literal(uid)}}}) "
+            "WHERE caller:Function OR caller:Class "
+            "RETURN DISTINCT "
+            "labels(caller) as kind, "
+            "caller.uid as uid, "
+            "caller.name as name, "
+            "caller.path as path, "
+            "caller.line_number as line_number, "
+            "caller.end_line as end_line "
+            "ORDER BY path, line_number "
+            "LIMIT "
+        )
+        query += str(READ_CODE_REFERENCES_MAX_ITEMS)
+        return _reference_query_rows(query)
+
+    query = (
+        f"MATCH p = (caller)-[:CALLS*1..{depth}]->(target {{uid: {_cypher_string_literal(uid)}}}) "
+        "WHERE caller:Function OR caller:Class "
+        "WITH caller, min(length(p)) as depth "
+        "RETURN DISTINCT "
+        "labels(caller) as kind, "
+        "caller.uid as uid, "
+        "caller.name as name, "
+        "caller.path as path, "
+        "caller.line_number as line_number, "
+        "caller.end_line as end_line, "
+        "depth "
+        "ORDER BY depth, path, line_number "
+        "LIMIT "
+    )
+    query += str(READ_CODE_REFERENCES_MAX_ITEMS)
+    return _reference_query_rows(query)
+
+
+def _reference_direct_callers_total(file_path: Path, target: _VectorMatch, depth: int) -> tuple[int | None, str | None]:
+    """Count caller nodes for a function-like target using the same depth semantics."""
+    if target.symbol_type not in {"function", "async_function", "method"}:
+        return 0, None
+    uid = _graph_uid_for_match(file_path, target)
+    if depth <= 1:
+        query = (
+            f"MATCH (caller)-[:CALLS]->(target {{uid: {_cypher_string_literal(uid)}}}) "
+            "WHERE caller:Function OR caller:Class "
+            "RETURN count(DISTINCT caller) as total"
+        )
+        return _reference_query_count(query)
+
+    query = (
+        f"MATCH p = (caller)-[:CALLS*1..{depth}]->(target {{uid: {_cypher_string_literal(uid)}}}) "
+        "WHERE caller:Function OR caller:Class "
+        "RETURN count(DISTINCT caller) as total"
+    )
+    return _reference_query_count(query)
+
+
+def _reference_direct_callees(file_path: Path, target: _VectorMatch, depth: int) -> tuple[list[dict[str, object]], str | None]:
+    """Collect callee nodes for a function-like target."""
+    if target.symbol_type not in {"function", "async_function", "method"}:
+        return [], None
+    uid = _graph_uid_for_match(file_path, target)
+    if depth <= 1:
+        query = (
+            f"MATCH (target {{uid: {_cypher_string_literal(uid)}}})-[:CALLS]->(callee) "
+            "WHERE callee:Function OR callee:Class "
+            "RETURN DISTINCT "
+            "labels(callee) as kind, "
+            "callee.uid as uid, "
+            "callee.name as name, "
+            "callee.path as path, "
+            "callee.line_number as line_number, "
+            "callee.end_line as end_line "
+            "ORDER BY path, line_number "
+            "LIMIT "
+        )
+        query += str(READ_CODE_REFERENCES_MAX_ITEMS)
+        return _reference_query_rows(query)
+
+    query = (
+        f"MATCH p = (target {{uid: {_cypher_string_literal(uid)}}})-[:CALLS*1..{depth}]->(callee) "
+        "WHERE callee:Function OR callee:Class "
+        "WITH callee, min(length(p)) as depth "
+        "RETURN DISTINCT "
+        "labels(callee) as kind, "
+        "callee.uid as uid, "
+        "callee.name as name, "
+        "callee.path as path, "
+        "callee.line_number as line_number, "
+        "callee.end_line as end_line, "
+        "depth "
+        "ORDER BY depth, path, line_number "
+        "LIMIT "
+    )
+    query += str(READ_CODE_REFERENCES_MAX_ITEMS)
+    return _reference_query_rows(query)
+
+
+def _reference_direct_callees_total(file_path: Path, target: _VectorMatch, depth: int) -> tuple[int | None, str | None]:
+    """Count callee nodes for a function-like target using the same depth semantics."""
+    if target.symbol_type not in {"function", "async_function", "method"}:
+        return 0, None
+    uid = _graph_uid_for_match(file_path, target)
+    if depth <= 1:
+        query = (
+            f"MATCH (target {{uid: {_cypher_string_literal(uid)}}})-[:CALLS]->(callee) "
+            "WHERE callee:Function OR callee:Class "
+            "RETURN count(DISTINCT callee) as total"
+        )
+        return _reference_query_count(query)
+
+    query = (
+        f"MATCH p = (target {{uid: {_cypher_string_literal(uid)}}})-[:CALLS*1..{depth}]->(callee) "
+        "WHERE callee:Function OR callee:Class "
+        "RETURN count(DISTINCT callee) as total"
+    )
+    return _reference_query_count(query)
+
+
+def _reference_variable_records(terms: list[str], *, max_items: int) -> tuple[list[dict[str, object]], str | None]:
+    """Collect same-name variable nodes for a resolved target."""
+    filtered_terms = [term for term in dict.fromkeys(term.strip() for term in terms if term and term.strip())]
+    if not filtered_terms:
+        return [], None
+
+    conditions = " OR ".join(
+        f"toLower(v.name) = toLower({_cypher_string_literal(term)})" for term in filtered_terms
+    )
+    query = (
+        f"MATCH (v:Variable) WHERE {conditions} "
+        "RETURN DISTINCT "
+        "labels(v) as kind, "
+        "v.uid as uid, "
+        "v.name as name, "
+        "v.path as path, "
+        "v.line_number as line_number, "
+        "v.value as value "
+        "ORDER BY path, line_number "
+        "LIMIT "
+    )
+    query += str(max_items)
+    rows, error = _reference_query_rows(query)
+    if error is not None:
+        return [], error
+    return rows, None
+
+
+def _reference_content_records(terms: list[str], *, max_items: int) -> tuple[list[dict[str, object]], str | None]:
+    """Collect source-backed function and class nodes that mention any target term."""
+    filtered_terms = [term for term in dict.fromkeys(term.strip() for term in terms if term and term.strip())]
+    if not filtered_terms:
+        return [], None
+
+    conditions = " OR ".join(
+        f"(n.source IS NOT NULL AND toLower(n.source) CONTAINS toLower({_cypher_string_literal(term)}))"
+        for term in filtered_terms
+    )
+    query = (
+        "MATCH (n) "
+        "WHERE n.is_dependency = false AND (n:Function OR n:Class) AND ("
+        f"{conditions}"
+        ") "
+        "RETURN DISTINCT "
+        "labels(n) as kind, "
+        "n.uid as uid, "
+        "n.name as name, "
+        "n.path as path, "
+        "n.line_number as line_number, "
+        "n.end_line as end_line, "
+        "n.source as source "
+        "ORDER BY path, line_number "
+        "LIMIT "
+    )
+    query += str(max_items)
+    return _reference_query_rows(query)
+
+
+def _reference_classify_line(line: str, target_name: str) -> str:
+    """Classify one source line into a reference section."""
+    stripped = line.strip()
+    lowered = stripped.lower()
+    target = re.escape(target_name)
+    if not stripped:
+        return "ambiguous_mentions"
+    if re.search(rf"\b{target}\b\s*(?::[^=]+)?\s*(?:\+?=|-=|\*=|/=|//=|%=|:=|=)", stripped):
+        return "writes"
+    if stripped.startswith(("def ", "class ")):
+        return "ambiguous_mentions"
+    if stripped.startswith(("#", '"""', "'''")):
+        return "ambiguous_mentions"
+    if f"'{target_name}'" in stripped or f'"{target_name}"' in stripped:
+        return "ambiguous_mentions"
+    if "test" in lowered and target_name.lower() in lowered:
+        return "tests"
+    return "reads"
+
+
+def _reference_line_hits_from_record(
+    record: dict[str, object],
+    *,
+    target_name: str,
+    display_path: str,
+    skip_uid: str,
+    skip_uids: set[str],
+) -> list[_ReferenceHit]:
+    """Split one source-backed record into line-level reference hits."""
+    uid = _candidate_text(record, "uid")
+    if uid and (uid == skip_uid or uid in skip_uids):
+        return []
+
+    source = _candidate_text(record, "source")
+    if not source:
+        return []
+
+    path = _display_reference_path(_candidate_text(record, "path")) or display_path
+    base_line = _candidate_int(record, "line_number") or 0
+    name = _candidate_text(record, "name")
+    kind = _reference_kind(_candidate_text(record, "kind") or _candidate_string_list(record, "kind"))
+    unit_id = _candidate_text(record, "uid")
+    is_test_file = path.startswith("tests/") or "/tests/" in path
+    hits: list[_ReferenceHit] = []
+    seen_lines: set[int] = set()
+    for offset, line in enumerate(source.splitlines()):
+        if target_name.lower() not in line.lower():
+            continue
+        line_num = base_line + offset
+        if line_num in seen_lines:
+            continue
+        seen_lines.add(line_num)
+        section = _reference_classify_line(line, target_name)
+        if line.lstrip().startswith(("def test", "async def test", "class Test")):
+            section = "tests"
+        elif is_test_file and section == "reads":
+            section = "tests"
+        command = _reference_command(
+            path,
+            name=name,
+            unit_id=unit_id,
+            source_window_line=line_num if section == "ambiguous_mentions" else None,
+        )
+        hits.append(
+            _reference_hit(
+                section=section,
+                name=name,
+                kind=kind,
+                location=_reference_location(path, line_num, line_num),
+                command=command,
+            )
+        )
+
+    return hits
+
+
+def _render_reference_section(
+    section: str,
+    hits: list[_ReferenceHit],
+    max_items: int,
+    *,
+    total: int | None = None,
+    returned: int | None = None,
+    truncated: bool | None = None,
+) -> None:
+    """Render one references section without source bodies."""
+    section_total = len(hits) if total is None else total
+    section_returned = min(len(hits), max_items) if returned is None else returned
+    rows = hits if total is not None or returned is not None else hits[:max_items]
+    print(f"# {section} returned={section_returned} total={section_total}")
+    for hit in rows:
+        line = f"{hit.location} {hit.kind}:{hit.name}"
+        if hit.command:
+            line += f" command={hit.command}"
+        if hit.note:
+            line += f" note={hit.note}"
+        print(line)
+    is_truncated = len(hits) > max_items if truncated is None else truncated
+    if is_truncated:
+        print(f"# {section}_truncated total={section_total} cap={max_items}")
+
+
+def _cypher_string_literal(value: str) -> str:
+    """Return a Cypher string literal."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _reference_metadata_from_record(
+    record: dict[str, object],
+    *,
+    fallback_kind: str,
+    display_path: str,
+    command: str,
+    section: str,
+) -> _ReferenceHit:
+    """Convert one JSON record into a normalized reference hit."""
+    depth = _candidate_int(record, "depth")
+    return _reference_hit(
+        section=section,
+        name=_candidate_text(record, "name"),
+        kind=_reference_kind(_candidate_text(record, "kind") or _candidate_string_list(record, "kind") or fallback_kind),
+        location=_reference_location(
+            _display_reference_path(_candidate_text(record, "path")) or display_path,
+            _candidate_int(record, "line_number"),
+            _candidate_int(record, "end_line") or _candidate_int(record, "line_number"),
+        ),
+        command=command,
+        note=f"depth={depth}" if depth and depth > 1 else "",
+    )
+
+
+def _reference_records_to_hits(
+    section: str,
+    records: list[dict[str, object]],
+    *,
+    display_path: str,
+    fallback_kind: str,
+    skip_uids: set[str] | None = None,
+) -> list[_ReferenceHit]:
+    """Convert graph records into normalized reference hits for one section."""
+    skipped = skip_uids or set()
+    hits: list[_ReferenceHit] = []
+    for record in records:
+        uid = _candidate_text(record, "uid")
+        if uid and uid in skipped:
+            continue
+        name = _candidate_text(record, "name")
+        record_path = _display_reference_path(_candidate_text(record, "path")) or display_path
+        command = _reference_command(record_path, name=name, unit_id=uid)
+        hits.append(
+            _reference_metadata_from_record(
+                record,
+                fallback_kind=fallback_kind,
+                display_path=record_path,
+                command=command,
+                section=section,
+            )
+        )
+    return _dedupe_reference_hits(hits)
+
+
+def _reference_source_hits(
+    records: list[dict[str, object]],
+    *,
+    terms: list[str],
+    display_path: str,
+    skip_uid: str,
+    skip_uids: set[str],
+) -> list[_ReferenceHit]:
+    """Split source-backed graph records into classified usage hits."""
+    hits: list[_ReferenceHit] = []
+    for term in terms:
+        for record in records:
+            hits.extend(
+                _reference_line_hits_from_record(
+                    record,
+                    target_name=term,
+                    display_path=display_path,
+                    skip_uid=skip_uid,
+                    skip_uids=skip_uids,
+                )
+            )
+    return _dedupe_reference_hits(hits)
+
+
+def _reference_section_hits(
+    section: str,
+    hits: list[_ReferenceHit],
+    *,
+    requested_kind: str,
+) -> bool:
+    """Return true when a section should be shown for the current kind filter."""
+    if section == "definition":
+        return True
+    if requested_kind == "default":
+        return section != "ambiguous_mentions"
+    if requested_kind == "all":
+        return True
+    return section == requested_kind
+
+
+def _slice_reference_hits(
+    hits: list[_ReferenceHit],
+    offset: int,
+    max_items: int,
+    *,
+    total: int | None = None,
+) -> tuple[list[_ReferenceHit], int, int, bool, int | None]:
+    """Return a bounded page of reference hits and pagination metadata."""
+    total_value = len(hits) if total is None else total
+    page_hits = hits[offset : offset + max_items]
+    returned = len(page_hits)
+    truncated = offset + returned < total_value
+    next_offset = offset + returned if truncated else None
+    return page_hits, returned, total_value, truncated, next_offset
+
+
+def _extract_uppercase_tokens(text: str, *, limit: int) -> list[str]:
+    """Extract likely constant/config tokens from indexed body text."""
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"\b[A-Z][A-Z0-9_]{2,}\b", text):
+        token = match.group(0)
+        if token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+        if len(tokens) >= limit:
+            break
+    return tokens
+
+
+def _collect_callers(file_path: Path, symbol_name: str, max_items: int) -> tuple[list[_GraphEntry], str | None]:
+    """Collect codegraph callers for a resolved function-like symbol."""
+    rows, error = _run_graph_table_command(["analyze", "callers", symbol_name, "--file", str(file_path)])
+    if error is not None:
+        return [], error
+    entries = []
+    for row in rows[:max_items]:
+        if len(row) < 3:
+            continue
+        entries.append(_graph_entry(row[0], row[2], row[1]))
+    return _dedupe_graph_entries(entries), None
+
+
+def _collect_callees(file_path: Path, symbol_name: str, max_items: int) -> tuple[list[_GraphEntry], str | None]:
+    """Collect codegraph callees for a resolved function-like symbol."""
+    rows, error = _run_graph_table_command(["analyze", "calls", symbol_name, "--file", str(file_path)])
+    if error is not None:
+        return [], error
+    entries = []
+    for row in rows[:max_items]:
+        if len(row) < 3:
+            continue
+        entries.append(_graph_entry(row[0], row[2], row[1]))
+    return _dedupe_graph_entries(entries), None
+
+
+def _collect_reference_constants(
+    file_path: Path,
+    body: str,
+    max_items: int,
+) -> tuple[list[_GraphEntry], str | None]:
+    """Collect referenced constants/config names using variable graph analysis."""
+    tokens = _extract_uppercase_tokens(body, limit=max_items)
+    entries: list[_GraphEntry] = []
+    for token in tokens:
+        rows, error = _run_graph_table_command(["analyze", "variable", token, "--file", str(file_path)])
+        if error is not None:
+            return [], error
+        for row in rows[:1]:
+            if len(row) < 2:
+                continue
+            scope_name = row[0]
+            location = row[1]
+            entries.append(
+                _GraphEntry(
+                    name=token,
+                    kind=_normalize_graph_kind(scope_name),
+                    location=location,
+                    read_command=f"read {file_path} {token}",
+                )
+            )
+            break
+    return _dedupe_graph_entries(entries)[:max_items], None
+
+
+def _collect_test_hits(
+    file_path: Path,
+    target_name: str,
+    max_items: int,
+    pattern: str,
+) -> tuple[list[_GraphEntry], str | None]:
+    """Collect test hits for a target using graph-backed content search."""
+    queries = [target_name, pattern]
+    entries: list[_GraphEntry] = []
+    for query in dict.fromkeys(term for term in queries if term):
+        rows, error = _run_graph_table_command(["find", "content", query])
+        if error is not None:
+            return [], error
+        for row in rows:
+            if len(row) < 3:
+                continue
+            location = row[2]
+            if "/tests/" not in location and not location.startswith("tests/"):
+                continue
+            entries.append(_graph_entry(row[0], row[1], location))
+            if len(entries) >= max_items:
+                return _dedupe_graph_entries(entries)[:max_items], None
+    return _dedupe_graph_entries(entries)[:max_items], None
+
+
+def _recommended_next_reads(
+    target_read: str,
+    callers: list[_GraphEntry],
+    callees: list[_GraphEntry],
+    references: list[_GraphEntry],
+    tests: list[_GraphEntry],
+    max_items: int,
+) -> list[str]:
+    """Build a capped list of follow-up read commands."""
+    commands: list[str] = [target_read]
+    for entry in (*callers, *callees, *references, *tests):
+        if entry.read_command:
+            commands.append(entry.read_command)
+    deduped = list(dict.fromkeys(commands))
+    return deduped[:max_items]
+
+
+def _render_graph_entries(label: str, entries: list[_GraphEntry], max_items: int) -> None:
+    """Render one graph neighborhood section without source bodies."""
+    print(f"# {label} returned={min(len(entries), max_items)} total={len(entries)}")
+    print("# name\tkind\tlocation")
+    for entry in entries[:max_items]:
+        print("\t".join([entry.name, entry.kind, entry.location]))
+    if len(entries) > max_items:
+        print(f"# {label}_truncated total={len(entries)} cap={max_items}")
+
+
+def _resolve_graph_target(
+    file_path: Path,
+    pattern: str,
+    normalized_pattern: str,
+) -> _ReadResolution | None:
+    """Resolve a graph context target using the indexed unit surface."""
+    exact_resolution = _resolve_exact_indexed_candidate(file_path, pattern, normalized_pattern)
+    if exact_resolution is not None:
+        return exact_resolution
+
+    candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    selected, error = _select_semantic_anchor_candidate(candidates, 0)
+    if error is not None:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return None
+    if selected is None:
+        runtime_note = _consume_vector_runtime_note()
+        print(f"ERROR: Could not resolve graph target '{pattern}': {runtime_note or 'no candidate'}", file=sys.stderr)
+        return None
+    return _ReadResolution(match=selected, method="semantic_fallback")
+
+
+def _render_graph_context(
+    file_path: Path,
+    target: _VectorMatch,
+    resolution_method: str,
+    *,
+    max_items: int,
+    pattern: str,
+) -> int:
+    """Render graph neighborhood sections for one resolved target."""
+    if not codegraph_supports_file(file_path):
+        print(f"ERROR: graph context is not supported for {file_path.suffix or 'this file type'}", file=sys.stderr)
+        return 1
+
+    if not codegraph_refresh_if_needed(file_path.parent):
+        return 1
+
+    target_location = f"{file_path}:{target.line_num}-{target.line_end}"
+    print(
+        "# graph_context "
+        f"path={file_path} "
+        f"id={target.unit_id} "
+        f"name={target.symbol_name} "
+        f"kind={target.symbol_type or 'symbol'} "
+        f"lines={target.line_num}-{target.line_end} "
+        f"resolution_method={resolution_method} "
+        f"max_items={max_items}"
+    )
+
+    print("# target")
+    print("\t".join(["id", "name", "kind", "lines", "location"]))
+    print(
+        "\t".join(
+            [
+                target.unit_id,
+                target.symbol_name,
+                target.symbol_type or "symbol",
+                f"{target.line_num}-{target.line_end}",
+                target_location,
+            ]
+        )
+    )
+
+    callers: list[_GraphEntry] = []
+    callees: list[_GraphEntry] = []
+    tests: list[_GraphEntry] = []
+
+    if target.symbol_type in {"function", "async_function", "method"}:
+        callers, error = _collect_callers(file_path, target.symbol_name, max_items)
+        if error is not None:
+            print(f"ERROR: graph context callers query failed: {error}", file=sys.stderr)
+            return 1
+        callees, error = _collect_callees(file_path, target.symbol_name, max_items)
+        if error is not None:
+            print(f"ERROR: graph context callees query failed: {error}", file=sys.stderr)
+            return 1
+
+    tests, error = _collect_test_hits(file_path, target.symbol_name, max_items, pattern)
+    if error is not None:
+        print(f"ERROR: graph context test search failed: {error}", file=sys.stderr)
+        return 1
+
+    _render_graph_entries("callers", callers, max_items)
+    _render_graph_entries("callees", callees, max_items)
+    _render_graph_entries("tests", tests, max_items)
+
+    target_read = f"read {file_path} {target.unit_id}"
+    next_reads = _recommended_next_reads(
+        target_read,
+        callers,
+        callees,
+        [],
+        tests,
+        max_items,
+    )
+    print(f"# recommended_next_reads returned={len(next_reads)} total={len(next_reads)}")
+    for command in next_reads:
+        print(command)
+    return 0
+
+
+def read_code_graph_context(argv: list[str]) -> int:
+    """Render graph-neighborhood context without source-line windows."""
+    if len(argv) < 2:
+        print("ERROR: context requires: <file_path> <target> [--max-items=N]", file=sys.stderr)
+        return 1
+
+    file_path = Path(argv[0])
+    pattern = argv[1]
+    max_items = READ_CODE_CONTEXT_MAX_ITEMS
+    for token in argv[2:]:
+        if not token.startswith("--max-items="):
+            print(f"ERROR: Unexpected argument for context mode: {token}", file=sys.stderr)
+            return 1
+        parsed = _parse_capped_positive_int_option(token, "--max-items=", READ_CODE_CONTEXT_MAX_ITEMS)
+        if parsed is None:
+            print(f"ERROR: --max-items expects a positive integer: {token.partition('=')[2]}", file=sys.stderr)
+            return 1
+        max_items = parsed
+
+    if not file_path.is_file():
+        print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    if not _refresh_indexes_for_read(file_path):
+        return 1
+
+    normalized_pattern = normalize_symbol_pattern(pattern)
+    resolution = _resolve_graph_target(file_path, pattern, normalized_pattern)
+    if resolution is None:
+        return 1
+
+    return _render_graph_context(
+        file_path,
+        resolution.match,
+        resolution.method,
+        max_items=max_items,
+        pattern=pattern,
+    )
+
+
+# ---- Outline and Read Entrypoints ----
+
+def _parse_capped_positive_int_option(token: str, prefix: str, cap: int) -> int | None:
+    """Parse a positive integer option in --name=value form and cap it."""
+    value = token.partition("=")[2]
+    if not value.isdigit() or int(value, 10) <= 0:
+        return None
+    return min(int(value, 10), cap)
+
+
+def _render_outline_item(item: dict[str, object]) -> None:
+    """Render one indexed item without body content."""
+    symbol_name = _candidate_text(item, "symbol_name")
+    if not symbol_name:
+        return
+    symbol_type = _candidate_text(item, "symbol_type") or "symbol"
+    line_start = _candidate_int(item, "line_start") or _resolve_candidate_line(item) or 0
+    line_end = _candidate_int(item, "line_end") or line_start
+    signature = _truncate_one_line(_candidate_text(item, "signature"), 140)
+    qualified_name = _truncate_one_line(_candidate_text(item, "qualified_name"), 140)
+    has_body = "yes" if _candidate_text(item, "body") else "no"
+    has_docstring = "yes" if _candidate_text(item, "docstring") else "no"
+    item_id = _candidate_unit_id(item)
+    print(
+        "\t".join(
+            [
+                item_id,
+                symbol_type,
+                f"{line_start}-{line_end}",
+                symbol_name,
+                signature,
+                f"has_body={has_body}",
+                f"has_docstring={has_docstring}",
+                qualified_name,
+            ]
+        )
+    )
+
+
+def read_code_outline(argv: list[str]) -> int:
+    """Render a capped indexed unit outline without bodies."""
+    if len(argv) < 1:
+        print("ERROR: outline requires: <file_path> [--max-items=N]", file=sys.stderr)
+        return 1
+
+    file_path = Path(argv[0])
+    max_items = READ_CODE_OUTLINE_MAX_ITEMS
+    for token in argv[1:]:
+        if not token.startswith("--max-items="):
+            print(f"ERROR: Unexpected argument for outline mode: {token}", file=sys.stderr)
+            return 1
+        parsed = _parse_capped_positive_int_option(token, "--max-items=", READ_CODE_OUTLINE_MAX_ITEMS)
+        if parsed is None:
+            print(f"ERROR: --max-items expects a positive integer: {token.partition('=')[2]}", file=sys.stderr)
+            return 1
+        max_items = parsed
+
+    if not file_path.is_file():
+        print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    if not _refresh_indexes_for_read(file_path):
+        return 1
+
+    symbols = _vector_list_code_symbols(file_path)
+    runtime_note = _consume_vector_runtime_note()
+    if not symbols:
+        print(f"ERROR: Could not build outline: {runtime_note or 'no indexed units found'}", file=sys.stderr)
+        return 1
+
+    print(f"# outline path={file_path} source=vector-index returned={min(len(symbols), max_items)} total={len(symbols)}")
+    print("# id\tkind\tlines\tname\tsignature\thas_body\thas_docstring\tqualified_name")
+    for item in symbols[:max_items]:
+        _render_outline_item(item)
+    if len(symbols) > max_items:
+        print(f"# outline_truncated total={len(symbols)} cap={max_items}")
+    return 0
+
+
+def read_code_read(argv: list[str]) -> int:
+    """Read one exact indexed content unit with bounded output."""
+    if len(argv) < 2:
+        print("ERROR: read requires: <file_path> <unit_id_or_symbol> [--max-chars=N] [--candidate-index=N]", file=sys.stderr)
+        return 1
+
+    file_path = Path(argv[0])
+    pattern = argv[1]
+    max_chars = READ_CODE_READ_MAX_CHARS
+    candidate_index = 0
+    for token in argv[2:]:
+        if token.startswith("--max-chars="):
+            parsed = _parse_capped_positive_int_option(token, "--max-chars=", READ_CODE_READ_MAX_CHARS)
+            if parsed is None:
+                print(f"ERROR: --max-chars expects a positive integer: {token.partition('=')[2]}", file=sys.stderr)
+                return 1
+            max_chars = parsed
+        elif token.startswith("--candidate-index="):
+            value = token.partition("=")[2]
+            if not value.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
+                return 1
+            candidate_index = int(value, 10)
+        else:
+            print(f"ERROR: Unexpected argument for read mode: {token}", file=sys.stderr)
+            return 1
+
+    if not file_path.is_file():
+        print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    if not _refresh_indexes_for_read(file_path):
+        return 1
+
+    normalized_pattern = normalize_symbol_pattern(pattern)
+    exact_resolution = _resolve_exact_indexed_candidate(file_path, pattern, normalized_pattern)
+    selected = exact_resolution.match if exact_resolution is not None else None
+    resolution_method = exact_resolution.method if exact_resolution is not None else ""
+    if selected is None:
+        candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+        selected, error = _select_semantic_anchor_candidate(candidates, candidate_index)
+        if error is not None:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 1
+        if selected is not None:
+            resolution_method = "semantic_fallback"
+
+    if selected is None:
+        runtime_note = _consume_vector_runtime_note()
+        print(f"ERROR: Could not resolve indexed read target '{pattern}': {runtime_note or 'no candidate'}", file=sys.stderr)
+        return 1
+    if not selected.body:
+        print(f"ERROR: Selected indexed target has no body/content for '{pattern}'", file=sys.stderr)
+        return 1
+
+    print(
+        f"# read file={file_path} id={selected.unit_id} kind={selected.symbol_type or 'symbol'} "
+        f"lines={selected.line_num}-{selected.line_end} chars={len(selected.body)} "
+        f"resolution_method={resolution_method or 'unknown'} confidence={selected.confidence}"
+    )
+    if selected.signature:
+        print(f"# signature {selected.signature}")
+    _render_capped_text("content", selected.body, max_chars)
+    return 0
+
+
+def read_code_source_window(argv: list[str]) -> int:
+    """Break-glass raw source window with an explicit verification reason."""
+    reason = ""
+    cleaned: list[str] = []
+    for token in argv:
+        if token.startswith("--reason="):
+            reason = token.partition("=")[2]
+        else:
+            cleaned.append(token)
+    if reason not in SOURCE_WINDOW_ALLOWED_REASONS:
+        print(
+            "ERROR: source-window requires --reason=stale-index|post-edit|debug-index",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"WARN: source-window is for verification only; reason={reason}", file=sys.stderr)
+    return read_code_window(cleaned)
 
 
 def read_code_symbols(argv: list[str]) -> int:
@@ -2157,7 +3472,7 @@ def read_code_symbols(argv: list[str]) -> int:
 
 
 def read_code_context(argv: list[str]) -> int:
-    """Resolve an anchor and print bounded context with post-anchor bias."""
+    """Resolve an anchor and print the legacy bounded source context."""
     parsed = _parse_context_args(argv)
     if parsed is None:
         return 1
@@ -2242,21 +3557,352 @@ def read_code_window(argv: list[str]) -> int:
     return 0
 
 
+def read_code_references(argv: list[str]) -> int:
+    """Render graph-backed usage and blast-radius references for one resolved target."""
+    if len(argv) < 2:
+        print(
+            "ERROR: references requires: <file_path> <target> "
+            "[--kind=default|callers|callees|reads|writes|variables|tests|ambiguous_mentions|all] "
+            "[--depth=1|2] [--max=N] [--offset=N]",
+            file=sys.stderr,
+        )
+        return 1
+
+    file_path = Path(argv[0])
+    pattern = argv[1]
+    requested_kind = "default"
+    depth = 1
+    max_items = READ_CODE_REFERENCES_MAX_ITEMS
+    offset = 0
+    offset_provided = False
+    allowed_kinds = {
+        "default",
+        "callers",
+        "callees",
+        "reads",
+        "writes",
+        "variables",
+        "tests",
+        "ambiguous_mentions",
+        "all",
+    }
+    paginatable_kinds = {"callers", "callees", "reads", "writes", "variables", "tests", "ambiguous_mentions"}
+    allowed_kind_display = "default|callers|callees|reads|writes|variables|tests|ambiguous_mentions|all"
+
+    for token in argv[2:]:
+        if token.startswith("--kind="):
+            requested_kind = token.partition("=")[2].strip()
+            if requested_kind not in allowed_kinds:
+                print(
+                    f"ERROR: --kind must be one of {allowed_kind_display}",
+                    file=sys.stderr,
+                )
+                return 1
+            continue
+        if token.startswith("--depth="):
+            depth_value = token.partition("=")[2].strip()
+            if depth_value not in {"1", "2"}:
+                print("ERROR: --depth must be 1 or 2", file=sys.stderr)
+                return 1
+            depth = int(depth_value, 10)
+            continue
+        if token.startswith("--max="):
+            parsed = _parse_capped_positive_int_option(token, "--max=", READ_CODE_REFERENCES_MAX_ITEMS)
+            if parsed is None:
+                print(f"ERROR: --max expects a positive integer: {token.partition('=')[2]}", file=sys.stderr)
+                return 1
+            max_items = parsed
+            continue
+        if token.startswith("--offset="):
+            offset_provided = True
+            offset_value = token.partition("=")[2].strip()
+            try:
+                offset = int(offset_value, 10)
+            except ValueError:
+                print(f"ERROR: --offset expects a non-negative integer: {offset_value}", file=sys.stderr)
+                return 1
+            if offset < 0:
+                print(f"ERROR: --offset expects a non-negative integer: {offset_value}", file=sys.stderr)
+                return 1
+            continue
+        print(f"ERROR: Unexpected argument for references mode: {token}", file=sys.stderr)
+        return 1
+
+    if offset_provided and requested_kind not in paginatable_kinds:
+        print("ERROR: --offset is currently supported only with explicit --kind sections", file=sys.stderr)
+        return 1
+
+    if not file_path.is_file():
+        print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
+        return 1
+    if not _refresh_indexes_for_read(file_path):
+        return 1
+
+    normalized_pattern = normalize_symbol_pattern(pattern)
+    resolution = _resolve_graph_target(file_path, pattern, normalized_pattern)
+    if resolution is None:
+        return 1
+
+    if not codegraph_supports_file(file_path):
+        print(f"ERROR: references is not supported for {file_path.suffix or 'this file type'}", file=sys.stderr)
+        return 1
+    if not codegraph_refresh_if_needed(file_path.parent):
+        return 1
+
+    target = resolution.match
+    display_path = _display_reference_path(str(file_path))
+    target_kind = target.symbol_type or "symbol"
+    target_line_end = target.line_end or target.line_num
+    target_location = f"{display_path}:{target.line_num}-{target_line_end}"
+
+    exact_records, error = _reference_exact_node_records(file_path, target)
+    if error is not None:
+        print(f"ERROR: references definition lookup failed: {error}", file=sys.stderr)
+        return 1
+
+    if exact_records:
+        definition_record = exact_records[0]
+    else:
+        definition_record = {
+            "kind": target_kind,
+            "uid": target.unit_id,
+            "name": target.symbol_name,
+            "path": str(file_path),
+            "line_number": target.line_num,
+            "end_line": target_line_end,
+        }
+
+    definition_uid = _candidate_text(definition_record, "uid") or target.unit_id
+    definition_path = _display_reference_path(_candidate_text(definition_record, "path")) or display_path
+    graph_uid = definition_uid if definition_uid and definition_uid != target.unit_id else ""
+    definition_hit = _reference_metadata_from_record(
+        definition_record,
+        fallback_kind=target_kind,
+        display_path=display_path,
+        command=_reference_command(definition_path, name=target.symbol_name, unit_id=target.unit_id),
+        section="definition",
+    )
+
+    callers_records, error = _reference_direct_callers(file_path, target, depth)
+    if error is not None:
+        print(f"ERROR: references callers query failed: {error}", file=sys.stderr)
+        return 1
+
+    callees_records, error = _reference_direct_callees(file_path, target, depth)
+    if error is not None:
+        print(f"ERROR: references callees query failed: {error}", file=sys.stderr)
+        return 1
+
+    variable_terms = _reference_variable_terms(target, limit=max_items)
+    variable_records: list[dict[str, object]] = []
+    if variable_terms:
+        variable_records, error = _reference_variable_records(variable_terms, max_items=max_items)
+        if error is not None:
+            print(f"ERROR: references variable query failed: {error}", file=sys.stderr)
+            return 1
+
+    usage_terms = _reference_usage_terms(target, limit=max_items)
+    usage_records: list[dict[str, object]] = []
+    if usage_terms:
+        usage_records, error = _reference_content_records(usage_terms, max_items=max_items)
+        if error is not None:
+            print(f"ERROR: references source scan query failed: {error}", file=sys.stderr)
+            return 1
+
+    callers_hits = _reference_records_to_hits(
+        "callers",
+        callers_records,
+        display_path=display_path,
+        fallback_kind="symbol",
+    )
+    callees_hits = _reference_records_to_hits(
+        "callees",
+        callees_records,
+        display_path=display_path,
+        fallback_kind="symbol",
+    )
+    variable_hits = _reference_records_to_hits(
+        "variables",
+        variable_records,
+        display_path=display_path,
+        fallback_kind="variable",
+        skip_uids={definition_uid},
+    )
+
+    reserved_uids = {uid for uid in [definition_uid] if uid}
+    for record in (*callers_records, *callees_records, *variable_records):
+        uid = _candidate_text(record, "uid")
+        if uid:
+            reserved_uids.add(uid)
+
+    source_hits = _reference_source_hits(
+        usage_records,
+        terms=usage_terms,
+        display_path=display_path,
+        skip_uid=definition_uid,
+        skip_uids=reserved_uids,
+    )
+
+    grouped_hits: dict[str, list[_ReferenceHit]] = {
+        "definition": [definition_hit],
+        "callers": callers_hits,
+        "callees": callees_hits,
+        "reads": [],
+        "writes": [],
+        "variables": variable_hits,
+        "tests": [],
+        "ambiguous_mentions": [],
+    }
+    for hit in source_hits:
+        grouped_hits.setdefault(hit.section, []).append(hit)
+    for section in ("reads", "writes", "tests", "ambiguous_mentions"):
+        grouped_hits[section] = _dedupe_reference_hits(grouped_hits[section])
+
+    summary_counts = {section: len(hits) for section, hits in grouped_hits.items()}
+    print(
+        "# references "
+        f"file={display_path} "
+        f"target={pattern} "
+        f"source=codegraph "
+        f"kind={requested_kind} "
+        f"depth={depth} "
+        f"max_items={max_items}"
+    )
+    if requested_kind in paginatable_kinds:
+        section_total = len(grouped_hits[requested_kind])
+        if requested_kind == "callers":
+            total_result, error = _reference_direct_callers_total(file_path, target, depth)
+            if error is not None:
+                print(f"ERROR: references callers count query failed: {error}", file=sys.stderr)
+                return 1
+            if total_result is None:
+                print("ERROR: references callers count query failed: unexpected codegraph count payload", file=sys.stderr)
+                return 1
+            section_total = total_result
+        elif requested_kind == "callees":
+            total_result, error = _reference_direct_callees_total(file_path, target, depth)
+            if error is not None:
+                print(f"ERROR: references callees count query failed: {error}", file=sys.stderr)
+                return 1
+            if total_result is None:
+                print("ERROR: references callees count query failed: unexpected codegraph count payload", file=sys.stderr)
+                return 1
+            section_total = total_result
+
+        page_hits, returned, total, truncated, next_offset = _slice_reference_hits(
+            grouped_hits[requested_kind],
+            offset,
+            max_items,
+            total=section_total,
+        )
+        print("# summary")
+        for section in ("definition", "callers", "callees", "reads", "writes", "variables", "tests", "ambiguous_mentions"):
+            print(f"{section}={summary_counts[section]}")
+        print(f"offset={offset}")
+        print(f"returned={returned}")
+        print(f"total={total}")
+        print(f"truncated={'true' if truncated else 'false'}")
+        if next_offset is not None:
+            print(f"next_offset={next_offset}")
+
+        print("# target")
+        print("\t".join(["id", "graph_uid", "name", "kind", "lines", "resolution_method", "location"]))
+        print(
+            "\t".join(
+                [
+                    target.unit_id,
+                    graph_uid,
+                    definition_hit.name,
+                    definition_hit.kind,
+                    f"{target.line_num}-{target_line_end}",
+                    resolution.method,
+                    target_location,
+                ]
+            )
+        )
+
+        _render_reference_section("definition", [definition_hit], max_items)
+        _render_reference_section(
+            requested_kind,
+            page_hits,
+            max_items,
+            total=total,
+            returned=returned,
+            truncated=truncated,
+        )
+        return 0
+
+    visible_section_names = ["definition"]
+    if requested_kind in {"default", "all"}:
+        for section in ("callers", "callees", "reads", "writes", "variables", "tests", "ambiguous_mentions"):
+            if _reference_section_hits(section, grouped_hits[section], requested_kind=requested_kind) and grouped_hits[section]:
+                visible_section_names.append(section)
+    else:
+        visible_section_names.append(requested_kind)
+
+    visible_hits: list[_ReferenceHit] = []
+    truncated = any(
+        section != "definition" and len(grouped_hits[section]) > max_items
+        for section in visible_section_names
+    )
+    for section in visible_section_names:
+        hits = grouped_hits[section]
+        emitted_hits = hits if section == "definition" else hits[:max_items]
+        visible_hits.extend(emitted_hits)
+
+    print("# summary")
+    for section in ("definition", "callers", "callees", "reads", "writes", "variables", "tests", "ambiguous_mentions"):
+        print(f"{section}={summary_counts[section]}")
+    print(f"returned={len(_dedupe_reference_hits(visible_hits))}")
+    print(f"truncated={'true' if truncated else 'false'}")
+
+    print("# target")
+    print("\t".join(["id", "graph_uid", "name", "kind", "lines", "resolution_method", "location"]))
+    print(
+        "\t".join(
+            [
+                target.unit_id,
+                graph_uid,
+                definition_hit.name,
+                definition_hit.kind,
+                f"{target.line_num}-{target_line_end}",
+                resolution.method,
+                target_location,
+            ]
+        )
+    )
+
+    for section in visible_section_names:
+        _render_reference_section(section, grouped_hits[section], max_items)
+    return 0
+
+
 def _print_usage() -> None:
     print("Usage:")
+    print(f"  read_code outline <file_path> [--max-items=N<= {READ_CODE_OUTLINE_MAX_ITEMS}]")
     print(
-        f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
+        f"  read_code read <file_path> <unit_id_or_symbol> "
+        f"[--max-chars=N<= {READ_CODE_READ_MAX_CHARS}] [--candidate-index=N]"
     )
+    print(f"  read_code context <file_path> <target> [--max-items=N<= {READ_CODE_CONTEXT_MAX_ITEMS}]")
+    print("                   (graph/codegraph neighborhood; no source bodies)")
     print(
-        "                   (default output is resolved anchor + bounded window; semantic anchors are preferred at confidence >= "
-        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; semantic query is file-scoped first; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
+        f"  read_code references <file_path> <target> "
+        f"[--kind=default|callers|callees|reads|writes|variables|tests|ambiguous_mentions|all] "
+        f"[--depth=1|2] [--max=N<= {READ_CODE_REFERENCES_MAX_ITEMS}] [--offset=N]"
     )
+    print("                   (graph usage/blast-radius audit; no source bodies)")
     print(
-        f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
+        f"  read_code source-context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] "
+        "[--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] "
+        "[--candidate-index N] [--inline-body]"
     )
+    print("                   (legacy line-window context; preserved temporarily)")
     print(
-        "                   (when symbol_or_pattern is supplied, out-of-window anchors are treated as advisory; the requested window is returned unchanged)"
+        f"  read_code source-window <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] "
+        "[symbol_or_pattern] [--hud-symbol] [--allow-fallback] --reason=stale-index|post-edit|debug-index"
     )
+    print("                   (break-glass raw source window with explicit reason)")
 
 
 def main(argv: list[str]) -> int:
@@ -2267,9 +3913,20 @@ def main(argv: list[str]) -> int:
 
     mode = argv[0]
     args = argv[1:]
+    if mode == "outline":
+        return read_code_outline(args)
+    if mode == "read":
+        return read_code_read(args)
     if mode == "context":
+        return read_code_graph_context(args)
+    if mode == "source-context":
         return read_code_context(args)
+    if mode == "source-window":
+        return read_code_source_window(args)
+    if mode == "references":
+        return read_code_references(args)
     if mode == "window":
+        print("WARN: window is deprecated; use source-window with --reason", file=sys.stderr)
         return read_code_window(args)
     if mode == "symbols":
         print(
@@ -2281,7 +3938,10 @@ def main(argv: list[str]) -> int:
     if mode == "codegraph-preflight-worker":
         return run_codegraph_preflight_worker(args)
 
-    print(f"ERROR: Unknown mode '{mode}'. Use: context | window", file=sys.stderr)
+    print(
+        f"ERROR: Unknown mode '{mode}'. Use: outline | read | context | source-context | source-window | references",
+        file=sys.stderr,
+    )
     return 1
 
 

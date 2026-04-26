@@ -125,16 +125,23 @@ Run the indexer before querying the doctor.
     assert sections[-1].preview.startswith("Run the indexer")
 
 
-def test_extract_python_symbols_includes_module_level_blocks(tmp_path: Path) -> None:
+def test_extract_python_symbols_includes_named_module_units(tmp_path: Path) -> None:
+    """Python extraction emits named module units and keeps decorators on class bodies."""
     source = tmp_path / "src" / "module_example.py"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(
         '''
 """Module docstring."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 SETTING = 1
+WATCHERS = ("stdout",)
+
+@dataclass
+class Runner:
+    enabled: bool = True
 
 def work() -> int:
     return SETTING
@@ -149,10 +156,26 @@ if __name__ == "__main__":
     symbols = extract_python_symbols(source, repo_root=tmp_path)
 
     assert any(symbol.symbol_name == "work" and symbol.symbol_type == "function" for symbol in symbols)
-    module_blocks = [symbol for symbol in symbols if symbol.symbol_type == "module_block"]
-    assert module_blocks
-    assert any("SETTING = 1" in symbol.body for symbol in module_blocks)
-    assert any("if __name__ == \"__main__\"" in symbol.body for symbol in module_blocks)
+    assert any(
+        symbol.symbol_name == "Runner"
+        and symbol.symbol_type == "class"
+        and symbol.body.lstrip().startswith("@dataclass")
+        for symbol in symbols
+    )
+    module_units = [symbol for symbol in symbols if symbol.symbol_type == "module"]
+    assert {symbol.symbol_name for symbol in module_units} >= {
+        "docstring",
+        "imports",
+        "constants",
+        "main_guard",
+    }
+    assert any(symbol.symbol_name == "constants" and "SETTING = 1" in symbol.body for symbol in module_units)
+    assert any(symbol.symbol_name == "constants" and "WATCHERS = (" in symbol.body for symbol in module_units)
+    assert any(
+        symbol.symbol_name == "main_guard" and "if __name__ == \"__main__\"" in symbol.body
+        for symbol in module_units
+    )
+    assert not any(symbol.body.strip() == "@dataclass" for symbol in module_units)
 
 
 def test_extract_shell_scripts_uses_header_comment_and_full_body(tmp_path: Path) -> None:
