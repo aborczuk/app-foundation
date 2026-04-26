@@ -87,8 +87,23 @@ def _configure_reference_mode(
     monkeypatch.setattr(module, "codegraph_refresh_if_needed", lambda *_: True)
     monkeypatch.setattr(module, "_resolve_graph_target", lambda *_: resolution)
     monkeypatch.setattr(module, "_reference_exact_node_records", lambda *_: ([exact_record] if exact_record else [], None))
-    monkeypatch.setattr(module, "_reference_direct_callers", lambda *_: (list(callers or []), None))
-    monkeypatch.setattr(module, "_reference_direct_callees", lambda *_: (list(callees or []), None))
+
+    def _mock_callers(*args: Any, **kwargs: Any) -> tuple[list[dict[str, object]], str | None]:
+        """Mock that respects pagination parameters."""
+        offset = kwargs.get("offset", 0)
+        limit = kwargs.get("limit", 80)
+        records = callers or []
+        return (records[offset : offset + limit], None)
+
+    def _mock_callees(*args: Any, **kwargs: Any) -> tuple[list[dict[str, object]], str | None]:
+        """Mock that respects pagination parameters."""
+        offset = kwargs.get("offset", 0)
+        limit = kwargs.get("limit", 80)
+        records = callees or []
+        return (records[offset : offset + limit], None)
+
+    monkeypatch.setattr(module, "_reference_direct_callers", _mock_callers)
+    monkeypatch.setattr(module, "_reference_direct_callees", _mock_callees)
     monkeypatch.setattr(
         module,
         "_reference_direct_callers_total",
@@ -264,8 +279,8 @@ def test_read_code_references_target_row_uses_unit_id_and_labeled_graph_uid(
     monkeypatch.setattr(read_code, "codegraph_refresh_if_needed", lambda *_: True)
     monkeypatch.setattr(read_code, "_resolve_graph_target", lambda *_: resolution)
     monkeypatch.setattr(read_code, "_reference_exact_node_records", lambda *_: ([exact_record], None))
-    monkeypatch.setattr(read_code, "_reference_direct_callers", lambda *_: ([], None))
-    monkeypatch.setattr(read_code, "_reference_direct_callees", lambda *_: ([], None))
+    monkeypatch.setattr(read_code, "_reference_direct_callers", lambda *args, **kwargs: ([], None))
+    monkeypatch.setattr(read_code, "_reference_direct_callees", lambda *args, **kwargs: ([], None))
     monkeypatch.setattr(read_code, "_reference_variable_terms", lambda *args, **kwargs: [])
     monkeypatch.setattr(read_code, "_reference_variable_records", lambda *args, **kwargs: ([], None))
     monkeypatch.setattr(read_code, "_reference_usage_terms", lambda *args, **kwargs: ["read_code_read"])
@@ -329,9 +344,9 @@ def test_read_code_references_truncated_only_checks_visible_sections(
     monkeypatch.setattr(read_code, "codegraph_refresh_if_needed", lambda *_: True)
     monkeypatch.setattr(read_code, "_resolve_graph_target", lambda *_: resolution)
     monkeypatch.setattr(read_code, "_reference_exact_node_records", lambda *_: ([exact_record], None))
-    monkeypatch.setattr(read_code, "_reference_direct_callers", lambda *_: ([caller_record], None))
+    monkeypatch.setattr(read_code, "_reference_direct_callers", lambda *args, **kwargs: ([caller_record], None))
     monkeypatch.setattr(read_code, "_reference_direct_callers_total", lambda *_: (1, None))
-    monkeypatch.setattr(read_code, "_reference_direct_callees", lambda *_: ([], None))
+    monkeypatch.setattr(read_code, "_reference_direct_callees", lambda *args, **kwargs: ([], None))
     monkeypatch.setattr(read_code, "_reference_variable_terms", lambda *args, **kwargs: [])
     monkeypatch.setattr(read_code, "_reference_variable_records", lambda *args, **kwargs: ([], None))
     monkeypatch.setattr(read_code, "_reference_usage_terms", lambda *args, **kwargs: ["read_code_read"])
@@ -428,7 +443,7 @@ def test_read_code_references_pages_callers_by_offset(
         "line_number": 1,
         "end_line": 2,
     }
-    caller_records = [
+    all_caller_records = [
         {
             "kind": ["Function"],
             "uid": "function:caller_a",
@@ -455,15 +470,24 @@ def test_read_code_references_pages_callers_by_offset(
         },
     ]
 
-    _configure_reference_mode(
-        monkeypatch,
-        read_code,
-        resolution,
-        exact_record=exact_record,
-        callers=caller_records,
-        usage_terms=[],
-        callers_total=5,
-    )
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda *_: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *_: True)
+    monkeypatch.setattr(read_code, "codegraph_refresh_if_needed", lambda *_: True)
+    monkeypatch.setattr(read_code, "_resolve_graph_target", lambda *_: resolution)
+    monkeypatch.setattr(read_code, "_reference_exact_node_records", lambda *_: ([exact_record], None))
+
+    def _mock_callers(file_path: Path, target: Any, depth: int, offset: int = 0, limit: int = 80) -> tuple[list[dict[str, object]], str | None]:
+        """Mock that respects pagination parameters."""
+        return (all_caller_records[offset : offset + limit], None)
+
+    monkeypatch.setattr(read_code, "_reference_direct_callers", _mock_callers)
+    monkeypatch.setattr(read_code, "_reference_direct_callees", lambda *args, **kwargs: ([], None))
+    monkeypatch.setattr(read_code, "_reference_direct_callers_total", lambda *_: (5, None))
+    monkeypatch.setattr(read_code, "_reference_direct_callees_total", lambda *_: (0, None))
+    monkeypatch.setattr(read_code, "_reference_variable_terms", lambda *args, **kwargs: [])
+    monkeypatch.setattr(read_code, "_reference_variable_records", lambda *args, **kwargs: ([], None))
+    monkeypatch.setattr(read_code, "_reference_usage_terms", lambda *args, **kwargs: [])
+    monkeypatch.setattr(read_code, "_reference_content_records", lambda *args, **kwargs: ([], None))
 
     first_result = read_code.read_code_references(
         [str(code_file), "read_code_read", "--kind=callers", "--max=2", "--offset=0"]

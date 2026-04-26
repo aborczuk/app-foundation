@@ -2607,8 +2607,10 @@ def _reference_exact_node_records(file_path: Path, target: _VectorMatch) -> tupl
     return _reference_query_rows(query)
 
 
-def _reference_direct_callers(file_path: Path, target: _VectorMatch, depth: int) -> tuple[list[dict[str, object]], str | None]:
-    """Collect caller nodes for a function-like target."""
+def _reference_direct_callers(
+    file_path: Path, target: _VectorMatch, depth: int, offset: int = 0, limit: int = READ_CODE_REFERENCES_MAX_ITEMS
+) -> tuple[list[dict[str, object]], str | None]:
+    """Collect caller nodes for a function-like target with pagination support."""
     if target.symbol_type not in {"function", "async_function", "method"}:
         return [], None
     uid = _graph_uid_for_match(file_path, target)
@@ -2624,9 +2626,9 @@ def _reference_direct_callers(file_path: Path, target: _VectorMatch, depth: int)
             "caller.line_number as line_number, "
             "caller.end_line as end_line "
             "ORDER BY path, line_number "
-            "LIMIT "
+            f"SKIP {offset} "
+            f"LIMIT {limit}"
         )
-        query += str(READ_CODE_REFERENCES_MAX_ITEMS)
         return _reference_query_rows(query)
 
     query = (
@@ -2642,9 +2644,9 @@ def _reference_direct_callers(file_path: Path, target: _VectorMatch, depth: int)
         "caller.end_line as end_line, "
         "depth "
         "ORDER BY depth, path, line_number "
-        "LIMIT "
+        f"SKIP {offset} "
+        f"LIMIT {limit}"
     )
-    query += str(READ_CODE_REFERENCES_MAX_ITEMS)
     return _reference_query_rows(query)
 
 
@@ -2669,8 +2671,10 @@ def _reference_direct_callers_total(file_path: Path, target: _VectorMatch, depth
     return _reference_query_count(query)
 
 
-def _reference_direct_callees(file_path: Path, target: _VectorMatch, depth: int) -> tuple[list[dict[str, object]], str | None]:
-    """Collect callee nodes for a function-like target."""
+def _reference_direct_callees(
+    file_path: Path, target: _VectorMatch, depth: int, offset: int = 0, limit: int = READ_CODE_REFERENCES_MAX_ITEMS
+) -> tuple[list[dict[str, object]], str | None]:
+    """Collect callee nodes for a function-like target with pagination support."""
     if target.symbol_type not in {"function", "async_function", "method"}:
         return [], None
     uid = _graph_uid_for_match(file_path, target)
@@ -2686,9 +2690,9 @@ def _reference_direct_callees(file_path: Path, target: _VectorMatch, depth: int)
             "callee.line_number as line_number, "
             "callee.end_line as end_line "
             "ORDER BY path, line_number "
-            "LIMIT "
+            f"SKIP {offset} "
+            f"LIMIT {limit}"
         )
-        query += str(READ_CODE_REFERENCES_MAX_ITEMS)
         return _reference_query_rows(query)
 
     query = (
@@ -2704,9 +2708,9 @@ def _reference_direct_callees(file_path: Path, target: _VectorMatch, depth: int)
         "callee.end_line as end_line, "
         "depth "
         "ORDER BY depth, path, line_number "
-        "LIMIT "
+        f"SKIP {offset} "
+        f"LIMIT {limit}"
     )
-    query += str(READ_CODE_REFERENCES_MAX_ITEMS)
     return _reference_query_rows(query)
 
 
@@ -3683,12 +3687,12 @@ def read_code_references(argv: list[str]) -> int:
         section="definition",
     )
 
-    callers_records, error = _reference_direct_callers(file_path, target, depth)
+    callers_records, error = _reference_direct_callers(file_path, target, depth, offset=offset, limit=max_items if requested_kind == "callers" else READ_CODE_REFERENCES_MAX_ITEMS)
     if error is not None:
         print(f"ERROR: references callers query failed: {error}", file=sys.stderr)
         return 1
 
-    callees_records, error = _reference_direct_callees(file_path, target, depth)
+    callees_records, error = _reference_direct_callees(file_path, target, depth, offset=offset, limit=max_items if requested_kind == "callees" else READ_CODE_REFERENCES_MAX_ITEMS)
     if error is not None:
         print(f"ERROR: references callees query failed: {error}", file=sys.stderr)
         return 1
@@ -3779,6 +3783,12 @@ def read_code_references(argv: list[str]) -> int:
                 print("ERROR: references callers count query failed: unexpected codegraph count payload", file=sys.stderr)
                 return 1
             section_total = total_result
+            # Results are already paginated in Cypher, compute metadata directly
+            page_hits = grouped_hits[requested_kind]
+            returned = len(page_hits)
+            total = section_total
+            truncated = offset + returned < total
+            next_offset = offset + returned if truncated else None
         elif requested_kind == "callees":
             total_result, error = _reference_direct_callees_total(file_path, target, depth)
             if error is not None:
@@ -3788,13 +3798,20 @@ def read_code_references(argv: list[str]) -> int:
                 print("ERROR: references callees count query failed: unexpected codegraph count payload", file=sys.stderr)
                 return 1
             section_total = total_result
-
-        page_hits, returned, total, truncated, next_offset = _slice_reference_hits(
-            grouped_hits[requested_kind],
-            offset,
-            max_items,
-            total=section_total,
-        )
+            # Results are already paginated in Cypher, compute metadata directly
+            page_hits = grouped_hits[requested_kind]
+            returned = len(page_hits)
+            total = section_total
+            truncated = offset + returned < total
+            next_offset = offset + returned if truncated else None
+        else:
+            # For non-graph-native sections, apply offset/max in Python
+            page_hits, returned, total, truncated, next_offset = _slice_reference_hits(
+                grouped_hits[requested_kind],
+                offset,
+                max_items,
+                total=section_total,
+            )
         print("# summary")
         for section in ("definition", "callers", "callees", "reads", "writes", "variables", "tests", "ambiguous_mentions"):
             print(f"{section}={summary_counts[section]}")
