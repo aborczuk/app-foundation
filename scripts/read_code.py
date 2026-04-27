@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,7 +43,11 @@ from read_code_health import (
     _clear_vector_runtime_note,
     _command_exists,
     _consume_vector_runtime_note,
+    _find_markdown_section_end,
+    _markdown_heading_lines,
     _refresh_indexes_for_read,
+    _resolve_markdown_anchor_fallback,
+    _resolve_markdown_anchor_vector,
     _run_command_capture,
     _set_vector_runtime_note,
     _vector_command_env,
@@ -55,6 +60,13 @@ from read_code_health import (
 
 SOURCE_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SOURCE_PATH.parent
+
+
+def _is_markdown(path: Path | None) -> bool:
+    """Return whether the target file is a markdown file."""
+    if path is None:
+        return False
+    return path.suffix.lower() == ".md"
 
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
 READ_CODE_DEFAULT_WINDOW_LINES = 60
@@ -571,7 +583,33 @@ def _resolve_pattern_anchor(
     allow_fallback: bool,
     show_shortlist_hint: bool,
 ) -> _AnchorResolution | None:
-    """Resolve pattern anchor via semantic-first search."""
+    if _is_markdown(file_path):
+        line_num = _resolve_markdown_anchor_vector(file_path, pattern)
+        if line_num is None:
+            line_num = _resolve_markdown_anchor_fallback(file_path, pattern)
+
+        if line_num is not None:
+            # Construct a synthetic match for markdown
+            vector_match = _VectorMatch(
+                unit_id="markdown",
+                symbol_name=pattern,
+                qualified_name=f"{file_path}:{pattern}",
+                line_num=line_num,
+                line_end=line_num,
+                raw_score=1.0,
+                file_path=file_path,
+                signature=f"## {pattern}",
+                docstring="",
+                cosine_similarity=100,
+            )
+            return _AnchorResolution(
+                vector_candidates=[vector_match],
+                vector_match=vector_match,
+                strict_status=0,
+                line_num=line_num,
+            )
+        return None
+
     vector_candidates, vector_match, selection_ok = _query_semantic_anchor_candidate(
         file_path,
         pattern,
@@ -873,9 +911,15 @@ def read_code_context(argv: list[str]) -> int:
     )
 
     if parsed.inline_body:
-        pre_lines, post_lines = _split_context_window(parsed.context)
-        start = max(1, line_num - pre_lines)
-        end = line_num + post_lines
+        start = 1
+        end = 1
+        if _is_markdown(vector_match.file_path):
+            start = line_num
+            end = _find_markdown_section_end(vector_match.file_path, line_num)
+        else:
+            pre_lines, post_lines = _split_context_window(parsed.context)
+            start = max(1, line_num - pre_lines)
+            end = line_num + post_lines
         _render_numbered_window(vector_match.file_path, start, end)
 
     return 0
@@ -912,23 +956,73 @@ def read_code_window(argv: list[str]) -> int:
     return 0
 
 
+def read_code_headings(argv: list[str]) -> int:
+    """List markdown headings with line numbers."""
+    if not argv:
+        print("ERROR: headings mode requires a file path", file=sys.stderr)
+        return 1
+    file_path = Path(argv[0])
+    if not file_path.is_file():
+        print(f"ERROR: file not found: {file_path}", file=sys.stderr)
+        return 1
+    if not _is_markdown(file_path):
+        print(f"ERROR: headings mode is only supported for markdown files: {file_path}", file=sys.stderr)
+        return 1
+
+    if not _refresh_indexes_for_read(file_path):
+        return 1
+
+    headings = _markdown_heading_lines(file_path)
+    for line_num, text in headings:
+        print(f"{line_num:6}\t{text}")
+    return 0
+
+
+def read_code_analyze(argv: list[str]) -> int:
+    """Proxy to codegraph (cgc) analyze commands."""
+    if not argv:
+        print("ERROR: analyze mode requires a command (e.g. callers, deps)", file=sys.stderr)
+        return 1
+    
+    init_codegraph_env()
+    cmd = ["uv", "run", "cgc", "analyze"] + argv
+    return subprocess.run(cmd, check=False).returncode
+
+
+def read_code_find(argv: list[str]) -> int:
+    """Proxy to codegraph (cgc) find commands."""
+    if not argv:
+        print("ERROR: find mode requires a command (e.g. name, pattern)", file=sys.stderr)
+        return 1
+    
+    init_codegraph_env()
+    cmd = ["uv", "run", "cgc", "find"] + argv
+    return subprocess.run(cmd, check=False).returncode
+
+
 def _print_usage() -> None:
     print("Usage:")
     print(
-        "  read_code_context <file_path> <symbol_or_pattern> [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
+        "  read_code context <file_path> <symbol_or_pattern> [--inline-body] [...]"
     )
     print(
-        "                OR <symbol_or_pattern> [--path <file>] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
+        "  read_code window  <file_path> <start_line> [line_count]"
     )
     print(
-        "                   (default output is compact semantic match: file_path, signature, docstring, cosine_similarity; body and source lines are opt-in via --inline-body)"
+        "  read_code headings <markdown_file>"
     )
     print(
-        f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
+        "  read_code analyze <command> <symbol> [...]"
     )
     print(
-        "                   (when symbol_or_pattern is supplied, out-of-window anchors are treated as advisory; the requested window is returned unchanged)"
+        "  read_code find    <command> <pattern> [...]"
     )
+    print("\nModes:")
+    print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
+    print("  window:   Show a raw numbered line window.")
+    print("  headings: List markdown headings with line numbers.")
+    print("  analyze:  Graph discovery via CodeGraph (callers, deps, dead-code, etc.).")
+    print("  find:     Structural search via CodeGraph (name, pattern, type, etc.).")
 
 
 def main(argv: list[str]) -> int:
@@ -959,8 +1053,14 @@ def main(argv: list[str]) -> int:
         return read_code_context(args)
     if mode == "window":
         return read_code_window(args)
+    if mode == "headings":
+        return read_code_headings(args)
+    if mode == "analyze":
+        return read_code_analyze(args)
+    if mode == "find":
+        return read_code_find(args)
 
-    print(f"ERROR: Unknown mode '{mode}'. Use: context | window", file=sys.stderr)
+    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | headings | analyze | find", file=sys.stderr)
     return 1
 
 

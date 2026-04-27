@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1141,3 +1142,264 @@ if __name__ == "__main__":
         raise SystemExit(run_codegraph_preflight_worker(argv[1:]))
     print(f"ERROR: unknown mode: {argv[0] if argv else '(none)'}", file=sys.stderr)
     raise SystemExit(1)
+
+def _markdown_heading_lines(target_file: Path) -> list[tuple[int, str]]:
+    """Collect markdown heading lines in file order."""
+    headings: list[tuple[int, str]] = []
+    heading_pattern = re.compile(r"^(#{1,6})\s+.+$")
+    with target_file.open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle, start=1):
+            stripped = line.rstrip("\n")
+            if heading_pattern.match(stripped):
+                headings.append((index, stripped))
+    return headings
+
+
+def _normalize_heading_text(text: str) -> str:
+    """Normalize heading text for fuzzy comparisons."""
+    return re.sub(r"\s+", " ", text.strip().lstrip("#").strip()).rstrip(":").lower()
+
+
+def _section_matches_query(section: str, candidate: str | None) -> bool:
+    """Return whether a query and candidate heading are close enough to match."""
+    if not section or not candidate:
+        return False
+    section_norm = _normalize_heading_text(section)
+    candidate_norm = _normalize_heading_text(candidate)
+    if not section_norm or not candidate_norm:
+        return False
+    return (
+        candidate_norm == section_norm
+        or candidate_norm.startswith(f"{section_norm}:")
+        or candidate_norm.startswith(f"{section_norm} -")
+        or candidate_norm.startswith(f"{section_norm} ")
+    )
+
+
+def _score_markdown_match(
+    section: str,
+    heading: str | None,
+    breadcrumb_tail: str | None,
+    *,
+    breadcrumb_depth: int = 0,
+) -> int | None:
+    """Score a markdown hit so more specific same-file matches win."""
+    if not _section_matches_query(section, heading) and not _section_matches_query(section, breadcrumb_tail):
+        return None
+
+    section_norm = _normalize_heading_text(section)
+    heading_norm = _normalize_heading_text(heading or "")
+    breadcrumb_norm = _normalize_heading_text(breadcrumb_tail or "")
+
+    score = 0
+    if heading_norm == section_norm:
+        score = 100
+    elif breadcrumb_norm == section_norm:
+        score = 98
+    elif heading_norm.startswith(section_norm):
+        score = 88
+    elif breadcrumb_norm.startswith(section_norm):
+        score = 86
+    elif section_norm.startswith(heading_norm) and heading_norm:
+        score = 72
+    elif section_norm.startswith(breadcrumb_norm) and breadcrumb_norm:
+        score = 70
+    elif section_norm in heading_norm:
+        score = 60
+    elif section_norm in breadcrumb_norm:
+        score = 58
+    else:
+        score = 50
+
+    return score + min(max(breadcrumb_depth, 0), 10)
+
+
+def _resolve_vector_payload_file(item: dict[str, object]) -> str | None:
+    """Resolve the file path from a vector hit payload."""
+    candidate = item.get("file_path")
+    if isinstance(candidate, str) and candidate:
+        return candidate
+
+    content = item.get("content")
+    if isinstance(content, dict):
+        nested = content.get("file_path")
+        if isinstance(nested, str) and nested:
+            return nested
+    return None
+
+
+def _resolve_vector_payload_line(item: dict[str, object]) -> int | None:
+    """Resolve the first line number from a vector hit payload."""
+    line = item.get("line_start")
+    if isinstance(line, int):
+        return line
+    if isinstance(line, str) and line.isdigit():
+        return int(line, 10)
+
+    content = item.get("content")
+    if isinstance(content, dict):
+        nested = content.get("line_start")
+        if isinstance(nested, int):
+            return nested
+        if isinstance(nested, str) and nested.isdigit():
+            return int(nested, 10)
+    return None
+
+
+def _resolve_vector_payload_heading(item: dict[str, object]) -> str | None:
+    """Resolve the heading text from a vector hit payload."""
+    heading = item.get("heading")
+    if isinstance(heading, str) and heading:
+        return heading
+
+    content = item.get("content")
+    if isinstance(content, dict):
+        nested = content.get("heading")
+        if isinstance(nested, str) and nested:
+            return nested
+    return None
+
+
+def _resolve_vector_payload_breadcrumb_tail(item: dict[str, object]) -> str | None:
+    """Resolve the last breadcrumb element from a vector hit payload."""
+    breadcrumb = item.get("breadcrumb")
+    if isinstance(breadcrumb, list) and breadcrumb:
+        last = breadcrumb[-1]
+        if isinstance(last, str) and last:
+            return last
+
+    content = item.get("content")
+    if isinstance(content, dict):
+        nested = content.get("breadcrumb")
+        if isinstance(nested, list) and nested:
+            last = nested[-1]
+            if isinstance(last, str) and last:
+                return last
+    return None
+
+
+def _resolve_vector_payload_breadcrumb_depth(item: dict[str, object]) -> int:
+    """Resolve the breadcrumb depth from a vector hit payload."""
+    breadcrumb = item.get("breadcrumb")
+    if isinstance(breadcrumb, list):
+        return len(breadcrumb)
+
+    content = item.get("content")
+    if isinstance(content, dict):
+        nested = content.get("breadcrumb")
+        if isinstance(nested, list):
+            return len(nested)
+    return 0
+
+
+def _resolve_markdown_anchor_vector(target_file: Path, section: str) -> int | None:
+    """Use vector lookup to resolve a markdown section line number."""
+    if not target_file or not section:
+        return None
+
+    if not _command_exists("uv"):
+        return None
+
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "src.mcp_codebase.indexer",
+        "--repo-root",
+        str(REPO_ROOT),
+        "query",
+        section,
+        "--scope",
+        "markdown",
+        "--top-k",
+        "5",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=_vector_command_env())
+    if proc.returncode != 0:
+        return None
+
+    try:
+        payload = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, list):
+        return None
+
+    best_match: tuple[int, int, int] | None = None
+
+    for raw_item in payload:
+        if not isinstance(raw_item, dict):
+            continue
+        candidate = _resolve_vector_payload_file(raw_item)
+        if not candidate:
+            continue
+        try:
+            if Path(candidate).expanduser().resolve() != target_file.resolve():
+                continue
+        except Exception:
+            continue
+
+        heading = _resolve_vector_payload_heading(raw_item)
+        breadcrumb_tail = _resolve_vector_payload_breadcrumb_tail(raw_item)
+        depth = _resolve_vector_payload_breadcrumb_depth(raw_item)
+        score = _score_markdown_match(
+            section,
+            heading,
+            breadcrumb_tail,
+            breadcrumb_depth=depth,
+        )
+        if score is None:
+            continue
+        line = _resolve_vector_payload_line(raw_item)
+        if line is not None:
+            candidate_match = (score, depth, -line)
+            if best_match is None or candidate_match > best_match:
+                best_match = candidate_match
+
+    if best_match is not None:
+        return -best_match[2]
+
+    return None
+
+
+def _resolve_markdown_anchor_fallback(target_file: Path, section: str) -> int | None:
+    """Fall back to matching any markdown heading level when vector lookup is unavailable."""
+    with target_file.open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle, start=1):
+            stripped = line.rstrip("\n")
+            if not re.match(r"^(#{1,6})\s+.+$", stripped):
+                continue
+            heading = stripped.lstrip("#").strip()
+            if _section_matches_query(section, heading):
+                return index
+    return None
+
+
+def _find_markdown_section_end(target_file: Path, start_line: int) -> int:
+    """Find the line number where a markdown section ends (next heading of equal or higher level)."""
+    heading_pattern = re.compile(r"^(#{1,6})\s+.+$")
+    start_level = 0
+    
+    lines = target_file.read_text(encoding="utf-8").splitlines()
+    if start_line > len(lines):
+        return start_line
+        
+    start_heading = lines[start_line - 1]
+    match = heading_pattern.match(start_heading)
+    if match:
+        start_level = len(match.group(1))
+    else:
+        # Not starting at a heading? Just return start + some default
+        return min(start_line + 60, len(lines))
+
+    for idx in range(start_line, len(lines)):
+        line = lines[idx]
+        match = heading_pattern.match(line)
+        if match:
+            level = len(match.group(1))
+            if level <= start_level:
+                return idx  # Exclusive end (the line before this one)
+                
+    return len(lines)
