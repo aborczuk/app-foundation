@@ -1799,13 +1799,22 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
         )
 
 
-def _render_compact_match(candidate: _VectorMatch) -> None:
-    """Render compact metadata for a selected semantic match."""
+def _render_compact_match(candidate: _VectorMatch, has_more_candidates: bool = False) -> None:
+    """Render compact metadata for a selected semantic match with exploration hints."""
     output = f"file_path: {candidate.file_path}"
     output += f"\nsignature: {candidate.signature}"
     if candidate.docstring:
         output += f"\ndocstring: {candidate.docstring.rstrip()}"
     output += f"\nconfidence: {candidate.confidence}/100"
+
+    hints = []
+    if candidate.has_body:
+        hints.append("--inline-body for implementation")
+    if has_more_candidates:
+        hints.append("--show-shortlist or --next-candidate to explore")
+    if hints:
+        output += f"\n# {', '.join(hints)}"
+
     print(output)
 
 
@@ -2273,7 +2282,8 @@ def read_code_context(argv: list[str]) -> int:
         print("ERROR: No semantic match available", file=sys.stderr)
         return 1
 
-    _render_compact_match(vector_match)
+    has_more_candidates = len(vector_candidates) > parsed.candidate_index + 1
+    _render_compact_match(vector_match, has_more_candidates=has_more_candidates)
     _render_resolution_extras(
         parsed.pattern,
         vector_candidates,
