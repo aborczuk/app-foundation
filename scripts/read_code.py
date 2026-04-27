@@ -520,6 +520,9 @@ def _render_compact_match(candidate: _VectorMatch, has_more_candidates: bool = F
         hints.append("--inline-body for function body and implementation")
     if has_more_candidates:
         hints.append("--next-candidate for the next ranked candidate")
+    unit_id = candidate.unit_id
+    if unit_id:
+        hints.append(f"uv run cgc analyze callers '{unit_id}' for call sites")
     if hints:
         output += f"\n# {', '.join(hints)}"
 

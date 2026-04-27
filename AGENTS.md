@@ -112,7 +112,20 @@ Read code by intent, not by guessing file windows.
    ```bash
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body
    ```
-4. **You can dig for more context within a file as well with the same function and optional file path**
+
+4. **Find Call Sites and Usages with CodeGraph (The Standard Next Step)**
+
+   Once semantic search returns a result with a unit_id, use codegraph to find where it's called:
+
+   ```bash
+   uv run cgc analyze callers "_resolve_pattern_anchor"      # Find all functions that call this
+   uv run cgc analyze calls "read_code_context"              # Find all functions this calls
+   uv run cgc analyze variable "vector_candidates"           # Find where a variable is used
+   ```
+
+   The compact match output will hint which codegraph command to run next.
+
+5. **You can dig for more context within a file as well with the same function and optional file path**
 
    Examples:
 
@@ -121,18 +134,18 @@ Read code by intent, not by guessing file windows.
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --path src/mcp_codebase/read_code.py
    ```
 
-5. **Optionally Use CodeGraph only after the seam is known and if more comprehensive understanding is required**
+6. **Advanced CodeGraph Analysis (when needed)**
 
-   - Use `codegraph` to map blast radius, callers, callees, inheritance, imports, or dead-code questions.
+   Use codegraph to map blast radius, inheritance, imports, dead-code, and other structural questions.
 
    - Do not use broad `cgc find content` for reassurance once the relevant file or seam is already known.
 
    Examples:
 
    ```bash
-   uv run cgc analyze callers "_resolve_pattern_anchor"
-   uv run cgc analyze calls "read_code_context"
-   uv run cgc analyze deps "src.mcp_codebase.read_code"
+   uv run cgc analyze deps "src.mcp_codebase.read_code"      # Module dependencies
+   uv run cgc analyze tree "SomeClass"                        # Inheritance hierarchy
+   uv run cgc analyze dead-code                               # Unused functions
    ```
 
    **Find commands** (`cgc find`):
