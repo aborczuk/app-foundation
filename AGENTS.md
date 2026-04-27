@@ -158,7 +158,6 @@ Use the shortlist/body contract when reading code with the helper.
 - Symbol dumps are not part of standard workflow; use semantic anchor + bounded window reads instead.
 - Break-glass symbol dumps live only in `scripts/read_code_debug.py` and require explicit maintenance intent.
 - `context_lines` is a total context budget with a fixed small-before/larger-after split.
-- The confidence cutoff for inline body output is `90/100` when `--inline-body` is requested.
 - A non-top candidate body should only be returned through the bounded follow-up helper path.
 - Keep the shell wrapper, Python helper, and docs aligned with the same contract when the behavior changes.
 
