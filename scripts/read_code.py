@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -425,39 +424,6 @@ def _vector_find_candidates(
         candidates = _vector_query_candidates(file_path, normalized_pattern, normalized_pattern, scope)
     return candidates
 
-
-
-def _iter_literal_hits(file_path: Path, literal: str) -> Iterator[int]:
-    """Yield 1-based line numbers that contain the requested literal."""
-    if not literal:
-        return
-    with file_path.open(encoding="utf-8") as handle:
-        for idx, line in enumerate(handle, start=1):
-            if literal in line:
-                yield idx
-
-
-def _find_first_literal_line(file_path: Path, literal: str) -> int | None:
-    """Return the first matching line for a literal, when one exists."""
-    return next(_iter_literal_hits(file_path, literal), None)
-
-
-def _find_line_num(file_path: Path, raw_pattern: str, normalized_pattern: str) -> int | None:
-    line_num = _find_first_literal_line(file_path, raw_pattern) if raw_pattern else None
-    if line_num is None and normalized_pattern and normalized_pattern != raw_pattern:
-        line_num = _find_first_literal_line(file_path, normalized_pattern)
-    if line_num is None and normalized_pattern:
-        line_num = _find_first_literal_line(file_path, f"def {normalized_pattern}")
-    if line_num is None and normalized_pattern:
-        line_num = _find_first_literal_line(file_path, f"async def {normalized_pattern}")
-    if line_num is None and normalized_pattern:
-        line_num = _find_first_literal_line(file_path, f"class {normalized_pattern}")
-    return line_num
-
-
-def _collect_literal_hits(file_path: Path, literal: str) -> list[int]:
-    """Return every matching line number for a literal within a file."""
-    return list(_iter_literal_hits(file_path, literal))
 
 
 def _render_numbered_window(file_path: Path, start: int, end: int) -> None:
