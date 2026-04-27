@@ -2328,17 +2328,6 @@ def read_code_window(argv: list[str]) -> int:
             _emit_strict_resolution_failure(parsed.pattern, strict_status)
             return 1
 
-    elif is_large_code_file(parsed.file_path) and not parsed.use_hud_fast_path:
-        print(
-            f"ERROR: symbol_or_pattern is required for files >{CODE_FILE_LINE_THRESHOLD} lines unless using HUD current-line fast-path.",
-            file=sys.stderr,
-        )
-        print(
-            "Usage: read_code_window <file> <start_line> [line_count] <symbol_or_pattern>",
-            file=sys.stderr,
-        )
-        return 1
-
     end_line = parsed.start_line + parsed.line_count - 1
     _render_numbered_window(parsed.file_path, parsed.start_line, end_line)
     return 0
