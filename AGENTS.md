@@ -66,6 +66,7 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 
 
 **RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
+
 ## Operational Bootstrap
 
 ### Codebase Reading and Discovery
@@ -85,23 +86,24 @@ Read code by intent, not by guessing file windows.
 
 1. **Start with a natural-language query**
    - Use `uv run python scripts/read_code.py context` with a natural-language query, symbol name, or behavior description.
-   - Do not request a code window upfront.
    - Let the helper perform semantic lookup first and return the best matching result.
 
    Examples:
 
   ```bash
    uv run python scripts/read_code.py context "how read-code resolves semantic candidates"
-   uv run python scripts/read_code.py context "strict fallback when semantic anchor is weak"
    uv run python scripts/read_code.py context "_resolve_pattern_anchor"
   ```
 2. **Inspect ranked results sequentially**
     - It returns one result at a time.
     - If the first result is not the right seam, step through candidates by using --next-candidate or --candidate-index N.
-    examples:
-      uv run python scripts/read_code.py context "semantic candidate resolution" --next-candidate
 
-      uv run python scripts/read_code.py context "semantic candidate resolution" --candidate-index 2
+   Examples:
+
+   ```bash
+   uv run python scripts/read_code.py context "semantic candidate resolution" --next-candidate
+   uv run python scripts/read_code.py context "semantic candidate resolution" --candidate-index 2
+   ```
 3. **Dig for Body**
     - If you believe it is the right candidate, send --inline-body to get the body of the function
 4. **Optionally Use CodeGraph only after the seam is known and if more comprehensive understanding is required**
