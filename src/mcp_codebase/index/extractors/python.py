@@ -62,7 +62,10 @@ def should_skip_path(
         return True
     if rel_posix.startswith(("build/", "dist/", "generated/")):
         return True
-    if candidate.name.startswith(("generated_", "tmp_", ".")):
+    if candidate.name.startswith(("generated_", "tmp_")):
+        return True
+    # Skip hidden files/dirs except markdown files (which are often documentation)
+    if candidate.name.startswith(".") and candidate.suffix not in {".md", ".markdown", ".mdown"}:
         return True
 
     for pattern in exclude_patterns:
