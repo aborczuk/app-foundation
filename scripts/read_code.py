@@ -1809,9 +1809,9 @@ def _render_compact_match(candidate: _VectorMatch, has_more_candidates: bool = F
 
     hints = []
     if candidate.has_body:
-        hints.append("--inline-body for implementation")
+        hints.append("--inline-body for function body and implementation")
     if has_more_candidates:
-        hints.append("--show-shortlist or --next-candidate to explore")
+        hints.append("--next-candidate for the next ranked candidate")
     if hints:
         output += f"\n# {', '.join(hints)}"
 
