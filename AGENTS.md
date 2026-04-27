@@ -112,8 +112,16 @@ Read code by intent, not by guessing file windows.
    ```bash
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body
    ```
+4. **You can dig for more context within a file as well with the same function and optional file path**
 
-4. **Optionally Use CodeGraph only after the seam is known and if more comprehensive understanding is required**
+   Examples:
+
+   ```bash
+   uv run python scripts/read_code.py window src/mcp_codebase/read_code.py 42 60
+   uv run python scripts/read_code.py context "_resolve_pattern_anchor" --path src/mcp_codebase/read_code.py
+   ```
+
+5. **Optionally Use CodeGraph only after the seam is known and if more comprehensive understanding is required**
 
    - Use `codegraph` to map blast radius, callers, callees, inheritance, imports, or dead-code questions.
 
