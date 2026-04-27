@@ -1,5 +1,30 @@
 #!/usr/bin/env python3
-"""Python entrypoint for vector-first, symbol-checked code reads."""
+"""Python entrypoint for code discovery and bounded function/class reads with semantic-first anchoring.
+
+Code file read-efficiency contract:
+- Use this helper for code files (Python, shell, YAML, and related).
+- Prefer the helper over raw file reads so the read stays bounded by semantic intent.
+- Use semantic search first to locate the right anchor, then retrieve a bounded context window.
+- Two modes: context (semantic search + window), window (direct line-range read).
+- If you need only the relevant function body, pass the function name rather than scanning the whole file.
+- If semantic confidence is weak, step through candidates before falling back to exact symbol matching.
+
+How to use:
+1. Invoke the Python entrypoint directly: ``uv run python scripts/read_code.py <mode> [args]``.
+2. Use **context mode** when the target is a natural-language query or symbol name:
+   - ``uv run python scripts/read_code.py context "<query>"`` — semantic search + bounded window.
+   - ``uv run python scripts/read_code.py context "<symbol>" --path <file>`` — scope to a specific file.
+   - ``uv run python scripts/read_code.py context "<symbol>" --inline-body`` — get full function body.
+   - ``uv run python scripts/read_code.py context "<symbol>" --next-candidate`` — step ranked candidates.
+3. Use **window mode** when you know the exact file and line range:
+   - ``uv run python scripts/read_code.py window <file> <start_line> [line_count]`` — direct window read.
+4. Let the helper anchor the seam semantically and print only the relevant window.
+
+Validation:
+- If the symbol does not resolve, the helper prints a clear not-found error and shows ranked candidates.
+- The helper keeps the read window bounded (default 60 lines, max 80 per settings).
+- Confidence scores guide candidate selection when multiple matches exist.
+"""
 
 from __future__ import annotations
 
