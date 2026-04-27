@@ -72,6 +72,7 @@ class _VectorMatch:
     symbol_name: str
     qualified_name: str
     line_end: int
+    docstring: str
 
 
 @dataclass(frozen=True)
@@ -1491,7 +1492,8 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
     body = _candidate_text(item, "body")
     preview = _candidate_text(item, "preview")
     signature = _candidate_text(item, "signature")
-    has_docstring = bool(_candidate_text(item, "docstring"))
+    docstring = _candidate_text(item, "docstring")
+    has_docstring = bool(docstring)
     line_end = _candidate_int(item, "line_end") or line_num
     line_span = max(0, line_end - line_num)
     file_path_str = _candidate_text(item, "file_path")
@@ -1522,6 +1524,7 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
         symbol_name=symbol_name,
         qualified_name=qualified_name,
         line_end=line_end,
+        docstring=docstring,
     )
 
 
@@ -1794,6 +1797,18 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
                 ]
             )
         )
+
+
+def _render_compact_match(candidate: _VectorMatch) -> None:
+    """Render compact metadata for a selected semantic match."""
+    output = f"file_path: {candidate.file_path}"
+    if candidate.docstring:
+        output += f"\n{candidate.docstring.rstrip()}"
+    else:
+        output += f"\nsignature: {candidate.signature}"
+    output += f"\nconfidence: {candidate.confidence}/100"
+    output += f"\nunit_id: {candidate.unit_id}"
+    print(output)
 
 
 def _render_candidate_body(candidate: _VectorMatch) -> None:
@@ -2183,7 +2198,7 @@ def _render_resolution_extras(
     """Render optional shortlist/body output after anchor resolution."""
     if vector_candidates and show_shortlist:
         _render_candidate_shortlist(vector_candidates, pattern)
-    if inline_body and vector_match is not None and vector_match.confidence >= 90:
+    if inline_body and vector_match is not None:
         _render_candidate_body(vector_match)
 
 
@@ -2228,7 +2243,7 @@ def read_code_symbols(argv: list[str]) -> int:
 
 
 def read_code_context(argv: list[str]) -> int:
-    """Resolve an anchor and print bounded context with post-anchor bias."""
+    """Resolve an anchor and return compact semantic match metadata."""
     parsed = _parse_context_args(argv)
     if parsed is None:
         return 1
@@ -2256,6 +2271,11 @@ def read_code_context(argv: list[str]) -> int:
         _emit_strict_resolution_failure(parsed.pattern, strict_status)
         return 1
 
+    if vector_match is None:
+        print("ERROR: No semantic match available", file=sys.stderr)
+        return 1
+
+    _render_compact_match(vector_match)
     _render_resolution_extras(
         parsed.pattern,
         vector_candidates,
@@ -2264,15 +2284,12 @@ def read_code_context(argv: list[str]) -> int:
         inline_body=parsed.inline_body,
     )
 
-    render_file_path = parsed.file_path if parsed.file_path is not None else vector_match.file_path if vector_match else None
-    if render_file_path is None:
-        print("ERROR: No file path available for rendering window", file=sys.stderr)
-        return 1
+    if parsed.inline_body:
+        pre_lines, post_lines = _split_context_window(parsed.context)
+        start = max(1, line_num - pre_lines)
+        end = line_num + post_lines
+        _render_numbered_window(vector_match.file_path, start, end)
 
-    pre_lines, post_lines = _split_context_window(parsed.context)
-    start = max(1, line_num - pre_lines)
-    end = line_num + post_lines
-    _render_numbered_window(render_file_path, start, end)
     return 0
 
 
@@ -2322,11 +2339,14 @@ def read_code_window(argv: list[str]) -> int:
 def _print_usage() -> None:
     print("Usage:")
     print(
-        f"  read_code_context <file_path> <symbol_or_pattern> [context_lines<={READ_CODE_MAX_LINES}] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
+        "  read_code_context <file_path> <symbol_or_pattern> [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
     )
     print(
-        "                   (default output is resolved anchor + bounded window; semantic anchors are preferred at confidence >= "
-        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; semantic query is file-scoped first; shortlist is opt-in; context budget is small-before/larger-after; body is opt-in via --inline-body at confidence >= 90/100)"
+        "                OR <symbol_or_pattern> [--path <file>] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
+    )
+    print(
+        "                   (default output is compact semantic match: file_path, signature/docstring, confidence, unit_id; semantic anchors are preferred at confidence >= "
+        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; body and source lines are opt-in via --inline-body)"
     )
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
