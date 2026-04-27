@@ -83,9 +83,9 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 **RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
 
 **Mandatory workflow order**:
-1. **Helper-driven read**: Start with `scripts/read-code.sh` / `scripts/read-markdown.sh` for anchored bounded reads.
-2. **Semantic+exact semantics (internal)**: Those helpers run semantic lookup first, then exact seam anchoring.
-3. **Discovery checks**: Use `codegraph` after the seam is anchored to map callers/callees/imports/blast radius (plus `github` if remote context is needed).
+1. **Semantic search**: Use `scripts/read-code.sh context` with natural language queries or symbol names to search Python/shell/YAML code. Use `scripts/read-markdown.sh context` for markdown files. Both run semantic vector lookup first, then exact anchor matching. Return file path, signature/heading, summary, and confidence scores.
+2. **Intensive read**: Use `scripts/read-code.sh context --inline-body` or `scripts/read-code.sh window` (and equivalents for markdown) to get full function bodies or detailed context around matched symbols/sections. Use `--next-candidate` to walk through ranked alternatives.
+3. **Discovery checks**: Use `codegraph` after finding code to map callers/callees/imports/blast radius (plus `github` if remote context is needed).
 4. **Verification**: Use `codebase-lsp` to verify exact types/diagnostics before and after edits. Do not mark a task `[X]` while known type errors remain in files the task owns.
 
 **CodeGraph safety guard (NON-NEGOTIABLE)**:

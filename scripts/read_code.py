@@ -1917,7 +1917,13 @@ def _query_semantic_anchor_candidate(
     show_shortlist_hint: bool,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
     """Query ranked candidates and select a semantic anchor with standardized error handling."""
-    vector_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    code_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    markdown_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "markdown")
+    vector_candidates = sorted(
+        code_candidates + markdown_candidates,
+        key=_vector_anchor_rank,
+        reverse=True,
+    )[:5]
     vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
     if candidate_error is not None:
         print(f"ERROR: {candidate_error}", file=sys.stderr)
@@ -1947,7 +1953,7 @@ def _resolve_pattern_anchor(
     if not selection_ok:
         return None
 
-    strict_status = 1
+    strict_status = 0 if vector_match is not None else 1
     strict_line_num: int | None = None
     line_num: int | None = None
     if vector_match is not None:
