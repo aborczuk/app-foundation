@@ -60,7 +60,6 @@ CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY
 CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
     os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
 )
-READ_CODE_ALLOW_SYMBOL_DUMP_ENV = "READ_CODE_ALLOW_SYMBOL_DUMP"
 READ_CODE_PROBE_CACHE_TTL_SECONDS = float(
     os.environ.get("SPECKIT_READ_CODE_PROBE_CACHE_TTL_SECONDS", "10") or "10"
 )
@@ -186,11 +185,6 @@ def _read_code_session_id() -> str:
         return configured
     return str(os.getppid())
 
-
-def _symbol_dump_enabled() -> bool:
-    """Return whether break-glass symbol-dump mode is explicitly enabled."""
-    raw = os.environ.get(READ_CODE_ALLOW_SYMBOL_DUMP_ENV, "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
 
 
 def _session_safe_key(session_id: str) -> str:
@@ -1519,37 +1513,6 @@ def _vector_find_candidates(
     return candidates
 
 
-def _vector_list_code_symbols(file_path: Path) -> list[dict[str, object]]:
-    """Return deterministic code symbols for a file from the active vector snapshot."""
-    if not _command_exists("uv"):
-        _set_vector_runtime_note("uv is not available")
-        return []
-
-    cmd = _vector_indexer_cmd(REPO_ROOT, "list-file-symbols", str(file_path))
-    proc = _run_command_capture(cmd)
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        if stderr:
-            _set_vector_runtime_note(f"list-file-symbols failed: {stderr.splitlines()[0]}")
-        else:
-            _set_vector_runtime_note(f"list-file-symbols failed with exit code {proc.returncode}")
-        return []
-
-    try:
-        payload = json.loads(proc.stdout or "[]")
-    except json.JSONDecodeError:
-        _set_vector_runtime_note("list-file-symbols returned invalid JSON")
-        return []
-    if not isinstance(payload, list):
-        _set_vector_runtime_note("list-file-symbols returned unexpected payload shape")
-        return []
-
-    symbols: list[dict[str, object]] = []
-    for item in payload:
-        if isinstance(item, dict):
-            symbols.append(item)
-    return symbols
-
 
 def _iter_literal_hits(file_path: Path, literal: str) -> Iterator[int]:
     """Yield 1-based line numbers that contain the requested literal."""
@@ -1604,32 +1567,6 @@ def _split_context_window(context_lines: int) -> tuple[int, int]:
     post_lines = context_lines - pre_lines
     return pre_lines, post_lines
 
-
-def _render_symbol_listing(symbols: list[dict[str, object]]) -> None:
-    """Render a deterministic symbol list for agent anchor selection."""
-    for symbol in symbols:
-        symbol_name = str(symbol.get("symbol_name", "") or "")
-        if not symbol_name:
-            continue
-        symbol_type = str(symbol.get("symbol_type", "") or "symbol")
-        line_start = _coerce_line(symbol.get("line_start")) or 0
-        line_end = _coerce_line(symbol.get("line_end")) or line_start
-        signature = str(symbol.get("signature", "") or "")
-        qualified_name = str(symbol.get("qualified_name", "") or "")
-        has_body = bool(str(symbol.get("body", "") or ""))
-        print(
-            "\t".join(
-                [
-                    f"{line_start:6}",
-                    f"{line_end:6}",
-                    symbol_type,
-                    symbol_name,
-                    signature,
-                    qualified_name,
-                    f"has_body={'yes' if has_body else 'no'}",
-                ]
-            )
-        )
 
 
 def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> None:
@@ -2008,45 +1945,6 @@ def _render_resolution_extras(
         _render_candidate_body(vector_match)
 
 
-def read_code_symbols(argv: list[str]) -> int:
-    """Debug-only symbol dump for maintenance and break-glass investigation."""
-    if not _symbol_dump_enabled():
-        print(
-            "ERROR: read_code_symbols is disabled by policy. Use semantic anchor reads via "
-            "`read_code_context`/`read_code_window`. Break-glass override: "
-            f"set {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1 for maintenance/debug only.",
-            file=sys.stderr,
-        )
-        return 1
-    if len(argv) < 1:
-        print("ERROR: read_code_symbols requires: <file_path>", file=sys.stderr)
-        return 1
-    for token in argv[1:]:
-        print(f"ERROR: Unexpected argument(s) for symbols mode: {token}", file=sys.stderr)
-        return 1
-
-    file_path = Path(argv[0])
-    if not file_path.is_file():
-        print(f"ERROR: File not found: {argv[0]}", file=sys.stderr)
-        return 1
-    if not _refresh_indexes_for_read(file_path):
-        return 1
-
-    symbols = _vector_list_code_symbols(file_path)
-    runtime_note = _consume_vector_runtime_note()
-    if not symbols:
-        if runtime_note:
-            print(f"ERROR: Could not list file symbols: {runtime_note}", file=sys.stderr)
-        else:
-            print(f"ERROR: No code symbols found for {file_path}", file=sys.stderr)
-        return 1
-
-    print(
-        "# line_start\tline_end\tsymbol_type\tsymbol_name\tsignature\tqualified_name\thas_body"
-    )
-    _render_symbol_listing(symbols)
-    return 0
-
 
 def read_code_context(argv: list[str]) -> int:
     """Resolve an anchor and return compact semantic match metadata."""
@@ -2177,13 +2075,6 @@ def main(argv: list[str]) -> int:
         return read_code_context(args)
     if mode == "window":
         return read_code_window(args)
-    if mode == "symbols":
-        print(
-            "ERROR: symbols mode is debug-only. Use scripts/read_code_debug.py <file_path> "
-            f"with {READ_CODE_ALLOW_SYMBOL_DUMP_ENV}=1 for maintenance/debug.",
-            file=sys.stderr,
-        )
-        return 1
     if mode == "codegraph-preflight-worker":
         return run_codegraph_preflight_worker(args)
 
