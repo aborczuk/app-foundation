@@ -106,6 +106,13 @@ Read code by intent, not by guessing file windows.
    ```
 3. **Dig for Body**
     - If you believe it is the right candidate, send --inline-body to get the body of the function
+
+   Examples:
+
+   ```bash
+   uv run python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body
+   ```
+
 4. **Optionally Use CodeGraph only after the seam is known and if more comprehensive understanding is required**
 
    - Use `codegraph` to map blast radius, callers, callees, inheritance, imports, or dead-code questions.
