@@ -2294,6 +2294,22 @@ def _print_usage() -> None:
 
 def main(argv: list[str]) -> int:
     """CLI entrypoint compatible with read-code.sh mode routing."""
+    import os
+    from pathlib import Path
+
+    if not os.environ.get("READ_CODE_SESSION_ID"):
+        session_id = (
+            os.environ.get("CODEX_SESSION_ID")
+            or os.environ.get("TERM_SESSION_ID")
+            or str(os.getppid())
+            or str(os.getpid())
+        )
+        os.environ["READ_CODE_SESSION_ID"] = session_id
+
+    if not os.environ.get("UV_CACHE_DIR"):
+        repo_root = Path(__file__).parent.parent
+        os.environ["UV_CACHE_DIR"] = str(repo_root / ".codegraphcontext" / ".uv-cache")
+
     if len(argv) < 2:
         _print_usage()
         return 1

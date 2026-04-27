@@ -159,7 +159,7 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
             helper_idx = idx
             helper_mode = "context" if token == "read_code_context" else "window"
             break
-        if token.endswith("read-code.sh"):
+        if token.endswith("read-code.sh") or token.endswith("read_code.py"):
             helper_idx = idx
             helper_mode = ""
             break
@@ -176,7 +176,7 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
         args = tokens[helper_idx + 2 :]
     if mode not in {"context", "window"}:
         return None
-    if len(args) < 2:
+    if len(args) < 1:
         return None
 
     path_text = args[0]
@@ -184,19 +184,46 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
     requested_lines = 60
 
     if mode == "context":
-        tail = args[2:]
+        tail = args[1:]
         for token in tail:
             if token.isdigit():
                 requested_lines = int(token)
                 break
     else:
-        tail = args[2:]
+        tail = args[1:]
         for token in tail:
             if token.isdigit():
                 requested_lines = int(token)
                 break
 
     return mode, path_text, requested_lines, allow_fallback
+
+
+def _extract_markdown_read_policy(command: str) -> str | None:
+    """Return the target file path if command uses the markdown read helper, else None."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+
+    helper_idx = -1
+    for idx, token in enumerate(tokens):
+        if token.endswith("read_markdown.py"):
+            helper_idx = idx
+            break
+    if helper_idx == -1:
+        return None
+
+    args = tokens[helper_idx + 1:]
+    if not args:
+        return None
+
+    if args[0] == "--headings":
+        if len(args) < 2:
+            return None
+        return args[1]
+    else:
+        return args[0]
 
 
 def _uses_legacy_symbol_dump(tokens: list[str]) -> bool:
@@ -206,8 +233,6 @@ def _uses_legacy_symbol_dump(tokens: list[str]) -> bool:
         if name == "read_code_symbols":
             return True
         if name == "read_code.py" and idx + 1 < len(tokens) and tokens[idx + 1] == "symbols":
-            return True
-        if name == "read-code.sh" and idx + 1 < len(tokens) and tokens[idx + 1] == "symbols":
             return True
     return False
 
@@ -241,8 +266,8 @@ def main() -> int:
         if broad_root and code_doc_target:
             _emit_deny(
                 "Broad root-level file scans are denied (for example `find . -name '*.py'`). "
-                "Use scripts/read-code.sh (read_code_context/read_code_window) for code reads, "
-                "use scripts/read-markdown.sh (read_markdown_headings/read_markdown_section) for markdown reads, "
+                "Use `uv run python scripts/read_code.py context <query>` for code reads, "
+                "`uv run python scripts/read_markdown.py --headings <file>` for markdown reads, "
                 "or scope inventory to explicit directories (for example `find src tests -name '*.py'`)."
             )
             return 0
@@ -265,6 +290,11 @@ def main() -> int:
                 return 0
         return 0
 
+    markdown_target = _extract_markdown_read_policy(command)
+    if markdown_target is not None:
+        if _is_repo_code_doc_file(markdown_target):
+            return 0
+
     risky_read_tokens = ("cat ", "nl -ba ", "sed -n", "awk ", "head ", "tail ", "less ", "more ")
     if not any(token in command for token in risky_read_tokens):
         return 0
@@ -272,9 +302,11 @@ def main() -> int:
     for candidate in _extract_candidate_paths(command):
         if _is_repo_code_doc_file(candidate):
             _emit_deny(
-                "Code/doc-file reads must use scripts/read-code.sh "
-                "(read_code_context/read_code_window) or scripts/read-markdown.sh "
-                "(read_markdown_headings/read_markdown_section). "
+                "Code/doc-file reads must use:\n"
+                "  uv run python scripts/read_code.py context <query>\n"
+                "  uv run python scripts/read_code.py window <file> <start_line>\n"
+                "  uv run python scripts/read_markdown.py --headings <file>\n"
+                "  uv run python scripts/read_markdown.py <file> \"<heading>\"\n"
                 "Direct shell reads are denied."
             )
             return 0

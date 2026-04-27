@@ -875,6 +875,11 @@ def read_markdown_headings(file_path: str) -> int:
 
 def main(argv: list[str]) -> int:
     """CLI entrypoint compatible with read-markdown.sh wrapper semantics."""
+    if not os.environ.get("READ_MARKDOWN_SESSION_ID"):
+        os.environ["READ_MARKDOWN_SESSION_ID"] = str(os.getpid())
+    if not os.environ.get("READ_MARKDOWN_STEP_BUDGET"):
+        os.environ["READ_MARKDOWN_STEP_BUDGET"] = "160"
+
     if len(argv) > 0 and argv[0] == "--headings":
         file_path = argv[1] if len(argv) > 1 else ""
         return read_markdown_headings(file_path)

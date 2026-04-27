@@ -40,14 +40,6 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
   - **Validate ledger syntax**: `uv run python scripts/task_ledger.py validate --file .speckit/task-ledger.jsonl`
   - **Other queries**: Run `uv run python scripts/task_ledger.py --help` to see all subcommands and valid event types.
 
-
-### Progressive load routing
-- Treat this file as the route map, not the full knowledge base.
-- Prefer the smallest task-specific artifact first: `scripts/read-code.sh`, `scripts/read-markdown.sh`, or the relevant `.claude/commands/*.md`.
-- Read `catalog.yaml` for system topology, services, resources, auth, hosting, or dependency questions.
-- Read `specs/*/behavior-map.md` only for runtime behavior and `specs/*/tasks.md` only for task state and execution order.
-- Commands in pipeline: /Users/andreborczuk/app-foundation/command-manifest.yaml
-
 ### Function docs
 - Function docstrings or comments are mandatory for new or modified functions.
 - Keep them short, specific, and colocated with the function they describe.
@@ -106,26 +98,16 @@ Requires one-time index: `scripts/cgc_index_repo.sh`
 
 Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app-foundation`
 
-**GitHub** (server name: `github`) — GitHub API bridge for repository and issue management:
-- Use for repository code/issue/PR discovery when remote context is required.
-- Registration: `uv run --env-file .env npx -y @modelcontextprotocol/server-github` (`cwd: /Users/andreborczuk/app-foundation`)
 
 **RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
 
 **Mandatory workflow order**:
-1. **Semantic search**: Use `scripts/read-code.sh context` with natural language queries or symbol names to search Python/shell/YAML code. Use `scripts/read-markdown.sh context` for markdown files. Both run semantic vector lookup first, then exact anchor matching. Return file path, signature/heading, summary, and confidence scores.
-2. **Intensive read**: Use `scripts/read-code.sh context --inline-body` or `scripts/read-code.sh window` (and equivalents for markdown) to get full function bodies or detailed context around matched symbols/sections. Use `--next-candidate` to walk through ranked alternatives.
+1. **Semantic search**: 
+   - **Code**: `uv run python scripts/read_code.py context <query>` for natural language queries or symbol names.
+   - **Markdown**: `uv run python scripts/read_markdown.py --headings <file>` for discovery, then `uv run python scripts/read_markdown.py <file> "<heading>"` for sections.
+   - Both run semantic vector lookup first, then exact anchor matching. Return file path, signature/heading, summary, and confidence scores.
+2. **Intensive read**: Add flags like `--inline-body` to get full function bodies, `--next-candidate`/`--candidate-index N` to walk ranked alternatives, `--show-shortlist` to see top candidates.
 3. **Discovery checks**: Use `codegraph` after finding code to map callers/callees/imports/blast radius (plus `github` if remote context is needed).
-4. **Verification**: Use `codebase-lsp` to verify exact types/diagnostics before and after edits. Do not mark a task `[X]` while known type errors remain in files the task owns.
-
-**CodeGraph safety guard (NON-NEGOTIABLE)**:
-- Do not run `uv run cgc index --force ...` directly.
-- Post-edit refreshes go through `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin; the hook fans out to codegraph/vector refreshes for the changed paths.
-- For manual indexing, use `scripts/cgc_safe_index.sh` only.
-- If codegraph discovery is stale or incomplete, run a scoped non-force refresh first:
-  `scripts/cgc_safe_index.sh <scoped-path>` (example: `scripts/cgc_safe_index.sh src/clickup_control_plane`),
-  then retry codegraph queries.
-- Repository command wrapper note: `uv run cgc ...` is routed through `csp_trader.cgc_guard` (project script) and enforces these index guards.
 
 **CodeGraph directories (canonical)**:
 - `.codegraphcontext/` — single canonical CodeGraph home for this repo.
@@ -136,36 +118,31 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 
 ### Markdown File Read Efficiency
 
-For markdown files, use `scripts/read-markdown.sh`; the detailed vector-first anchoring and how-to live in `scripts/read_markdown.sh` and `scripts/read_markdown.py`.
-- When the exact heading is not already known, run `read_markdown_headings` first, then `read_markdown_section` with the exact heading title.
-- Prefer `--help` once for unfamiliar helper scripts before trialing flags.
+For markdown files, use `uv run python scripts/read_markdown.py` with vector-first anchoring:
+- For discovery: `uv run python scripts/read_markdown.py --headings <file>` lists all headings first.
+- For sections: `uv run python scripts/read_markdown.py <file> "<heading>"` retrieves specific sections.
 - Single-file serialization is required: do not run parallel markdown reads against the same file.
 - Avoid overlapping section pulls from the same file in the same step; reuse already-read context instead.
 
 ### Code File Read Efficiency
 
-For any code file, use `scripts/read-code.sh` to enforce semantic-first, windowed reads. 80 lines is the max context_lines budget:
+For any code file, use `uv run python scripts/read_code.py` to enforce semantic-first, windowed reads. 80 lines is the max context_lines budget:
 ```bash
-source scripts/read-code.sh
-read_code_context <file> <symbol_or_pattern> [context_lines]
+uv run python scripts/read_code.py context <symbol_or_pattern> [--path <file>] [context_lines]
+uv run python scripts/read_code.py window <file> <start_line> [line_count]
 ```
 Examples:
-- `read_code_context src/clickup_control_plane/webhook_auth.py \"def verify_signature\" 80`
+- `uv run python scripts/read_code.py context "def verify_signature" --path src/clickup_control_plane/webhook_auth.py 80`
+- `uv run python scripts/read_code.py window src/clickup_control_plane/webhook_auth.py 42 60`
 
 Use this workflow:
-1. If file seam/anchor is unknown, run `read_code_context` with the best likely anchor and use semantic ranking (`--next-candidate` / `--candidate-index`) to iterate candidates.
-2. If file seam/anchor is already known, go directly to `read_code_context` / `read_code_window` with bounded context.
-3. Use exact symbols (or known anchors) with `read_code_context` / `read_code_window` for seam anchoring.
-4. The helper resolves semantic lookup first and then performs exact bounded reads.
-   - `read_code_context` applies a fixed asymmetric split: small pre-anchor context and larger post-anchor context
+1. If file seam/anchor is unknown, run `read_code.py context` with your best anchor guess and use `--next-candidate` / `--candidate-index` to iterate ranked candidates.
+2. If file seam/anchor is already known, go directly to `read_code.py context` or `read_code.py window` with bounded context.
+3. Use exact symbols (or known anchors) with `read_code.py context` / `read_code.py window` for seam anchoring.
+4. The helper resolves semantic lookup first and then performs exact bounded reads (context defaults to compact output; use `--inline-body` for full bodies).
 5. Run codegraph discovery checks for blast radius only after the seam is confirmed.
 6. Expand to additional windows only when needed to resolve ambiguity.
 7. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
-8. Read preflight hard-fail is vector-owned for repo-local reads; do not continue when vector health is failing.
-9. Vector stale handling is scope-aware and explicit:
-   - stale + overlap with requested scope => synchronous scoped refresh, then proceed/fail
-   - stale + no overlap => warning remains visible, no refresh is launched, read proceeds
-   - missing/unavailable/probe-failed => hard fail with remediation
 
 Verification/read intensity must scale with task size:
 - Single-constant or single-branch edits: one anchor read plus at most one follow-up window; avoid broad discovery.
@@ -181,15 +158,9 @@ Use the shortlist/body contract when reading code with the helper.
 - `read_code_context` defaults to resolved anchor + bounded window output (no shortlist by default).
 - The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
 - Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
-- Anchor policy is semantic-first: if semantic returns a strong candidate, that candidate is the anchor of record and the bounded window is rendered from that line.
 - Use broad discovery only when the target file is unknown; once the file is known, semantic retrieval must stay file-scoped for seam anchoring.
 - If the selected semantic candidate is weak, evaluate the next ranked semantic candidate(s) before strict matching.
-- Strict matching is fallback-only and should run only when semantic cannot provide a strong anchor; strict ambiguity must not block a strong semantic anchor.
-- Symbol dumps are not part of standard workflow; use semantic anchor + bounded window reads instead.
-- Break-glass symbol dumps live only in `scripts/read_code_debug.py` and require explicit maintenance intent.
 - `context_lines` is a total context budget with a fixed small-before/larger-after split.
-- A non-top candidate body should only be returned through the bounded follow-up helper path.
-- Keep the shell wrapper, Python helper, and docs aligned with the same contract when the behavior changes.
 
 Full-file reads are disallowed unless the user explicitly requests full contents.
 
@@ -235,10 +206,3 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
   - `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin
   - commit the coherent edit unit
   - push so the branch is synced
-
-### Token efficiency
-
-After each pipeline command or long running command, report if there were large token uses that could have been optimized and how. If there were not, report that
-- Large-token operations must be explicitly called out immediately after execution (for example: large `read_code_symbols` dumps, broad codegraph content searches, or full-table outputs).
-- report any slow steps using read-code
-
