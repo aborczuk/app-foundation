@@ -1118,9 +1118,21 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
                 "WARN: vector index is stale; "
                 f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
                 f"drift_paths={list(probe.stale_drift_paths)}; "
-                f"proceeding without refresh because scope does not overlap request ({path})"
+                f"proceeding without blocking refresh; launching async scoped refresh for ({path})"
             ),
         )
+        if _should_launch_background_refresh(path, channel="vector"):
+            followup_cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
+            try:
+                subprocess.Popen(
+                    followup_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                    env=_vector_command_env(),
+                )
+            except OSError:
+                pass
         return True
 
     print(
