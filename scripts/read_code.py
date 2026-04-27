@@ -46,15 +46,11 @@ CODEGRAPH_DB_DIR = CODEGRAPH_CONTEXT_DIR / "db"
 VECTOR_DB_DIR = CODEGRAPH_CONTEXT_DIR / "global" / "db" / "vector-index"
 VECTOR_BOOTSTRAP_COMMAND = "uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap"
 
-CODE_FILE_LINE_THRESHOLD = 200
 READ_CODE_DEFAULT_CONTEXT_LINES = 60
 READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
 READ_CODE_CONTEXT_PRE_FRACTION = 0.1
 READ_CODE_CONTEXT_PRE_CAP = 25
-READ_CODE_SEMANTIC_MIN_CONFIDENCE = int(
-    os.environ.get("SPECKIT_READ_CODE_SEMANTIC_MIN_CONFIDENCE", "70") or "70"
-)
 IGNORE_DIRS_DEFAULT = (
     "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,"
     "__pycache__,.uv-cache,logs,shadow-runs"
@@ -78,17 +74,14 @@ READ_CODE_WARN_ONCE_TTL_SECONDS = float(
 
 @dataclass(frozen=True)
 class _VectorMatch:
-    """Candidate vector hit plus ranking features used for anchoring."""
+    """Candidate vector hit with cosine similarity-based ranking."""
 
     line_num: int
     raw_score: float
-    metadata_score: float
-    confidence: int
-    exact_symbol_match: bool
+    cosine_similarity: int
     symbol_type: str
     has_body: bool
     has_docstring: bool
-    line_span: int
     body: str
     preview: str
     signature: str
@@ -897,7 +890,6 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
     if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
         _emit_session_warning_once(
             key=f"codegraph-stale-nonoverlap:{_scope_cache_key(path)}",
-            message=f"WARN: codegraph stale drift does not overlap requested scope ({path}); refreshing scoped index in background",
         )
         safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
         if safe_index.is_file() and os.access(safe_index, os.X_OK) and _should_launch_background_refresh(
@@ -1399,124 +1391,8 @@ def _candidate_raw_score(item: dict[str, object]) -> float:
     return 0.0
 
 
-def _candidate_metadata_score(item: dict[str, object], query: str, normalized_query: str) -> tuple[float, bool]:
-    symbol_name = _candidate_text(item, "symbol_name")
-    qualified_name = _candidate_text(item, "qualified_name")
-    signature = _candidate_text(item, "signature")
-    docstring = _candidate_text(item, "docstring")
-    body = _candidate_text(item, "body")
-    preview = _candidate_text(item, "preview")
-    heading = _candidate_text(item, "heading")
-    symbol_type = _candidate_text(item, "symbol_type")
-    record_type = _candidate_text(item, "record_type")
-    breadcrumb = _candidate_string_list(item, "breadcrumb")
-    line_start = _candidate_int(item, "line_start") or 0
-    line_end = _candidate_int(item, "line_end") or 0
-
-    exact_symbol_match = False
-    for token in (query, normalized_query):
-        if not token:
-            continue
-        lowered = token.lower()
-        if lowered == symbol_name.lower() or lowered == heading.lower():
-            exact_symbol_match = True
-            break
-        if qualified_name.lower().endswith(f".{lowered}") or qualified_name.lower().endswith(f"::{lowered}"):
-            exact_symbol_match = True
-            break
-
-    score = 0.0
-    if record_type == "code":
-        score += 1.0
-    if symbol_type in {"function", "method", "class"}:
-        score += 5.0
-    if symbol_name:
-        score += 1.0
-    if qualified_name:
-        score += 1.0
-    if signature:
-        score += 3.5
-        signature_lower = signature.lstrip().lower()
-        if signature_lower.startswith(("def ", "async def ", "class ", "function ")):
-            score += 2.0
-        elif symbol_name and signature_lower.startswith(
-            (f"{symbol_name.lower()}(", f"{symbol_name.lower()} ()", f"{symbol_name.lower()}()")
-        ):
-            score += 1.5
-    if docstring:
-        score += 4.0
-    if body:
-        score += 4.0
-        if len(body) > 200:
-            score += 1.0
-    if preview:
-        score += 1.0
-    if heading:
-        score += 0.5
-    if breadcrumb:
-        score += 0.5
-    if line_end > line_start:
-        score += 1.0
-
-    if query:
-        query_lower = query.lower()
-        if query_lower == symbol_name.lower() or query_lower == heading.lower():
-            score += 5.0
-        elif query_lower in qualified_name.lower():
-            score += 4.0
-        elif query_lower in signature.lower():
-            score += 3.0
-        elif query_lower in docstring.lower():
-            score += 2.0
-        elif query_lower in body.lower() or query_lower in preview.lower():
-            score += 1.5
-
-    if normalized_query and normalized_query != query:
-        normalized_lower = normalized_query.lower()
-        if normalized_lower == symbol_name.lower() or normalized_lower == heading.lower():
-            score += 4.0
-            exact_symbol_match = True
-        elif normalized_lower in qualified_name.lower():
-            score += 2.5
-            exact_symbol_match = True
-
-    return score, exact_symbol_match
-
-
-def _candidate_confidence(
-    raw_score: float,
-    metadata_score: float,
-    *,
-    exact_symbol_match: bool,
-    has_body: bool,
-    has_docstring: bool,
-    line_span: int,
-) -> int:
-    """Normalize vector signal into a stable 0-100 confidence score."""
-    score = raw_score * 50.0
-    score += min(metadata_score, 20.0) * 2.5
-    if exact_symbol_match:
-        score += 10.0
-    if has_body:
-        score += 7.0
-    if has_docstring:
-        score += 4.0
-    score -= min(float(line_span), 10.0)
-    return max(0, min(100, int(round(score))))
-
-
-def _vector_anchor_rank(match: _VectorMatch) -> tuple[int, int, int, int, int, float, float, int, int]:
-    return (
-        match.confidence,
-        1 if match.exact_symbol_match else 0,
-        1 if match.symbol_type in {"function", "method", "class"} else 0,
-        1 if match.has_body else 0,
-        1 if match.has_docstring else 0,
-        match.metadata_score,
-        match.raw_score,
-        match.line_span,
-        -match.line_num,
-    )
+def _vector_anchor_rank(match: _VectorMatch) -> tuple[int]:
+    return (match.cosine_similarity,)
 
 
 def _vector_match_for_item(item: dict[str, object], query: str, normalized_query: str) -> _VectorMatch | None:
@@ -1525,34 +1401,23 @@ def _vector_match_for_item(item: dict[str, object], query: str, normalized_query
         return None
 
     raw_score = _candidate_raw_score(item)
-    metadata_score, exact_symbol_match = _candidate_metadata_score(item, query, normalized_query)
     body = _candidate_text(item, "body")
     preview = _candidate_text(item, "preview")
     signature = _candidate_text(item, "signature")
     docstring = _candidate_text(item, "docstring")
     has_docstring = bool(docstring)
     line_end = _candidate_int(item, "line_end") or line_num
-    line_span = max(0, line_end - line_num)
     file_path_str = _candidate_text(item, "file_path")
     symbol_name = _candidate_text(item, "symbol_name")
     qualified_name = _candidate_text(item, "qualified_name")
+    cosine_similarity = int(round(raw_score * 100))
     return _VectorMatch(
         line_num=line_num,
         raw_score=raw_score,
-        metadata_score=metadata_score,
-        confidence=_candidate_confidence(
-            raw_score,
-            metadata_score,
-            exact_symbol_match=exact_symbol_match,
-            has_body=bool(body),
-            has_docstring=has_docstring,
-            line_span=line_span,
-        ),
-        exact_symbol_match=exact_symbol_match,
+        cosine_similarity=cosine_similarity,
         symbol_type=_candidate_text(item, "symbol_type"),
         has_body=bool(body),
         has_docstring=has_docstring,
-        line_span=line_span,
         body=body,
         preview=preview,
         signature=signature,
@@ -1719,13 +1584,6 @@ def _collect_literal_hits(file_path: Path, literal: str) -> list[int]:
     return list(_iter_literal_hits(file_path, literal))
 
 
-def is_large_code_file(file_path: Path) -> bool:
-    """Return True when file length exceeds mandatory symbol guard threshold."""
-    with file_path.open(encoding="utf-8") as handle:
-        line_count = sum(1 for _ in handle)
-    return line_count > CODE_FILE_LINE_THRESHOLD
-
-
 def _render_numbered_window(file_path: Path, start: int, end: int) -> None:
     with file_path.open(encoding="utf-8") as handle:
         for idx, line in enumerate(handle, start=1):
@@ -1780,13 +1638,13 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
         return
     print(f"# shortlist for: {query}")
     print(
-        "# confidence\tfile_path\tunit_id\tline_num-line_end\ttype\tbody\tdocstring\traw\tmetadata"
+        "# cosine_similarity\tfile_path\tunit_id\tline_num-line_end\ttype\tbody\tdocstring\traw"
     )
     for candidate in candidates[:5]:
         print(
             "\t".join(
                 [
-                    f"{candidate.confidence:3}",
+                    f"{candidate.cosine_similarity:3}",
                     str(candidate.file_path),
                     candidate.unit_id,
                     f"{candidate.line_num}-{candidate.line_end}",
@@ -1794,7 +1652,6 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
                     "yes" if candidate.has_body else "no",
                     "yes" if candidate.has_docstring else "no",
                     f"{candidate.raw_score:.3f}",
-                    f"{candidate.metadata_score:.3f}",
                 ]
             )
         )
@@ -1806,7 +1663,7 @@ def _render_compact_match(candidate: _VectorMatch, has_more_candidates: bool = F
     output += f"\nsignature: {candidate.signature}"
     if candidate.docstring:
         output += f"\ndocstring: {candidate.docstring.rstrip()}"
-    output += f"\nconfidence: {candidate.confidence}/100"
+    output += f"\ncosine_similarity: {candidate.cosine_similarity}/100"
 
     hints = []
     if candidate.has_body:
@@ -1854,33 +1711,9 @@ def _select_semantic_anchor_candidate(
     candidates: list[_VectorMatch],
     index: int,
 ) -> tuple[_VectorMatch | None, str | None]:
-    """Select the first strong semantic anchor from the requested index onward."""
+    """Select the semantic anchor at the requested index."""
     selected, error = _select_vector_candidate(candidates, index)
-    if error is not None:
-        return None, error
-    if selected is None:
-        return None, None
-    if selected.confidence >= READ_CODE_SEMANTIC_MIN_CONFIDENCE:
-        return selected, None
-
-    for next_index in range(index + 1, len(candidates)):
-        next_candidate = candidates[next_index]
-        if next_candidate.confidence >= READ_CODE_SEMANTIC_MIN_CONFIDENCE:
-            print(
-                (
-                    "WARN: Semantic candidate "
-                    f"{index} confidence {selected.confidence} is below threshold "
-                    f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100; using candidate {next_index} "
-                    f"confidence {next_candidate.confidence}."
-                ),
-                file=sys.stderr,
-            )
-            return next_candidate, None
-
-    _set_vector_runtime_note(
-        f"semantic candidates below confidence threshold {READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100"
-    )
-    return None, None
+    return selected, error
 
 
 def _query_semantic_anchor_candidate(
@@ -2306,8 +2139,7 @@ def _print_usage() -> None:
         "                OR <symbol_or_pattern> [--path <file>] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
     )
     print(
-        "                   (default output is compact semantic match: file_path, signature, docstring, confidence; semantic anchors are preferred at confidence >= "
-        f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; body and source lines are opt-in via --inline-body)"
+        "                   (default output is compact semantic match: file_path, signature, docstring, cosine_similarity; body and source lines are opt-in via --inline-body)"
     )
     print(
         f"  read_code_window  <file_path> <start_line> [line_count<={READ_CODE_MAX_LINES}] [symbol_or_pattern] [--hud-symbol] [--allow-fallback]"
