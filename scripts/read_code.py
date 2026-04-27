@@ -46,6 +46,7 @@ from read_code_health import (
     _set_vector_runtime_note,
     _vector_command_env,
     _vector_indexer_cmd,
+    codegraph_health_status,
     codegraph_refresh_if_needed,
     codegraph_supports_file,
     init_codegraph_env,

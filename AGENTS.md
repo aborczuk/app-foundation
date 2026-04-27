@@ -43,7 +43,7 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 ### Function docs
 - Function docstrings or comments are mandatory for new or modified functions.
 - Keep them short, specific, and colocated with the function they describe.
-- Any code edit that changes behavior should add or update nearby documentation (eg quickstart.md) explaining the function or work, unless the change is trivially self-evident.
+- Any code edit that changes behavior should add or update documentation explaining the function or work (eg quickstart.md), unless the change is trivially self-evident.
 
 ## Technology choices
 - all new code should be written in python so it is viable in codegraph. No bash or other direct shell scripting languages
@@ -210,7 +210,7 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 - Use scripted transforms for repetitive mechanical edits across many files; do not hand-edit the same mechanical change file-by-file.
 - Reread only on concrete signals: patch failure, failing tests/lint/LSP diagnostics, or explicit ambiguity from the diff.
 - After each edit batch, run a validation loop before starting the next batch.
-- Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run --no-sync python scripts/ruff_guard.py <python-paths>` when applicable.
+- Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` (via `scripts/ruff_guard.py <python-paths>` when applicable).
 - Raw `ruff` CLI invocations are blocked by PreToolUse hook; use `edit_validate` or `scripts/ruff_guard.py`.
 - Raw `pytest`, `pyright`, and `hook_refresh_indexes.py` CLI invocations are blocked by PreToolUse hook; use `edit_validate` / `edit_sync` flow (or `scripts/pytest_guard.py` where explicitly needed).
 - Raw `git diff` CLI invocations are blocked by PreToolUse hook; use `python scripts/git_diff_guard.py [diff args]` for bounded diff inspection.
