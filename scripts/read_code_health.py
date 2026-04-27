@@ -592,7 +592,19 @@ def _scope_needs_codegraph_refresh(scope_path: Path) -> bool:
 
 def codegraph_health_status(project_root: Path | None = None) -> str:
     """Return codegraph health status string or probe-failed."""
-    return codegraph_health_probe(project_root).status
+    root = project_root or REPO_ROOT
+    probe_status = codegraph_health_probe(root).status
+    if probe_status != "healthy":
+        return probe_status
+    current = codegraph_current_edit_signature(root)
+    cached = codegraph_cached_edit_signature(root)
+    if current and cached and current != cached:
+        print("marking codegraph stale: edit signature drift detected", file=sys.stderr)
+        return "stale"
+    if not cached and current:
+        print("marking codegraph stale: no cached signature", file=sys.stderr)
+        return "stale"
+    return probe_status
 
 
 def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealthProbe:
@@ -662,6 +674,7 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
     if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
         _emit_session_warning_once(
             key=f"codegraph-stale-nonoverlap:{_scope_cache_key(path)}",
+            message=f"WARN: codegraph is stale; refreshing scoped index for {path}",
         )
         safe_index = _SCRIPT_DIR / "cgc_safe_index.sh"
         if safe_index.is_file() and os.access(safe_index, os.X_OK) and _should_launch_background_refresh(

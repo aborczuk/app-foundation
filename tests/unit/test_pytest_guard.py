@@ -38,6 +38,7 @@ def test_build_pytest_command_strips_override_flags(monkeypatch) -> None:
 
 
 def test_run_writes_full_log_and_prints_first_failure(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     guard = _load_module()
     failure_output = "\n".join(
         [

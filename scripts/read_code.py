@@ -37,6 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from read_code_health import (
+    CODEGRAPH_DB_DIR,
     REPO_ROOT,
     _clear_vector_runtime_note,
     _command_exists,
@@ -66,21 +67,21 @@ READ_CODE_CONTEXT_PRE_CAP = 25
 class _VectorMatch:
     """Candidate vector hit with cosine similarity-based ranking."""
 
-    line_num: int
-    raw_score: float
-    cosine_similarity: int
-    symbol_type: str
-    has_body: bool
-    has_docstring: bool
-    body: str
-    preview: str
-    signature: str
-    file_path: Path
     unit_id: str
     symbol_name: str
     qualified_name: str
+    line_num: int
     line_end: int
-    docstring: str
+    raw_score: float
+    cosine_similarity: int = 0
+    symbol_type: str = ""
+    has_body: bool = False
+    has_docstring: bool = False
+    body: str = ""
+    preview: str = ""
+    signature: str = ""
+    file_path: Path = Path()
+    docstring: str = ""
 
 
 @dataclass(frozen=True)
