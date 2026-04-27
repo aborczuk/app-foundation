@@ -1802,12 +1802,10 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
 def _render_compact_match(candidate: _VectorMatch) -> None:
     """Render compact metadata for a selected semantic match."""
     output = f"file_path: {candidate.file_path}"
+    output += f"\nsignature: {candidate.signature}"
     if candidate.docstring:
-        output += f"\n{candidate.docstring.rstrip()}"
-    else:
-        output += f"\nsignature: {candidate.signature}"
+        output += f"\ndocstring: {candidate.docstring.rstrip()}"
     output += f"\nconfidence: {candidate.confidence}/100"
-    output += f"\nunit_id: {candidate.unit_id}"
     print(output)
 
 
@@ -2345,7 +2343,7 @@ def _print_usage() -> None:
         "                OR <symbol_or_pattern> [--path <file>] [--hud-symbol] [--allow-fallback] [--show-shortlist] [--next-candidate] [--candidate-index N] [--inline-body]"
     )
     print(
-        "                   (default output is compact semantic match: file_path, signature/docstring, confidence, unit_id; semantic anchors are preferred at confidence >= "
+        "                   (default output is compact semantic match: file_path, signature, docstring, confidence; semantic anchors are preferred at confidence >= "
         f"{READ_CODE_SEMANTIC_MIN_CONFIDENCE}/100 before strict fallback; body and source lines are opt-in via --inline-body)"
     )
     print(
