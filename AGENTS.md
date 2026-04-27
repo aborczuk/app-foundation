@@ -43,7 +43,7 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 ### Function docs
 - Function docstrings or comments are mandatory for new or modified functions.
 - Keep them short, specific, and colocated with the function they describe.
-- Any code edit that changes behavior should add or update nearby documentation (eg quickstart.md)explaining the function or work, unless the change is trivially self-evident.
+- Any code edit that changes behavior should add or update nearby documentation (eg quickstart.md) explaining the function or work, unless the change is trivially self-evident.
 
 ## Technology choices
 - all new code should be written in python so it is viable in codegraph. No bash or other direct shell scripting languages
@@ -182,7 +182,13 @@ uv run cgc analyze calls "read_code_context"
 uv run cgc analyze dead-code
 ```
 
-6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
+7. **For Markdown files, use the specialized workflow:**
+
+   - Use `read_markdown_headings` to discover structure: `uv run python scripts/read_markdown.py --headings <file>` — lists headings with line numbers.
+   - Use `read_markdown_section` for bounded reads by exact heading title: `uv run python scripts/read_markdown.py <file> "<exact heading>"` — reads only that section.
+   - This keeps markdown reads bounded and intent-driven, just like code reads.
+
+8. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
 
 
 ### Edit Efficiency
