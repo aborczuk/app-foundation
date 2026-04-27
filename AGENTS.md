@@ -113,12 +113,10 @@ Read code by intent, not by guessing file windows.
    Examples:
 
    ```bash
-
    uv run cgc analyze callers "_resolve_pattern_anchor"
-
    uv run cgc analyze calls "read_code_context"
-
    uv run cgc analyze deps "src.mcp_codebase.read_code"
+   ```
 
    **Find commands** (`cgc find`):
 - `name <symbol>` — exact name match for functions, classes, variables
