@@ -56,7 +56,71 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 
 Start server: `uv run cgc mcp start` (runs in foreground; stop with Ctrl+C or background with `&`)
 
-**Find commands** (`cgc find`):
+Requires one-time index: `scripts/cgc_index_repo.sh`
+
+**codebase-lsp** (server name: `codebase-lsp`) — pyright-backed type inference and diagnostics:
+- `get_type` — infer the Python type at a specific source location (file, line, column)
+- `get_diagnostics` — return the full pyright diagnostic list for a Python file
+
+Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app-foundation`
+
+
+**RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
+## Operational Bootstrap
+
+### Codebase Reading and Discovery
+
+Use repository read helpers instead of grep, ripgrep, cat, or broad shell search. Direct text-search tools are banned in this repo by hook.
+
+Primary tools:
+
+- `scripts/read_code.py` — read Python, shell, YAML, and code-like files.
+- `scripts/read_markdown.py` — read Markdown files.
+- `codegraph` — graph discovery after a relevant code anchor is found.
+- `codebase-lsp` — type inference and diagnostics for Python files.
+
+### Code Reading Workflow
+
+Read code by intent, not by guessing file windows.
+
+1. **Start with a natural-language query**
+   - Use `uv run python scripts/read_code.py context` with a natural-language query, symbol name, or behavior description.
+   - Do not request a code window upfront.
+   - Let the helper perform semantic lookup first and return the best matching result.
+
+   Examples:
+
+  ```bash
+   uv run python scripts/read_code.py context "how read-code resolves semantic candidates"
+   uv run python scripts/read_code.py context "strict fallback when semantic anchor is weak"
+   uv run python scripts/read_code.py context "_resolve_pattern_anchor"
+  ```
+2. **Inspect ranked results sequentially**
+    - It returns one result at a time.
+    - If the first result is not the right seam, step through candidates by using --next-candidate or --candidate-index N.
+    examples:
+      uv run python scripts/read_code.py context "semantic candidate resolution" --next-candidate
+
+      uv run python scripts/read_code.py context "semantic candidate resolution" --candidate-index 2
+3. **Dig for Body**
+    - If you believe it is the right candidate, send --inline-body to get the body of the function
+4. **Optionally Use CodeGraph only after the seam is known and if more comprehensive understanding is required**
+
+   - Use `codegraph` to map blast radius, callers, callees, inheritance, imports, or dead-code questions.
+
+   - Do not use broad `cgc find content` for reassurance once the relevant file or seam is already known.
+
+   Examples:
+
+   ```bash
+
+   uv run cgc analyze callers "_resolve_pattern_anchor"
+
+   uv run cgc analyze calls "read_code_context"
+
+   uv run cgc analyze deps "src.mcp_codebase.read_code"
+
+   **Find commands** (`cgc find`):
 - `name <symbol>` — exact name match for functions, classes, variables
 - `pattern <substring>` — substring matching across symbols
 - `type <type_name>` — all elements of a specific type (function, class, etc.)
@@ -89,80 +153,10 @@ uv run cgc analyze callers "_resolve_pattern_anchor"
 uv run cgc analyze calls "read_code_context"
 uv run cgc analyze dead-code
 ```
+5. Optionally use window in read-markdown.py or read-code.py to extend the context
 
-Requires one-time index: `scripts/cgc_index_repo.sh`
+6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
 
-**codebase-lsp** (server name: `codebase-lsp`) — pyright-backed type inference and diagnostics:
-- `get_type` — infer the Python type at a specific source location (file, line, column)
-- `get_diagnostics` — return the full pyright diagnostic list for a Python file
-
-Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app-foundation`
-
-
-**RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
-
-**Mandatory workflow order**:
-1. **Semantic search**: 
-   - **Code**: `uv run python scripts/read_code.py context <query>` for natural language queries or symbol names.
-   - **Markdown**: `uv run python scripts/read_markdown.py --headings <file>` for discovery, then `uv run python scripts/read_markdown.py <file> "<heading>"` for sections.
-   - Both run semantic vector lookup first, then exact anchor matching. Return file path, signature/heading, summary, and confidence scores.
-2. **Intensive read**: Add flags like `--inline-body` to get full function bodies, `--next-candidate`/`--candidate-index N` to walk ranked alternatives, `--show-shortlist` to see top candidates.
-3. **Discovery checks**: Use `codegraph` after finding code to map callers/callees/imports/blast radius (plus `github` if remote context is needed).
-
-**CodeGraph directories (canonical)**:
-- `.codegraphcontext/` — single canonical CodeGraph home for this repo.
-  - `config.yaml` and optional `.env`: repo-local configuration
-  - `db/`: generated runtime/index artifacts (Kuzu/Falkor files, sockets)
-  - `.uv-cache/`: CodeGraph uv cache when scripts set `CGC_UV_CACHE_DIR`
-
-
-### Markdown File Read Efficiency
-
-For markdown files, use `uv run python scripts/read_markdown.py` with vector-first anchoring:
-- For discovery: `uv run python scripts/read_markdown.py --headings <file>` lists all headings first.
-- For sections: `uv run python scripts/read_markdown.py <file> "<heading>"` retrieves specific sections.
-- Single-file serialization is required: do not run parallel markdown reads against the same file.
-- Avoid overlapping section pulls from the same file in the same step; reuse already-read context instead.
-
-### Code File Read Efficiency
-
-For any code file, use `uv run python scripts/read_code.py` to enforce semantic-first, windowed reads. 80 lines is the max context_lines budget:
-```bash
-uv run python scripts/read_code.py context <symbol_or_pattern> [--path <file>] [context_lines]
-uv run python scripts/read_code.py window <file> <start_line> [line_count]
-```
-Examples:
-- `uv run python scripts/read_code.py context "def verify_signature" --path src/clickup_control_plane/webhook_auth.py 80`
-- `uv run python scripts/read_code.py window src/clickup_control_plane/webhook_auth.py 42 60`
-
-Use this workflow:
-1. If file seam/anchor is unknown, run `read_code.py context` with your best anchor guess and use `--next-candidate` / `--candidate-index` to iterate ranked candidates.
-2. If file seam/anchor is already known, go directly to `read_code.py context` or `read_code.py window` with bounded context.
-3. Use exact symbols (or known anchors) with `read_code.py context` / `read_code.py window` for seam anchoring.
-4. The helper resolves semantic lookup first and then performs exact bounded reads (context defaults to compact output; use `--inline-body` for full bodies).
-5. Run codegraph discovery checks for blast radius only after the seam is confirmed.
-6. Expand to additional windows only when needed to resolve ambiguity.
-7. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
-
-Verification/read intensity must scale with task size:
-- Single-constant or single-branch edits: one anchor read plus at most one follow-up window; avoid broad discovery.
-- Single-file, moderate edits: bounded seam windows and candidate stepping; avoid broad reads.
-- Multi-file/refactor/blast-radius changes: use codegraph discovery after seam confirmation to map impact.
-- Do not use broad `uv run cgc find content ...` for reassurance when file + seam are already known.
-- Single-file serialization is required for code reads as well: do not run parallel `read_code_*` calls against the same file.
-
-### Read-Code Rules
-
-Use the shortlist/body contract when reading code with the helper.
-
-- `read_code_context` defaults to resolved anchor + bounded window output (no shortlist by default).
-- The visible shortlist is capped at 5 candidates when `--show-shortlist` is requested.
-- Use `--next-candidate` (or `--candidate-index N`) to step ranked candidates without forcing shortlist output.
-- Use broad discovery only when the target file is unknown; once the file is known, semantic retrieval must stay file-scoped for seam anchoring.
-- If the selected semantic candidate is weak, evaluate the next ranked semantic candidate(s) before strict matching.
-- `context_lines` is a total context budget with a fixed small-before/larger-after split.
-
-Full-file reads are disallowed unless the user explicitly requests full contents.
 
 ### Edit Efficiency
 
