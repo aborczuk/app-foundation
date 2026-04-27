@@ -60,14 +60,44 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 
 ### Codebase MCP Toolkit
 
-**CodeGraphContext** (server name: `codegraph`) — graph-based code intelligence via tree-sitter + Redis (FalkorDB module, via redislite):
-- `find_code` — keyword/fuzzy search for symbols across the codebase
-- `analyze_code_relationships` — 16 query types: find_callers, find_callees, find_all_callers, find_all_callees, find_importers, who_modifies, class_hierarchy, overrides, dead_code, call_chain, module_deps, variable_scope, find_complexity, find_functions_by_argument, find_functions_by_decorator
-- `find_dead_code` — unused function detection
-- `calculate_cyclomatic_complexity` / `find_most_complex_functions` — code quality metrics
-- `execute_cypher_query` — raw Cypher queries against the graph
+**CodeGraphContext** (server name: `codegraph`) — graph-based code intelligence via tree-sitter + Redis (FalkorDB module, via redislite).
 
-Registration: `uv run cgc mcp start` with `cwd: /Users/andreborczuk/app-foundation`
+Start server: `uv run cgc mcp start` (runs in foreground; stop with Ctrl+C or background with `&`)
+
+**Find commands** (`cgc find`):
+- `name <symbol>` — exact name match for functions, classes, variables
+- `pattern <substring>` — substring matching across symbols
+- `type <type_name>` — all elements of a specific type (function, class, etc.)
+- `variable <name>` — find variables and their usage
+- `content <query>` — full-text search of code and docstrings
+- `decorator <name>` — find functions with a specific decorator
+- `argument <param_name>` — find functions that take a specific parameter
+
+Examples:
+```bash
+uv run cgc find name "_emit_strict_resolution_failure"
+uv run cgc find pattern "vector_match"
+uv run cgc find content "semantic search"
+```
+
+**Analyze commands** (`cgc analyze`):
+- `callers <symbol>` — find all functions that call this function
+- `calls <symbol>` — find all functions this function calls
+- `chain <func1> <func2>` — show call chain between two functions
+- `deps <module>` — show dependencies and imports for a module
+- `tree <class>` — show inheritance hierarchy for a class
+- `complexity` — show cyclomatic complexity for functions
+- `dead-code` — find potentially unused functions and classes
+- `overrides <method>` — find all implementations of a method across classes
+- `variable <name>` — analyze where a variable is defined and used
+
+Examples:
+```bash
+uv run cgc analyze callers "_resolve_pattern_anchor"
+uv run cgc analyze calls "read_code_context"
+uv run cgc analyze dead-code
+```
+
 Requires one-time index: `scripts/cgc_index_repo.sh`
 
 **codebase-lsp** (server name: `codebase-lsp`) — pyright-backed type inference and diagnostics:
