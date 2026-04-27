@@ -1694,42 +1694,6 @@ def _collect_literal_hits(file_path: Path, literal: str) -> list[int]:
     return list(_iter_literal_hits(file_path, literal))
 
 
-def _resolve_line_num_strict(file_path: Path, raw_pattern: str, normalized_pattern: str) -> tuple[int, int | None]:
-    if normalized_pattern:
-        strict_hits: set[int] = set()
-        for literal in [
-            f"def {normalized_pattern}(",
-            f"async def {normalized_pattern}(",
-            f"class {normalized_pattern}",
-            f"function {normalized_pattern}",
-            f"{normalized_pattern}() {{",
-            f"{normalized_pattern} () {{",
-            f"{normalized_pattern} =",
-        ]:
-            strict_hits.update(_collect_literal_hits(file_path, literal))
-        ordered = sorted(strict_hits)
-        if len(ordered) == 1:
-            return 0, ordered[0]
-        if len(ordered) > 1:
-            print(
-                f"ERROR: Strict symbol match is ambiguous for '{normalized_pattern}' in {file_path}.",
-                file=sys.stderr,
-            )
-            return 2, None
-
-    raw_hits = sorted(set(_collect_literal_hits(file_path, raw_pattern)))
-    if len(raw_hits) == 1:
-        return 0, raw_hits[0]
-    if len(raw_hits) > 1:
-        print(
-            f"ERROR: Strict symbol match is ambiguous for '{raw_pattern}' in {file_path}.",
-            file=sys.stderr,
-        )
-        return 2, None
-
-    return 1, None
-
-
 def is_large_code_file(file_path: Path) -> bool:
     """Return True when file length exceeds mandatory symbol guard threshold."""
     with file_path.open(encoding="utf-8") as handle:
@@ -1894,20 +1858,6 @@ def _select_semantic_anchor_candidate(
     return None, None
 
 
-def _emit_strict_resolution_failure(pattern: str, strict_status: int) -> None:
-    """Emit deterministic strict-resolution failure messaging."""
-    if strict_status == 2:
-        print(
-            "ERROR: Symbol resolution ambiguous; re-run with --allow-fallback to allow bounded file-local fallback.",
-            file=sys.stderr,
-        )
-        return
-    print(
-        f"ERROR: Strict symbol resolution failed for '{pattern}'. Re-run with --allow-fallback to allow bounded file-local fallback.",
-        file=sys.stderr,
-    )
-
-
 def _query_semantic_anchor_candidate(
     file_path: Path | None,
     pattern: str,
@@ -1942,7 +1892,7 @@ def _resolve_pattern_anchor(
     allow_fallback: bool,
     show_shortlist_hint: bool,
 ) -> _AnchorResolution | None:
-    """Resolve pattern anchor via semantic-first and strict fallback flow."""
+    """Resolve pattern anchor via semantic-first search."""
     vector_candidates, vector_match, selection_ok = _query_semantic_anchor_candidate(
         file_path,
         pattern,
@@ -1953,19 +1903,10 @@ def _resolve_pattern_anchor(
     if not selection_ok:
         return None
 
-    strict_status = 0 if vector_match is not None else 1
-    strict_line_num: int | None = None
     line_num: int | None = None
     if vector_match is not None:
         line_num = vector_match.line_num
     elif file_path is not None:
-        strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-        if strict_status == 0:
-            line_num = strict_line_num
-        elif allow_fallback:
-            line_num = _find_line_num(file_path, pattern, normalized_pattern)
-
-    if line_num is None and strict_status != 0 and file_path is not None:
         if codegraph_supports_file(file_path):
             discover_pattern = (
                 normalized_pattern
@@ -1979,38 +1920,20 @@ def _resolve_pattern_anchor(
             ):
                 return None
 
-        refreshed_candidates, refreshed_match, selection_ok = _query_semantic_anchor_candidate(
-            file_path,
-            pattern,
-            normalized_pattern,
-            candidate_index=candidate_index,
-            show_shortlist_hint=show_shortlist_hint,
-        )
-        if not selection_ok:
-            return None
-        if refreshed_candidates:
-            vector_candidates = refreshed_candidates
-            vector_match = refreshed_match
-            if vector_match is not None:
-                line_num = vector_match.line_num
-
-        if line_num is None:
-            strict_status, strict_line_num = _resolve_line_num_strict(file_path, pattern, normalized_pattern)
-            if strict_status == 0:
-                line_num = strict_line_num
-            elif allow_fallback:
-                line_num = _find_line_num(file_path, pattern, normalized_pattern)
-
-    if line_num is not None and not vector_candidates:
-        vector_candidates, vector_match, selection_ok = _query_semantic_anchor_candidate(
-            file_path,
-            pattern,
-            normalized_pattern,
-            candidate_index=candidate_index,
-            show_shortlist_hint=show_shortlist_hint,
-        )
-        if not selection_ok:
-            return None
+            refreshed_candidates, refreshed_match, selection_ok = _query_semantic_anchor_candidate(
+                file_path,
+                pattern,
+                normalized_pattern,
+                candidate_index=candidate_index,
+                show_shortlist_hint=show_shortlist_hint,
+            )
+            if not selection_ok:
+                return None
+            if refreshed_candidates:
+                vector_candidates = refreshed_candidates
+                vector_match = refreshed_match
+                if vector_match is not None:
+                    line_num = vector_match.line_num
 
     if file_path is not None:
         _emit_vector_fallback_notice(
@@ -2022,7 +1945,7 @@ def _resolve_pattern_anchor(
     return _AnchorResolution(
         vector_candidates=vector_candidates,
         vector_match=vector_match,
-        strict_status=strict_status,
+        strict_status=0,
         line_num=line_num,
     )
 
@@ -2289,11 +2212,10 @@ def read_code_context(argv: list[str]) -> int:
         return 1
     vector_candidates = resolution.vector_candidates
     vector_match = resolution.vector_match
-    strict_status = resolution.strict_status
     line_num = resolution.line_num
 
     if line_num is None:
-        _emit_strict_resolution_failure(parsed.pattern, strict_status)
+        print(f"ERROR: No match found for '{parsed.pattern}'", file=sys.stderr)
         return 1
 
     if vector_match is None:
@@ -2339,11 +2261,10 @@ def read_code_window(argv: list[str]) -> int:
         )
         if resolution is None:
             return 1
-        strict_status = resolution.strict_status
         line_num = resolution.line_num
 
         if line_num is None:
-            _emit_strict_resolution_failure(parsed.pattern, strict_status)
+            print(f"ERROR: No match found for '{parsed.pattern}'", file=sys.stderr)
             return 1
 
     end_line = parsed.start_line + parsed.line_count - 1
