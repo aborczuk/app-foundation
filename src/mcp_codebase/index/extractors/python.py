@@ -56,8 +56,10 @@ def should_skip_path(
         return True
 
     rel_posix = rel_path.as_posix()
-    if any(part in _BUILTIN_EXCLUDE_DIRS for part in rel_path.parts):
-        return True
+    # Allow markdown files even in excluded directories (documentation is valuable)
+    if candidate.suffix not in {".md", ".markdown", ".mdown"}:
+        if any(part in _BUILTIN_EXCLUDE_DIRS for part in rel_path.parts):
+            return True
     if candidate.suffix in _BUILTIN_EXCLUDE_SUFFIXES:
         return True
     if rel_posix.startswith(("build/", "dist/", "generated/")):
@@ -65,7 +67,11 @@ def should_skip_path(
     if candidate.name.startswith(("generated_", "tmp_")):
         return True
     # Skip hidden files/dirs except markdown files (which are often documentation)
-    if candidate.name.startswith(".") and candidate.suffix not in {".md", ".markdown", ".mdown"}:
+    # Check if file itself is hidden OR if any directory in path is hidden
+    has_hidden_component = candidate.name.startswith(".") or any(
+        part.startswith(".") for part in rel_path.parts[:-1]
+    )
+    if has_hidden_component and candidate.suffix not in {".md", ".markdown", ".mdown"}:
         return True
 
     for pattern in exclude_patterns:
