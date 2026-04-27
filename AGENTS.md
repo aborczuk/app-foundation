@@ -65,13 +65,13 @@ Requires one-time index: `scripts/cgc_index_repo.sh`
 Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app-foundation`
 
 
-**RG, grep and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
+**RG, grep, python find and other direct tools are banned in this repo by hook. don't waste your time trying. Use instead:**
 
 ## Operational Bootstrap
 
 ### Codebase Reading and Discovery
 
-Use repository read helpers instead of grep, ripgrep, cat, or broad shell search. Direct text-search tools are banned in this repo by hook.
+Use repository read_code.py instead of grep, ripgrep, cat, or broad shell search. Direct text-search tools are banned in this repo by hook.
 
 Primary tools:
 
@@ -91,7 +91,7 @@ Read code by intent, not by guessing file windows.
    Examples:
 
   ```bash
-   uv run python scripts/read_code.py context "how read-code resolves semantic candidates"
+   uv run python scripts/read_code.py context "how read_code resolves semantic candidates"
    uv run python scripts/read_code.py context "_resolve_pattern_anchor"
   ```
 2. **Inspect ranked results sequentially**
@@ -168,7 +168,6 @@ uv run cgc analyze callers "_resolve_pattern_anchor"
 uv run cgc analyze calls "read_code_context"
 uv run cgc analyze dead-code
 ```
-5. Optionally use window in read-markdown.py or read-code.py to extend the context
 
 6. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
 
