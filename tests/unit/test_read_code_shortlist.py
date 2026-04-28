@@ -25,32 +25,38 @@ def test_candidate_body_helper_returns_bounded_follow_up_body() -> None:
     """A later shortlist candidate body should be retrievable without widening scope."""
     candidates = [
         read_code._VectorMatch(
+            unit_id="function:top",
+            symbol_name="top",
+            qualified_name="top",
             line_num=10,
+            line_end=13,
             raw_score=0.95,
-            metadata_score=18.0,
-            confidence=100,
-            exact_symbol_match=True,
+            cosine_similarity=100,
             symbol_type="function",
             has_body=True,
             has_docstring=True,
-            line_span=4,
             body="def top():\n    return 1",
             preview="def top():",
             signature="def top():",
+            file_path=Path(),
+            docstring="",
         ),
         read_code._VectorMatch(
+            unit_id="function:follow_up",
+            symbol_name="follow_up",
+            qualified_name="follow_up",
             line_num=30,
+            line_end=32,
             raw_score=0.75,
-            metadata_score=11.0,
-            confidence=81,
-            exact_symbol_match=False,
+            cosine_similarity=81,
             symbol_type="function",
             has_body=True,
             has_docstring=False,
-            line_span=3,
             body="def follow_up():\n    return 2",
             preview="def follow_up():",
             signature="def follow_up():",
+            file_path=Path(),
+            docstring="",
         ),
     ]
 
@@ -58,15 +64,25 @@ def test_candidate_body_helper_returns_bounded_follow_up_body() -> None:
     assert read_code.candidate_body_helper(candidates, 5) is None
 
 
-def test_candidate_confidence_scores_high_confident_symbol_above_body_threshold() -> None:
-    """High-confidence symbol matches should clear the body-first cutoff."""
-    confidence = read_code._candidate_confidence(
-        1.0,
-        18.5,
-        exact_symbol_match=True,
-        has_body=True,
-        has_docstring=True,
-        line_span=0,
+def test_vector_anchor_rank_prefers_higher_similarity() -> None:
+    """Higher cosine similarity should sort ahead of weaker matches."""
+    higher = read_code._VectorMatch(
+        unit_id="function:higher",
+        symbol_name="higher",
+        qualified_name="higher",
+        line_num=1,
+        line_end=1,
+        raw_score=0.99,
+        cosine_similarity=99,
+    )
+    lower = read_code._VectorMatch(
+        unit_id="function:lower",
+        symbol_name="lower",
+        qualified_name="lower",
+        line_num=2,
+        line_end=2,
+        raw_score=0.45,
+        cosine_similarity=45,
     )
 
-    assert confidence >= 90
+    assert read_code._vector_anchor_rank(higher) > read_code._vector_anchor_rank(lower)

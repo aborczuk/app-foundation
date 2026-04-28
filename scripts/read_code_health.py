@@ -882,7 +882,54 @@ def _scope_needs_vector_refresh(scope_path: Path, drift_paths: tuple[str, ...]) 
     return False
 
 
-def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
+def _vector_stale_warning_message(
+    path: Path,
+    probe: _VectorIndexProbe,
+    overlap: bool | None,
+    *,
+    verbose: bool,
+) -> str:
+    """Format the stale-index warning for terse or verbose output."""
+    overlap_label = (
+        "yes"
+        if overlap is True
+        else "no"
+        if overlap is False
+        else "unknown"
+    )
+    if verbose:
+        cause = probe.stale_reason_class or "none"
+        detail = probe.stale_reason or "no stale reason provided"
+        signal = probe.stale_signal_source or "git"
+        return (
+            "WARN: vector index is stale; "
+            f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
+            f"drift_paths={list(probe.stale_drift_paths)}; "
+            f"refreshing targeted index for {path}"
+        )
+    if overlap is False:
+        return (
+            "WARN: vector index is stale; "
+            f"overlap={overlap_label}; proceeding without blocking refresh; "
+            f"launching async scoped refresh for ({path})"
+        )
+    return f"WARN: vector index is stale; overlap={overlap_label}; refreshing targeted index for {path}"
+
+
+def _vector_post_refresh_warning_message(path: Path, *, verbose: bool) -> str:
+    """Format the follow-up stale warning after a scoped refresh."""
+    if verbose:
+        return (
+            "WARN: vector index remains stale after scoped refresh, but stale drift does not overlap "
+            f"requested scope ({path}); proceeding and refreshing in background"
+        )
+    return (
+        "WARN: vector index remains stale after scoped refresh; overlap=no; "
+        f"proceeding and refreshing in background for ({path})"
+    )
+
+
+def vector_refresh_if_needed(scope_path: Path | None = None, *, verbose: bool = False) -> bool:
     """Require a healthy vector index with scope-aware stale refresh branching."""
     path = scope_path or REPO_ROOT
     probe = vector_index_probe(REPO_ROOT)
@@ -904,25 +951,11 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         return False
 
     overlap = _scope_needs_vector_refresh(path, probe.stale_drift_paths)
-    overlap_label = (
-        "yes"
-        if overlap is True
-        else "no"
-        if overlap is False
-        else "unknown"
-    )
     cause = probe.stale_reason_class or "none"
-    detail = probe.stale_reason or "no stale reason provided"
-    signal = probe.stale_signal_source or "git"
     if overlap is False:
         _emit_session_warning_once(
             key=f"vector-stale-nonoverlap:{_scope_cache_key(path)}:{cause}",
-            message=(
-                "WARN: vector index is stale; "
-                f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
-                f"drift_paths={list(probe.stale_drift_paths)}; "
-                f"proceeding without blocking refresh; launching async scoped refresh for ({path})"
-            ),
+            message=_vector_stale_warning_message(path, probe, overlap, verbose=verbose),
         )
         if _should_launch_background_refresh(path, channel="vector"):
             followup_cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
@@ -938,13 +971,7 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
                 pass
         return True
 
-    print(
-        "WARN: vector index is stale; "
-        f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
-        f"drift_paths={list(probe.stale_drift_paths)}; "
-        f"refreshing targeted index for {path}",
-        file=sys.stderr,
-    )
+    print(_vector_stale_warning_message(path, probe, overlap, verbose=verbose), file=sys.stderr)
     cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
     proc = _run_command_capture(cmd, env=_vector_command_env())
     if proc.returncode != 0:
@@ -963,10 +990,7 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
         if refreshed_probe.status == "stale" and refreshed_overlap is False:
             _emit_session_warning_once(
                 key=f"vector-post-refresh-stale-nonoverlap:{_scope_cache_key(path)}",
-                message=(
-                    "WARN: vector index remains stale after scoped refresh, but stale drift does not overlap "
-                    f"requested scope ({path}); proceeding and refreshing in background"
-                ),
+                message=_vector_post_refresh_warning_message(path, verbose=verbose),
             )
             if _should_launch_background_refresh(path, channel="vector"):
                 followup_cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
@@ -991,12 +1015,12 @@ def vector_refresh_if_needed(scope_path: Path | None = None) -> bool:
     return True
 
 
-def _refresh_indexes_for_read(file_path: Path) -> bool:
+def _refresh_indexes_for_read(file_path: Path, *, verbose: bool = False) -> bool:
     """Run read preflight checks with vector hard-gate and session-scoped codegraph probe."""
     if not _is_repo_local_path(file_path):
         return True
     _ensure_codegraph_session_available(file_path)
-    if not vector_refresh_if_needed(file_path):
+    if not vector_refresh_if_needed(file_path, verbose=verbose):
         runtime_note = _consume_vector_runtime_note()
         if runtime_note:
             print(f"ERROR: {runtime_note}", file=sys.stderr)

@@ -18,6 +18,7 @@ How to use:
    - ``uv run python scripts/read_code.py context "<symbol>" --next-candidate`` — step ranked candidates.
 3. Use **window mode** when you know the exact file and line range:
    - ``uv run python scripts/read_code.py window <file> <start_line> [line_count]`` — direct window read.
+   - add ``--verbose`` to keep full vector preflight diagnostics instead of the terse stale warning.
 4. Let the helper anchor the seam semantically and print only the relevant window.
 
 Validation:
@@ -38,7 +39,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from read_code_health import (
-    CODEGRAPH_DB_DIR,
     REPO_ROOT,
     _clear_vector_runtime_note,
     _command_exists,
@@ -52,7 +52,6 @@ from read_code_health import (
     _set_vector_runtime_note,
     _vector_command_env,
     _vector_indexer_cmd,
-    codegraph_health_status,
     codegraph_refresh_if_needed,
     codegraph_supports_file,
     init_codegraph_env,
@@ -133,6 +132,19 @@ class _WindowArgs:
 
 
 
+
+
+
+def _split_verbose_flag(argv: list[str]) -> tuple[list[str], bool]:
+    """Remove the read helper verbose flag while preserving the remaining argv."""
+    verbose = False
+    filtered: list[str] = []
+    for token in argv:
+        if token in {"--verbose", "-v"}:
+            verbose = True
+            continue
+        filtered.append(token)
+    return filtered, verbose
 
 
 def _emit_vector_fallback_notice(
@@ -868,14 +880,14 @@ def _render_resolution_extras(
 
 
 
-def read_code_context(argv: list[str]) -> int:
+def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     """Resolve an anchor and return compact semantic match metadata."""
     parsed = _parse_context_args(argv)
     if parsed is None:
         return 1
 
     preflight_path = parsed.file_path or Path.cwd()
-    if not _refresh_indexes_for_read(preflight_path):
+    if not _refresh_indexes_for_read(preflight_path, verbose=verbose):
         return 1
     normalized_pattern = normalize_symbol_pattern(parsed.pattern)
     resolution = _resolve_pattern_anchor(
@@ -925,14 +937,14 @@ def read_code_context(argv: list[str]) -> int:
     return 0
 
 
-def read_code_window(argv: list[str]) -> int:
+def read_code_window(argv: list[str], *, verbose: bool = False) -> int:
     """Print a numbered bounded window and ignore out-of-window semantic anchors."""
     parsed = _parse_window_args(argv)
     if parsed is None:
         return 1
 
     if parsed.pattern:
-        if not _refresh_indexes_for_read(parsed.file_path):
+        if not _refresh_indexes_for_read(parsed.file_path, verbose=verbose):
             return 1
         normalized_pattern = normalize_symbol_pattern(parsed.pattern)
         resolution = _resolve_pattern_anchor(
@@ -956,7 +968,7 @@ def read_code_window(argv: list[str]) -> int:
     return 0
 
 
-def read_code_headings(argv: list[str]) -> int:
+def read_code_headings(argv: list[str], *, verbose: bool = False) -> int:
     """List markdown headings with line numbers."""
     if not argv:
         print("ERROR: headings mode requires a file path", file=sys.stderr)
@@ -969,7 +981,7 @@ def read_code_headings(argv: list[str]) -> int:
         print(f"ERROR: headings mode is only supported for markdown files: {file_path}", file=sys.stderr)
         return 1
 
-    if not _refresh_indexes_for_read(file_path):
+    if not _refresh_indexes_for_read(file_path, verbose=verbose):
         return 1
 
     headings = _markdown_heading_lines(file_path)
@@ -1017,6 +1029,7 @@ def _print_usage() -> None:
     print(
         "  read_code find    <command> <pattern> [...]"
     )
+    print("  --verbose / -v    show detailed vector preflight diagnostics")
     print("\nModes:")
     print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
     print("  window:   Show a raw numbered line window.")
@@ -1043,6 +1056,7 @@ def main(argv: list[str]) -> int:
         repo_root = Path(__file__).parent.parent
         os.environ["UV_CACHE_DIR"] = str(repo_root / ".codegraphcontext" / ".uv-cache")
 
+    argv, verbose = _split_verbose_flag(argv)
     if len(argv) < 2:
         _print_usage()
         return 1
@@ -1050,11 +1064,11 @@ def main(argv: list[str]) -> int:
     mode = argv[0]
     args = argv[1:]
     if mode == "context":
-        return read_code_context(args)
+        return read_code_context(args, verbose=verbose)
     if mode == "window":
-        return read_code_window(args)
+        return read_code_window(args, verbose=verbose)
     if mode == "headings":
-        return read_code_headings(args)
+        return read_code_headings(args, verbose=verbose)
     if mode == "analyze":
         return read_code_analyze(args)
     if mode == "find":

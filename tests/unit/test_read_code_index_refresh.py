@@ -262,8 +262,50 @@ def test_vector_refresh_if_needed_refreshes_stale_index_for_overlap(monkeypatch,
 
     assert result is True
     assert len(calls) == 1
-    assert "cause=git-path-drift" in captured.err
     assert "overlap=yes" in captured.err
+    assert "refreshing targeted index for" in captured.err
+    assert "cause=git-path-drift" not in captured.err
+
+
+def test_vector_refresh_if_needed_verbose_emits_detailed_stale_message(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    target = tmp_path / "src" / "sample.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def sample() -> None:\n    pass\n", encoding="utf-8")
+    probes = iter(
+        [
+            _vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: src/sample.py",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=("src/sample.py",),
+            ),
+            _vector_probe(status="healthy"),
+        ]
+    )
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    monkeypatch.setattr(read_code_health, "vector_index_probe", lambda project_root=None: next(probes))
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs.get("env", {})))
+        return _completed(0, stdout='{"entry_count": 1}')
+
+    monkeypatch.setattr(read_code_health.subprocess, "run", fake_run)
+
+    result = read_code_health.vector_refresh_if_needed(target, verbose=True)
+    captured = capsys.readouterr()
+
+    assert result is True
+    assert len(calls) == 1
+    assert "cause=git-path-drift" in captured.err
+    assert "detail=indexable git drift paths: src/sample.py" in captured.err
+    assert "drift_paths=['src/sample.py']" in captured.err
 
 
 def test_vector_refresh_if_needed_skips_background_refresh_when_scope_is_unaffected(
@@ -297,8 +339,9 @@ def test_vector_refresh_if_needed_skips_background_refresh_when_scope_is_unaffec
 
     assert result is True
     assert len(calls) == 1
-    assert "cause=git-path-drift" in captured.err
     assert "overlap=no" in captured.err
+    assert "proceeding without blocking refresh" in captured.err
+    assert "cause=git-path-drift" not in captured.err
 
 
 def test_vector_refresh_if_needed_nonoverlap_never_launches_background_refresh(monkeypatch, tmp_path: Path) -> None:
@@ -439,7 +482,7 @@ def test_refresh_indexes_for_read_launches_async_codegraph_preflight_once_per_se
         "_launch_codegraph_preflight_background",
         lambda _path, _sid: launch_calls.__setitem__("count", launch_calls["count"] + 1) or True,
     )
-    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path: True)
+    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path, **kwargs: True)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
 
@@ -467,7 +510,7 @@ def test_refresh_indexes_for_read_uses_cached_unavailable_without_blocking(
         "_launch_codegraph_preflight_background",
         lambda _path, _sid: launch_calls.__setitem__("count", launch_calls["count"] + 1) or True,
     )
-    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path: True)
+    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path, **kwargs: True)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
 
@@ -489,7 +532,7 @@ def test_refresh_indexes_for_read_uses_persisted_session_probe_cache(monkeypatch
     monkeypatch.setattr(read_code_health, "codegraph_supports_file", lambda _path: True)
     monkeypatch.setattr(read_code_health, "_load_codegraph_session_probe_cache", lambda _sid: True)
     monkeypatch.setattr(read_code_health, "_read_code_session_id", lambda: "unit-session")
-    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path: True)
+    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path, **kwargs: True)
     monkeypatch.setattr(read_code_health, "_vector_command_env", lambda: {})
     monkeypatch.setattr(
         read_code_health.subprocess,
@@ -781,7 +824,7 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
     monkeypatch.setattr(
         read_code,
         "_refresh_indexes_for_read",
-        lambda file_path: (calls.append(file_path), True)[1],
+        lambda file_path, **kwargs: (calls.append(file_path), True)[1],
     )
     monkeypatch.setattr(
         read_code,
@@ -832,7 +875,7 @@ def test_read_code_context_applies_asymmetric_window_bounds(monkeypatch, tmp_pat
     code_file = tmp_path / "sample.py"
     code_file.write_text("\n".join(f"value_{idx} = {idx}" for idx in range(1, 231)) + "\n", encoding="utf-8")
 
-    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
     monkeypatch.setattr(
         read_code,
         "_vector_find_candidates",
@@ -867,7 +910,7 @@ def test_read_code_context_returns_error_for_out_of_range_candidate_index(monkey
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
 
-    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
     def fake_find(file_path, query, normalized, scope):
         if scope == "code":
             return [_vector_match(1, "def run_pipeline():"), _vector_match(5, "def helper():")]
@@ -886,7 +929,7 @@ def test_read_code_context_returns_error_for_out_of_range_candidate_index(monkey
 def test_read_code_context_skips_strict_when_semantic_anchor_is_strong(monkeypatch, tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("line1\nline2\nline3\n", encoding="utf-8")
-    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
     monkeypatch.setattr(
         read_code,
         "_vector_find_candidates",
@@ -902,7 +945,7 @@ def test_read_code_context_skips_strict_when_semantic_anchor_is_strong(monkeypat
 def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatch, tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("line1\nline2\nline3\nline4\nline5\nline6\n", encoding="utf-8")
-    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
     monkeypatch.setattr(
         read_code,
         "_vector_find_candidates",
@@ -927,7 +970,7 @@ def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatc
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
-    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path: False)
+    monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path, **kwargs: False)
 
     exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "0"])
 
@@ -939,3 +982,20 @@ def test_read_code_main_rejects_symbols_mode(capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "Unknown mode 'symbols'" in captured.err
+
+
+def test_read_code_main_forwards_verbose_flag_to_window_mode(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_window(argv: list[str], *, verbose: bool = False) -> int:
+        captured["argv"] = argv
+        captured["verbose"] = verbose
+        return 0
+
+    monkeypatch.setattr(read_code, "read_code_window", fake_window)
+
+    exit_code = read_code.main(["--verbose", "window", "scripts/read_code.py", "1", "1"])
+
+    assert exit_code == 0
+    assert captured["verbose"] is True
+    assert captured["argv"] == ["scripts/read_code.py", "1", "1"]

@@ -28,18 +28,21 @@ read_code = _load_module("read_code", "read_code.py")
 
 def _fake_vector_match(line_num: int) -> object:
     return read_code._VectorMatch(
+        unit_id="yaml:section",
+        symbol_name="section",
+        qualified_name="section",
         line_num=line_num,
+        line_end=line_num,
         raw_score=0.9,
-        metadata_score=8.0,
-        confidence=95,
-        exact_symbol_match=True,
+        cosine_similarity=95,
         symbol_type="yaml_section",
         has_body=True,
         has_docstring=True,
-        line_span=4,
         body="section:\n  value: 1",
         preview="section:",
         signature="section:",
+        file_path=Path(),
+        docstring="",
     )
 
 
@@ -56,14 +59,13 @@ def test_yaml_read_uses_vector_anchor_without_codegraph_warning(tmp_path: Path, 
         return [_fake_vector_match(2)]
 
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda file_path: False)
-    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
     monkeypatch.setattr(
         read_code,
         "codegraph_discover_or_fail",
         lambda pattern, scope_path=None: (_ for _ in ()).throw(AssertionError("codegraph should not run")),
     )
     monkeypatch.setattr(read_code, "_vector_find_candidates", fake_vector_find_candidates)
-    monkeypatch.setattr(read_code, "_resolve_line_num_strict", lambda *args, **kwargs: (1, None))
 
     exit_code = read_code.read_code_context([str(target), "anchor line", "2"])
     captured = capsys.readouterr()
@@ -85,14 +87,13 @@ def test_shell_read_uses_vector_anchor_without_codegraph_warning(tmp_path: Path,
         return [_fake_vector_match(2)]
 
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda file_path: False)
-    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path: True)
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
     monkeypatch.setattr(
         read_code,
         "codegraph_discover_or_fail",
         lambda pattern, scope_path=None: (_ for _ in ()).throw(AssertionError("codegraph should not run")),
     )
     monkeypatch.setattr(read_code, "_vector_find_candidates", fake_vector_find_candidates)
-    monkeypatch.setattr(read_code, "_resolve_line_num_strict", lambda *args, **kwargs: (1, None))
 
     exit_code = read_code.read_code_context([str(target), "anchor line", "2"])
     captured = capsys.readouterr()
