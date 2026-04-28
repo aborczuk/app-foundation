@@ -147,6 +147,7 @@ def _is_repo_code_doc_file(path_text: str) -> bool:
 
 
 def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None:
+    """Extract the read-code mode, target path, window size, and fallback flag."""
     try:
         tokens = shlex.split(command)
     except ValueError:
@@ -181,22 +182,35 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
 
     path_text = args[0]
     allow_fallback = "--allow-fallback" in args
-    requested_lines = 60
 
     if mode == "context":
-        tail = args[1:]
-        for token in tail:
-            if token.isdigit():
-                requested_lines = int(token)
-                break
+        requested_lines = _extract_read_code_context_lines(args)
     else:
-        tail = args[1:]
-        for token in tail:
-            if token.isdigit():
-                requested_lines = int(token)
-                break
+        requested_lines = _extract_read_code_window_lines(args)
 
     return mode, path_text, requested_lines, allow_fallback
+
+
+def _extract_read_code_context_lines(args: list[str]) -> int:
+    """Return the context helper's requested line count."""
+    requested_lines = 60
+    tail = args[1:]
+    for token in tail:
+        if token.isdigit():
+            requested_lines = int(token)
+            break
+    return requested_lines
+
+
+def _extract_read_code_window_lines(args: list[str]) -> int:
+    """Return the window helper's requested line count."""
+    requested_lines = 60
+    tail = args[2:]
+    for token in tail:
+        if token.isdigit():
+            requested_lines = int(token)
+            break
+    return requested_lines
 
 
 def _extract_markdown_read_policy(command: str) -> str | None:
