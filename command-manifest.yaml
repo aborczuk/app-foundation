@@ -14,8 +14,8 @@ commands:
       mode: generative
       timeout_seconds: 300
     scripts:
-    - .specify/scripts/bash/create-new-feature.sh
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/create_new_feature.py
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/speckit_spec_gate.py
     - scripts/pipeline_ledger.py

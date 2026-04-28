@@ -1,6 +1,7 @@
 ---
 description: Create or update the feature specification from a natural language feature description.
-handoffs: 
+model: opus
+handoffs:
   - label: Research Prior Art & Integration Options
     agent: speckit.research
     prompt: Research patterns, prior art, and integration options for the spec...
@@ -34,24 +35,24 @@ Given that feature description, do this:
    - Prefer `action-noun` style and preserve technical acronyms.
    - Keep it short and unique within existing branch/spec naming.
 
-3. **If in default mode, create the feature branch/spec once using the script**:
+3. **If in default mode, create the feature branch/spec once using the Python entrypoint**:
 
    a. Run (pass only `--json` and `--short-name`; never pass `--number`):
 
       ```bash
-      .specify/scripts/bash/create-new-feature.sh --json --short-name "your-short-name" "Feature description"
+      uv run --no-sync python .specify/scripts/python/create_new_feature.py --json --short-name "your-short-name" "Feature description"
       ```
 
    b. Parse JSON output and treat it as authoritative for `BRANCH_NAME`, `FEATURE_DIR`, and `SPEC_FILE`.
    c. Run this script once per feature. For single quotes in args like "I'm Groot", escape as `'\''` or use double quotes.
    d. Stay in the current checkout; do not route branch creation through temp worktrees or spare checkouts. If the checkout is dirty, abort and ask for commit/stash/discard before proceeding.
 
-4. **If in update mode (`--update-current-spec`) resolve existing spec paths**:
+4. **If in update mode (`--update-current-spec`) resolve existing spec paths with the Python entrypoint**:
    - Run:
 
-     ```bash
-     .specify/scripts/bash/check-prerequisites.sh --json --paths-only
-     ```
+      ```bash
+      uv run --no-sync python .specify/scripts/python/check_prerequisites.py --json --paths-only
+      ```
 
    - Parse `FEATURE_DIR` and `FEATURE_SPEC` from JSON output.
    - Set `SPEC_FILE=FEATURE_SPEC`.
@@ -70,7 +71,7 @@ Given that feature description, do this:
 
    - **If matches found**: Read the matched files to understand what already exists. Report findings to the user before proceeding. The spec must account for existing code — either by extending it, replacing it (with justification), or scoping around it. Do NOT write a spec that ignores or duplicates existing capability.
    - **If no matches found**: Confirm in the spec output that no existing implementation was found, and proceed.
-   - **If codegraph is unavailable** (MCP server not running): Fall back to `Grep` for the same terms across `src/` and `tests/`. Do NOT skip the search entirely.
+   - **If codegraph is unavailable** (MCP server not running): stop and report the discovery blocker. Do not replace codegraph with shell grep.
 
    This step satisfies the CLAUDE.md mandatory workflow order: "Use `codegraph` first for discovery and scope."
 
@@ -112,13 +113,13 @@ Given that feature description, do this:
 
    a. **Validate Routing Contract**:
 
-      1. Run: `uv run python scripts/speckit_spec_gate.py validate-routing --spec-file "$SPEC_FILE" --json`
+      1. Run: `uv run --no-sync python scripts/speckit_spec_gate.py validate-routing --spec-file "$SPEC_FILE" --json`
          - Confirms the machine-readable `routing` + `risk` block exists
          - Parses the JSON block and rejects placeholder-only or incomplete routing values
 
    b. **Create Spec Quality Checklist**: Pre-scaffold the checklist file from the template:
 
-      1. Run: `python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+      1. Run: `uv run --no-sync python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
          - Reads `command-manifest.yaml` to resolve which artifacts speckit.specify owns
          - Copies `.specify/templates/requirements-checklist-template.md` to `$FEATURE_DIR/checklists/requirements.md`
          - Performs scalar substitutions: `[FEATURE_NAME]` → the feature name, `[DATE]` → today's date, etc.
