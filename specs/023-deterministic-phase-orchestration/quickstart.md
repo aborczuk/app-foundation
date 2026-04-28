@@ -55,6 +55,7 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - Task ledger state for feature `023` is now fully closed for the current task graph.
 - Markdown doc-shape validation now rejects compact command docs that still embed executable gate/append procedures, so the producer-only command-doc cleanup stays enforced while the docs are migrated.
 - `speckit.implement` is now routed through deterministic script execution (`scripts/speckit_implement_step.py`) with structured stage telemetry persisted to `.speckit/runtime/implement/<correlation_id>.json`.
+- Routing skip realization is recorded by the driver after the payload is accepted, so the producer remains responsible for its own artifact only.
 
 ## Deterministic Operator Runbook Notes
 

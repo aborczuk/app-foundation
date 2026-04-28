@@ -159,6 +159,7 @@ Given that feature description, do this:
 
    - Evaluate based on: number of user stories, number of edge cases, number of external integrations, breadth of acceptance criteria, and data model complexity (entity count, relationship density)
    - Assign one of: **XS** (single concern, 1 story, no integrations), **S** (1-2 stories, minimal edge cases), **M** (2-3 stories, some integrations or data model), **L** (3-5 stories, multiple integrations, non-trivial data model), **XL** (5+ stories, complex integrations, significant edge cases, multiple actors)
+   - **Implicit Sketching (XS/S only)**: For XS and S features, perform mandatory `read_code` discovery *now* to identify the exact implementation seams (`File:Symbol`). Encode these discovered seams directly into the task descriptions in the next step.
    - Output as: `**Estimated Size:** [XS/S/M/L/XL] — [1-sentence rationale]`
    - This estimate is informational only — it does NOT block any workflow step
 
@@ -169,7 +170,9 @@ Given that feature description, do this:
     {"event": "backlog_registered", "feature_id": "NNN", "phase": "spec", "actor": "<agent-id>", "timestamp_utc": "...", "routing": {"research_route": "skip", "plan_profile": "skip", "sketch_profile": "core", "tasking_route": "required", "estimate_route": "required_after_tasking", "routing_reason": "...", "conditional_sketch_sections": []}, "risk": {"requirement_clarity": "low", "repo_uncertainty": "low", "external_dependency_uncertainty": "low", "state_data_migration_risk": "low", "runtime_side_effect_risk": "low", "human_operator_dependency": "low"}}
     ```
 
-12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase (`/speckit.research`).
+12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase.
+    - If size is **XS/S**, report that the feature is **Ready for Tasking** (driver will handle ledger catch-up).
+    - Otherwise, report readiness for the next phase (`/speckit.research`).
    - In **update mode**, explicitly report that existing spec scope was updated in-place (no new branch created).
 
 **NOTE:** In default mode, the script creates and checks out a new branch and initializes the spec file before writing. In update mode, no new branch is created.

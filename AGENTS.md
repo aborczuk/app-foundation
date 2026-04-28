@@ -75,9 +75,7 @@ Use repository read_code.py instead of grep, ripgrep, cat, or broad shell search
 
 Primary tools:
 
-- `scripts/read_code.py` — read Python, shell, YAML, and code-like files.
-- `scripts/read_markdown.py` — read Markdown files.
-- `codegraph` — graph discovery after a relevant code anchor is found.
+- `scripts/read_code.py` — unified reader for Python, shell, YAML, Markdown, and code-like files. Also provides access to Graph Discovery (codegraph) and Search.
 - `codebase-lsp` — type inference and diagnostics for Python files.
 
 ### Code Reading Workflow
@@ -113,17 +111,17 @@ Read code by intent, not by guessing file windows.
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body
    ```
 
-4. **Find Call Sites and Usages with CodeGraph (The Standard Next Step)**
+4. **Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
 
-   Once semantic search returns a result with a unit_id, use codegraph to find where it's called:
+   Once semantic search returns a result with a unit_id, use read_code's analyze mode to find where it's called:
 
    ```bash
-   uv run cgc analyze callers "_resolve_pattern_anchor"      # Find all functions that call this
-   uv run cgc analyze calls "read_code_context"              # Find all functions this calls
-   uv run cgc analyze variable "vector_candidates"           # Find where a variable is used
+   uv run python scripts/read_code.py analyze callers "_resolve_pattern_anchor"      # Find all functions that call this
+   uv run python scripts/read_code.py analyze calls "read_code_context"              # Find all functions this calls
+   uv run python scripts/read_code.py analyze variable "vector_candidates"           # Find where a variable is used
    ```
 
-   The compact match output will hint which codegraph command to run next.
+   The compact match output will hint which analysis to run next.
 
 5. **You can dig for more context within a file as well with the same function and optional file path**
 
@@ -134,21 +132,21 @@ Read code by intent, not by guessing file windows.
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --path src/mcp_codebase/read_code.py
    ```
 
-6. **Advanced CodeGraph Analysis (when needed)**
+6. **Advanced Graph Analysis (when needed)**
 
-   Use codegraph to map blast radius, inheritance, imports, dead-code, and other structural questions.
+   Use `read_code analyze` to map blast radius, inheritance, imports, dead-code, and other structural questions.
 
-   - Do not use broad `cgc find content` for reassurance once the relevant file or seam is already known.
+   - Do not use broad `find content` for reassurance once the relevant file or seam is already known.
 
    Examples:
 
    ```bash
-   uv run cgc analyze deps "src.mcp_codebase.read_code"      # Module dependencies
-   uv run cgc analyze tree "SomeClass"                        # Inheritance hierarchy
-   uv run cgc analyze dead-code                               # Unused functions
+   uv run python scripts/read_code.py analyze deps "src.mcp_codebase.read_code"      # Module dependencies
+   uv run python scripts/read_code.py analyze tree "SomeClass"                        # Inheritance hierarchy
+   uv run python scripts/read_code.py analyze dead-code                               # Unused functions
    ```
 
-   **Find commands** (`cgc find`):
+   **Find commands** (`read_code find`):
 - `name <symbol>` — exact name match for functions, classes, variables
 - `pattern <substring>` — substring matching across symbols
 - `type <type_name>` — all elements of a specific type (function, class, etc.)
@@ -159,12 +157,12 @@ Read code by intent, not by guessing file windows.
 
 Examples:
 ```bash
-uv run cgc find name "_emit_strict_resolution_failure"
-uv run cgc find pattern "vector_match"
-uv run cgc find content "semantic search"
+uv run python scripts/read_code.py find name "_emit_strict_resolution_failure"
+uv run python scripts/read_code.py find pattern "vector_match"
+uv run python scripts/read_code.py find content "semantic search"
 ```
 
-**Analyze commands** (`cgc analyze`):
+**Analyze commands** (`read_code analyze`):
 - `callers <symbol>` — find all functions that call this function
 - `calls <symbol>` — find all functions this function calls
 - `chain <func1> <func2>` — show call chain between two functions
@@ -175,17 +173,31 @@ uv run cgc find content "semantic search"
 - `overrides <method>` — find all implementations of a method across classes
 - `variable <name>` — analyze where a variable is defined and used
 
-Examples:
+### 2. Materialize: `task --add`
+
+For ad-hoc tasks or inner-loop tasking, use the task materializer to generate HUDs and update the backlog:
+
 ```bash
-uv run cgc analyze callers "_resolve_pattern_anchor"
-uv run cgc analyze calls "read_code_context"
-uv run cgc analyze dead-code
+uv run python scripts/edit_code.py task --add "Implement behavior X — src/file.py:symbol" --feature-id 023
 ```
 
-7. **For Markdown files, use the specialized workflow:**
+This command:
+- Appends the task to `tasks.md` (initializes it from template if missing)
+- Materializes the Task HUD (Acceptance Criteria, File:Symbol) via `speckit_remake_huds.py`
 
-   - Use `read_markdown_headings` to discover structure: `uv run python scripts/read_markdown.py --headings <file>` — lists headings with line numbers.
-   - Use `read_markdown_section` for bounded reads by exact heading title: `uv run python scripts/read_markdown.py <file> "<exact heading>"` — reads only that section.
+### 3. Implement: `sync`
+
+Examples:
+```bash
+uv run python scripts/read_code.py analyze callers "_resolve_pattern_anchor"
+uv run python scripts/read_code.py analyze calls "read_code_context"
+uv run python scripts/read_code.py analyze dead-code
+```
+
+7. **For Markdown files, use the integrated workflow:**
+
+   - Use `headings` to discover structure: `uv run python scripts/read_code.py headings <file>` — lists headings with line numbers.
+   - Use `window` or `context` for bounded reads: `uv run python scripts/read_code.py window <file> 1 100` — reads lines.
    - This keeps markdown reads bounded and intent-driven, just like code reads.
 
 8. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
@@ -211,6 +223,11 @@ edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<
 - Reread only on concrete signals: patch failure, failing tests/lint/LSP diagnostics, or explicit ambiguity from the diff.
 - After each edit batch, run a validation loop before starting the next batch.
 - Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` (via `scripts/ruff_guard.py <python-paths>` when applicable).
+- For task completion, use the unified handoff and closeout flow:
+  ```bash
+  uv run python scripts/edit_code.py sync --paths <paths> --tests <tests> --commit-message "<message>" --handoff --feature-id <FID> --task-id <TID>
+  ```
+- This unified command handles technical validation (tests/lint), behavioral QA (via `speckit_behavioral_qa.py`), ledger auditing, and GitHub syncing.
 - Raw `ruff` CLI invocations are blocked by PreToolUse hook; use `edit_validate` or `scripts/ruff_guard.py`.
 - Raw `pytest`, `pyright`, and `hook_refresh_indexes.py` CLI invocations are blocked by PreToolUse hook; use `edit_validate` / `edit_sync` flow (or `scripts/pytest_guard.py` where explicitly needed).
 - Raw `git diff` CLI invocations are blocked by PreToolUse hook; use `python scripts/git_diff_guard.py [diff args]` for bounded diff inspection.

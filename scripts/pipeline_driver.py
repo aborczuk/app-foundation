@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import re
@@ -15,7 +17,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from pipeline_driver_contracts import parse_step_result, render_status_lines
-from pipeline_driver_state import advance_phase, determine_next_phase, resolve_phase_state
+from pipeline_driver_state import advance_phase, resolve_phase_state
 
 VALID_PIPELINE_PHASE_SEQUENCE = ("specify", "research", "plan", "solution", "implement", "closed")
 VALID_PIPELINE_PHASES = set(VALID_PIPELINE_PHASE_SEQUENCE)
@@ -139,6 +141,164 @@ def validate_generated_artifact(
 
     # Validation passed
     return {"ok": True}
+
+
+def _next_routing_skip_event(phase_state: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Return the next synthetic routing-skip event implied by the current phase state."""
+    current_phase = str(phase_state.get("phase") or "").strip()
+    routing_contract = phase_state.get("routing_contract")
+    if not current_phase or not isinstance(routing_contract, Mapping):
+        return None
+
+    routing = routing_contract.get("routing", {})
+    if not isinstance(routing, Mapping):
+        return None
+
+    research_route = str(routing.get("research_route", "")).strip().lower()
+    plan_profile = str(routing.get("plan_profile", "")).strip().lower()
+    last_event = str(phase_state.get("last_event") or "").strip()
+
+    if current_phase == "specify" and research_route == "skip":
+        return {"phase": current_phase, "event": "research_completed"}
+
+    if current_phase == "research" and plan_profile == "skip":
+        return {"phase": current_phase, "event": "plan_started"}
+
+    if (
+        current_phase == "plan"
+        and plan_profile == "skip"
+        and last_event in {"planreview_completed", "feasibility_spike_completed"}
+    ):
+        return {
+            "phase": current_phase,
+            "event": "plan_approved",
+            "feasibility_required": False,
+        }
+
+    return None
+
+
+def realize_routing(
+    feature_id: str,
+    phase_state: Mapping[str, Any],
+    *,
+    ledger_path: str | Path = ".speckit/pipeline-ledger.jsonl",
+) -> dict[str, Any]:
+    """Append routed skip events until the current phase state stabilizes."""
+    ledger_file = Path(ledger_path)
+    stabilized_state = dict(phase_state)
+    result: dict[str, Any] = {
+        "ok": True,
+        "appended": False,
+        "appended_events": [],
+        "phase_state": stabilized_state,
+        "ledger_path": str(ledger_file),
+    }
+
+    if not feature_id:
+        return {
+            **result,
+            "ok": False,
+            "error_code": "invalid_feature_id",
+            "debug_path": str(ledger_file),
+        }
+    if stabilized_state.get("dry_run") or stabilized_state.get("blocked"):
+        return result
+
+    from pipeline_ledger import cmd_append, read_events
+
+    feature_dir = stabilized_state.get("feature_dir")
+    resolved_feature_dir: str | Path | None = None
+    if isinstance(feature_dir, (str, Path)) and str(feature_dir).strip():
+        resolved_feature_dir = feature_dir
+
+    current_state = dict(stabilized_state)
+    for _ in range(len(VALID_PIPELINE_PHASE_SEQUENCE)):
+        skip_event = _next_routing_skip_event(current_state)
+        if skip_event is None:
+            break
+
+        event_name = str(skip_event["event"])
+        current_phase = str(skip_event["phase"])
+        append_kwargs = {key: value for key, value in skip_event.items() if key not in {"event", "phase"}}
+        existing_events = read_events(ledger_file)
+        if any(
+            str(existing_event.get("feature_id", "")).strip() == feature_id
+            and str(existing_event.get("phase", "")).strip() == current_phase
+            and str(existing_event.get("event", "")).strip() == event_name
+            for existing_event in existing_events
+        ):
+            current_state = resolve_phase_state(
+                feature_id,
+                pipeline_state={
+                    "phase": current_phase,
+                    "dry_run": False,
+                },
+                ledger_path=ledger_file,
+                feature_dir=resolved_feature_dir,
+            )
+            result["phase_state"] = current_state
+            continue
+
+        append_args = argparse.Namespace(
+            file=str(ledger_file),
+            feature_id=feature_id,
+            phase=current_phase,
+            event=event_name,
+            actor="pipeline_driver",
+            timestamp_utc=None,
+            fq_count=None,
+            questions_asked=None,
+            spike_artifact=None,
+            failed_fq=None,
+            feasibility_required=append_kwargs.get("feasibility_required"),
+            task_count=None,
+            story_count=None,
+            estimate_points=None,
+            tasks_sketched=None,
+            acceptance_tests_written=None,
+            critical_count=None,
+            high_count=None,
+            e2e_artifact=None,
+            details=f"Auto-projected by pipeline-driver (routing: {current_phase} skip)",
+        )
+        output_buffer = io.StringIO()
+        error_buffer = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(error_buffer):
+                cmd_append(append_args)
+        except SystemExit as exc:
+            exit_code = exc.code if isinstance(exc.code, int) else 1
+            return {
+                **result,
+                "ok": False,
+                "error_code": "routing_realization_failed",
+                "debug_path": str(ledger_file),
+                "exit_code": exit_code,
+                "stdout": output_buffer.getvalue(),
+                "stderr": error_buffer.getvalue(),
+            }
+
+        result["appended"] = True
+        result["appended_events"].append(
+            {
+                "phase": current_phase,
+                "event": event_name,
+                **append_kwargs,
+            }
+        )
+        current_state = resolve_phase_state(
+            feature_id,
+            pipeline_state={
+                "phase": current_phase,
+                "dry_run": False,
+            },
+            ledger_path=ledger_file,
+            feature_dir=resolved_feature_dir,
+        )
+        result["phase_state"] = current_state
+
+    return result
 
 
 def emit_human_status(
@@ -1234,11 +1394,45 @@ def main(argv: Sequence[str] | None = None) -> int:
     current_phase = phase_state.get("phase")
     if not isinstance(current_phase, str) or not current_phase:
         current_phase = "unknown"
+
+    # 1a. Auto-realize skipped phases if routing allows
+    if not args.dry_run and current_phase != "unknown":
+        routing_result = realize_routing(resolved_feature_id, phase_state)
+        if not routing_result.get("ok"):
+            step_result = {
+                "schema_version": "1.0.0",
+                "ok": False,
+                "exit_code": 2,
+                "correlation_id": build_correlation_id(resolved_feature_id, current_phase),
+                "gate": None,
+                "reasons": ["routing_realization_failed"],
+                "error_code": routing_result.get("error_code", "routing_realization_failed"),
+                "next_phase": None,
+                "debug_path": routing_result.get("debug_path") or str(
+                    Path(".speckit/pipeline-ledger.jsonl")
+                ),
+            }
+            emit_human_status(step_result)
+            if args.output_json:
+                print(
+                    json.dumps(
+                        {
+                            "feature_id": args.feature_id,
+                            "phase_state": phase_state,
+                            "step_result": step_result,
+                        },
+                        sort_keys=True,
+                    )
+                )
+            return 2
+        phase_state = routing_result.get("phase_state", phase_state)
+        current_phase = phase_state.get("phase")
+        if not isinstance(current_phase, str) or not current_phase:
+            current_phase = "unknown"
+
     route_next_phase = phase_state.get("next_phase")
     if not isinstance(route_next_phase, str) or not route_next_phase:
-        route_next_phase = determine_next_phase(
-            current_phase, routing_contract=phase_state.get("routing_contract")
-        )
+        route_next_phase = advance_phase(current_phase)
 
     if requested_phase is not None and requested_phase not in VALID_PIPELINE_PHASES:
         correlation_id = build_correlation_id(resolved_feature_id, requested_phase)
@@ -1459,12 +1653,36 @@ def main(argv: Sequence[str] | None = None) -> int:
                         resolved_feature_id,
                         pipeline_state={"phase": effective_phase, "dry_run": False},
                     )
-                    resolved_current_phase = phase_state.get("phase")
-                    if not isinstance(resolved_current_phase, str) or not resolved_current_phase:
-                        resolved_current_phase = effective_phase
-                    step_result["next_phase"] = determine_next_phase(
-                        resolved_current_phase, routing_contract=phase_state.get("routing_contract")
+                    routing_result = realize_routing(
+                        resolved_feature_id,
+                        phase_state,
                     )
+                    if not routing_result.get("ok"):
+                        step_result.update(
+                            {
+                                "ok": False,
+                                "exit_code": 2,
+                                "reasons": ["routing_realization_failed"],
+                                "error_code": routing_result.get(
+                                    "error_code",
+                                    "routing_realization_failed",
+                                ),
+                                "next_phase": None,
+                                "debug_path": routing_result.get("debug_path") or str(
+                                    Path(".speckit/pipeline-ledger.jsonl")
+                                ),
+                            }
+                        )
+                    else:
+                        phase_state = routing_result.get("phase_state", phase_state)
+                        resolved_current_phase = phase_state.get("phase")
+                        if not isinstance(resolved_current_phase, str) or not resolved_current_phase:
+                            resolved_current_phase = effective_phase
+                        step_result["next_phase"] = phase_state.get("next_phase") or advance_phase(
+                            resolved_current_phase
+                        )
+                        if routing_result.get("appended_events"):
+                            step_result["routing_realization"] = routing_result["appended_events"]
                     step_result["pipeline_event"] = append_result.get("event")
                 step_result["artifact_validation"] = {
                     "ok": True,

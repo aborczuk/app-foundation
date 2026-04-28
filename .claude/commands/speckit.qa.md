@@ -12,8 +12,8 @@ Run behavioral QA for a completed task to verify implementation against acceptan
 
 1. Resolve feature context and task HUD.
 2. Read acceptance criteria from HUD (or tasks.md fallback).
-3. Run actual tests for changed files (not just schema checks).
-4. Verify implementation matches acceptance criteria (drift detection).
+3. Review the deterministic test logs provided in the handoff payload.
+4. Verify implementation matches acceptance criteria (semantic drift detection).
 5. Emit structured verdict JSON with specific findings.
 
 ## Expanded Guidance (Load On Demand)
@@ -41,14 +41,14 @@ If HUD is missing or lacks acceptance criteria, fall back to tasks.md `Independe
 
 If neither exists → `FIX_REQUIRED: MISSING_ACCEPTANCE_CRITERIA`
 
-### 3. Test execution
+### 3. Test verification
 
-Run pytest for test files covering the changed files:
-- If changed file is in `tests/` → run it directly
-- If changed file is in `src/` → guess test file from module name (`test_{module}.py`)
-- If no test files found → run `pytest -k {task_id_lower}` as fallback
+The deterministic behavioral script has already run the tests. Review the `test_runs` evidence in the handoff payload:
+- Confirm that tests covering the changed files were actually executed.
+- Confirm that all relevant test runs have `exit_code == 0`.
+- If tests were skipped or failed, this is a blocking finding.
 
-A test run fails if `exit_code != 0`.
+Do not run tests manually unless the provided logs are ambiguous or missing.
 
 ### 4. Drift detection
 

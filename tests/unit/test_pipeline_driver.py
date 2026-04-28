@@ -45,6 +45,60 @@ def _ledger_event(event: str, *, timestamp_utc: str, **fields: object) -> dict[s
     return payload
 
 
+def _write_skip_routing_spec(
+    root: Path,
+    *,
+    feature_id: str = "019",
+    research_route: str = "skip",
+    plan_profile: str = "skip",
+) -> Path:
+    """Write a feature spec with the requested routing contract."""
+    spec_dir = root / "specs" / f"{feature_id}-routing-skip"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir.joinpath("spec.md").write_text(
+        "\n".join(
+            [
+                "# Spec",
+                "",
+                "## Routing Contract",
+                "",
+                "```json",
+                "{",
+                '  "routing": {',
+                f'    "research_route": "{research_route}",',
+                f'    "plan_profile": "{plan_profile}",',
+                '    "sketch_profile": "core",',
+                '    "tasking_route": "required",',
+                '    "estimate_route": "required_after_tasking",',
+                '    "routing_reason": "Use the routed smaller path.",',
+                '    "conditional_sketch_sections": []',
+                "  },",
+                '  "risk": {',
+                '    "requirement_clarity": "low",',
+                '    "repo_uncertainty": "low",',
+                '    "external_dependency_uncertainty": "low",',
+                '    "state_data_migration_risk": "low",',
+                '    "runtime_side_effect_risk": "low",',
+                '    "human_operator_dependency": "low"',
+                "  }",
+                "}",
+                "```",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return spec_dir
+
+
+def _write_ledger_events(ledger_path: Path, events: list[dict[str, object]]) -> None:
+    """Write a JSONL pipeline ledger for a test scenario."""
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        ("\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n") if events else "",
+        encoding="utf-8",
+    )
+
+
 def test_main_outputs_minimal_step_result(capsys) -> None:
     # dry-run + json: introspection mode, no execution, always returns 0 with structured output
     exit_code = pipeline_driver.main(["--feature-id", "019", "--dry-run", "--json"])
@@ -189,6 +243,239 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
     assert appended["feature_id"] == "019"
     assert appended["phase"] == "plan"
     assert appended["command_id"] == "speckit.plan"
+
+
+def test_next_routing_skip_event_selects_research_completion() -> None:
+    skip_event = pipeline_driver._next_routing_skip_event(
+        {
+            "phase": "specify",
+            "routing_contract": {
+                "routing": {
+                    "research_route": "skip",
+                    "plan_profile": "required",
+                }
+            },
+        }
+    )
+
+    assert skip_event == {"phase": "specify", "event": "research_completed"}
+
+
+def test_next_routing_skip_event_selects_plan_start() -> None:
+    skip_event = pipeline_driver._next_routing_skip_event(
+        {
+            "phase": "research",
+            "routing_contract": {
+                "routing": {
+                    "research_route": "required",
+                    "plan_profile": "skip",
+                }
+            },
+        }
+    )
+
+    assert skip_event == {"phase": "research", "event": "plan_started"}
+
+
+def test_next_routing_skip_event_selects_plan_approval_with_override() -> None:
+    skip_event = pipeline_driver._next_routing_skip_event(
+        {
+            "phase": "plan",
+            "last_event": "feasibility_spike_completed",
+            "routing_contract": {
+                "routing": {
+                    "research_route": "required",
+                    "plan_profile": "skip",
+                }
+            },
+        }
+    )
+
+    assert skip_event is not None
+    assert skip_event["phase"] == "plan"
+    assert skip_event["event"] == "plan_approved"
+    assert skip_event["feasibility_required"] is False
+
+
+def test_realize_routing_dry_run_is_noop(tmp_path: Path) -> None:
+    spec_dir = _write_skip_routing_spec(tmp_path, research_route="skip", plan_profile="core")
+    ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
+    _write_ledger_events(
+        ledger_path,
+        [
+            _ledger_event(
+                "backlog_registered",
+                timestamp_utc="2026-04-10T00:00:00Z",
+                routing={
+                    "research_route": "skip",
+                    "plan_profile": "core",
+                    "sketch_profile": "core",
+                    "tasking_route": "required",
+                    "estimate_route": "required_after_tasking",
+                    "routing_reason": "Use the routed smaller path.",
+                    "conditional_sketch_sections": [],
+                },
+                risk={
+                    "requirement_clarity": "low",
+                    "repo_uncertainty": "low",
+                    "external_dependency_uncertainty": "low",
+                    "state_data_migration_risk": "low",
+                    "runtime_side_effect_risk": "low",
+                    "human_operator_dependency": "low",
+                },
+            )
+        ],
+    )
+
+    phase_state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "specify", "blocked": False},
+        ledger_path=ledger_path,
+        feature_dir=spec_dir,
+    )
+    before = ledger_path.read_text(encoding="utf-8")
+
+    result = pipeline_driver.realize_routing(
+        "019",
+        {**phase_state, "dry_run": True, "feature_dir": str(spec_dir)},
+        ledger_path=ledger_path,
+    )
+
+    assert result["ok"] is True
+    assert result["appended"] is False
+    assert result["appended_events"] == []
+    assert ledger_path.read_text(encoding="utf-8") == before
+
+
+def test_realize_routing_is_idempotent_on_retry(tmp_path: Path) -> None:
+    spec_dir = _write_skip_routing_spec(tmp_path, research_route="skip", plan_profile="core")
+    ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
+    _write_ledger_events(
+        ledger_path,
+        [
+            _ledger_event(
+                "backlog_registered",
+                timestamp_utc="2026-04-10T00:00:00Z",
+                routing={
+                    "research_route": "skip",
+                    "plan_profile": "core",
+                    "sketch_profile": "core",
+                    "tasking_route": "required",
+                    "estimate_route": "required_after_tasking",
+                    "routing_reason": "Use the routed smaller path.",
+                    "conditional_sketch_sections": [],
+                },
+                risk={
+                    "requirement_clarity": "low",
+                    "repo_uncertainty": "low",
+                    "external_dependency_uncertainty": "low",
+                    "state_data_migration_risk": "low",
+                    "runtime_side_effect_risk": "low",
+                    "human_operator_dependency": "low",
+                },
+            )
+        ],
+    )
+
+    phase_state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "specify", "blocked": False},
+        ledger_path=ledger_path,
+        feature_dir=spec_dir,
+    )
+
+    first_result = pipeline_driver.realize_routing(
+        "019",
+        {**phase_state, "feature_dir": str(spec_dir)},
+        ledger_path=ledger_path,
+    )
+    assert first_result["ok"] is True
+    assert first_result["appended"] is True
+    assert first_result["appended_events"] == [
+        {"phase": "specify", "event": "research_completed"}
+    ]
+
+    snapshot = ledger_path.read_text(encoding="utf-8")
+
+    second_result = pipeline_driver.realize_routing(
+        "019",
+        {**phase_state, "feature_dir": str(spec_dir)},
+        ledger_path=ledger_path,
+    )
+    assert second_result["ok"] is True
+    assert second_result["appended"] is False
+    assert ledger_path.read_text(encoding="utf-8") == snapshot
+
+
+def test_realize_routing_appends_plan_approval_with_override(tmp_path: Path) -> None:
+    spec_dir = _write_skip_routing_spec(tmp_path, research_route="required", plan_profile="skip")
+    ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
+    _write_ledger_events(
+        ledger_path,
+        [
+            _ledger_event(
+                "backlog_registered",
+                timestamp_utc="2026-04-10T00:00:00Z",
+                routing={
+                    "research_route": "required",
+                    "plan_profile": "skip",
+                    "sketch_profile": "core",
+                    "tasking_route": "required",
+                    "estimate_route": "required_after_tasking",
+                    "routing_reason": "Use the routed smaller path.",
+                    "conditional_sketch_sections": [],
+                },
+                risk={
+                    "requirement_clarity": "low",
+                    "repo_uncertainty": "low",
+                    "external_dependency_uncertainty": "low",
+                    "state_data_migration_risk": "low",
+                    "runtime_side_effect_risk": "low",
+                    "human_operator_dependency": "low",
+                },
+            ),
+            _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
+            _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+            _ledger_event(
+                "planreview_completed",
+                timestamp_utc="2026-04-10T00:03:00Z",
+                fq_count=0,
+                questions_asked=0,
+            ),
+            _ledger_event(
+                "feasibility_spike_completed",
+                timestamp_utc="2026-04-10T00:04:00Z",
+                spike_artifact="specs/019-routing-skip/spike.md",
+                fq_count=0,
+            ),
+        ],
+    )
+
+    phase_state = pipeline_driver_state.resolve_phase_state(
+        "019",
+        pipeline_state={"phase": "plan", "blocked": False},
+        ledger_path=ledger_path,
+        feature_dir=spec_dir,
+    )
+
+    result = pipeline_driver.realize_routing(
+        "019",
+        {**phase_state, "feature_dir": str(spec_dir)},
+        ledger_path=ledger_path,
+    )
+
+    assert result["ok"] is True
+    assert result["appended"] is True
+    assert result["appended_events"] == [
+        {
+            "phase": "plan",
+            "event": "plan_approved",
+            "feasibility_required": False,
+        }
+    ]
+    final_state = result["phase_state"]
+    assert final_state["phase"] == "plan"
+    assert final_state["last_event"] == "plan_approved"
 
 
 def test_main_generative_route_blocks_when_artifact_validation_fails(monkeypatch) -> None:

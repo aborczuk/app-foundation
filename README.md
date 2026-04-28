@@ -54,6 +54,22 @@ pytest tests/unit/ -v
 - **.claude/** — Development governance (domains, speckit commands)
 - **.speckit/** — Task and pipeline audit ledgers
 
+## The Speckit Natural Loop
+
+This repository implements a high-fidelity "Natural Loop" for feature development, optimized for different task sizes via T-shirt sizing.
+
+### XS/S Fast-Track (The Spiral)
+For small features (XS/S), the system automatically handles the "Linear Ledger Conflict" (where the auditor requires prerequisite events even when skipped).
+
+1. **Specify**: Run `/speckit.specify`. The Agent performs an **Implicit Sketch** via `read_code`.
+2. **Realize Routing**: Specify automatically projects the skipped phases (Research, Plan) into the ledger.
+3. **Tasking**: You enter the `solution` phase immediately. Run `edit_code task --add` to materialize HUDs.
+4. **Implement**: Iterative development via `edit_code sync`.
+5. **QA Handoff**: Run `edit_code sync --handoff` for deterministic + generative verification.
+
+### M/L/XL Full-Track
+For larger features, the pipeline enforces manual gates for Research, Planning, and Sketching to manage architectural risk.
+
 ## Codebase Vector Index
 
 ### Purpose
@@ -111,12 +127,21 @@ The index is backed by Chroma + `fastembed` and stored under `.codegraphcontext/
    - Point webhook to your control plane `/webhook` endpoint (port 8000)
 
 4. **Run speckit pipeline**:
-   ```bash
-   /speckit.specify "Your feature description"
-   /speckit.research
-   /speckit.plan
-   # ... continue with speckit workflow
-   ```
+   - **For XS/S (Fast Track)**:
+     ```bash
+     /speckit.specify "Small fix description"
+     # specify catch-up completes...
+     edit_code task --add "Fix bug — src/file.py:symbol"
+     edit_code sync --paths src/file.py --tests tests/test_file.py
+     ```
+   - **For M/L/XL (Full Track)**:
+     ```bash
+     /speckit.specify "Large feature description"
+     /speckit.research
+     /speckit.plan
+     /speckit.tasking
+     edit_code sync ...
+     ```
 
 ## Testing
 

@@ -78,6 +78,60 @@ def _write_manifest_route(
     )
 
 
+def _write_skip_routing_spec(
+    root: Path,
+    *,
+    feature_id: str = "019",
+    research_route: str = "skip",
+    plan_profile: str = "skip",
+) -> Path:
+    """Write a feature spec with the requested routing contract."""
+    spec_dir = root / "specs" / f"{feature_id}-routing-skip"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir.joinpath("spec.md").write_text(
+        "\n".join(
+            [
+                "# Spec",
+                "",
+                "## Routing Contract",
+                "",
+                "```json",
+                "{",
+                '  "routing": {',
+                f'    "research_route": "{research_route}",',
+                f'    "plan_profile": "{plan_profile}",',
+                '    "sketch_profile": "core",',
+                '    "tasking_route": "required",',
+                '    "estimate_route": "required_after_tasking",',
+                '    "routing_reason": "Use the routed smaller path.",',
+                '    "conditional_sketch_sections": []',
+                "  },",
+                '  "risk": {',
+                '    "requirement_clarity": "low",',
+                '    "repo_uncertainty": "low",',
+                '    "external_dependency_uncertainty": "low",',
+                '    "state_data_migration_risk": "low",',
+                '    "runtime_side_effect_risk": "low",',
+                '    "human_operator_dependency": "low"',
+                "  }",
+                "}",
+                "```",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return spec_dir
+
+
+def _write_jsonl_ledger(ledger_path: Path, events: list[dict[str, object]]) -> None:
+    """Write a JSONL ledger for a driver flow test."""
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        ("\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n") if events else "",
+        encoding="utf-8",
+    )
+
+
 def build_feature_workspace(
     driver_flow_harness,
     *,
@@ -306,6 +360,73 @@ def test_generative_route_blocks_without_completion_append(driver_flow_harness, 
 
     assert exit_code == 1
     assert append_called["value"] is False
+
+
+def test_generative_route_realizes_skipped_research_phase(tmp_path: Path, monkeypatch, capsys) -> None:
+    _write_skip_routing_spec(tmp_path, research_route="skip", plan_profile="core")
+    ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
+    _write_jsonl_ledger(
+        ledger_path,
+        [
+            {
+                "event": "backlog_registered",
+                "feature_id": "019",
+                "timestamp_utc": "2026-04-10T00:00:00Z",
+                "routing": {
+                    "research_route": "skip",
+                    "plan_profile": "core",
+                    "sketch_profile": "core",
+                    "tasking_route": "required",
+                    "estimate_route": "required_after_tasking",
+                    "routing_reason": "Use the routed smaller path.",
+                    "conditional_sketch_sections": [],
+                },
+                "risk": {
+                    "requirement_clarity": "low",
+                    "repo_uncertainty": "low",
+                    "external_dependency_uncertainty": "low",
+                    "state_data_migration_risk": "low",
+                    "runtime_side_effect_risk": "low",
+                    "human_operator_dependency": "low",
+                },
+            }
+        ],
+    )
+
+    runner_script = tmp_path / "handoff_runner.py"
+    runner_script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import sys",
+                "from pathlib import Path",
+                "payload = json.loads(sys.stdin.read())",
+                "artifact = Path('spec-output.md')",
+                "artifact.write_text('# Spec\\n\\n## Summary\\nGenerated content\\n', encoding='utf-8')",
+                "print(json.dumps({'artifact_path': str(artifact), 'completion_marker': '## Summary'}))",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SPECKIT_HANDOFF_RUNNER", f"{sys.executable} {runner_script}")
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--json"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert_step_result_envelope(payload["step_result"], ok=True, exit_code=0, next_phase="plan")
+
+    final_events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines() if line]
+    assert [event["event"] for event in final_events] == [
+        "backlog_registered",
+        "research_completed",
+    ]
+    assert payload["phase_state"]["phase"] == "research"
+    assert payload["phase_state"]["next_phase"] == "plan"
 
 
 def test_generative_route_blocks_on_parse_failure_without_completion_append(

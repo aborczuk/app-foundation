@@ -95,6 +95,10 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip pyright diagnostics for touched Python paths.",
     )
+    sync.add_argument("--handoff", action="store_true", help="Run behavioral QA handoff and task closeout before sync.")
+    sync.add_argument("--verdict-pass", action="store_true", help="Provide a PASS verdict to resume closeout after a generative pause.")
+    sync.add_argument("--feature-id", help="Feature ID for handoff/closeout (required if --handoff or --verdict-pass is set).")
+    sync.add_argument("--task-id", help="Task ID for handoff/closeout (required if --handoff is set).")
     sync_scope = sync.add_mutually_exclusive_group()
     sync_scope.add_argument(
         "--changed-only",
@@ -110,6 +114,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run ruff/pyright on all provided --paths.",
     )
 
+    # Task subcommand
+    task_p = subparsers.add_parser("task", help="Task lifecycle management (add, status).")
+    task_sub = task_p.add_subparsers(dest="task_command", required=True)
+    
+    task_add = task_sub.add_parser("add", help="Add a new task to the backlog and materialize it.")
+    task_add.add_argument("description", help="Task description (e.g. 'Fix the login bug — src/auth.py:login').")
+    task_add.add_argument("--feature-id", required=True, help="Feature ID to add task to.")
+    task_add.add_argument("--story", help="User story ID (e.g. US1).")
+    task_add.add_argument("--points", type=int, default=1, help="Estimate points (default 1).")
+    
     return parser
 
 
@@ -125,6 +139,26 @@ def _normalize_repo_path(raw_path: str) -> str:
         return candidate.relative_to(REPO_ROOT).as_posix()
     except ValueError as exc:
         raise ValueError(f"path is outside repo root: {raw_path}") from exc
+
+
+def _resolve_feature_dir(feature_id: str) -> Path:
+    """Resolve feature directory from exact slug or numeric feature prefix."""
+    specs_root = REPO_ROOT / "specs"
+    if not specs_root.is_dir():
+        raise ValueError("missing_specs_root")
+
+    explicit = specs_root / feature_id
+    if explicit.is_dir():
+        return explicit.resolve()
+
+    candidates = sorted(path for path in specs_root.glob(f"{feature_id}-*") if path.is_dir())
+    if not candidates:
+        raise ValueError(f"feature_not_found: {feature_id}")
+    if len(candidates) > 1:
+        raise ValueError(
+            f"feature_id_ambiguous: {feature_id} matches " + ",".join(path.name for path in candidates[:5])
+        )
+    return candidates[0].resolve()
 
 
 def _resolve_paths(raw_paths: Sequence[str]) -> list[str]:
@@ -467,8 +501,15 @@ def _run_sync(
     skip_ruff: bool,
     skip_pyright: bool,
     changed_only: bool,
+    handoff: bool = False,
+    verdict_pass: bool = False,
+    feature_id: str | None = None,
+    task_id: str | None = None,
 ) -> int:
     """Run validate + refresh + git sync in one deterministic flow."""
+    if verdict_pass:
+        return _resume_sync_closeout(feature_id=feature_id, task_id=task_id, no_push=no_push)
+
     dirty = _dirty_paths()
     if dirty is None:
         in_scope_dirty = list(paths)
@@ -518,10 +559,343 @@ def _run_sync(
     if rc != 0:
         return rc
 
+    if handoff and feature_id and task_id:
+        # Run Handoff (QA)
+        try:
+            feature_dir = _resolve_feature_dir(feature_id)
+        except ValueError as exc:
+            print(f"[edit-code] ERROR: {exc}", file=sys.stderr)
+            return 1
+
+        handoff_res = _run_handoff_logic(feature_id=feature_id, task_id=task_id)
+        if handoff_res["exit_code"] != 0:
+            return handoff_res["exit_code"]
+
+        # Stage 2: Generative Handoff (Semantic Review)
+        _emit_generative_qa_handoff(
+            feature_id=feature_id,
+            task_id=task_id,
+            handoff_payload_path=handoff_res.get("payload_file"),
+            behavioral_result=handoff_res.get("behavioral_result"),
+        )
+        
+        # STOP here for Agent review
+        print("\n[edit-code] Task is pending semantic QA review. Provide verdict to continue.", flush=True)
+        return 0
+
     if no_push:
         return 0
 
     return _run_git_with_retry(["git", "push"], label="git_push")
+
+
+def _run_handoff_logic(
+    *,
+    feature_id: str,
+    task_id: str,
+) -> dict[str, Any]:
+    """Internal helper to run QA handoff and return structured results."""
+    handoff_cmd = [
+        sys.executable,
+        "scripts/speckit_offline_qa_handoff.py",
+        "--feature-id",
+        feature_id,
+        "--task-id",
+        task_id,
+        "--json",
+    ]
+    print(f"[edit-code] starting behavioral QA handoff for {task_id}...", flush=True)
+    completed = subprocess.run(
+        handoff_cmd,
+        cwd=str(REPO_ROOT),
+        check=False,
+        text=True,
+        capture_output=True,
+        env=_runtime_env(),
+    )
+    
+    res = {"exit_code": completed.returncode, "qa_run_id": None, "payload_file": None, "behavioral_result": None}
+    if completed.stdout:
+        try:
+            handoff_res = json.loads(completed.stdout)
+            res["qa_run_id"] = handoff_res.get("qa_run_id")
+            res["payload_file"] = handoff_res.get("payload_file")
+            res["behavioral_result"] = handoff_res
+            verdict = handoff_res.get("result_verdict", "UNKNOWN")
+            print(f"[edit-code] handoff completed: verdict={verdict}, run_id={res['qa_run_id']}", flush=True)
+        except json.JSONDecodeError:
+            pass
+
+    if completed.returncode != 0:
+        print(f"[edit-code] behavioral QA failed (exit {completed.returncode})", file=sys.stderr, flush=True)
+        if completed.stderr:
+            print(completed.stderr, file=sys.stderr)
+            
+    return res
+
+
+def _emit_generative_qa_handoff(
+    *,
+    feature_id: str,
+    task_id: str,
+    handoff_payload_path: str | None,
+    behavioral_result: dict[str, Any] | None,
+) -> None:
+    """Emit a specialized handoff block for generative LLM QA review."""
+    print("\n" + "=" * 80)
+    print(f" [SPECKIT_QA_SEMANTIC_REVIEW_REQUIRED] {feature_id}/{task_id} ".center(80, "="))
+    print("=" * 80)
+    
+    if not handoff_payload_path:
+        print("ERROR: Missing handoff payload path", file=sys.stderr)
+        return
+
+    payload_path = Path(handoff_payload_path)
+    if not payload_path.exists():
+        print(f"ERROR: Payload file not found: {payload_path}", file=sys.stderr)
+        return
+
+    try:
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print("ERROR: Payload file contains invalid JSON", file=sys.stderr)
+        return
+
+    print(f"\n### HUD Acceptance Criteria ({task_id}):")
+    ac = behavioral_result.get("acceptance_criteria") if behavioral_result else None
+    if not ac:
+        ac = "\n".join(payload.get("acceptance_criteria", []))
+    print(ac or "No acceptance criteria found.")
+
+    print(f"\n### File:Symbol Contract:")
+    fs = behavioral_result.get("file_symbol") if behavioral_result else payload.get("file_symbol")
+    print(fs or "No specific file:symbol defined.")
+
+    print("\n### Behavioral Test Logs (Deterministic):")
+    test_runs = behavioral_result.get("test_runs", []) if behavioral_result else payload.get("test_runs", [])
+    if not test_runs:
+        print("No test evidence found.")
+    for run in test_runs:
+        status = "PASS" if run.get("exit_code") == 0 else "FAIL"
+        print(f"- [{status}] {run.get('command')}")
+
+    print("\n### Implementation Diff:")
+    diff = payload.get("diff", "")
+    if diff:
+        # Print a bounded preview of the diff to keep it token-efficient
+        lines = diff.splitlines()
+        if len(lines) > 100:
+            print("\n".join(lines[:50]))
+            print(f"\n... [{len(lines) - 100} lines truncated] ...\n")
+            print("\n".join(lines[-50:]))
+        else:
+            print(diff)
+    else:
+        print("No diff found in payload.")
+
+    print("\n" + "=" * 80)
+    print(" ACTION REQUIRED: Perform semantic review as per /speckit.qa instructions ".center(80, "="))
+    print("=" * 80 + "\n")
+
+
+def _resume_sync_closeout(
+    *,
+    feature_id: str | None,
+    task_id: str | None,
+    no_push: bool,
+) -> int:
+    """Resume the sync flow after a generative verdict has been provided."""
+    if not feature_id or not task_id:
+        print("ERROR: --feature-id and --task-id are required to resume closeout", file=sys.stderr)
+        return 1
+
+    try:
+        feature_dir = _resolve_feature_dir(feature_id)
+    except ValueError as exc:
+        print(f"[edit-code] ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    # 1. Get current commit SHA
+    commit_sha_proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), capture_output=True, text=True, check=True
+    )
+    current_sha = commit_sha_proc.stdout.strip()
+
+    # 2. Run Closeout
+    closeout_rc = _run_closeout(
+        feature_id=feature_id,
+        task_id=task_id,
+        feature_dir=feature_dir,
+        commit_sha=current_sha,
+        qa_run_id=f"generative-pass-{current_sha[:8]}",
+    )
+    if closeout_rc != 0:
+        return closeout_rc
+
+    # 3. Amend commit with tasks.md update
+    tasks_file = feature_dir / "tasks.md"
+    try:
+        tasks_rel_path = tasks_file.relative_to(REPO_ROOT).as_posix()
+        _run_git_with_retry(["git", "add", tasks_rel_path], label="git_add_tasks_md")
+        _run_git_with_retry(["git", "commit", "--amend", "--no-edit"], label="git_amend_closeout")
+    except ValueError:
+        pass
+
+    if no_push:
+        return 0
+
+    return _run_git_with_retry(["git", "push"], label="git_push")
+
+
+def _run_handoff_and_closeout(
+    *,
+    feature_id: str,
+    task_id: str,
+    paths: Sequence[str],
+) -> int:
+    """Run behavioral QA handoff and task closeout sequence."""
+    try:
+        feature_dir = _resolve_feature_dir(feature_id)
+    except ValueError as exc:
+        print(f"[edit-code] ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    # 1. Run Handoff (Builds payload and runs Offline QA)
+    handoff_cmd = [
+        sys.executable,
+        "scripts/speckit_offline_qa_handoff.py",
+        "--feature-id",
+        feature_id,
+        "--task-id",
+        task_id,
+        "--json",
+    ]
+    print(f"[edit-code] starting behavioral QA handoff for {task_id}...", flush=True)
+    completed = subprocess.run(
+        handoff_cmd,
+        cwd=str(REPO_ROOT),
+        check=False,
+        text=True,
+        capture_output=True,
+        env=_runtime_env(),
+    )
+    if completed.stdout:
+        try:
+            handoff_res = json.loads(completed.stdout)
+            verdict = handoff_res.get("result_verdict", "UNKNOWN")
+            qa_run_id = handoff_res.get("qa_run_id", "none")
+            print(f"[edit-code] handoff completed: verdict={verdict}, run_id={qa_run_id}", flush=True)
+        except json.JSONDecodeError:
+            print("[edit-code] handoff output was not valid JSON", file=sys.stderr)
+
+    if completed.returncode != 0:
+        print(f"[edit-code] behavioral QA failed (exit {completed.returncode})", file=sys.stderr, flush=True)
+        if completed.stderr:
+            print(completed.stderr, file=sys.stderr)
+        return completed.returncode
+
+    # 2. Run Closeout (Audit Ledger and HUD)
+    # We need the commit SHA, but we haven't committed yet in the sync flow.
+    # Wait! speckit_closeout_task.py requires --commit-sha.
+    # In the sync flow, we usually validate -> refresh -> add -> commit -> push.
+    # So handoff/closeout should happen AFTER commit but BEFORE push.
+    return 0
+
+
+def _run_closeout(
+    *,
+    feature_id: str,
+    task_id: str,
+    feature_dir: Path,
+    commit_sha: str,
+    qa_run_id: str | None = None,
+) -> int:
+    """Run canonical task closeout logic."""
+    tasks_file = feature_dir / "tasks.md"
+    ledger_file = REPO_ROOT / ".speckit" / "task-ledger.jsonl"
+
+    closeout_cmd = [
+        sys.executable,
+        "scripts/speckit_closeout_task.py",
+        "--feature-id",
+        feature_id,
+        "--task-id",
+        task_id,
+        "--tasks-file",
+        str(tasks_file),
+        "--ledger-file",
+        str(ledger_file),
+        "--commit-sha",
+        commit_sha,
+        "--qa-run-id",
+        qa_run_id or "pending",
+        "--json",
+    ]
+    print(f"[edit-code] closing out task {task_id}...", flush=True)
+    return _run_command(closeout_cmd, label="task_closeout")
+
+
+def _run_task_add(
+    *,
+    description: str,
+    feature_id: str,
+    story: str | None = None,
+    points: int = 1,
+) -> int:
+    """Add a task to tasks.md and materialize its HUD/Ledger state."""
+    try:
+        feature_dir = _resolve_feature_dir(feature_id)
+    except ValueError as exc:
+        print(f"[edit-code] ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        # Scaffold from template if missing
+        template = REPO_ROOT / ".specify/templates/tasks-template.md"
+        if template.exists():
+            print(f"[edit-code] Initializing {tasks_file} from template...")
+            tasks_file.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            print(f"[edit-code] WARNING: tasks template missing. Creating empty {tasks_file}...", file=sys.stderr)
+            tasks_file.write_text("# Tasks\n\n", encoding="utf-8")
+
+    # 1. Resolve Next Task ID
+    content = tasks_file.read_text(encoding="utf-8")
+    task_ids = re.findall(r"\bT(\d{3})\b", content)
+    next_id_num = max([int(tid) for tid in task_ids]) + 1 if task_ids else 1
+    next_id = f"T{next_id_num:03d}"
+
+    # 2. Append to tasks.md
+    if " — " not in description and " - " not in description:
+        print("[edit-code] WARNING: No ' — File:Symbol' annotation found. HUD will be a template only.", file=sys.stderr)
+
+    story_label = f" [{story}]" if story else ""
+    task_line = f"- [ ] {next_id}{story_label} {description}\n"
+    
+    # Try to find a good place to append (e.g. before Dependencies or at the end)
+    if "## Dependencies" in content:
+        new_content = content.replace("## Dependencies", f"{task_line}## Dependencies")
+    else:
+        new_content = content + ("\n" if not content.endswith("\n") else "") + task_line
+    
+    tasks_file.write_text(new_content, encoding="utf-8")
+    print(f"[edit-code] Registered {next_id} in tasks.md")
+
+    # 3. Materialize HUD
+    print(f"[edit-code] Materializing HUD for {next_id}...")
+    rc = subprocess.run([
+        sys.executable, "scripts/speckit_remake_huds.py",
+        "--feature-dir", str(feature_dir),
+        "--task-id", next_id
+    ], check=False).returncode
+    
+    if rc == 0:
+        print(f"[edit-code] Task {next_id} registered and HUD generated.")
+    else:
+        print(f"[edit-code] WARNING: HUD materialization failed (exit code {rc}).", file=sys.stderr)
+    
+    return rc
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -545,7 +919,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "refresh":
         return _run_refresh(paths)
+    if args.command == "task":
+        if args.task_command == "add":
+            return _run_task_add(
+                description=args.description,
+                feature_id=args.feature_id,
+                story=args.story,
+                points=args.points,
+            )
     if args.command == "sync":
+        if args.handoff or args.verdict_pass:
+            if not args.feature_id or not args.task_id:
+                print("ERROR: --feature-id and --task-id are required for handoff/verdict", file=sys.stderr)
+                return 1
+
         return _run_sync(
             paths,
             args.tests,
@@ -554,6 +941,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             skip_ruff=args.skip_ruff,
             skip_pyright=args.skip_pyright,
             changed_only=args.changed_only,
+            handoff=args.handoff,
+            verdict_pass=args.verdict_pass,
+            feature_id=args.feature_id,
+            task_id=args.task_id,
         )
     raise ValueError(f"unknown command {args.command}")
 
