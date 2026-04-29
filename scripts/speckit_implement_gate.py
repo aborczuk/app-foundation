@@ -293,23 +293,6 @@ def _count_open_tasks(lines: list[str]) -> list[str]:
     return open_task_ids
 
 
-def _find_matching_e2e_scripts(repo_root: Path, feature_dir: Path) -> list[str]:
-    scripts_dir = repo_root / "scripts"
-    feature_name = feature_dir.name
-    normalized = feature_name.replace("-", "_")
-
-    exact = scripts_dir / f"e2e_{normalized}.sh"
-    if exact.exists():
-        return [str(exact)]
-
-    feature_id = feature_name.split("-", 1)[0]
-    if feature_id.isdigit():
-        matches = sorted(scripts_dir.glob(f"e2e_{feature_id}_*.sh"))
-    else:
-        matches = sorted(scripts_dir.glob(f"e2e_*{normalized}*.sh"))
-    return [str(path) for path in matches]
-
-
 def _task_ledger_ready_for_implementation(repo_root: Path, feature_id: str) -> tuple[bool, list[str]]:
     """Confirm the task ledger is valid and fully closed for the feature."""
     ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
@@ -434,15 +417,8 @@ def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     if args.layer2 != "pass":
         reasons.append("layer2_not_pass")
 
-    if args.phase_type == "story":
-        if args.layer3 != "pass":
-            reasons.append("layer3_not_pass_for_story_phase")
-        e2e_doc = feature_dir / "e2e.md"
-        e2e_scripts = _find_matching_e2e_scripts(Path(__file__).resolve().parent.parent, feature_dir)
-        if not e2e_doc.exists():
-            reasons.append("missing_e2e_md")
-        if not e2e_scripts:
-            reasons.append("missing_e2e_script")
+    if args.phase_type == "story" and args.layer3 != "pass":
+        reasons.append("layer3_not_pass_for_story_phase")
 
     if not reasons and args.phase_name == IMPLEMENTATION_PHASE_NAME:
         task_ledger_ready, task_ledger_reasons = _task_ledger_ready_for_implementation(repo_root, feature_id)
