@@ -209,59 +209,27 @@ resolve_base_ref() {
     return 1
 }
 
-# Enforce deterministic feature branching from a clean, synced local main.
+# Enforce deterministic spec scaffolding on a clean local main.
 ensure_main_branch_ready() {
-    local base_ref="$1"
     local current_branch
-    local ahead_count
-    local behind_count
-
-    if [ "$base_ref" != "main" ] && [ "$base_ref" != "origin/main" ]; then
-        return 0
-    fi
 
     if ! git rev-parse --verify --quiet "main^{commit}" >/dev/null; then
-        >&2 echo "Error: Local 'main' branch is required for deterministic /speckit.specify branching."
-        >&2 echo "Create or fetch 'main', then retry (or pass --base <branch> intentionally)."
+        >&2 echo "Error: Local 'main' branch is required for deterministic /speckit.specify spec scaffolding."
+        >&2 echo "Create or fetch 'main', then retry."
         return 1
     fi
 
     current_branch="$(git branch --show-current 2>/dev/null || echo "")"
     if [ "$current_branch" != "main" ]; then
-        if [ -n "$(git status --porcelain)" ]; then
-            >&2 echo "Error: You are on '$current_branch' with uncommitted changes."
-            >&2 echo "To branch off main, commit/stash/discard current changes first, then rerun /speckit.specify."
-            return 1
-        fi
-
-        if ! git switch main >/dev/null 2>&1; then
-            >&2 echo "Error: Failed to switch to 'main' before feature scaffolding."
-            >&2 echo "Switch to 'main' manually and rerun /speckit.specify."
-            return 1
-        fi
+        >&2 echo "Error: /speckit.specify must run from main, not '$current_branch'."
+        >&2 echo "Switch to main first, then rerun /speckit.specify."
+        return 1
     fi
 
     if [ -n "$(git status --porcelain)" ]; then
         >&2 echo "Error: Local 'main' has uncommitted changes."
-        >&2 echo "Should these be committed first? Commit/stash/discard them, then rerun /speckit.specify."
+        >&2 echo "Commit/stash/discard them, then rerun /speckit.specify."
         return 1
-    fi
-
-    if git rev-parse --verify --quiet "origin/main^{commit}" >/dev/null; then
-        ahead_count="$(git rev-list --count "origin/main..main" 2>/dev/null || echo "0")"
-        behind_count="$(git rev-list --count "main..origin/main" 2>/dev/null || echo "0")"
-
-        if [ "${ahead_count:-0}" -gt 0 ]; then
-            >&2 echo "Error: Local 'main' has ${ahead_count} commit(s) not pushed to origin/main."
-            >&2 echo "Should these be pushed first? Push main, then rerun /speckit.specify."
-            return 1
-        fi
-
-        if [ "${behind_count:-0}" -gt 0 ]; then
-            >&2 echo "Error: Local 'main' is ${behind_count} commit(s) behind origin/main."
-            >&2 echo "Pull/rebase main first so feature branches start from up-to-date main."
-            return 1
-        fi
     fi
 
     return 0
@@ -384,44 +352,11 @@ if [ ${#BRANCH_NAME} -gt $MAX_BRANCH_LENGTH ]; then
 fi
 
 if [ "$HAS_GIT" = true ]; then
-    BASE_SELECTION="$BASE_BRANCH"
-    if [ -z "$BASE_SELECTION" ] && [ -n "${SPECIFY_BASE_BRANCH:-}" ]; then
-        BASE_SELECTION="$SPECIFY_BASE_BRANCH"
-    fi
-    if ! BASE_REF="$(resolve_base_ref "$BASE_SELECTION")"; then
-        if [ -n "$BASE_SELECTION" ]; then
-            >&2 echo "Error: Could not resolve base branch '$BASE_SELECTION'."
-            >&2 echo "Provide a valid branch via --base <branch>."
-        else
-            >&2 echo "Error: Could not resolve a deterministic base branch."
-            >&2 echo "Expected one of: main, origin/main, master, origin/master."
-            >&2 echo "Use --base <branch> to select a specific base."
-        fi
+    if ! ensure_main_branch_ready; then
         exit 1
-    fi
-
-    if ! ensure_main_branch_ready "$BASE_REF"; then
-        exit 1
-    fi
-
-    if ! git checkout -b "$BRANCH_NAME" "$BASE_REF" 2>/dev/null; then
-        # Check if branch already exists
-        if git branch --list "$BRANCH_NAME" | grep -q .; then
-            >&2 echo "Error: Branch '$BRANCH_NAME' already exists. Please use a different feature name or specify a different number with --number."
-            exit 1
-        elif [ -n "$(git status --short)" ]; then
-            >&2 echo "Error: Current checkout has uncommitted changes."
-            >&2 echo "Hint: commit, stash, or discard the changes first, then rerun /speckit.specify from the same checkout."
-            >&2 echo "Hint: do not create temp worktrees or alternate checkouts for this flow."
-            exit 1
-        else
-            >&2 echo "Error: Failed to create git branch '$BRANCH_NAME' from '$BASE_REF'."
-            >&2 echo "Please ensure your working tree is clean and the base branch is valid."
-            exit 1
-        fi
     fi
 else
-    >&2 echo "[specify] Warning: Git repository not detected; skipped branch creation for $BRANCH_NAME"
+    >&2 echo "[specify] Warning: Git repository not detected; skipped main-branch readiness checks for $BRANCH_NAME"
 fi
 
 FEATURE_DIR="$SPECS_DIR/$BRANCH_NAME"

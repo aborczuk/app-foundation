@@ -23,7 +23,7 @@ Given that feature description, do this:
 
 1. **Determine execution mode and parse description**:
    - If `$ARGUMENTS` contains `--update-current-spec`, run in **update mode**.
-   - Otherwise run in **default mode** (new feature branch/spec creation).
+   - Otherwise run in **default mode** (new feature spec creation on the current `main` checkout).
    - Strip the `--update-current-spec` flag from `$ARGUMENTS` before analysis.
    - If the remaining description is empty: ERROR "No feature description provided"
    - Use the current checkout only.
@@ -35,9 +35,9 @@ Given that feature description, do this:
    - Prefer `action-noun` style and preserve technical acronyms.
    - Keep it short and unique within existing branch/spec naming.
 
-3. **If in default mode, create the feature branch/spec once using the Python entrypoint**:
+3. **If in default mode, create the feature spec once using the Python entrypoint**:
 
-   a. Run (pass only `--json` and `--short-name`; never pass `--number`):
+    a. Run (pass only `--json` and `--short-name`; never pass `--number`):
 
       ```bash
       uv run --no-sync python .specify/scripts/python/create_new_feature.py --json --short-name "your-short-name" "Feature description"
@@ -45,7 +45,7 @@ Given that feature description, do this:
 
    b. Parse JSON output and treat it as authoritative for `BRANCH_NAME`, `FEATURE_DIR`, and `SPEC_FILE`.
    c. Run this script once per feature. For single quotes in args like "I'm Groot", escape as `'\''` or use double quotes.
-   d. Stay in the current checkout; do not route branch creation through temp worktrees or spare checkouts. If the checkout is dirty, abort and ask for commit/stash/discard before proceeding.
+   d. Stay in the current `main` checkout; do not create a git branch, temp worktree, or spare checkout. If the checkout is dirty, abort and ask for commit/stash/discard before proceeding.
 
 4. **If in update mode (`--update-current-spec`) resolve existing spec paths with the Python entrypoint**:
    - Run:

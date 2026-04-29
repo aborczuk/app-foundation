@@ -56,6 +56,7 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - Markdown doc-shape validation now rejects compact command docs that still embed executable gate/append procedures, so the producer-only command-doc cleanup stays enforced while the docs are migrated.
 - `speckit.implement` is now routed through deterministic script execution (`scripts/speckit_implement_step.py`) with structured stage telemetry persisted to `.speckit/runtime/implement/<correlation_id>.json`.
 - Routing skip realization is recorded by the driver after the payload is accepted, so the producer remains responsible for its own artifact only.
+- `speckit.specify` now stays on `main`; the implementation branch is created or activated when implement begins.
 
 ## Deterministic Operator Runbook Notes
 
@@ -75,6 +76,7 @@ For task-by-task details, see [`tasks.md`](./tasks.md). For the implementation a
 - Updated the operator quickstart to point readers at `tasks.md` for the combined base + delta plan.
 - Tightened command-doc validation so executable gate/append procedures are rejected instead of slipping through under a compact/expanded heading shape.
 - Added canonical `speckit.run` trigger contract and migrated `speckit.tasking` + `speckit.implement` to driver-managed non-legacy route contracts.
+- Moved feature branch creation out of `speckit.specify` and into the implement entrypoint so specs are authored on `main`.
 
 ---
 

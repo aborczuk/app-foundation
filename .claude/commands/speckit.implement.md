@@ -52,6 +52,10 @@ Run setup verification:
 
 Treat non-zero as hard-block.
 
+Before task execution or handoff:
+- Ensure the implementation branch named after `FEATURE_DIR` is checked out or created from `main`.
+- Keep `specify` on `main`; branch creation belongs to the implement path, not the spec path.
+
 ### 3. Task execution flow (required)
 
 - Execute only the next eligible task from `tasks.md` and corresponding HUD.

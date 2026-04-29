@@ -346,11 +346,11 @@ def test_create_new_feature_blocks_dirty_non_main_before_switch_parity(tmp_path:
 
     _assert_parity(shell_result, shell_repo, python_result, python_repo)
     assert shell_result.returncode == 1
-    assert "with uncommitted changes." in _normalize_text(shell_result.stderr, shell_repo)
-    assert "To branch off main" in _normalize_text(shell_result.stderr, shell_repo)
+    assert "must run from main" in _normalize_text(shell_result.stderr, shell_repo)
+    assert "Switch to main first" in _normalize_text(shell_result.stderr, shell_repo)
 
 
-def test_create_new_feature_blocks_unpushed_main_parity(tmp_path: Path) -> None:
+def test_create_new_feature_allows_unpushed_main_parity(tmp_path: Path) -> None:
     shell_repo = _bootstrap_create_feature_workspace(tmp_path / "shell")
     python_repo = _bootstrap_create_feature_workspace(tmp_path / "python")
 
@@ -384,8 +384,13 @@ def test_create_new_feature_blocks_unpushed_main_parity(tmp_path: Path) -> None:
     )
 
     _assert_parity(shell_result, shell_repo, python_result, python_repo)
-    assert shell_result.returncode == 1
-    assert "not pushed to origin/main" in _normalize_text(shell_result.stderr, shell_repo)
+    assert shell_result.returncode == 0
+    shell_payload = json.loads(shell_result.stdout)
+    python_payload = json.loads(python_result.stdout)
+    assert (shell_repo / shell_payload["SPEC_FILE"]).is_file()
+    assert (python_repo / python_payload["SPEC_FILE"]).is_file()
+    assert _normalize_text(_git(shell_repo, "branch", "--show-current").stdout, shell_repo).strip() == "main"
+    assert _normalize_text(_git(python_repo, "branch", "--show-current").stdout, python_repo).strip() == "main"
 
 
 def test_update_agent_context_parity(tmp_path: Path) -> None:

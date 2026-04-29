@@ -137,6 +137,77 @@ def _resolve_feature_dir(repo_root: Path, feature_id: str) -> Path:
     return candidates[0].resolve()
 
 
+def _ensure_implement_branch(repo_root: Path, feature_dir: Path, *, timeout_seconds: int) -> dict[str, Any]:
+    """Create or activate the implementation branch for the feature."""
+    branch_name = feature_dir.name
+
+    current_branch_run = _run_command(
+        ["git", "branch", "--show-current"],
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+    if current_branch_run.timed_out:
+        raise ValueError("branch_current_timeout")
+    if current_branch_run.exit_code != 0:
+        raise ValueError("branch_current_lookup_failed")
+    current_branch = current_branch_run.stdout.strip()
+
+    branch_list_run = _run_command(
+        ["git", "branch", "--list", branch_name],
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+    if branch_list_run.timed_out:
+        raise ValueError("branch_list_timeout")
+    if branch_list_run.exit_code != 0:
+        raise ValueError("branch_list_failed")
+    branch_exists = bool(branch_list_run.stdout.strip())
+
+    if current_branch == branch_name:
+        return {
+            "branch_name": branch_name,
+            "current_branch": current_branch,
+            "branch_exists": branch_exists,
+            "status": "already_checked_out",
+        }
+
+    if branch_exists:
+        switch_run = _run_command(
+            ["git", "switch", branch_name],
+            cwd=repo_root,
+            timeout_seconds=timeout_seconds,
+        )
+        if switch_run.timed_out:
+            raise ValueError("branch_switch_timeout")
+        if switch_run.exit_code != 0:
+            raise ValueError("branch_switch_failed")
+        return {
+            "branch_name": branch_name,
+            "current_branch": current_branch,
+            "branch_exists": True,
+            "status": "switched",
+        }
+
+    if current_branch != "main":
+        raise ValueError("implement_branch_requires_main")
+
+    create_run = _run_command(
+        ["git", "switch", "-c", branch_name],
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+    if create_run.timed_out:
+        raise ValueError("branch_create_timeout")
+    if create_run.exit_code != 0:
+        raise ValueError("branch_create_failed")
+    return {
+        "branch_name": branch_name,
+        "current_branch": current_branch,
+        "branch_exists": False,
+        "status": "created",
+    }
+
+
 def _start_stage(name: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
     """Initialize an observability stage envelope before command execution."""
     return {
@@ -311,6 +382,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(envelope, sort_keys=True))
             return 1
         _finish_stage(gate_stage, status="pass", details=gate_details)
+
+        branch_stage = _start_stage("branch_setup", details={"feature_branch": feature_dir.name})
+        stages.append(branch_stage)
+        try:
+            branch_details = _ensure_implement_branch(repo_root, feature_dir, timeout_seconds=timeout_seconds)
+        except ValueError as exc:
+            _finish_stage(branch_stage, status="blocked", details={"reason": str(exc)})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={
+                    **debug_stub,
+                    "result": {"blocked_stage": "branch_setup", "reason": str(exc)},
+                },
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=["implement_branch_setup_failed"],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(branch_stage, status="pass", details=branch_details)
 
         handoff_runner = str(args.handoff_runner).strip() or str(os.environ.get("SPECKIT_HANDOFF_RUNNER", "")).strip()
         handoff_stage = _start_stage(
