@@ -64,7 +64,7 @@ def main() -> int:
         return 0
 
     _emit_deny(
-        "Direct uv run calls are denied. Source `scripts/uv_cache_dir.sh` first so uv's cache "
+        "Direct uv run calls are denied. Source `scripts/uv_cache_dir.py` first so uv's cache "
         "stays inside the repository, then run uv."
     )
     return 0

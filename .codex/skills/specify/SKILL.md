@@ -11,10 +11,8 @@ Use this skill as the Codex-native entrypoint for the repo's `speckit.specify` w
 
 ## Dispatch
 
-1. Read `AGENTS.md`, `CLAUDE.md`, and `command-manifest.yaml`.
-2. Resolve `speckit.specify` from `command-manifest.yaml`.
-3. Load `.claude/commands/speckit.specify.md`.
-4. Execute that command doc exactly.
+1. Load `.claude/commands/speckit.specify.md`.
+2. Execute that command doc exactly.
 
 ## Notes
 
