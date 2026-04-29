@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -37,6 +38,9 @@ _WATCHABLE_SUFFIXES = {
     ".yaml",
     ".yml",
 }
+
+_LOG_DIR_NAME = "logs"
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for vector-index operations."""
@@ -101,6 +105,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _vector_index_log_path(db_path: Path) -> Path:
+    """Return a deterministic per-run log path under the vector-index log directory."""
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    return db_path / _LOG_DIR_NAME / f"vector-index-{stamp}-{os.getpid()}.log"
+
+
+def _configure_vector_logging(log_path: Path) -> None:
+    """Attach a file logger for vector-index rebuild progress."""
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    if not root.handlers:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    for handler in list(root.handlers):
+        if getattr(handler, "_vector_index_log_handler", False):
+            root.removeHandler(handler)
+            handler.close()
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter("%(message)s"))
+    file_handler._vector_index_log_handler = True  # type: ignore[attr-defined]
+    root.addHandler(file_handler)
+    logging.getLogger(__name__).info("vector-index: logging to %s", log_path)
 
 
 def build_service(args: argparse.Namespace):
@@ -203,6 +234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = build_parser()
     args = parser.parse_args(argv)
+    _configure_vector_logging(_vector_index_log_path(args.db_path))
     service = build_service(args)
 
     if args.command == "build":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -292,8 +293,23 @@ def test_indexer_bootstrap_primes_model_and_builds_index(monkeypatch, tmp_path, 
     fake_service = FakeService()
     monkeypatch.setattr(indexer, "build_service", lambda args: fake_service)
 
-    exit_code = indexer.main(["--repo-root", str(tmp_path), "bootstrap", "--revision", "rev-bootstrap"])
+    db_path = tmp_path / "vector-index"
+    exit_code = indexer.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--db-path",
+            str(db_path),
+            "bootstrap",
+            "--revision",
+            "rev-bootstrap",
+        ]
+    )
     payload = json.loads(capsys.readouterr().out)
+    logging.shutdown()
+    log_files = sorted((db_path / "logs").glob("vector-index-*.log"))
+    assert len(log_files) == 1
+    assert "vector-index: logging to" in log_files[0].read_text()
 
     assert exit_code == 0
     assert fake_service.calls == [("ensure_embedding_model_local",), ("build", "rev-bootstrap")]

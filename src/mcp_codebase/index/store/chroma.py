@@ -39,6 +39,7 @@ _MIN_QUERY_SCORE = 0.55
 _HIGH_CONFIDENCE_QUERY_SCORE = 0.8
 _MARKDOWN_COMMAND_DOC_PENALTY = 0.25
 _UPSERT_BATCH_SIZE_FALLBACK = 1000
+_EMBED_BATCH_SIZE = 256
 logger = logging.getLogger(__name__)
 
 
@@ -435,8 +436,25 @@ class ChromaIndexStore:
 
     def _embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         backend = self._ensure_embedding_backend()
+        total = len(texts)
+        if total == 0:
+            return []
+
+        batch_size = min(_EMBED_BATCH_SIZE, total)
+        vectors: list[list[float]] = []
         embed_start = monotonic()
-        vectors = backend.embed_texts(texts)
+        logger.info("vector-index: embedding %d texts in batches of %d", total, batch_size)
+        for start in range(0, total, batch_size):
+            batch = list(texts[start : start + batch_size])
+            batch_start = monotonic()
+            batch_vectors = backend.embed_texts(batch)
+            vectors.extend(batch_vectors)
+            logger.info(
+                "vector-index: embedded %d/%d texts in %.2fs",
+                min(start + len(batch), total),
+                total,
+                monotonic() - batch_start,
+            )
         logger.info("vector-index: embedding backend returned %d vectors in %.2fs", len(vectors), monotonic() - embed_start)
         return vectors
 
@@ -491,13 +509,21 @@ class ChromaIndexStore:
         if not chunks:
             return
         batch_size = self._collection_batch_size(collection)
+        logger.info("vector-index: upserting %d chunks in batches of %d", len(chunks), batch_size)
         for start in range(0, len(chunks), batch_size):
             batch = chunks[start : start + batch_size]
+            batch_start = monotonic()
             collection.upsert(
                 ids=[chunk.record_id for chunk in batch],
                 documents=[chunk.document for chunk in batch],
                 embeddings=[chunk.embedding for chunk in batch],
                 metadatas=[chunk.metadata for chunk in batch],
+            )
+            logger.info(
+                "vector-index: upserted %d/%d chunks in %.2fs",
+                min(start + len(batch), len(chunks)),
+                len(chunks),
+                monotonic() - batch_start,
             )
 
     def _activate_snapshot(self, staging_run_dir: Path) -> None:
