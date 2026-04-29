@@ -308,6 +308,79 @@ def test_sync_retries_git_add_on_index_lock(monkeypatch) -> None:
     assert add_attempts["count"] == 2
 
 
+def test_sync_verdict_pass_runs_closeout_docs_and_amend(monkeypatch) -> None:
+    calls: list[_RunCall] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "input": kwargs.get("input")})
+        if cmd[:3] == ["git", "rev-parse", "HEAD"]:
+            return _completed(0, stdout="abcdef1234567890\n")
+        return _completed(0)
+
+    monkeypatch.setattr(edit_code.subprocess, "run", fake_run)
+
+    exit_code = edit_code.main(
+        [
+            "sync",
+            "--paths",
+            "scripts/read_code.py",
+            "--tests",
+            "tests/unit/test_read_code_index_refresh.py",
+            "--commit-message",
+            "closeout docs",
+            "--no-push",
+            "--skip-ruff",
+            "--skip-pyright",
+            "--verdict-pass",
+            "--feature-id",
+            "026-test-spec",
+            "--task-id",
+            "T001",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls[0]["cmd"] == ["git", "rev-parse", "HEAD"]
+    assert calls[1]["cmd"] == [
+        sys.executable,
+        "scripts/speckit_closeout_task.py",
+        "--feature-id",
+        "026-test-spec",
+        "--task-id",
+        "T001",
+        "--tasks-file",
+        str((Path(__file__).resolve().parents[2] / "specs" / "026-test-spec" / "tasks.md")),
+        "--ledger-file",
+        str((Path(__file__).resolve().parents[2] / ".speckit" / "task-ledger.jsonl")),
+        "--commit-sha",
+        "abcdef1234567890",
+        "--qa-run-id",
+        "generative-pass-abcdef12",
+        "--json",
+    ]
+    assert calls[2]["cmd"] == [
+        sys.executable,
+        "scripts/speckit_implement_docs.py",
+        "--feature-dir",
+        str(Path(__file__).resolve().parents[2] / "specs" / "026-test-spec"),
+        "--entry-id",
+        "T001",
+        "--runbook-note",
+        "Closed out T001 at abcdef12 with qa_run_id=generative-pass-abcdef12.",
+        "--decision-entry",
+        "Recorded closeout for T001; commit=abcdef1234567890; qa_run_id=generative-pass-abcdef12.",
+        "--json",
+    ]
+    assert calls[3]["cmd"] == [
+        "git",
+        "add",
+        "specs/026-test-spec/tasks.md",
+        "specs/026-test-spec/quickstart.md",
+    ]
+    assert calls[4]["cmd"] == ["git", "commit", "--amend", "--no-edit"]
+    assert len(calls) == 5
+
+
 def test_validate_changed_only_limits_lint_and_type_checks(monkeypatch, capsys) -> None:
     calls: list[_RunCall] = []
 

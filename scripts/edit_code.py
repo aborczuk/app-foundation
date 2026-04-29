@@ -6,11 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EDIT_CODE_VERBOSE_ENV = "SPECKIT_EDIT_VERBOSE"
@@ -562,7 +563,7 @@ def _run_sync(
     if handoff and feature_id and task_id:
         # Run Handoff (QA)
         try:
-            feature_dir = _resolve_feature_dir(feature_id)
+            _resolve_feature_dir(feature_id)
         except ValueError as exc:
             print(f"[edit-code] ERROR: {exc}", file=sys.stderr)
             return 1
@@ -667,7 +668,7 @@ def _emit_generative_qa_handoff(
         ac = "\n".join(payload.get("acceptance_criteria", []))
     print(ac or "No acceptance criteria found.")
 
-    print(f"\n### File:Symbol Contract:")
+    print("\n### File:Symbol Contract:")
     fs = behavioral_result.get("file_symbol") if behavioral_result else payload.get("file_symbol")
     print(fs or "No specific file:symbol defined.")
 
@@ -732,11 +733,22 @@ def _resume_sync_closeout(
     if closeout_rc != 0:
         return closeout_rc
 
-    # 3. Amend commit with tasks.md update
+    docs_rc = _run_implement_docs_update(
+        feature_dir=feature_dir,
+        entry_id=task_id,
+        commit_sha=current_sha,
+        qa_run_id=f"generative-pass-{current_sha[:8]}",
+    )
+    if docs_rc != 0:
+        return docs_rc
+
+    # 3. Amend commit with tasks.md and quickstart.md updates
     tasks_file = feature_dir / "tasks.md"
+    quickstart_file = feature_dir / "quickstart.md"
     try:
         tasks_rel_path = tasks_file.relative_to(REPO_ROOT).as_posix()
-        _run_git_with_retry(["git", "add", tasks_rel_path], label="git_add_tasks_md")
+        quickstart_rel_path = quickstart_file.relative_to(REPO_ROOT).as_posix()
+        _run_git_with_retry(["git", "add", tasks_rel_path, quickstart_rel_path], label="git_add_closeout_docs")
         _run_git_with_retry(["git", "commit", "--amend", "--no-edit"], label="git_amend_closeout")
     except ValueError:
         pass
@@ -755,7 +767,7 @@ def _run_handoff_and_closeout(
 ) -> int:
     """Run behavioral QA handoff and task closeout sequence."""
     try:
-        feature_dir = _resolve_feature_dir(feature_id)
+        _resolve_feature_dir(feature_id)
     except ValueError as exc:
         print(f"[edit-code] ERROR: {exc}", file=sys.stderr)
         return 1
@@ -833,6 +845,31 @@ def _run_closeout(
     ]
     print(f"[edit-code] closing out task {task_id}...", flush=True)
     return _run_command(closeout_cmd, label="task_closeout")
+
+
+def _run_implement_docs_update(
+    *,
+    feature_dir: Path,
+    entry_id: str,
+    commit_sha: str,
+    qa_run_id: str,
+) -> int:
+    """Update the feature quickstart runbook and decision log for closeout."""
+    docs_cmd = [
+        sys.executable,
+        "scripts/speckit_implement_docs.py",
+        "--feature-dir",
+        str(feature_dir),
+        "--entry-id",
+        entry_id,
+        "--runbook-note",
+        f"Closed out {entry_id} at {commit_sha[:8]} with qa_run_id={qa_run_id}.",
+        "--decision-entry",
+        f"Recorded closeout for {entry_id}; commit={commit_sha}; qa_run_id={qa_run_id}.",
+        "--json",
+    ]
+    print(f"[edit-code] updating implement docs for {entry_id}...", flush=True)
+    return _run_command(docs_cmd, label="implement_docs_update")
 
 
 def _run_task_add(
