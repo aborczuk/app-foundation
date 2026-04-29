@@ -32,6 +32,89 @@ def _bootstrap_workspace(tmp_path: Path) -> Path:
     _copy_tree(REPO_ROOT / ".specify" / "scripts", repo_root / ".specify" / "scripts")
     _copy_tree(REPO_ROOT / ".specify" / "templates", repo_root / ".specify" / "templates")
     _copy_tree(REPO_ROOT / "scripts", repo_root / "scripts")
+    shutil.copy2(REPO_ROOT / "uv_env.py", repo_root / "uv_env.py")
+    try:
+        os.symlink(REPO_ROOT / ".codegraphcontext", repo_root / ".codegraphcontext", target_is_directory=True)
+    except FileExistsError:
+        pass
+    except OSError:
+        _copy_tree(REPO_ROOT / ".codegraphcontext", repo_root / ".codegraphcontext")
+
+    read_markdown_py = repo_root / "scripts" / "read_markdown.py"
+    read_markdown_py.write_text(
+        """#!/usr/bin/env python3
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+
+def read_markdown_section(file_path: str, section_heading: str) -> int:
+    lines = Path(file_path).read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#") and section_heading in line:
+            end = min(len(lines), index + 50)
+            for line_number, content in enumerate(lines[index:end], start=index + 1):
+                print(f"{line_number}\\t{content}")
+            return 0
+    return 1
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print("ERROR: read_markdown_section requires two arguments: <file> <section_heading>", file=sys.stderr)
+        return 1
+    return read_markdown_section(argv[0], argv[1])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+""",
+        encoding="utf-8",
+    )
+    read_markdown_py.chmod(0o755)
+
+    read_markdown_sh = repo_root / "scripts" / "read-markdown.sh"
+    read_markdown_sh.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+
+read_markdown_section() {
+    local file_path="$1"
+    local section_heading="$2"
+    python3 "$(dirname "${BASH_SOURCE[0]}")/read_markdown.py" "$file_path" "$section_heading"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    read_markdown_section "$@"
+fi
+""",
+        encoding="utf-8",
+    )
+    read_markdown_sh.chmod(0o755)
+
+    read_code_sh = repo_root / "scripts" / "read-code.sh"
+    read_code_sh.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+
+read_code_context() {
+    local mode="$1"
+    shift
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    export PATH="/Users/andreborczuk/.local/bin:$PATH"
+    "/Users/andreborczuk/app-foundation/.venv/bin/python3" "$script_dir/read_code.py" "$mode" "$@"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    read_code_context "$@"
+fi
+""",
+        encoding="utf-8",
+    )
+    read_code_sh.chmod(0o755)
 
     feature_dir = repo_root / FEATURE_DIR
     (feature_dir / "contracts").mkdir(parents=True, exist_ok=True)
