@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
-"""SessionStart hook: inject full required governance docs into Codex context."""
+"""SessionStart hook: prime the repo-local UV cache and inject governance docs."""
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_UV_CACHE_DIR = REPO_ROOT / ".codegraphcontext" / ".uv-cache"
+
+
+def _repo_uv_cache_dir() -> Path:
+    """Create and return the repo-local UV cache directory."""
+    cache_dir = Path(os.environ.get("UV_CACHE_DIR", str(DEFAULT_UV_CACHE_DIR))).expanduser()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 def _read_payload() -> dict:
@@ -36,6 +47,9 @@ def main() -> int:
     else:
         repo_root = Path.cwd()
 
+    cache_dir = _repo_uv_cache_dir()
+    os.environ["UV_CACHE_DIR"] = str(cache_dir)
+
     docs = [
         repo_root / "CLAUDE.md",
         repo_root / "constitution.md",
@@ -50,6 +64,7 @@ def main() -> int:
             sections.append(f"[MISSING REQUIRED DOC] {doc}")
 
     additional_context = (
+        f"Repo-local UV cache initialized at {cache_dir}.\n\n"
         "Required repo governance documents loaded in full by SessionStart hook.\n\n"
         + "\n\n".join(sections)
     )

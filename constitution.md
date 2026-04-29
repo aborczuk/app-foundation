@@ -54,13 +54,6 @@ pipeline scripts, and feature code.
 
 Use deterministic scripts for entry gates; avoid manual counting.
 
-**Markdown reads (>100 lines):**
-```bash
-source scripts/read-markdown.sh
-read_markdown_section <file_path> <section_heading>
-```
-Example: `read_markdown_section specs/020-analytics-platform/plan.md "External Ingress"`.
-
 **Speckit entry gates:**
 ```bash
 python scripts/speckit_gate_status.py --mode plan --feature-dir <FEATURE_DIR> --json
@@ -95,7 +88,6 @@ Macro-principles (Human-First, Planning, Security) and SDLC Pipeline live in `CL
 ## Canonical Workflow Pipeline
 
 Behavioral state machine diagram remains in `.claude/constitution-workflow.md`.
-Validation entrypoints remain `/speckit.checkpoint` and `/speckit.e2e-run`.
 
 ## Governance
 
