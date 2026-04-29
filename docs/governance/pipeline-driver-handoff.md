@@ -85,6 +85,8 @@ If both pass and manifest modes are intentional, routing state is coherent.
 
 Feature 019 ledger reconciliation was performed to align `tasks.md` and `task-ledger.jsonl`. Keep task closure events and task checkmarks synchronized going forward to avoid audit drift.
 
+For a live LLM smoke test, point `SPECKIT_HANDOFF_RUNNER` at `scripts/codex_handoff_runner.py`. That wrapper seeds a writable temporary `CODEX_HOME` from the local Codex auth files, calls `codex exec`, and writes the generated artifact back into the handoff path.
+
 ## Research Scaffold Note
 
 The `speckit.research` command now uses the compact scaffold template at `.specify/templates/research-template-compact.md`.

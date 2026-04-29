@@ -29,7 +29,6 @@ Execute implementation through deterministic script-owned gates, verification, Q
 3. Run gate status:
    - `uv run --no-sync python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`
 4. Gate handling (required):
-   - If `missing_e2e_md` or `missing_e2e_script`, stop and require `/speckit.e2e`.
    - If `missing_estimates_md`, stop and require `/speckit.estimate` (or `/speckit.solution` path that includes estimation).
    - Map failures to `docs/governance/gate-reason-codes.yaml`.
 5. Checklist handling (required, until centralized in script):

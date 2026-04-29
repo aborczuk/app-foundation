@@ -94,25 +94,6 @@ def _scan_checklists(feature_dir: Path) -> tuple[bool, list[ChecklistStatus]]:
     return (True, statuses)
 
 
-def _find_e2e_scripts(repo_root: Path, feature_dir: Path) -> list[str]:
-    """Find E2E script candidates matching a feature directory name."""
-    scripts_dir = repo_root / "scripts"
-    feature_name = feature_dir.name
-    normalized = feature_name.replace("-", "_")
-
-    exact = scripts_dir / f"e2e_{normalized}.sh"
-    if exact.exists():
-        return [str(exact)]
-
-    feature_id = feature_name.split("-", 1)[0]
-    if feature_id.isdigit():
-        matches = sorted(scripts_dir.glob(f"e2e_{feature_id}_*.sh"))
-    else:
-        matches = sorted(scripts_dir.glob(f"e2e_*{normalized}*.sh"))
-
-    return [str(path) for path in matches]
-
-
 def _plan_report(feature_dir: Path) -> tuple[dict[str, Any], int]:
     """Evaluate plan entry gates."""
     requirements_path = feature_dir / "checklists" / "requirements.md"
@@ -148,29 +129,17 @@ def _plan_report(feature_dir: Path) -> tuple[dict[str, Any], int]:
 
 def _implement_report(feature_dir: Path, repo_root: Path) -> tuple[dict[str, Any], int]:
     """Evaluate implement entry gates."""
-    e2e_doc = feature_dir / "e2e.md"
     estimates_doc = feature_dir / "estimates.md"
-    e2e_scripts = _find_e2e_scripts(repo_root, feature_dir)
     checklists_dir_exists, checklist_entries = _scan_checklists(feature_dir)
     incomplete_total = sum(entry.incomplete for entry in checklist_entries)
     hard_block_reasons: list[str] = []
 
-    if not e2e_doc.exists():
-        hard_block_reasons.append("missing_e2e_md")
-    if not e2e_scripts:
-        hard_block_reasons.append("missing_e2e_script")
     if not estimates_doc.exists():
         hard_block_reasons.append("missing_estimates_md")
 
     report: dict[str, Any] = {
         "mode": "implement",
         "feature_dir": str(feature_dir),
-        "e2e": {
-            "doc_path": str(e2e_doc),
-            "doc_exists": e2e_doc.exists(),
-            "script_matches": e2e_scripts,
-            "ok": e2e_doc.exists() and bool(e2e_scripts),
-        },
         "estimates": {
             "path": str(estimates_doc),
             "exists": estimates_doc.exists(),
@@ -202,7 +171,6 @@ def validate_command_coverage(feature_dir: Path) -> dict[str, Any]:
         uncovered (list): List of command IDs that are uncovered
         reasons (list): Details on coverage gaps
     """
-
     manifest_path = _resolve_manifest_path(Path(__file__).resolve().parent.parent)
 
     if not manifest_path.exists():

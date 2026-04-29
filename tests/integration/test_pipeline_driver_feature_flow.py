@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
+
+import pytest
 
 from tests.support import assert_step_result_envelope
 
@@ -427,6 +431,49 @@ def test_generative_route_realizes_skipped_research_phase(tmp_path: Path, monkey
     ]
     assert payload["phase_state"]["phase"] == "research"
     assert payload["phase_state"]["next_phase"] == "plan"
+
+
+def test_generative_route_can_call_live_codex_cli(tmp_path: Path) -> None:
+    """Verify the driver can drive a real Codex CLI handoff when enabled."""
+    if os.environ.get("SPECKIT_LIVE_CODEX") != "1":
+        pytest.skip("Set SPECKIT_LIVE_CODEX=1 to run the live Codex CLI smoke test")
+    if shutil.which("codex") is None:
+        pytest.skip("codex CLI is not available on PATH")
+    codex_home = Path.home() / ".codex"
+    if not (codex_home / "auth.json").exists():
+        pytest.skip("Codex auth.json is not available in the home Codex directory")
+
+    runner_script = Path(__file__).resolve().parents[2] / "scripts" / "codex_handoff_runner.py"
+    artifact_path = tmp_path / "codex-plan.md"
+    handoff = {
+        "handoff_id": "handoff-codex-live",
+        "step_name": "speckit.plan",
+        "required_inputs": [],
+        "output_template_path": str(artifact_path),
+        "completion_marker": "## Summary",
+        "correlation_id": "run_20260410T120000Z_019:speckit.plan",
+    }
+
+    result = pipeline_driver.run_generative_handoff(
+        handoff,
+        feature_id="019",
+        phase="plan",
+        correlation_id="run_20260410T120000Z_019:speckit.plan",
+        handoff_runner=f"{sys.executable} {runner_script}",
+        cwd=tmp_path,
+        timeout_seconds=900,
+    )
+
+    assert result["ok"] is True
+    assert result["exit_code"] == 0
+    assert result["handoff_execution"] == "executed"
+    assert result["generated_artifact"]["path"] == str(artifact_path)
+    assert result["generated_artifact"]["exists"] is True
+    assert result["generated_artifact"]["completion_marker"] == "## Summary"
+    artifact_text = artifact_path.read_text(encoding="utf-8")
+    assert "## Summary" in artifact_text
+    assert "- feature_id: 019" in artifact_text
+    assert "- phase: plan" in artifact_text
 
 
 def test_generative_route_blocks_on_parse_failure_without_completion_append(

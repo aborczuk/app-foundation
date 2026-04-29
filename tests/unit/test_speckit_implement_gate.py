@@ -173,6 +173,29 @@ def test_phase_gate_emits_implementation_completed_once(tmp_path: Path, monkeypa
     assert sum(1 for command in calls if "append" in command and any(part.endswith("pipeline_ledger.py") for part in command)) == 1
 
 
+def test_phase_gate_story_does_not_require_e2e_artifacts(tmp_path: Path) -> None:
+    feature_dir = tmp_path / "specs" / "019-token-efficiency-docs"
+    feature_dir.mkdir(parents=True)
+    tasks_file = feature_dir / "tasks.md"
+    tasks_file.write_text("## story\n- [X] T001 story task\n", encoding="utf-8")
+
+    args = argparse.Namespace(
+        feature_dir=str(feature_dir),
+        phase_name="story",
+        phase_type="story",
+        layer1="pass",
+        layer2="pass",
+        layer3="pass",
+        json=True,
+    )
+
+    exit_code, payload = speckit_implement_gate._phase_gate(args)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["reasons"] == []
+    assert payload["implementation_completed_state"] == "not_applicable"
+
+
 def test_phase_gate_blocks_when_task_ledger_still_open(tmp_path: Path, monkeypatch) -> None:
     feature_dir = tmp_path / "specs" / "023-deterministic-phase-orchestration"
     feature_dir.mkdir(parents=True)
