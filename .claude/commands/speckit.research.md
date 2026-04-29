@@ -99,7 +99,7 @@ Run the smoke test to verify that the research scaffold wiring still matches the
 command doc:
 
 ```bash
-.specify/scripts/test-research.sh feature_id=XYZ
+.specify/scripts/test_research.py feature_id=XYZ
 ```
 
 The harness checks the manifest template binding, the compact scaffold invocation documented in

@@ -77,7 +77,7 @@
 
 **Purpose**: Validate the user-facing contract and keep the helper surface elegant.
 
-- [X] T012 [P] [US3] Align `scripts/read-code.sh` help text and usage guidance with the new shortlist/body contract — `scripts/read-code.sh:read_code_context`
+- [X] T012 [P] [US3] Align `scripts/read_code.py` help text and usage guidance with the new shortlist/body contract — `scripts/read_code.py:read_code_context`
 - [X] T013 [P] [US3] Confirm the solution-review and tasking artifacts remain consistent with the sketch contract after implementation edits — `specs/025-intent-anchor-routing/solutionreview.md:Final Decision`
 
 ---

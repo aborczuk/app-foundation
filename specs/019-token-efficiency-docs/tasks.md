@@ -42,7 +42,7 @@
 - [X] T009 [P] Create shared status contract constants + renderer in scripts/pipeline_driver_contracts.py (`STATUS_KEYS`, `STATUS_PREFIXES`, `render_status_lines`) and make them the only allowed source for human step status output
 - [X] T010 [P] Implement run-scoped correlation ID propagation helper in scripts/pipeline_driver.py:build_correlation_id
 - [X] T011 Implement command coverage validator in scripts/validate_command_script_coverage.py:main
-- [X] T012 Wire coverage validator into governance checks in scripts/validate_doc_graph.sh:run_validators and scripts/validate_constitution_sync.sh:run_checks
+- [X] T012 Wire coverage validator into governance checks in scripts/validate_doc_graph.py:run_validators and scripts/validate_constitution_sync.py:run_checks
 - [X] T013 [P] Build shared integration flow harness in tests/integration/conftest.py:driver_flow_harness (feature fixture setup, ledger seed, route invocation, teardown) and add drift/idempotency coverage in tests/integration/test_pipeline_driver_feature_flow.py:test_reconcile_and_retry_guards using that harness
 
 **Checkpoint**: Deterministic core execution, lock/drift safeguards, and coverage validator are operational.
@@ -120,7 +120,7 @@
 - [X] T038 [US3] Document migration/rollback and coverage ownership policy in docs/governance/command-script-coverage.md and specs/019-token-efficiency-docs/research.md
 - [X] T039 [US3] Add explicit scaffold invocation for solution review in .claude/commands/speckit.solutionreview.md (`pipeline-scaffold.py speckit.solutionreview`) and update docs/governance/command-script-coverage.md
 - [X] T040 [US3] Remove root mirror manifest command-manifest.yaml and repoint all repository references to command-manifest.yaml as canonical
-- [X] T041 [P] [US3] Add anti-regression guard in scripts/validate_doc_graph.sh:run_validators (or dedicated script) to fail when command-manifest.yaml mirror is reintroduced or referenced
+- [X] T041 [P] [US3] Add anti-regression guard in scripts/validate_doc_graph.py:run_validators (or dedicated script) to fail when command-manifest.yaml mirror is reintroduced or referenced
 
 **Checkpoint**: Mixed-mode migration is supported and uncovered command mappings cannot pass gates silently.
 <!-- Checkpoint validated: PASS | 2026-04-10 | All acceptance tests pass (T033, T034); coverage validation, governance guards, and anti-regression checks functional -->

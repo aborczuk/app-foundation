@@ -221,7 +221,7 @@ def codegraph_discover_or_fail(
         return True
 
     output = (proc.stdout or "") + (proc.stderr or "")
-    safe_index = SCRIPT_DIR / "cgc_safe_index.sh"
+    safe_index = SCRIPT_DIR / "cgc_safe_index.py"
     has_self_heal_pattern = "Database Connection Error" in output or "No index metadata" in output
     if has_self_heal_pattern and safe_index.is_file() and os.access(safe_index, os.X_OK):
         _run_command_capture([str(safe_index), str(path)])
@@ -231,7 +231,7 @@ def codegraph_discover_or_fail(
         output = (second.stdout or "") + (second.stderr or "")
 
     print(f"ERROR: codegraph discovery failed for pattern: {pattern}", file=sys.stderr)
-    print("Hint: run scripts/cgc_safe_index.sh <scoped-path> and retry.", file=sys.stderr)
+    print("Hint: run scripts/cgc_safe_index.py <scoped-path> and retry.", file=sys.stderr)
     for line in _tail_lines(output, count=20):
         print(line, file=sys.stderr)
     return False
@@ -1039,7 +1039,7 @@ def _print_usage() -> None:
 
 
 def main(argv: list[str]) -> int:
-    """CLI entrypoint compatible with read-code.sh mode routing."""
+    """CLI entrypoint compatible with read_code.py mode routing."""
     import os
     from pathlib import Path
 

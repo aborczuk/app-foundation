@@ -18,7 +18,7 @@ Use this when you need a change done **now** without running the full specify â†
 
 ## Outline
 
-1. **Setup**: Run the add-to-backlog classification flow first by inspecting the current feature with `.specify/scripts/bash/check-prerequisites.sh --json --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
+1. **Setup**: Run the add-to-backlog classification flow first by inspecting the current feature with `.specify/scripts/python/check_prerequisites.py --json --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - The architectural fit check in step 3 determines whether the request belongs on the current feature's `tasks.md` or must fall back to the universal backlog.
    - If the request is clearly related to the current feature after the architectural fit check, continue using that feature's `tasks.md`.

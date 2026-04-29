@@ -27,7 +27,7 @@ Note: This step runs AFTER `/speckit.solution` (and optionally `/speckit.analyze
 
 Execution steps:
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root **once**. Parse FEATURE_DIR and AVAILABLE_DOCS. Derive TASKS path.
+1. Run `.specify/scripts/python/check_prerequisites.py --json --require-tasks --include-tasks` from repo root **once**. Parse FEATURE_DIR and AVAILABLE_DOCS. Derive TASKS path.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - If tasks.md missing, abort and instruct user to run `/speckit.solution`.
    - Use shell quoting per CLAUDE.md "Shell Script Compatibility".

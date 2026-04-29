@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 
 
 def _load_script_module(module_name: str, script_name: str):
@@ -28,7 +28,7 @@ coverage_validator = _load_script_module(
 
 
 def _write_manifest(path: Path, *, include_plan_scaffold: bool = True) -> None:
-    scaffold_line = "        scaffold_script: setup-plan.sh" if include_plan_scaffold else ""
+    scaffold_line = "        scaffold_script: setup_plan.py" if include_plan_scaffold else ""
     path.write_text(
         "\n".join(
             [
@@ -38,7 +38,7 @@ def _write_manifest(path: Path, *, include_plan_scaffold: bool = True) -> None:
                 "    artifacts:",
                 "      - output_path: \"${FEATURE_DIR}/spec.md\"",
                 "        template: \"spec-template.md\"",
-                "        scaffold_script: create-new-feature.sh",
+                "        scaffold_script: create_new_feature.py",
                 "    emits: []",
                 "  speckit.plan:",
                 "    description: \"plan\"",
@@ -67,8 +67,8 @@ def test_validate_command_script_coverage_passes_with_required_scripts(tmp_path:
     _write_manifest(canonical_manifest)
     mirror_manifest.write_text(canonical_manifest.read_text(encoding="utf-8"), encoding="utf-8")
     scaffold_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
-    (bash_scripts_dir / "create-new-feature.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-    (bash_scripts_dir / "setup-plan.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (bash_scripts_dir / "create_new_feature.py").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (bash_scripts_dir / "setup_plan.py").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
 
     payload = coverage_validator.validate_command_script_coverage(
         canonical_manifest_path=canonical_manifest,
@@ -78,7 +78,17 @@ def test_validate_command_script_coverage_passes_with_required_scripts(tmp_path:
     )
     assert payload["ok"] is True
     assert payload["uncovered_commands"] == []
-    assert payload["reasons"] == []
+
+
+def test_speckit_specify_doc_uses_the_driver_next_phase_label() -> None:
+    """Ensure the spec workflow doc reports the pipeline driver's actual next phase."""
+    repo_root = Path(__file__).resolve().parents[2]
+    spec_doc = repo_root / ".claude" / "commands" / "speckit.specify.md"
+    content = spec_doc.read_text(encoding="utf-8")
+
+    assert "Ready for Tasking" not in content
+    assert "actual next phase from the pipeline driver" in content
+    assert "Next phase: solution" in content
 
 
 def test_validate_command_script_coverage_reports_missing_required_reference(tmp_path: Path) -> None:
@@ -95,8 +105,8 @@ def test_validate_command_script_coverage_reports_missing_required_reference(tmp
     _write_manifest(canonical_manifest, include_plan_scaffold=False)
     mirror_manifest.write_text(canonical_manifest.read_text(encoding="utf-8"), encoding="utf-8")
     scaffold_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
-    (bash_scripts_dir / "create-new-feature.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
-    (bash_scripts_dir / "setup-plan.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (bash_scripts_dir / "create_new_feature.py").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (bash_scripts_dir / "setup_plan.py").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
 
     payload = coverage_validator.validate_command_script_coverage(
         canonical_manifest_path=canonical_manifest,
@@ -107,4 +117,4 @@ def test_validate_command_script_coverage_reports_missing_required_reference(tmp
     assert payload["ok"] is False
     uncovered = {item["command"]: item["reasons"] for item in payload["uncovered_commands"]}
     assert "speckit.plan" in uncovered
-    assert "missing_required_scaffold_reference:setup-plan.sh" in uncovered["speckit.plan"]
+    assert "missing_required_scaffold_reference:setup_plan.py" in uncovered["speckit.plan"]

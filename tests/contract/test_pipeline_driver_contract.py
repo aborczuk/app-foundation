@@ -130,7 +130,7 @@ def test_load_driver_routes_normalizes_mode_and_emit_contracts(tmp_path: Path) -
                 "    description: \"example\"",
                 "    driver:",
                 "      mode: template",
-                "      script_path: scripts/example.sh",
+                "      script_path: scripts/example.py",
                 "      timeout_seconds: 30",
                 "    emits:",
                 "      - event: example_event",
@@ -154,7 +154,7 @@ def test_load_driver_routes_normalizes_mode_and_emit_contracts(tmp_path: Path) -
         {"event": "example_event", "required_fields": ["commit_sha", "qa_run_id"]}
     ]
     assert routes["speckit.example"]["script_path"] == str(
-        (tmp_path / "scripts" / "example.sh").resolve()
+        (tmp_path / "scripts" / "example.py").resolve()
     )
     assert routes["speckit.fallback"]["mode"] == "legacy"
     assert routes["speckit.fallback"]["driver_managed"] is False

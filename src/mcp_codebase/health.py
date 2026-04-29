@@ -160,7 +160,7 @@ def build_recovery_hint(
                 "Local edits are newer than the indexed snapshot; refresh the "
                 "scoped graph before trusting symbol answers."
             ),
-            command=f"scripts/cgc_safe_index.sh {repo_display}",
+            command=f"scripts/cgc_safe_index.py {repo_display}",
             preserves_last_good=True,
         )
 
@@ -172,7 +172,7 @@ def build_recovery_hint(
                 "Graph access is blocked by a lock marker; close the stale "
                 "session or wait for the owner, then retry."
             ),
-            command=f"scripts/cgc_safe_index.sh {repo_display}",
+            command=f"scripts/cgc_safe_index.py {repo_display}",
             preserves_last_good=True,
         )
 
@@ -184,7 +184,7 @@ def build_recovery_hint(
                 "Memory pressure blocked indexing; free memory or reduce the "
                 "indexed scope before retrying."
             ),
-            command=f"scripts/cgc_safe_index.sh {repo_display}",
+            command=f"scripts/cgc_safe_index.py {repo_display}",
             preserves_last_good=True,
         )
 
@@ -195,7 +195,7 @@ def build_recovery_hint(
             "Graph state is unavailable or unreadable; fall back to direct "
             "file reads and reindex once the backend is healthy."
         ),
-        command="scripts/read-code.sh <file> <symbol> --allow-fallback",
+        command="scripts/read_code.py <file> <symbol> --allow-fallback",
         preserves_last_good=False,
     )
 

@@ -57,7 +57,7 @@ This keeps the read workflow elegant:
 | 3 | Change the formatter to return a ranked shortlist of 5 candidates instead of a single forced anchor. |
 | 4 | Inline the body for the top candidate when confidence >= `90/100` and `body` exists. |
 | 5 | Add a bounded follow-up helper path for a selected non-top candidate so the agent can fetch that candidate's body later. |
-| 6 | Keep `read-code.sh` stable as the entrypoint and update its docs/flags only as needed. |
+| 6 | Keep `read_code.py` stable as the entrypoint and update its docs/flags only as needed. |
 
 ## Acceptance Traceability
 
@@ -83,7 +83,7 @@ This keeps the read workflow elegant:
 | File / surface | Current role | Design impact |
 |----------------|--------------|---------------|
 | [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/read_code.py) | Anchor resolution, ranking, and context/window printing | Primary implementation surface for shortlist/body behavior. |
-| [`scripts/read-code.sh`](/Users/andreborczuk/app-foundation/scripts/read-code.sh) | Shell entrypoint | Keep stable; align docs and flags only. |
+| [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/read_code.py) | Shell entrypoint | Keep stable; align docs and flags only. |
 | [`AGENTS.md`](/Users/andreborczuk/app-foundation/AGENTS.md) | Agent rules and read limits | Must document the shortlist/body contract and the one-expansion rule. |
 | [`src/mcp_codebase/index/domain.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/domain.py) | Indexed body already exists | Reuse `body` as the source for inline top-item body output. |
 | [`src/mcp_codebase/indexer.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/indexer.py) | Vector query already supports top-k | Reuse the query surface and widen the requested candidate pool. |
@@ -114,7 +114,7 @@ This keeps the read workflow elegant:
 | Surface | Why it matters |
 |--------|----------------|
 | `scripts/read_code.py` | Contains the ranking, retrieval width, and output formatting logic to change. |
-| `scripts/read-code.sh` | The user-facing entrypoint that should continue to work unchanged. |
+| `scripts/read_code.py` | The user-facing entrypoint that should continue to work unchanged. |
 
 ### Secondary Affected Surfaces
 
@@ -147,7 +147,7 @@ This keeps the read workflow elegant:
 | File | Expected change |
 |------|-----------------|
 | `scripts/read_code.py` | Add shortlist formatter, normalized score, top-body inline behavior, and follow-up helper path. |
-| `scripts/read-code.sh` | Update help text/docs if needed to explain the new response contract. |
+| `scripts/read_code.py` | Update help text/docs if needed to explain the new response contract. |
 
 ### Indirect Affected Surfaces
 
@@ -187,7 +187,7 @@ This keeps the read workflow elegant:
 
 | Piece | Why keep it |
 |------|-------------|
-| `scripts/read-code.sh` | Stable helper entrypoint with existing bounded-read semantics. |
+| `scripts/read_code.py` | Stable helper entrypoint with existing bounded-read semantics. |
 | `src/mcp_codebase/index/domain.py` body fields | Already stores the symbol body we want to surface. |
 | `src/mcp_codebase/indexer.py` retrieval interface | Already supports query top-k controls. |
 

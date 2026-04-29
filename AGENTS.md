@@ -56,7 +56,7 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 
 Start server: `uv run cgc mcp start` (runs in foreground; stop with Ctrl+C or background with `&`)
 
-Requires one-time index: `scripts/cgc_index_repo.sh`
+Requires one-time index: `scripts/cgc_index_repo.py`
 
 **codebase-lsp** (server name: `codebase-lsp`) — pyright-backed type inference and diagnostics:
 - `get_type` — infer the Python type at a specific source location (file, line, column)
@@ -205,11 +205,10 @@ uv run python scripts/read_code.py analyze dead-code
 
 ### Edit Efficiency
 
-- Use `scripts/edit-code.sh` to edit code in this repo:
+- Use `scripts/edit_code.py` to edit code in this repo:
 ```bash
-source scripts/edit-code.sh
-edit_validate --paths <touched-paths> --tests <pytest-selectors>
-edit_sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<coherent-edit-message>"
+uv run python scripts/edit_code.py validate --paths <touched-paths> --tests <pytest-selectors>
+uv run python scripts/edit_code.py sync --paths <touched-paths> --tests <pytest-selectors> --commit-message "<coherent-edit-message>"
 ```
 - Replace `<touched-paths>` with the files changed in the edit batch, and `<pytest-selectors>` with the minimal targeted tests for that batch.
 - Read the exact seam once before editing.

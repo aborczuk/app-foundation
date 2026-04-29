@@ -34,7 +34,7 @@ def _contains_uv_run_invocation(tokens: list[str]) -> bool:
 
 def _uses_uv_cache_helper(tokens: list[str]) -> bool:
     """Return whether the command already routes through the cache helper."""
-    return any(Path(token).name == "uv_cache_dir.sh" for token in tokens)
+    return any(Path(token).name == "uv_cache_dir.py" for token in tokens)
 
 
 def _uses_inline_cache_override(tokens: list[str]) -> bool:

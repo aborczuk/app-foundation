@@ -75,7 +75,7 @@ def test_yaml_read_uses_vector_anchor_without_codegraph_warning(tmp_path: Path, 
 
 
 def test_shell_read_uses_vector_anchor_without_codegraph_warning(tmp_path: Path, monkeypatch, capsys) -> None:
-    target = tmp_path / "read-code.sh"
+    target = tmp_path / "read_code.py"
     target.write_text("header\nanchor line\ntrailing\n", encoding="utf-8")
 
     def fake_vector_find_candidates(

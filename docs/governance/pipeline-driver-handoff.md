@@ -69,7 +69,7 @@ From repo root:
    - unit/integration driver tests
 6. Validate ledger/task consistency before close.
 7. For research scaffold changes, run the smoke test:
-   - `.specify/scripts/test-research.sh feature_id=XYZ`
+   - `.specify/scripts/test_research.py feature_id=XYZ`
    - This checks the manifest template binding, the documented compact scaffold invocation, and the generated `research.md` section headers.
 
 ## Minimal Verification Checklist
@@ -93,7 +93,7 @@ The `speckit.research` command now uses the compact scaffold template at `.speci
 That command doc also documents a local validation path:
 
 ```bash
-.specify/scripts/test-research.sh feature_id=XYZ
+.specify/scripts/test_research.py feature_id=XYZ
 ```
 
 The smoke test verifies:

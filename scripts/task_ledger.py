@@ -541,7 +541,7 @@ def run_codegraph_index(root: Path, target: Path) -> tuple[int, str]:
     env.setdefault("CGC_UV_CACHE_DIR", str(root / ".codegraphcontext" / ".uv-cache"))
     env.setdefault("DEFAULT_DATABASE", "kuzudb")
     result = subprocess.run(
-        ["scripts/cgc_safe_index.sh", target.as_posix()],
+        ["scripts/cgc_safe_index.py", target.as_posix()],
         cwd=root,
         check=False,
         capture_output=True,

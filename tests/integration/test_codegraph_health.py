@@ -33,7 +33,7 @@ def _run_doctor(repo: Path, project_root: Path) -> tuple[int, dict[str, object],
     proc = subprocess.run(
         [
             "bash",
-            "scripts/cgc_doctor.sh",
+            "scripts/cgc_doctor.py",
             "--json",
             "--project-root",
             str(project_root),

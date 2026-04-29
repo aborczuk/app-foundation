@@ -46,7 +46,7 @@ def main(argv: list[str]) -> int:
     """CLI entrypoint for the setup-plan workflow."""
     args = _parse_args(argv)
     if args.help_mode:
-        print("Usage: setup-plan.sh [--json]")
+        print("Usage: setup_plan.py [--json]")
         print("  --json    Output results in JSON format")
         print("  --help    Show this help message")
         return 0

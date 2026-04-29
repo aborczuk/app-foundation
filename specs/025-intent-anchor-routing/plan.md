@@ -9,7 +9,7 @@
 | Problem | Agents spend too long guessing at anchors, retrying reads, and overusing numeric windows. |
 | Feature outcome | `read-code` returns a bounded shortlist of semantic anchors with confidence, prefers indexed body text when it is highly confident, and widens retrieval recall to reduce misses. |
 | Scope | Documentation plus read-code output contract changes only; no new service, server, or storage layer. |
-| Primary consumer | Agents using `AGENTS.md`, `scripts/read-code.sh`, and `scripts/read_code.py`. |
+| Primary consumer | Agents using `AGENTS.md`, `scripts/read_code.py`, and `scripts/read_code.py`. |
 
 ### Architecture Direction
 
@@ -36,7 +36,7 @@
 | Area | Current State | Plan Impact |
 |------|--------------|-------------|
 | Agent guidance | `AGENTS.md` already defines read limits and helper-first reading. | Keep that doc as the source of read-code rules and make the contract explicit in the feature docs. |
-| Read helper | `scripts/read-code.sh` already drives bounded anchored reads. | Preserve the helper; change what it returns and how it prioritizes outputs. |
+| Read helper | `scripts/read_code.py` already drives bounded anchored reads. | Preserve the helper; change what it returns and how it prioritizes outputs. |
 | Vector ranking | `scripts/read_code.py` already ranks semantic hits and consults the vector index. | Expand the candidate pool and return a shortlist instead of a single forced anchor. |
 | Body storage | `src/mcp_codebase/index/domain.py` already carries `body` on symbol/query results. | Reuse that field for body-first output when confidence is high. |
 | Index query controls | `src/mcp_codebase/indexer.py` already supports top-k style retrieval. | Widen read-code retrieval without changing index storage. |
@@ -82,7 +82,7 @@ This feature does not introduce a new asynchronous runtime. The read-code flow s
 | Skill | Used for |
 |------|----------|
 | Python | Update `scripts/read_code.py` and any related tests. |
-| Shell | Keep `scripts/read-code.sh` aligned with the contract. |
+| Shell | Keep `scripts/read_code.py` aligned with the contract. |
 | Markdown | Document the user-facing rules and quickstart. |
 | Speckit workflow | Keep artifacts and gates consistent with the repo process. |
 
@@ -131,7 +131,7 @@ Yes. The same pattern repeats across the current helper flow:
 | Source | Reuse value |
 |------|-------------|
 | `AGENTS.md` | Existing rule source for helper-first reads and bounded windows. |
-| `scripts/read-code.sh` | Existing entrypoint for anchored code reads. |
+| `scripts/read_code.py` | Existing entrypoint for anchored code reads. |
 | `scripts/read_code.py` | Existing ranking and bounded-read implementation. |
 | `src/mcp_codebase/index/domain.py` | Existing `body` field and query payload shape. |
 | `src/mcp_codebase/indexer.py` | Existing top-k retrieval control. |
@@ -140,7 +140,7 @@ Yes. The same pattern repeats across the current helper flow:
 
 | Strategy | Decision |
 |------|----------|
-| Keep shell wrapper | Yes; preserve `read-code.sh` as the agent entrypoint. |
+| Keep shell wrapper | Yes; preserve `read_code.py` as the agent entrypoint. |
 | Reuse indexed body | Yes; return `body` when it is the best answer unit. |
 | Expand retrieval pool | Yes; raise read-code retrieval to a bounded `top_k = 20`. |
 | Add new server/package | No. |
@@ -230,7 +230,7 @@ Yes. The same pattern repeats across the current helper flow:
 
 | Ingress | Status | Notes |
 |------|--------|------|
-| CLI helper invocation | ✅ Pass | Already exists via `scripts/read-code.sh`. |
+| CLI helper invocation | ✅ Pass | Already exists via `scripts/read_code.py`. |
 | External API | ✅ Pass | None introduced. |
 | Runtime readiness | ⚠️ Conditional | Becomes ready when docs, shortlist output, and body-first behavior are aligned and validated. |
 

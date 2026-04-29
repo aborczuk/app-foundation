@@ -616,7 +616,7 @@ def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealth
         return _CodegraphHealthProbe(
             status="unavailable",
             detail="uv is not available",
-            recovery_command=f"{_SCRIPT_DIR / 'cgc_safe_index.sh'} {root}",
+            recovery_command=f"{_SCRIPT_DIR / 'cgc_safe_index.py'} {root}",
         )
     proc = _run_command_capture(
         [
@@ -677,7 +677,7 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
             key=f"codegraph-stale-nonoverlap:{_scope_cache_key(path)}",
             message=f"WARN: codegraph is stale; refreshing scoped index for {path}",
         )
-        safe_index = _SCRIPT_DIR / "cgc_safe_index.sh"
+        safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
         if safe_index.is_file() and os.access(safe_index, os.X_OK) and _should_launch_background_refresh(
             path, channel="codegraph"
         ):
@@ -697,7 +697,7 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
             )
         return True
 
-    safe_index = _SCRIPT_DIR / "cgc_safe_index.sh"
+    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
     if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
         print(f"ERROR: codegraph preflight failed: missing safe index script at {safe_index}", file=sys.stderr)
         return False
@@ -1125,7 +1125,7 @@ def run_codegraph_preflight_worker(argv: list[str]) -> int:
         scope_path = scope_path.resolve()
 
     init_codegraph_env()
-    safe_index = _SCRIPT_DIR / "cgc_safe_index.sh"
+    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
     if safe_index.is_file() and os.access(safe_index, os.X_OK):
         _run_command_capture(
             [str(safe_index), str(scope_path)],

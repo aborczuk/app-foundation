@@ -27,7 +27,7 @@ The spec is about reliability, not replacement. The repo already has the importa
 |------|-----------------------|-------|
 | Language / Runtime | Python 3.12 + Bash wrappers | Existing codegraph tooling is Python-first with shell safety wrappers around indexing. |
 | Technology Direction | Local repo-scoped toolchain | No remote service; health, recovery, and smoke checks must work offline. |
-| Technology Selection | `src/mcp_codebase/*`, `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh`, `scripts/validate_doc_graph.sh` | Reuse existing discovery, validation, and safe-index pathways. |
+| Technology Selection | `src/mcp_codebase/*`, `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py`, `scripts/validate_doc_graph.py` | Reuse existing discovery, validation, and safe-index pathways. |
 | Storage | `.codegraphcontext/db/kuzudb` plus local metadata/logs | Kuzu remains the graph store; operational metadata stays repo-local. |
 | Testing | `pytest` + shell smoke tests + plan/research smoke harnesses | Validate explicit status classification and non-destructive recovery paths. |
 | Target Platform | Local developer checkout on macOS/Linux | Repo-local only; no deployment/runtime ingress. |
@@ -91,8 +91,8 @@ Health checks, smoke tests, and recovery flows all need the same status vocabula
 |-------------|-----------|---------------------------|--------------|------|
 | Repo package | `src/mcp_codebase/pyright_client.py`, `src/mcp_codebase/type_tool.py`, `src/mcp_codebase/diag_tool.py` | FR-002, FR-004, FR-006 | Extend | Existing discovery path already has explicit error envelopes and subprocess lifecycle boundaries. |
 | Repo package | `src/mcp_codebase/security.py` | FR-002, FR-006 | Reuse | Existing path canonicalization cleanly separates invalid argument, out-of-scope, and missing-file failures. |
-| Repo scripts | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | FR-003, FR-005, FR-006 | Extend | Already enforce safe indexing and repo-root guardrails; can anchor safe refresh/rebuild. |
-| Repo script | `scripts/validate_doc_graph.sh` | FR-004, FR-006 | Reuse | Good smoke-test / governance validation pattern for deterministic checks. |
+| Repo scripts | `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py` | FR-003, FR-005, FR-006 | Extend | Already enforce safe indexing and repo-root guardrails; can anchor safe refresh/rebuild. |
+| Repo script | `scripts/validate_doc_graph.py` | FR-004, FR-006 | Reuse | Good smoke-test / governance validation pattern for deterministic checks. |
 
 ### Preferred Reuse Strategy
 
@@ -133,8 +133,8 @@ Later phases can trust the graph status before browsing or indexing, and can fal
 |----------------------------|----------------|---------------------|----------------|----------------------|------|
 | Graph health check | Health status JSON / structured response | Shared core checker + CLI / MCP wrappers | `healthy`, `stale`, `locked`, `unavailable` | Agents, CLI users, smoke tests | Must never mutate source code. |
 | Telemetry / diagnostics | Structured JSONL event records and summary output | Shared readiness guard and adapters | `run_id`, `request_id`, `operation_id`, latency, error rate, recovery hint id | Operators, CI, maintainers | No silent failures; logs must make unhealthy states reconstructable. |
-| Smoke test / doctor guard | Exit code + short summary | `scripts/cgc_doctor.sh`-style entrypoint plus shared checker | `smoke_passed` / `smoke_failed` as local command output, not ledger events | Local maintainers, CI | Confirms graph is usable before discovery begins. |
-| Safe refresh / rebuild | Replacement snapshot + recovery summary | `scripts/cgc_safe_index.sh` / `scripts/cgc_index_repo.sh` | Local command result only | Maintainers, doctor guard | Must preserve last-known-good snapshot on failure. |
+| Smoke test / doctor guard | Exit code + short summary | `scripts/cgc_doctor.py`-style entrypoint plus shared checker | `smoke_passed` / `smoke_failed` as local command output, not ledger events | Local maintainers, CI | Confirms graph is usable before discovery begins. |
+| Safe refresh / rebuild | Replacement snapshot + recovery summary | `scripts/cgc_safe_index.py` / `scripts/cgc_index_repo.py` | Local command result only | Maintainers, doctor guard | Must preserve last-known-good snapshot on failure. |
 
 ### Manifest Impact
 
@@ -148,7 +148,7 @@ No `speckit` manifest changes are expected. This is a feature implementation ins
 
 - `src/mcp_codebase/server.py` and the existing MCP tool modules
 - `src/mcp_codebase/pyright_client.py`, `diag_tool.py`, and `security.py`
-- `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh`, and the local `.codegraphcontext/db/` state
+- `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py`, and the local `.codegraphcontext/db/` state
 
 ### Trust Boundaries
 

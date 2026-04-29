@@ -89,8 +89,8 @@ Both Python symbols and markdown sections follow the same lifecycle: extract sou
 
 | Source Type | Candidate | Covers Which FRs / Needs | Use Decision | Notes |
 |-------------|-----------|---------------------------|--------------|------|
-| Script | `scripts/cgc_safe_index.sh` | Incremental guarded indexing pattern, scoped refresh discipline | Reuse | Good operational baseline for guarded refreshes and repo-root safety. |
-| Script | `scripts/read-markdown.sh` | Markdown section read semantics and section-window discipline | Reuse | Useful as a user-facing fallback when a query result points to a section. |
+| Script | `scripts/cgc_safe_index.py` | Incremental guarded indexing pattern, scoped refresh discipline | Reuse | Good operational baseline for guarded refreshes and repo-root safety. |
+| Script | `scripts/read_markdown.py` | Markdown section read semantics and section-window discipline | Reuse | Useful as a user-facing fallback when a query result points to a section. |
 | Package | `src/mcp_codebase/` | Existing MCP package layout and runtime conventions | Extend | Best place for index/query tools without adding a new top-level service family. |
 | Package / dependency | `tree-sitter` | Python symbol parsing and line-range extraction | Adopt | Better fit than ad hoc regexes for symbol boundaries and body capture. |
 | Package / dependency | `markdown-it-py` | Markdown section extraction and breadcrumb generation | Adopt | Natural fit for structured heading traversal. |
@@ -271,8 +271,8 @@ No separate `contracts/` artifact is required at plan time. If the implementatio
 | Query tool surface | Yes | `src/mcp_codebase/server.py` or index tool module | Expose search/staleness/update entry points. |
 | Repo-local storage path | Yes | `.codegraphcontext/global/db/vector-index/` | Document the on-disk collection and metadata sidecar path. |
 | Environment defaults | Yes | `.env.example` or equivalent docs | Only if runtime config needs explicit overrides. |
-| `scripts/cgc_safe_index.sh` | No | N/A | Existing helper remains a pattern reference, not a required edit for this feature. |
-| `scripts/read-markdown.sh` | No | N/A | Existing fallback read helper stays as-is. |
+| `scripts/cgc_safe_index.py` | No | N/A | Existing helper remains a pattern reference, not a required edit for this feature. |
+| `scripts/read_markdown.py` | No | N/A | Existing fallback read helper stays as-is. |
 
 ---
 

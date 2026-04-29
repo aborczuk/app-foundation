@@ -29,7 +29,7 @@
 **Purpose**: Create the adapters that will expose the shared health contract to agents and maintainers.
 
 - [X] T002 Add the MCP health tool registration to `src/mcp_codebase/server.py` and serialize the shared health result there with run-scoped JSONL logging — `src/mcp_codebase/server.py:_register_tools`
-- [X] T003 Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.sh` wrapper for a direct operator-facing health command — `src/mcp_codebase/doctor.py:main`
+- [X] T003 Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.py` wrapper for a direct operator-facing health command — `src/mcp_codebase/doctor.py:main`
 - [X] T004 Add structured telemetry fields for health checks (`run_id`, recovery hint id, status classification, latency) in `src/mcp_codebase/health.py` and `src/mcp_codebase/server.py` — `src/mcp_codebase/server.py:_setup_logging`
 
 **Checkpoint**: A single health vocabulary exists for both the MCP server and the new doctor command.
@@ -91,16 +91,16 @@
 
 **Purpose**: Align docs and smoke checks with the new health surface.
 
-- [X] T012 [P] Add a deterministic smoke validation note for `scripts/validate_doc_graph.sh` and the new doctor flow in the feature docs — `scripts/validate_doc_graph.sh:main`
+- [X] T012 [P] Add a deterministic smoke validation note for `scripts/validate_doc_graph.py` and the new doctor flow in the feature docs — `scripts/validate_doc_graph.py:main`
 - [X] T013 [P] Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` — `tests/integration/test_codegraph_recovery.py:test_large_graph_timeout_budget`
 - [X] T014 [P] Add shared graph-health models and read-only classification in `src/mcp_codebase/health.py` with unit coverage for healthy, stale, locked, and unavailable states plus recovery hints - `src/mcp_codebase/health.py:classify_graph_health`
 - [X] T015 [P] Wire the MCP `get_graph_health` tool to the shared contract in `src/mcp_codebase/server.py` and verify the adapter returns the same structured hint payload - `src/mcp_codebase/server.py:get_graph_health`
-- [X] T016 [P] Add the CLI doctor entrypoint and shell wrapper hardening in `src/mcp_codebase/doctor.py` and `scripts/cgc_doctor.sh` with deterministic exit codes and subprocess smoke coverage - `src/mcp_codebase/doctor.py:main`
-- [X] T017 [P] Add graceful shutdown and bounded timeout handling for Kuzu-owned lifecycle paths in `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` so refresh/rebuild waits for the owner to exit before recovery proceeds - `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh`
-- [X] T018 Add stale-owner cleanup and lock-marker reclamation after a bounded timeout in `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` so confirmed orphaned owners are cleaned up without blind killing - `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh`
+- [X] T016 [P] Add the CLI doctor entrypoint and shell wrapper hardening in `src/mcp_codebase/doctor.py` and `scripts/cgc_doctor.py` with deterministic exit codes and subprocess smoke coverage - `src/mcp_codebase/doctor.py:main`
+- [X] T017 [P] Add graceful shutdown and bounded timeout handling for Kuzu-owned lifecycle paths in `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` so refresh/rebuild waits for the owner to exit before recovery proceeds - `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py`
+- [X] T018 Add stale-owner cleanup and lock-marker reclamation after a bounded timeout in `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` so confirmed orphaned owners are cleaned up without blind killing - `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py`
 - [X] T019 [P] Fail fast on buffer-pool exhaustion and other memory-pressure failures in `src/mcp_codebase/health.py` and the safe-index path so the recovery hint is explicit instead of swallowing the error - `src/mcp_codebase/health.py:build_recovery_hint`
 - [X] T020 [P] Route query-only CodeGraph probes through `READ_ONLY` connections while keeping refresh and rebuild on the single `READ_WRITE` owner and add concurrency regression coverage for probe-vs-refresh contention - `src/mcp_codebase/server.py:get_graph_health`, `src/mcp_codebase/doctor.py:main`, `src/mcp_codebase/health.py:classify_graph_health`
-- [X] T021 [P] Make freshness invalidation edit-aware in `scripts/read-code.sh` and `scripts/cgc_safe_index.sh` so local working-tree edits mark the graph stale before stale symbol answers are served - `scripts/read-code.sh`, `scripts/cgc_safe_index.sh`
+- [X] T021 [P] Make freshness invalidation edit-aware in `scripts/read_code.py` and `scripts/cgc_safe_index.py` so local working-tree edits mark the graph stale before stale symbol answers are served - `scripts/read_code.py`, `scripts/cgc_safe_index.py`
 - [X] T022 [P] Update `specs/022-codegraph-hardening/quickstart.md` and operator notes with the doctor flow, safe recovery, and failure-mode guidance - `specs/022-codegraph-hardening/quickstart.md:Run the Feature`
 
 **Checkpoint**: The feature has a documented smoke path and the repo-level smoke gate remains usable.
@@ -141,18 +141,18 @@
 ### Safety-First Execution Order (Mandatory)
 
 - [X] T016 [P] Add contract tests that compare legacy shell wrappers vs Python implementations for args, stdout/stderr, JSON fields, and exit codes for all migrated entrypoints — `tests/integration/test_specify_script_parity.py:test_script_contract_parity`
-- [X] T017 [P] Add source-compatible shell wrapper tests proving `source scripts/read-code.sh` / `source scripts/read-markdown.sh` still expose callable shell functions after Python migration — `tests/integration/test_read_helper_wrapper_compat.py:test_source_compat`
-- [X] T018 [P] Add golden fixture tests for `.specify/scripts/bash/check-prerequisites.sh` JSON payloads and exit-code behavior across `--json`, `--paths-only`, `--require-tasks`, and `--include-tasks` combinations — `tests/integration/test_check_prerequisites_python_migration.py:test_check_prerequisites_json_include_tasks_contract`
+- [X] T017 [P] Add source-compatible shell wrapper tests proving `source scripts/read_code.py` / `source scripts/read_markdown.py` still expose callable shell functions after Python migration — `tests/integration/test_read_helper_wrapper_compat.py:test_source_compat`
+- [X] T018 [P] Add golden fixture tests for `.specify/scripts/python/check_prerequisites.py` JSON payloads and exit-code behavior across `--json`, `--paths-only`, `--require-tasks`, and `--include-tasks` combinations — `tests/integration/test_check_prerequisites_python_migration.py:test_check_prerequisites_json_include_tasks_contract`
 - [X] T019 [P] Add parity checks for tool availability/error handling (`uv`, `git`, `python3`) between legacy shell and Python entrypoints — `tests/integration/test_script_tool_dependency_parity.py:test_tool_dependency_failures`
 - [X] T020 [P] Add stderr contract tests for known failure modes (branch validation, missing plan/tasks, unresolved sections/symbols) to lock error-message compatibility — `tests/integration/test_script_stderr_contract.py:test_known_failure_messages`
 - [X] T021 [P] Add a temporary shadow-compare mode to emit output diffs between legacy and Python paths during rollout and fail on parity regression — `src/mcp_codebase/orchestration/shadow_compare.py:compare_outputs`
-- [X] T022 Migrate shared helpers in `.specify/scripts/bash/common.sh` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/bash/common.sh:main`
-- [X] T023 Migrate `.specify/scripts/bash/create-new-feature.sh` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/bash/create-new-feature.sh:main`
-- [X] T024 Migrate `.specify/scripts/bash/setup-plan.sh` into Python while preserving plan artifact resolution outputs — `.specify/scripts/bash/setup-plan.sh:main`
-- [X] T025 Migrate `.specify/scripts/bash/update-agent-context.sh` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/bash/update-agent-context.sh:main`
-- [X] T026 Migrate `.specify/scripts/bash/check-prerequisites.sh` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/bash/check-prerequisites.sh:main`
-- [X] T027 Migrate `scripts/read-markdown.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-markdown.sh:read_markdown_section`
-- [X] T028 Migrate `scripts/read-code.sh` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read-code.sh:read_code_context`
+- [X] T022 Migrate shared helpers in `.specify/scripts/python/common.py` into a Python utility module consumed by the migrated entrypoints — `.specify/scripts/python/common.py:main`
+- [X] T023 Migrate `.specify/scripts/python/create_new_feature.py` into Python with compatible branch/spec creation behavior and permission-failure messaging — `.specify/scripts/python/create_new_feature.py:main`
+- [X] T024 Migrate `.specify/scripts/python/setup_plan.py` into Python while preserving plan artifact resolution outputs — `.specify/scripts/python/setup_plan.py:main`
+- [X] T025 Migrate `.specify/scripts/python/update_agent_context.py` into Python while preserving agent-context update semantics and write targets — `.specify/scripts/python/update_agent_context.py:main`
+- [X] T026 Migrate `.specify/scripts/python/check_prerequisites.py` into Python and preserve all JSON/output and exit-code contracts consumed by Speckit commands — `.specify/scripts/python/check_prerequisites.py:main`
+- [X] T027 Migrate `scripts/read_markdown.py` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read_markdown.py:read_markdown_section`
+- [X] T028 Migrate `scripts/read_code.py` orchestration logic into a Python entrypoint while preserving current CLI contract through a shell wrapper — `scripts/read_code.py:read_code_context`
 - [X] T029 [P] Add Speckit pipeline smoke coverage for plan/implement/addtobacklog paths that depend on `check-prerequisites` and `setup-plan` after migration — `tests/integration/test_speckit_pipeline_driver.py:test_python_orchestration_entrypoints`
 - [X] T030 [P] Rework `scripts/read_code.py` to use a ranked anchor-selection pipeline where HUD hints, vector chunk metadata, and strict local symbols compete before bounded file reads, with the selected chunk's stored line span driving the window — `scripts/read_code.py:read_code_context`
 - [X] T031 [P] Rework `scripts/read_markdown.py` so vector section hits anchor the read first and normalized heading prefixes like `Phase 9` can resolve to full headings before exact heading fallback — `scripts/read_markdown.py:read_markdown_section`
@@ -165,7 +165,7 @@
 
 - [X] T036 [P] Add a progressive-load tool routing section to `CLAUDE.md` so the repo routes topology questions to `catalog.yaml`, feature behavior to `specs/*/behavior-map.md`, and narrows default reads to the smallest relevant tool first — `CLAUDE.md:178`
 - [X] T037 [P] Add a route-tree scaffold template plus a Python generator so new functions and scripts can emit a companion progressive-load/how-to artifact instead of relying on ad-hoc documentation — `.specify/templates/route-tree-template.md`
-- [X] T038 [P] Move the detailed markdown read-efficiency guidance out of `CLAUDE.md` and into the `scripts/read_markdown.py` / `scripts/read-markdown.sh` tool documentation so the root doc only points to the executable helper — `scripts/read_markdown.py`
+- [X] T038 [P] Move the detailed markdown read-efficiency guidance out of `CLAUDE.md` and into the `scripts/read_markdown.py` / `scripts/read_markdown.py` tool documentation so the root doc only points to the executable helper — `scripts/read_markdown.py`
 - [X] T039 [P] Generate the first concrete route-tree artifact for `scripts/read_markdown.py` so the progressive-load pattern exists as a real output, not just a scaffold — `.specify/route-trees/scripts/read_markdown__read_markdown_section.md`
 - [X] T040 [P] Add a root-level `CLAUDE.md` rule that Python function docstrings are mandatory for new or modified functions so executable docs stay colocated with the implementation — `CLAUDE.md:186`
 - [X] T041 [P] Add a repo-level docstring validator that checks every Python function, including private helpers, and wire it into the post-edit workflow so doc coverage is enforced beyond Ruff's public-function default — `scripts/validate_python_docstrings.py`

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -48,8 +49,8 @@ def _seed_repo(
 def _run_doctor(repo: Path, project_root: Path) -> tuple[int, dict[str, object], str]:
     proc = subprocess.run(
         [
-            "bash",
-            "scripts/cgc_doctor.sh",
+            sys.executable,
+            "scripts/cgc_doctor.py",
             "--json",
             "--project-root",
             str(project_root),
@@ -93,7 +94,7 @@ def test_lock_and_query_failure_modes(tmp_path: Path) -> None:
     assert payload["status"] == GraphHealthStatus.STALE.value
     assert payload["status"] == expected["status"]
     assert payload["recovery_hint"]["id"] == "refresh-scoped-index"
-    assert "cgc_safe_index.sh" in payload["recovery_hint"]["command"]
+    assert "cgc_safe_index.py" in payload["recovery_hint"]["command"]
     assert "working tree changed" in payload["detail"]
 
     _seed_repo(
@@ -132,7 +133,7 @@ def test_lock_and_query_failure_modes(tmp_path: Path) -> None:
     assert payload["status"] == expected["status"]
     assert payload["recovery_hint"]["id"] == "fallback-to-files"
     assert "readable" in payload["detail"]
-    assert "read-code.sh" in payload["recovery_hint"]["command"]
+    assert "read_code.py" in payload["recovery_hint"]["command"]
     assert source.exists()
 
 

@@ -123,7 +123,7 @@ exec {sys.executable} "$@"
 
     shell_result = _run_shell(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "setup-plan.sh",
+        shell_repo / ".specify" / "scripts" / "bash" / "setup_plan.py",
         shell_env,
         "--json",
     )
@@ -165,7 +165,7 @@ exec {sys.executable} "$@"
 
     shell_result = _run_shell(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "update-agent-context.sh",
+        shell_repo / ".specify" / "scripts" / "bash" / "update_agent_context.py",
         shell_env,
         "claude",
     )
@@ -198,7 +198,7 @@ exec {sys.executable} "$@"
 
     shell_result = _run_shell(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "check-prerequisites.sh",
+        shell_repo / ".specify" / "scripts" / "bash" / "check_prerequisites.py",
         shell_env,
         "--json",
         "--paths-only",

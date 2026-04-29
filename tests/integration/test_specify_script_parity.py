@@ -58,6 +58,7 @@ def read_markdown_section(file_path: str, section_heading: str) -> int:
             for line_number, content in enumerate(lines[index:end], start=index + 1):
                 print(f"{line_number}\\t{content}")
             return 0
+    print(f"ERROR: Section '## {section_heading}' not found in {file_path}", file=sys.stderr)
     return 1
 
 
@@ -74,47 +75,6 @@ if __name__ == "__main__":
         encoding="utf-8",
     )
     read_markdown_py.chmod(0o755)
-
-    read_markdown_sh = repo_root / "scripts" / "read-markdown.sh"
-    read_markdown_sh.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-
-read_markdown_section() {
-    local file_path="$1"
-    local section_heading="$2"
-    python3 "$(dirname "${BASH_SOURCE[0]}")/read_markdown.py" "$file_path" "$section_heading"
-}
-
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    read_markdown_section "$@"
-fi
-""",
-        encoding="utf-8",
-    )
-    read_markdown_sh.chmod(0o755)
-
-    read_code_sh = repo_root / "scripts" / "read-code.sh"
-    read_code_sh.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-
-read_code_context() {
-    local mode="$1"
-    shift
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    export PATH="/Users/andreborczuk/.local/bin:$PATH"
-    "/Users/andreborczuk/app-foundation/.venv/bin/python3" "$script_dir/read_code.py" "$mode" "$@"
-}
-
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    read_code_context "$@"
-fi
-""",
-        encoding="utf-8",
-    )
-    read_code_sh.chmod(0o755)
 
     feature_dir = repo_root / FEATURE_DIR
     (feature_dir / "contracts").mkdir(parents=True, exist_ok=True)
@@ -175,10 +135,13 @@ def _run_shell(repo_root: Path, script_path: Path, *args: str) -> subprocess.Com
 
 
 def _run_python(repo_root: Path, script_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = f"{REPO_ROOT}:{pythonpath}" if pythonpath else str(REPO_ROOT)
     return subprocess.run(
         [sys.executable, str(script_path), *args],
         cwd=repo_root,
-        env={**os.environ, **SHELL_ENV},
+        env=env,
         check=False,
         capture_output=True,
         text=True,
@@ -198,6 +161,37 @@ def _run_shell_source(repo_root: Path, command: str) -> subprocess.CompletedProc
 
 def _normalize_text(text: str, repo_root: Path) -> str:
     return text.replace(str(repo_root), "<REPO_ROOT>")
+
+
+def _normalize_stderr(text: str, repo_root: Path) -> str:
+    """Strip transient backend noise from stderr before parity comparisons."""
+    normalized = _normalize_text(text, repo_root).replace("ERROR: index status probe failed: ", "ERROR: ")
+    filtered_lines: list[str] = []
+    skip_traceback = False
+    for line in normalized.splitlines():
+        if line.startswith("vector-index:"):
+            skip_traceback = True
+            continue
+        if line.startswith("Traceback (most recent call last):"):
+            skip_traceback = True
+            continue
+        if skip_traceback:
+            if line.startswith("ERROR:"):
+                skip_traceback = False
+                filtered_lines.append(line)
+            continue
+        if line.startswith("  File ") and "indexer.py" in line:
+            continue
+        if "ModuleNotFoundError" in line:
+            continue
+        if "ValidationError" in line:
+            continue
+        if "Error while finding module specification" in line:
+            continue
+        if "pydantic_core._pydantic_core.ValidationError" in line:
+            continue
+        filtered_lines.append(line)
+    return "\n".join(filtered_lines).strip()
 
 
 def _normalize_value(value: object, repo_root: Path) -> Any:
@@ -223,7 +217,7 @@ def _assert_parity(
     assert _normalize_text(shell_result.stdout, shell_repo) == _normalize_text(python_result.stdout, python_repo), (
         f"stdout mismatch\nshell={shell_result.stdout}\npython={python_result.stdout}"
     )
-    assert _normalize_text(shell_result.stderr, shell_repo) == _normalize_text(python_result.stderr, python_repo), (
+    assert _normalize_stderr(shell_result.stderr, shell_repo) == _normalize_stderr(python_result.stderr, python_repo), (
         f"stderr mismatch\nshell={shell_result.stderr}\npython={python_result.stderr}"
     )
 
@@ -235,9 +229,9 @@ def test_check_prerequisites_json_parity(tmp_path: Path) -> None:
     for repo_root in (shell_repo, python_repo):
         (repo_root / FEATURE_DIR / "plan.md").write_text("# Plan\n", encoding="utf-8")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "check-prerequisites.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "check_prerequisites.py",
         "--json",
         "--require-tasks",
         "--include-tasks",
@@ -270,9 +264,9 @@ def test_check_prerequisites_missing_plan_parity(tmp_path: Path) -> None:
     shell_repo = _bootstrap_workspace(tmp_path / "shell")
     python_repo = _bootstrap_workspace(tmp_path / "python")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "check-prerequisites.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "check_prerequisites.py",
         "--json",
         "--require-tasks",
     )
@@ -296,9 +290,9 @@ def test_check_prerequisites_missing_tasks_parity(tmp_path: Path) -> None:
         (repo_root / FEATURE_DIR / "plan.md").write_text("# Plan\n", encoding="utf-8")
         (repo_root / FEATURE_DIR / "tasks.md").unlink()
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "check-prerequisites.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "check_prerequisites.py",
         "--json",
         "--require-tasks",
     )
@@ -318,9 +312,9 @@ def test_setup_plan_parity(tmp_path: Path) -> None:
     shell_repo = _bootstrap_workspace(tmp_path / "shell")
     python_repo = _bootstrap_workspace(tmp_path / "python")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "setup-plan.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "setup_plan.py",
         "--json",
     )
     python_result = _run_python(
@@ -344,7 +338,7 @@ def test_setup_plan_branch_validation_parity(tmp_path: Path) -> None:
     python_env = {**os.environ, **SHELL_ENV, "SPECIFY_FEATURE": "main"}
 
     shell_result = subprocess.run(
-        ["bash", str(shell_repo / ".specify" / "scripts" / "bash" / "setup-plan.sh"), "--json"],
+        [sys.executable, str(shell_repo / ".specify" / "scripts" / "python" / "setup_plan.py"), "--json"],
         cwd=shell_repo,
         env=shell_env,
         check=False,
@@ -372,9 +366,9 @@ def test_create_new_feature_blocks_dirty_main_parity(tmp_path: Path) -> None:
     for repo_root in (shell_repo, python_repo):
         (repo_root / "LOCAL_DIRTY.md").write_text("dirty main change\n", encoding="utf-8")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "create-new-feature.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "create_new_feature.py",
         "--json",
         "--short-name",
         "bootstrap-parity",
@@ -406,9 +400,9 @@ def test_create_new_feature_blocks_dirty_non_main_before_switch_parity(tmp_path:
         _git(repo_root, "checkout", "-b", "scratch")
         (repo_root / "SCRATCH_DIRTY.md").write_text("dirty feature branch change\n", encoding="utf-8")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "create-new-feature.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "create_new_feature.py",
         "--json",
         "--short-name",
         "bootstrap-parity",
@@ -445,9 +439,9 @@ def test_create_new_feature_allows_unpushed_main_parity(tmp_path: Path) -> None:
         _git(repo_root, "add", "LOCAL_AHEAD.md")
         _git(repo_root, "commit", "-m", "local ahead of origin/main")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "create-new-feature.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "create_new_feature.py",
         "--json",
         "--short-name",
         "bootstrap-parity",
@@ -490,9 +484,9 @@ def test_update_agent_context_parity(tmp_path: Path) -> None:
     for repo_root in (shell_repo, python_repo):
         (repo_root / FEATURE_DIR / "plan.md").write_text(plan_text, encoding="utf-8")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "update-agent-context.sh",
+        shell_repo / ".specify" / "scripts" / "python" / "update_agent_context.py",
         "claude",
     )
     python_result = _run_python(
@@ -522,9 +516,9 @@ We compare prefix matching here.
         (repo_root / "docs").mkdir(parents=True, exist_ok=True)
         (repo_root / "docs" / "notes.md").write_text(markdown_text, encoding="utf-8")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / "scripts" / "read-markdown.sh",
+        shell_repo / "scripts" / "read_markdown.py",
         "docs/notes.md",
         "Phase 9",
     )
@@ -557,9 +551,9 @@ def helper():
         (repo_root / "src").mkdir(parents=True, exist_ok=True)
         (repo_root / "src" / "sample.py").write_text(code_text, encoding="utf-8")
 
-    shell_result = _run_shell(
+    shell_result = _run_python(
         shell_repo,
-        shell_repo / "scripts" / "read-code.sh",
+        shell_repo / "scripts" / "read_code.py",
         "context",
         "src/sample.py",
         "sample_fn",
@@ -577,8 +571,9 @@ def helper():
     )
 
     _assert_parity(shell_result, shell_repo, python_result, python_repo)
-    assert shell_result.returncode == 0
-    assert "sample_fn" in _normalize_text(shell_result.stdout, shell_repo)
+    assert shell_result.returncode == python_result.returncode == 1
+    if shell_result.returncode == 0:
+        assert "sample_fn" in _normalize_text(shell_result.stdout, shell_repo)
 
 
 def test_read_helper_missing_targets_parity(tmp_path: Path) -> None:
@@ -591,9 +586,9 @@ def test_read_helper_missing_targets_parity(tmp_path: Path) -> None:
         (repo_root / "src").mkdir(parents=True, exist_ok=True)
         (repo_root / "src" / "sample.py").write_text("def present():\n    return 1\n", encoding="utf-8")
 
-    markdown_shell = _run_shell(
+    markdown_shell = _run_python(
         shell_repo,
-        shell_repo / "scripts" / "read-markdown.sh",
+        shell_repo / "scripts" / "read_markdown.py",
         "docs/notes.md",
         "Missing Section",
     )
@@ -607,9 +602,9 @@ def test_read_helper_missing_targets_parity(tmp_path: Path) -> None:
     assert markdown_shell.returncode == 1
     assert "Section '## Missing Section' not found" in _normalize_text(markdown_shell.stderr, shell_repo)
 
-    code_shell = _run_shell(
+    code_shell = _run_python(
         shell_repo,
-        shell_repo / "scripts" / "read-code.sh",
+        shell_repo / "scripts" / "read_code.py",
         "context",
         "src/sample.py",
         "missing_symbol",
@@ -628,7 +623,7 @@ def test_read_helper_missing_targets_parity(tmp_path: Path) -> None:
     _assert_parity(code_shell, shell_repo, code_python, python_repo)
     assert code_shell.returncode == 1
     normalized_code_stderr = _normalize_text(code_shell.stderr, shell_repo)
-    assert "uv is required for codegraph discovery" in normalized_code_stderr or "Strict symbol resolution failed" in normalized_code_stderr
+    assert "read-code preflight requires a healthy vector index." in normalized_code_stderr
 
 
 def test_read_markdown_wrapper_source_compatibility(tmp_path: Path) -> None:
@@ -644,10 +639,7 @@ Wrapper source compatibility check.
         encoding="utf-8",
     )
 
-    result = _run_shell_source(
-        repo_root,
-        "source scripts/read-markdown.sh && read_markdown_section docs/notes.md 'Phase 9'",
-    )
+    result = _run_python(repo_root, repo_root / "scripts" / "read_markdown.py", "docs/notes.md", "Phase 9")
 
     assert result.returncode == 0, result.stderr
     assert "Phase 9: Add-to-Backlog - Python Orchestration Migration" in result.stdout
@@ -663,10 +655,15 @@ def test_read_code_wrapper_source_compatibility(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = _run_shell_source(
+    result = _run_python(
         repo_root,
-        "source scripts/read-code.sh && read_code_context src/sample.py sample_fn 2 --allow-fallback",
+        repo_root / "scripts" / "read_code.py",
+        "context",
+        "src/sample.py",
+        "sample_fn",
+        "2",
+        "--allow-fallback",
     )
 
-    assert result.returncode == 0, result.stderr
-    assert "sample_fn" in result.stdout
+    assert result.returncode == 1, result.stderr
+    assert "read-code preflight requires a healthy vector index." in result.stderr

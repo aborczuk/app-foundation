@@ -164,7 +164,7 @@ Template consistency review:
 - ✅ CLAUDE.md                                — Added Governing Principles block (I, II, III)
 - ✅ constitution.md (this file)              — Moved to repo root; principles renumbered
 - ✅ .specify/memory/constitution.md          — Stub redirect to repo-root constitution.md
-- ✅ scripts/validate_constitution_sync.sh    — Updated path check to constitution.md
+- ✅ scripts/validate_constitution_sync.py    — Updated path check to constitution.md
 - ✅ docs/governance/doc-graph.yaml           — Updated path field
 - ✅ .speckit/README.md                       — Updated path reference
 - ✅ README.md                                — Updated path reference

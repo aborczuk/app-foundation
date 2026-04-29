@@ -13,7 +13,7 @@ Build a shared Graph Readiness Guard for the local CodeGraph/Kuzu path so develo
 
 ### Current -> Target Transition
 
-Today the repo has reusable graph-adjacent pieces, but no single health/doctor surface that classifies graph readiness in one place. `src/mcp_codebase/server.py` exposes type and diagnostics tools, `PyrightClient` manages the browse-time subprocess lifecycle, and `scripts/cgc_safe_index.sh` / `scripts/cgc_index_repo.sh` protect indexing, but the repo still lacks a unified doctor flow with explicit healthy/stale/locked/unavailable states. The target state adds a shared health module, a CLI doctor entrypoint, and an MCP health tool that all use the same classification and recovery vocabulary.
+Today the repo has reusable graph-adjacent pieces, but no single health/doctor surface that classifies graph readiness in one place. `src/mcp_codebase/server.py` exposes type and diagnostics tools, `PyrightClient` manages the browse-time subprocess lifecycle, and `scripts/cgc_safe_index.py` / `scripts/cgc_index_repo.py` protect indexing, but the repo still lacks a unified doctor flow with explicit healthy/stale/locked/unavailable states. The target state adds a shared health module, a CLI doctor entrypoint, and an MCP health tool that all use the same classification and recovery vocabulary.
 
 ### Dominant Execution Model
 
@@ -30,7 +30,7 @@ Read-only local probe first, then explicit recovery action. The health path shou
 
 ## Solution Narrative
 
-This feature introduces a shared graph-readiness core in `src/mcp_codebase/health.py` and uses it from two thin adapters: a new CLI doctor entrypoint and a new MCP health tool in `src/mcp_codebase/server.py`. The shared core classifies the local graph as healthy, stale, locked, or unavailable, emits an explicit recovery hint, and stays read-only by default. The CLI adapter gives maintainers a direct health command, while the MCP adapter gives agents the same answer inside the existing codebase server. Existing surfaces are reused rather than replaced: `PyrightClient` stays the subprocess lifecycle manager for browse-time type work, `security.py` stays the trust-boundary validator, and `scripts/cgc_safe_index.sh` / `scripts/cgc_index_repo.sh` remain the safe refresh and rebuild path. The finished solution is a single health vocabulary across CLI, MCP, and recovery scripts, with no new backend and no network requirement.
+This feature introduces a shared graph-readiness core in `src/mcp_codebase/health.py` and uses it from two thin adapters: a new CLI doctor entrypoint and a new MCP health tool in `src/mcp_codebase/server.py`. The shared core classifies the local graph as healthy, stale, locked, or unavailable, emits an explicit recovery hint, and stays read-only by default. The CLI adapter gives maintainers a direct health command, while the MCP adapter gives agents the same answer inside the existing codebase server. Existing surfaces are reused rather than replaced: `PyrightClient` stays the subprocess lifecycle manager for browse-time type work, `security.py` stays the trust-boundary validator, and `scripts/cgc_safe_index.py` / `scripts/cgc_index_repo.py` remain the safe refresh and rebuild path. The finished solution is a single health vocabulary across CLI, MCP, and recovery scripts, with no new backend and no network requirement.
 
 ---
 
@@ -38,8 +38,8 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 
 1. Define the shared health domain models and classification service in a new `src/mcp_codebase/health.py` seam.
 2. Add the MCP health tool to `src/mcp_codebase/server.py` and keep it as a thin adapter over the shared service.
-3. Add a CLI doctor entrypoint, likely `src/mcp_codebase/doctor.py` plus `scripts/cgc_doctor.sh`, that renders the same health result and exit codes.
-4. Thread recovery hints through the safe refresh path by reusing `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` instead of inventing a second recovery implementation.
+3. Add a CLI doctor entrypoint, likely `src/mcp_codebase/doctor.py` plus `scripts/cgc_doctor.py`, that renders the same health result and exit codes.
+4. Thread recovery hints through the safe refresh path by reusing `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` instead of inventing a second recovery implementation.
 5. Add deterministic tests for status classification, unreadable/locked/unavailable states, CLI exit behavior, and fallback/recovery guidance.
 6. Update `quickstart.md` and any runbook-style notes so the new doctor flow is visible and reproducible.
 
@@ -55,13 +55,13 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 
 | Story / Requirement / Constraint | Design Element(s) That Satisfy It | Reuse / Modify / Create | Verification / Migration Note |
 |----------------------------------|-----------------------------------|-------------------------|-------------------------------|
-| User Story 1 - Graph health check for developers | `GraphHealthResult`, `classify_graph_health()`, `get_graph_health`, `scripts/cgc_doctor.sh` | Create / Modify | Health output must be deterministic and clearly label healthy vs unhealthy. |
+| User Story 1 - Graph health check for developers | `GraphHealthResult`, `classify_graph_health()`, `get_graph_health`, `scripts/cgc_doctor.py` | Create / Modify | Health output must be deterministic and clearly label healthy vs unhealthy. |
 | User Story 2 - Agent-facing recovery on lock/query failure | `GraphRecoveryHint`, health adapter error envelopes, direct file-read fallback | Create / Modify | Recovery hint must say whether to retry, refresh, or fall back. |
-| User Story 3 - Safe refresh and rebuild | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh`, atomic replacement behavior | Reuse / Modify | Rebuild tests must prove the prior good snapshot remains usable. |
+| User Story 3 - Safe refresh and rebuild | `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py`, atomic replacement behavior | Reuse / Modify | Rebuild tests must prove the prior good snapshot remains usable. |
 | FR-001 deterministic health check | `GraphHealthStatus`, `GraphHealthResult`, `classify_graph_health()` | Create | Unit tests must prove healthy/stale/locked/unavailable outputs. |
 | FR-002 clear recovery message | `GraphRecoveryHint`, health service error mapping | Create | Error envelopes must distinguish lock, stale, and unreadable states. |
-| FR-003 preserve last known good snapshot | Safe refresh/rebuild flow using `cgc_safe_index.sh` and `cgc_index_repo.sh` | Reuse / Modify | Recovery tests must show previous snapshot remains usable after failure. |
-| FR-004 smoke/doctor check | `scripts/cgc_doctor.sh`, `src/mcp_codebase/doctor.py`, MCP health tool | Create | Smoke test must be deterministic and non-destructive. |
+| FR-003 preserve last known good snapshot | Safe refresh/rebuild flow using `cgc_safe_index.py` and `cgc_index_repo.py` | Reuse / Modify | Recovery tests must show previous snapshot remains usable after failure. |
+| FR-004 smoke/doctor check | `scripts/cgc_doctor.py`, `src/mcp_codebase/doctor.py`, MCP health tool | Create | Smoke test must be deterministic and non-destructive. |
 | FR-005 safe refresh/rebuild | Existing safe-index scripts plus recovery hint contract | Reuse / Modify | Refresh path must be atomic from the caller perspective. |
 | FR-006 distinguish failure modes | Typed status enum, explicit validation/error envelopes | Create / Modify | Tests must prove retry vs refresh vs fallback is decidable. |
 | No network for core checks | Local file/state inspection only | Reuse / Modify | Documented as a hard constraint in the service layer. |
@@ -75,10 +75,10 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 |-------------------------|--------------|---------------------------|-----------------------------------------|--------------------|
 | Health classification and status vocabulary | state transition, API / contract shaping, observability | Typed error envelopes in `type_tool.py` and `diag_tool.py` | Net-new | Must be read-only and local-only. |
 | MCP health tool | integration, API / contract shaping | `src/mcp_codebase/server.py` tool registration pattern | Extension-first | Must preserve existing `get_type` / `get_diagnostics` behavior. |
-| CLI doctor entrypoint | human / operator interaction, observability, deployment / operational readiness | Shell wrappers like `cgc_safe_index.sh` | Net-new | Must be deterministic, with clear exit codes and status text. |
-| Safe refresh / rebuild path | orchestration / workflow, storage / persistence, state transition | `cgc_safe_index.sh` and `cgc_index_repo.sh` | Reuse-first | Must preserve last known good snapshot. |
+| CLI doctor entrypoint | human / operator interaction, observability, deployment / operational readiness | Shell wrappers like `cgc_safe_index.py` | Net-new | Must be deterministic, with clear exit codes and status text. |
+| Safe refresh / rebuild path | orchestration / workflow, storage / persistence, state transition | `cgc_safe_index.py` and `cgc_index_repo.py` | Reuse-first | Must preserve last known good snapshot. |
 | Telemetry / diagnostics | observability / diagnostics, security / trust boundary | JSONL logging in `server.py` | Extension-first | Must include run id and no secret leakage. |
-| Verification and smoke gates | testing / quality gates | `scripts/validate_doc_graph.sh`, `pytest` | Reuse-first | Must be deterministic and non-destructive. |
+| Verification and smoke gates | testing / quality gates | `scripts/validate_doc_graph.py`, `pytest` | Reuse-first | Must be deterministic and non-destructive. |
 
 ---
 
@@ -91,9 +91,9 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 | `src/mcp_codebase/type_tool.py` | module | Hover-based type lookup with structured error envelopes | Regression-sensitive neighbor; should not change behavior except via shared health awareness | Reusable | Blast radius |
 | `src/mcp_codebase/diag_tool.py` | module | Per-call `pyright --outputjson` diagnostics with explicit failure mapping | Regression-sensitive neighbor; informs browse-time failure vocabulary | Reusable | Blast radius |
 | `src/mcp_codebase/security.py` | module | Trust-boundary path validation | Reused by any doctor or browse helper that reads local paths | Reusable | Primary |
-| `scripts/cgc_safe_index.sh` | shell script | Safe scoped indexing and refresh wrapper | Reused as the atomic recovery path when graph state is stale or locked | Reusable | Primary |
-| `scripts/cgc_index_repo.sh` | shell script | Full-repo rebuild wrapper guarded by explicit opt-in | Reused for intentionally broad recovery operations only | Reusable | Primary |
-| `scripts/validate_doc_graph.sh` | shell script | Repository-level governance smoke gate | Reused as a deterministic validation pattern, not as the codegraph health probe itself | Reusable | Blast radius |
+| `scripts/cgc_safe_index.py` | shell script | Safe scoped indexing and refresh wrapper | Reused as the atomic recovery path when graph state is stale or locked | Reusable | Primary |
+| `scripts/cgc_index_repo.py` | shell script | Full-repo rebuild wrapper guarded by explicit opt-in | Reused for intentionally broad recovery operations only | Reusable | Primary |
+| `scripts/validate_doc_graph.py` | shell script | Repository-level governance smoke gate | Reused as a deterministic validation pattern, not as the codegraph health probe itself | Reusable | Blast radius |
 | `catalog.yaml` | registry | Service/resource inventory | No new external service is expected, but the plan should not invent one | Stable | Blast radius |
 
 ---
@@ -103,10 +103,10 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 | Name | Owning File / Script / Template | Pipeline Role | Classification | Inputs | Outputs / Artifacts | Events | Extension Seam | Planned Change |
 |------|---------------------------------|---------------|----------------|--------|----------------------|--------|----------------|----------------|
 | `uv run python -m src.mcp_codebase` | `src/mcp_codebase/__main__.py`, `src/mcp_codebase/server.py` | MCP server entrypoint | Hybrid | Project root, local config | FastMCP server with tool surface | Run-scoped JSONL logs | Add `get_graph_health` tool | Modify |
-| `scripts/cgc_doctor.sh` | new script | Operator doctor / smoke command | Deterministic | Repo root, optional `--json` / `--root` | Health status and exit code | Local command output only | Thin wrapper over shared health service | Create |
-| `scripts/cgc_safe_index.sh` | existing script | Safe recovery / refresh | Deterministic | Scoped path, optional force opt-in | Incremental or scoped rebuild | Local command output only | Recovery path after stale/locked status | Reuse / modify minimally |
-| `scripts/cgc_index_repo.sh` | existing script | Full-repo rebuild with opt-in | Deterministic | Repo root, explicit `CGC_ALLOW_REPO_INDEX=1` | Full repository index rebuild | Local command output only | Recovery path for intentional rebuilds | Reuse |
-| `scripts/validate_doc_graph.sh` | existing script | Smoke / governance validation | Deterministic | Repo root | PASS/FAIL doc graph validation | Local command output only | Regression harness for docs and command coverage | Reuse |
+| `scripts/cgc_doctor.py` | new script | Operator doctor / smoke command | Deterministic | Repo root, optional `--json` / `--root` | Health status and exit code | Local command output only | Thin wrapper over shared health service | Create |
+| `scripts/cgc_safe_index.py` | existing script | Safe recovery / refresh | Deterministic | Scoped path, optional force opt-in | Incremental or scoped rebuild | Local command output only | Recovery path after stale/locked status | Reuse / modify minimally |
+| `scripts/cgc_index_repo.py` | existing script | Full-repo rebuild with opt-in | Deterministic | Repo root, explicit `CGC_ALLOW_REPO_INDEX=1` | Full repository index rebuild | Local command output only | Recovery path for intentional rebuilds | Reuse |
+| `scripts/validate_doc_graph.py` | existing script | Smoke / governance validation | Deterministic | Repo root | PASS/FAIL doc graph validation | Local command output only | Regression harness for docs and command coverage | Reuse |
 | `speckit.plan` / `speckit.solution` | `.claude/commands/*` and `.specify/command-manifest.yaml` | Workflow orchestration | Hybrid | Feature artifacts | Plan/solution artifacts and ledger events | `plan_started`, `planreview_completed` | No change expected | No-op |
 
 ---
@@ -122,9 +122,9 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 - `src/mcp_codebase/type_tool.py:get_type_impl` - structured error envelope pattern
 - `src/mcp_codebase/diag_tool.py:get_diagnostics_impl` - subprocess diagnostics and error mapping pattern
 - `src/mcp_codebase/security.py:validate_path` - trust-boundary validation pattern
-- `scripts/cgc_safe_index.sh` - safe scoped indexing and recovery wrapper
-- `scripts/cgc_index_repo.sh` - full-repo rebuild wrapper with explicit opt-in
-- `scripts/validate_doc_graph.sh` - deterministic smoke gate and command coverage pattern
+- `scripts/cgc_safe_index.py` - safe scoped indexing and recovery wrapper
+- `scripts/cgc_index_repo.py` - full-repo rebuild wrapper with explicit opt-in
+- `scripts/validate_doc_graph.py` - deterministic smoke gate and command coverage pattern
 
 ### Primary Implementation Surfaces
 
@@ -133,8 +133,8 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 | `src/mcp_codebase/health.py` | `GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint`, `classify_graph_health()` | New shared graph-readiness core for both CLI and MCP surfaces | Create |
 | `src/mcp_codebase/server.py` | `CodebaseLSPServer._register_tools`, new `get_graph_health` tool | Existing MCP server is the right adapter point for the new health tool | Modify |
 | `src/mcp_codebase/doctor.py` | `main()` and report helpers | New CLI entrypoint for direct doctor usage | Create |
-| `scripts/cgc_doctor.sh` | shell wrapper | Human/operator-facing doctor command and smoke surface | Create |
-| `scripts/cgc_safe_index.sh` | safe refresh / rebuild entrypoint | Recovery path must remain atomic and preserve last known good state | Modify minimally |
+| `scripts/cgc_doctor.py` | shell wrapper | Human/operator-facing doctor command and smoke surface | Create |
+| `scripts/cgc_safe_index.py` | safe refresh / rebuild entrypoint | Recovery path must remain atomic and preserve last known good state | Modify minimally |
 
 ### Secondary Affected Surfaces
 
@@ -143,20 +143,20 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 | `src/mcp_codebase/type_tool.py` | Shares browse-time failure vocabulary and trust boundary expectations | Blast radius / regression |
 | `src/mcp_codebase/diag_tool.py` | Shares browse-time diagnostics and explicit error reporting expectations | Blast radius / regression |
 | `src/mcp_codebase/security.py` | New health code may reuse path validation for local probes | Blast radius / reuse |
-| `scripts/cgc_index_repo.sh` | Safe rebuild should stay aligned with the new recovery hint contract | Blast radius / recovery |
-| `scripts/validate_doc_graph.sh` | Smoke-gate pattern may be referenced from quickstart or runbook notes | Regression / observability |
+| `scripts/cgc_index_repo.py` | Safe rebuild should stay aligned with the new recovery hint contract | Blast radius / recovery |
+| `scripts/validate_doc_graph.py` | Smoke-gate pattern may be referenced from quickstart or runbook notes | Regression / observability |
 
 ### Caller / Callee / Dependency Notes
 
 - `server.py` currently owns tool registration and run-scoped JSONL logs; the health tool should reuse that logging convention and not introduce a second server.
 - `PyrightClient` remains the browse-time lifecycle primitive. The new health service should not duplicate its long-lived process model.
-- Safe refresh/rebuild should continue to flow through `cgc_safe_index.sh` / `cgc_index_repo.sh` rather than a new recovery pipeline.
+- Safe refresh/rebuild should continue to flow through `cgc_safe_index.py` / `cgc_index_repo.py` rather than a new recovery pipeline.
 
 ### Missing Seams or Contradictions
 
 - There is no current doctor/health module or CLI entrypoint; that seam must be introduced.
 - The repo has browse-time type and diagnostics tools, but no unified status vocabulary for graph readiness.
-- `validate_doc_graph.sh` is a useful smoke pattern, but it is not a codegraph health probe; the new doctor flow must be explicit about that distinction.
+- `validate_doc_graph.py` is a useful smoke pattern, but it is not a codegraph health probe; the new doctor flow must be explicit about that distinction.
 
 ---
 
@@ -167,16 +167,16 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 - `src/mcp_codebase/health.py`
 - `src/mcp_codebase/server.py`
 - `src/mcp_codebase/doctor.py`
-- `scripts/cgc_doctor.sh`
-- `scripts/cgc_safe_index.sh`
+- `scripts/cgc_doctor.py`
+- `scripts/cgc_safe_index.py`
 
 ### Indirect Affected Surfaces
 
 - `src/mcp_codebase/type_tool.py`
 - `src/mcp_codebase/diag_tool.py`
 - `src/mcp_codebase/security.py`
-- `scripts/cgc_index_repo.sh`
-- `scripts/validate_doc_graph.sh`
+- `scripts/cgc_index_repo.py`
+- `scripts/validate_doc_graph.py`
 
 ### Regression-Sensitive Neighbors
 
@@ -204,13 +204,13 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 
 - `src/mcp_codebase/pyright_client.py` lifecycle management
 - `src/mcp_codebase/security.py` path validation
-- `scripts/cgc_index_repo.sh` rebuild opt-in guard
-- `scripts/validate_doc_graph.sh` smoke-gate pattern
+- `scripts/cgc_index_repo.py` rebuild opt-in guard
+- `scripts/validate_doc_graph.py` smoke-gate pattern
 
 ### Modify / Extend Existing
 
 - `src/mcp_codebase/server.py` to register a graph-health tool and share the logging contract
-- `scripts/cgc_safe_index.sh` to preserve and report the recovery hint contract if needed
+- `scripts/cgc_safe_index.py` to preserve and report the recovery hint contract if needed
 - `quickstart.md` to document the doctor command and recovery flow
 
 ### Compose from Existing Pieces
@@ -221,7 +221,7 @@ This feature introduces a shared graph-readiness core in `src/mcp_codebase/healt
 
 - `src/mcp_codebase/health.py`
 - `src/mcp_codebase/doctor.py`
-- `scripts/cgc_doctor.sh`
+- `scripts/cgc_doctor.py`
 - Tests for health classification and doctor behavior
 
 ### Reuse Rationale
@@ -235,7 +235,7 @@ The repo already has the necessary building blocks for browse-time subprocess ma
 | Affected Command / Phase | Existing Manifest Coverage? | New Artifact Needed? | New Event / Field Needed? | Handoff / Event Flow Impact | Status |
 |--------------------------|-----------------------------|----------------------|---------------------------|-----------------------------|--------|
 | `speckit.plan` / `speckit.solution` | Yes | No | No | None | Aligned |
-| `src/mcp_codebase` runtime | Partial | `scripts/cgc_doctor.sh` and `src/mcp_codebase/doctor.py` | No new Speckit ledger event | None | Aligned |
+| `src/mcp_codebase` runtime | Partial | `scripts/cgc_doctor.py` and `src/mcp_codebase/doctor.py` | No new Speckit ledger event | None | Aligned |
 | CodeGraph safe-index / smoke surface | Partial | Doctor script and health module | No new manifest event | Add a new operator-facing health entrypoint | Aligned |
 
 ### Manifest Alignment Notes
@@ -259,7 +259,7 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 | Change | Why Needed at LLD Level | Must Preserve in Tasking / Implementation |
 |--------|--------------------------|-------------------------------------------|
 | New shared `health.py` core | Prevents CLI and MCP surfaces from drifting apart | One status vocabulary and one recovery-hint contract |
-| CLI doctor adapter (`doctor.py` / `cgc_doctor.sh`) | Gives maintainers a direct smoke/doctor command | Read-only by default, deterministic exit behavior |
+| CLI doctor adapter (`doctor.py` / `cgc_doctor.py`) | Gives maintainers a direct smoke/doctor command | Read-only by default, deterministic exit behavior |
 | MCP `get_graph_health` tool | Gives agents the same verdict inside the existing server | No change to browse-time type/diagnostics contracts |
 | Recovery path via safe-index wrappers | Preserves existing rebuild safety and last-known-good state | Atomic replacement only; no silent corruption |
 
@@ -272,8 +272,8 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 | Graph health domain | Typed status and recovery vocabulary | `src/mcp_codebase/health.py` | `GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint` | Create | Local file state, validation helpers | Service and adapter layers |
 | Health classification service | Compute status from local repo state without mutation | `src/mcp_codebase/health.py` | `classify_graph_health()`, `build_recovery_hint()` | Create | `security.validate_path`, local graph metadata | CLI and MCP adapters |
 | MCP health adapter | Expose health verdict as a FastMCP tool | `src/mcp_codebase/server.py` | new `get_graph_health` tool registration | Modify | `health.py`, `CodebaseLSPServer` logging | MCP clients, agent workflows |
-| CLI doctor adapter | Human/operator command with deterministic exit codes | `src/mcp_codebase/doctor.py`, `scripts/cgc_doctor.sh` | `main()` | Create | `health.py`, repo config | Quickstart, operator workflows |
-| Safe recovery adapter | Atomic refresh/rebuild path with last-known-good preservation | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | existing wrapper behavior | Modify minimally | local graph state, opt-in env vars | New recovery hint contract |
+| CLI doctor adapter | Human/operator command with deterministic exit codes | `src/mcp_codebase/doctor.py`, `scripts/cgc_doctor.py` | `main()` | Create | `health.py`, repo config | Quickstart, operator workflows |
+| Safe recovery adapter | Atomic refresh/rebuild path with last-known-good preservation | `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py` | existing wrapper behavior | Modify minimally | local graph state, opt-in env vars | New recovery hint contract |
 
 ### Control Flow Notes
 
@@ -296,9 +296,9 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 | Interface / Contract | Purpose | Owner | Validation Point | Failure / Error Shape |
 |----------------------|---------|-------|------------------|-----------------------|
 | `GraphHealthResult` contract | Serialized readiness result for CLI and MCP outputs | `src/mcp_codebase/health.py` | Unit tests and adapter tests | Typed status plus optional recovery hint |
-| `scripts/cgc_doctor.sh` exit contract | Human/operator smoke command | `scripts/cgc_doctor.sh` | Shell smoke tests | Exit 0 for healthy, non-zero for unhealthy or invalid input |
+| `scripts/cgc_doctor.py` exit contract | Human/operator smoke command | `scripts/cgc_doctor.py` | Shell smoke tests | Exit 0 for healthy, non-zero for unhealthy or invalid input |
 | `get_graph_health` MCP tool contract | Agent-facing readiness check | `src/mcp_codebase/server.py` | MCP integration tests | JSON-compatible dict with status and recovery hint or explicit error envelope |
-| Safe refresh / rebuild contract | Preserve last known good graph | `scripts/cgc_safe_index.sh` / `scripts/cgc_index_repo.sh` | Recovery tests and smoke tests | Explicit failure state, no partial replacement |
+| Safe refresh / rebuild contract | Preserve last known good graph | `scripts/cgc_safe_index.py` / `scripts/cgc_index_repo.py` | Recovery tests and smoke tests | Explicit failure state, no partial replacement |
 
 ### New or Changed Public Symbols
 
@@ -372,7 +372,7 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 
 - The health check itself is fully automated.
 - The operator or maintainer decides when to run the safe refresh or rebuild command returned in the recovery hint.
-- If a full-repo rebuild is ever needed, it must still respect the existing explicit opt-in guard in `cgc_index_repo.sh`.
+- If a full-repo rebuild is ever needed, it must still respect the existing explicit opt-in guard in `cgc_index_repo.py`.
 - No manual approval is required for read-only health checks; manual action is only for the explicit recovery path.
 
 ---
@@ -383,10 +383,10 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 |---------------------|----------------|----------------|
 | Health classification | Unit test `GraphHealthStatus` and `classify_graph_health()` | Proves the shared vocabulary is deterministic |
 | MCP adapter | Integration test for new `get_graph_health` tool | Proves agents see the same verdict as CLI users |
-| CLI doctor | Shell or subprocess test for `scripts/cgc_doctor.sh` | Proves the operator-facing command behaves deterministically |
-| Safe refresh / rebuild | Failure-mode test around `cgc_safe_index.sh` and `cgc_index_repo.sh` | Proves last-known-good preservation |
+| CLI doctor | Shell or subprocess test for `scripts/cgc_doctor.py` | Proves the operator-facing command behaves deterministically |
+| Safe refresh / rebuild | Failure-mode test around `cgc_safe_index.py` and `cgc_index_repo.py` | Proves last-known-good preservation |
 | Browse-time regression | Existing `get_type` / `get_diagnostics` tests remain green | Ensures the new health path did not break current codebase LSP behavior |
-| Smoke / governance gate | `scripts/validate_doc_graph.sh` remains PASS | Ensures the repo-level smoke pattern stays intact |
+| Smoke / governance gate | `scripts/validate_doc_graph.py` remains PASS | Ensures the repo-level smoke pattern stays intact |
 
 ---
 
@@ -412,8 +412,8 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 |----------|-------------------|----------------|
 | Add a shared `health.py` module | Keeps CLI and MCP verdicts aligned | Duplicated readiness logic in multiple adapters |
 | Keep `server.py` as a thin adapter | Preserves the existing MCP server shape | A second, competing server implementation |
-| Add a dedicated CLI doctor entrypoint | Gives maintainers a clear smoke command | Overloading `validate_doc_graph.sh` with a non-doc responsibility |
-| Reuse `cgc_safe_index.sh` and `cgc_index_repo.sh` for recovery | Preserves the existing safe rebuild guardrails | A new rebuild pipeline with different safety rules |
+| Add a dedicated CLI doctor entrypoint | Gives maintainers a clear smoke command | Overloading `validate_doc_graph.py` with a non-doc responsibility |
+| Reuse `cgc_safe_index.py` and `cgc_index_repo.py` for recovery | Preserves the existing safe rebuild guardrails | A new rebuild pipeline with different safety rules |
 | Preserve read-only health checks | Makes failure classification safe and repeatable | Unintended mutation during probing |
 
 ---
@@ -422,9 +422,9 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 
 - There is no existing `health.py` or doctor entrypoint, so tasking must create those seams explicitly.
 - The repo currently has browse-time type and diagnostics tools, but no unified graph-readiness vocabulary; this feature fills that gap.
-- `scripts/validate_doc_graph.sh` is a good smoke pattern, but it is not the health probe itself; the new doctor command must be separate and explicit.
+- `scripts/validate_doc_graph.py` is a good smoke pattern, but it is not the health probe itself; the new doctor command must be separate and explicit.
 - The safe-index wrappers are recovery primitives, not health probes; the design must keep those responsibilities separate.
-- `.uv-cache` exclusion is already handled by the existing `IGNORE_DIRS_DEFAULT` guards in `cgc_safe_index.sh`, `cgc_index_repo.sh`, and `read-code.sh`; no new indexing-scope task is needed for that guard.
+- `.uv-cache` exclusion is already handled by the existing `IGNORE_DIRS_DEFAULT` guards in `cgc_safe_index.py`, `cgc_index_repo.py`, and `read_code.py`; no new indexing-scope task is needed for that guard.
 - What is still missing is edit-aware freshness: local file edits should invalidate the graph immediately and require patch/reindex before stale symbols can be trusted.
 
 ---
@@ -448,12 +448,12 @@ The plan-level flow stays correct, but the LLD inserts a shared `health.py` seam
 |-------|-----------------|---------------------------|---------------------|
 | Shared health models and classifier | `src/mcp_codebase/health.py` -> `GraphHealthStatus`, `GraphHealthResult`, `GraphRecoveryHint`, `classify_graph_health()` | Create the shared status vocabulary and read-only health classification logic | Unit tests for all statuses and recovery hints |
 | MCP health adapter | `src/mcp_codebase/server.py` -> new `get_graph_health` tool | Register a new health tool that serializes the shared result contract | MCP integration test and logging assertion |
-| CLI doctor adapter | `src/mcp_codebase/doctor.py`, `scripts/cgc_doctor.sh` | Provide a direct operator command with deterministic exit codes and summary text | Subprocess / shell smoke test |
-| Safe refresh / rebuild integration | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | Keep recovery atomic, preserve the last known good snapshot, and surface hints cleanly | Failure-mode recovery test |
-| Graceful shutdown / bounded timeout | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | Detect a live owner, wait for a bounded shutdown window, and avoid recovery while the owner is still active | Regression test proving refresh waits instead of killing a live owner |
-| Stale-owner cleanup / lock reclamation | `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | Reclaim lock markers and orphaned ownership only after the timeout proves the owner is stale | Regression test proving confirmed stale owners are cleaned up once the timeout elapses |
-| Memory-pressure fail-fast | `src/mcp_codebase/health.py`, `scripts/cgc_safe_index.sh` | Convert buffer-pool exhaustion into explicit recovery hints instead of swallowing the error | Regression test proving memory-pressure exits deterministically |
+| CLI doctor adapter | `src/mcp_codebase/doctor.py`, `scripts/cgc_doctor.py` | Provide a direct operator command with deterministic exit codes and summary text | Subprocess / shell smoke test |
+| Safe refresh / rebuild integration | `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py` | Keep recovery atomic, preserve the last known good snapshot, and surface hints cleanly | Failure-mode recovery test |
+| Graceful shutdown / bounded timeout | `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py` | Detect a live owner, wait for a bounded shutdown window, and avoid recovery while the owner is still active | Regression test proving refresh waits instead of killing a live owner |
+| Stale-owner cleanup / lock reclamation | `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py` | Reclaim lock markers and orphaned ownership only after the timeout proves the owner is stale | Regression test proving confirmed stale owners are cleaned up once the timeout elapses |
+| Memory-pressure fail-fast | `src/mcp_codebase/health.py`, `scripts/cgc_safe_index.py` | Convert buffer-pool exhaustion into explicit recovery hints instead of swallowing the error | Regression test proving memory-pressure exits deterministically |
 | Read-only query routing / connection ownership | `src/mcp_codebase/server.py`, `src/mcp_codebase/doctor.py`, `src/mcp_codebase/health.py` | Route query-only probes through `READ_ONLY` connections and isolate writable ownership to refresh / rebuild paths | Concurrency regression proving probes do not contend with refresh operations |
-| Edit-aware freshness / invalidation | `scripts/read-code.sh`, `scripts/cgc_safe_index.sh` | Detect local working-tree edits, mark the graph stale, and patch before stale symbols are served | Regression test proving local edits invalidate cached graph answers |
+| Edit-aware freshness / invalidation | `scripts/read_code.py`, `scripts/cgc_safe_index.py` | Detect local working-tree edits, mark the graph stale, and patch before stale symbols are served | Regression test proving local edits invalidate cached graph answers |
 | Observability and reporting | `src/mcp_codebase/server.py`, `src/mcp_codebase/health.py` | Emit structured, parseable status and context for health checks | JSONL/logging assertions |
 | Documentation and runbook updates | `specs/022-codegraph-hardening/quickstart.md` and related notes | Show how to run the doctor flow and recover safely | Manual review plus command smoke check |

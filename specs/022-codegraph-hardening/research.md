@@ -11,8 +11,8 @@ What no-server integration options exist? For each, which FRs does it cover?
 | Option | FRs covered | How it works | Gap (uncovered FRs) |
 |--------|-------------|--------------|---------------------|
 | Existing MCP codebase tools (`get_type`, `get_diagnostics`) | FR-002, FR-004, FR-006 | Persistent Pyright LSP for hover-based discovery plus per-call diagnostics subprocess with explicit error envelopes and path validation. | FR-001 health signal, FR-003 last-good snapshot recovery, FR-005 safe rebuild orchestration |
-| Safe indexing shell wrappers (`scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh`) | FR-003, FR-004, FR-005, FR-006 | Guarded indexing path refuses unsafe full-repo force rebuilds by default and centralizes repo-local cache / DB locations. | FR-001 deterministic health check output, FR-003 snapshot preservation semantics still need explicit doctor behavior |
-| Existing validation harness (`scripts/validate_doc_graph.sh`) | FR-004, FR-006 | Repository-level validation entrypoint for governance/doc graph checks; useful as a smoke-test pattern for reliability gates. | FR-001 graph health classification, FR-003 recovery / rollback semantics |
+| Safe indexing shell wrappers (`scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py`) | FR-003, FR-004, FR-005, FR-006 | Guarded indexing path refuses unsafe full-repo force rebuilds by default and centralizes repo-local cache / DB locations. | FR-001 deterministic health check output, FR-003 snapshot preservation semantics still need explicit doctor behavior |
+| Existing validation harness (`scripts/validate_doc_graph.py`) | FR-004, FR-006 | Repository-level validation entrypoint for governance/doc graph checks; useful as a smoke-test pattern for reliability gates. | FR-001 graph health classification, FR-003 recovery / rollback semantics |
 
 ---
 
@@ -24,8 +24,8 @@ Assemble pieces from multiple repositories to cover all FRs. Each row = one repo
 |---------------------|----------------------|-------------|-------|
 | `aborczuk/app-foundation` | `src/mcp_codebase/pyright_client.py`, `src/mcp_codebase/type_tool.py`, `src/mcp_codebase/diag_tool.py` | FR-002, FR-004, FR-006 | Existing local MCP discovery path already returns structured error envelopes and keeps Pyright lifecycle isolated. Adapt for explicit healthy/stale/locked status reporting. |
 | `aborczuk/app-foundation` | `src/mcp_codebase/security.py` | FR-002, FR-006 | Path canonicalization already distinguishes invalid argument vs out-of-scope vs missing file, which is useful for clear failure modes. |
-| `aborczuk/app-foundation` | `src/mcp_codebase/server.py`, `scripts/cgc_safe_index.sh`, `scripts/cgc_index_repo.sh` | FR-001, FR-003, FR-005 | Existing lifecycle and indexing entrypoints are the likely place to add doctor/smoke/rebuild orchestration. |
-| `aborczuk/app-foundation` | `scripts/validate_doc_graph.sh` | FR-004, FR-006 | Good repository-level smoke-test / governance validation pattern, though it is not yet a CodeGraph doctor command. |
+| `aborczuk/app-foundation` | `src/mcp_codebase/server.py`, `scripts/cgc_safe_index.py`, `scripts/cgc_index_repo.py` | FR-001, FR-003, FR-005 | Existing lifecycle and indexing entrypoints are the likely place to add doctor/smoke/rebuild orchestration. |
+| `aborczuk/app-foundation` | `scripts/validate_doc_graph.py` | FR-004, FR-006 | Good repository-level smoke-test / governance validation pattern, though it is not yet a CodeGraph doctor command. |
 
 If no relevant repositories are found, write:
 - No relevant code repositories found after searching: [queries run]
@@ -64,7 +64,7 @@ Non-code synthesis from web research. Standard approaches, common patterns, know
 
 Log which tools and queries ran. Used to diagnose shallow results in future debugging.
 
-- Code Discovery: `find`, `scripts/read-code.sh` on `src/mcp_codebase/server.py`, `pyright_client.py`, `type_tool.py`, `diag_tool.py`, `security.py`; `scripts/cgc_safe_index.sh`; `scripts/cgc_index_repo.sh`; `scripts/validate_doc_graph.sh`
+- Code Discovery: `find`, `scripts/read_code.py` on `src/mcp_codebase/server.py`, `pyright_client.py`, `type_tool.py`, `diag_tool.py`, `security.py`; `scripts/cgc_safe_index.py`; `scripts/cgc_index_repo.py`; `scripts/validate_doc_graph.py`
 - Package Discovery: `python3 -m pip index versions kuzu`, `python3 -m pip index versions pyright` (both failed with DNS/network resolution errors)
 - Conceptual Patterns: WebSearch queries for Kuzu on-disk files, Kuzu concurrency, and Pyright language-server docs; web results used from Kuzu official docs and Pyright repo
 - Local Context Mapping: `specs/022-codegraph-hardening/spec.md`, `specs/022-codegraph-hardening/plan.md`, `.claude/commands/speckit.research.md`, `.specify/command-manifest.yaml`

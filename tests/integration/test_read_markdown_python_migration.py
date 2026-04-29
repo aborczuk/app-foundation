@@ -8,7 +8,7 @@ import re
 import subprocess
 from pathlib import Path
 
-SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "read-markdown.sh"
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "read_markdown.py"
 
 
 def _env_without_uv() -> dict[str, str]:

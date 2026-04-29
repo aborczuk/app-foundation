@@ -15,7 +15,7 @@ Get the feature running locally in a few minutes.
 
 - `uv`: check with `uv --version`
 - Repository checkout: make sure you are at the repo root
-- Read helper shell script: `scripts/read-code.sh`
+- Read helper shell script: `scripts/read_code.py`
 - A populated codebase index: required for semantic retrieval and optional inline body output
 
 ### Installation
@@ -41,7 +41,7 @@ The documented read rules should make the 125-line cap, helper-first reads, opt-
 ### Run the Feature
 
 ```bash
-source scripts/read-code.sh
+source scripts/read_code.py
 read_code_context scripts/read_code.py "read_code_context" 125
 read_code_context scripts/read_code.py "read_code_context" 125 --show-shortlist
 read_code_context scripts/read_code.py "read_code_context" 125 --next-candidate
@@ -96,7 +96,7 @@ Deterministic policy to enforce:
 Verify the feature contract is visible in the docs and helper output:
 
 ```bash
-source scripts/read-code.sh
+source scripts/read_code.py
 read_code_context scripts/read_code.py "read_code_context" 80
 ```
 

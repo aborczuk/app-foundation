@@ -22,7 +22,7 @@ Execute implementation through deterministic script-owned gates, verification, Q
 ### 1. Setup + deterministic preflight
 
 1. Run:
-   - `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks`
+   - `.specify/scripts/python/check_prerequisites.py --json --require-tasks --include-tasks`
 2. Resolve:
    - `FEATURE_DIR`
    - `AVAILABLE_DOCS`

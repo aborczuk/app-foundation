@@ -453,7 +453,7 @@ def test_codegraph_health_probe_returns_detail_and_recovery_command(monkeypatch)
             0,
             stdout=(
                 '{"status":"locked","detail":"lock marker present at .codegraphcontext/db/kuzudb.lock",'
-                '"recovery_hint":{"command":"scripts/cgc_safe_index.sh /tmp/repo"}}\n'
+                '"recovery_hint":{"command":"scripts/cgc_safe_index.py /tmp/repo"}}\n'
             ),
             stderr="",
         ),
@@ -463,7 +463,7 @@ def test_codegraph_health_probe_returns_detail_and_recovery_command(monkeypatch)
 
     assert probe.status == "locked"
     assert "lock marker present" in probe.detail
-    assert probe.recovery_command == "scripts/cgc_safe_index.sh /tmp/repo"
+    assert probe.recovery_command == "scripts/cgc_safe_index.py /tmp/repo"
 
 
 def test_refresh_indexes_for_read_launches_async_codegraph_preflight_once_per_session(
@@ -596,7 +596,7 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: True)
 
-    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script = tmp_path / "cgc_safe_index.py"
     fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     fake_script.chmod(0o755)
     monkeypatch.setattr(read_code_health, "_SCRIPT_DIR", tmp_path)
@@ -622,7 +622,7 @@ def test_codegraph_refresh_if_needed_retries_locked_then_succeeds(monkeypatch, t
             read_code_health._CodegraphHealthProbe(
                 status="locked",
                 detail="lock marker present at .codegraphcontext/db/kuzudb.lock",
-                recovery_command="scripts/cgc_safe_index.sh /tmp/repo",
+                recovery_command="scripts/cgc_safe_index.py /tmp/repo",
             ),
             read_code_health._CodegraphHealthProbe(status="healthy", detail="ok", recovery_command=""),
         ]
@@ -632,7 +632,7 @@ def test_codegraph_refresh_if_needed_retries_locked_then_succeeds(monkeypatch, t
     monkeypatch.setattr(read_code_health, "CODEGRAPH_LOCK_RETRY_ATTEMPTS", 2)
     monkeypatch.setattr(read_code_health.time, "sleep", lambda _: None)
 
-    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script = tmp_path / "cgc_safe_index.py"
     fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     fake_script.chmod(0o755)
     monkeypatch.setattr(read_code_health, "_SCRIPT_DIR", tmp_path)
@@ -680,11 +680,11 @@ def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, t
         lambda project_root=None: read_code_health._CodegraphHealthProbe(
             status="unavailable",
             detail="doctor failed",
-            recovery_command="scripts/cgc_safe_index.sh /tmp/repo",
+            recovery_command="scripts/cgc_safe_index.py /tmp/repo",
         ),
     )
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
-    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script = tmp_path / "cgc_safe_index.py"
     fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     fake_script.chmod(0o755)
     monkeypatch.setattr(read_code_health, "_SCRIPT_DIR", tmp_path)
@@ -710,7 +710,7 @@ def test_codegraph_refresh_if_needed_background_refreshes_when_scope_is_unaffect
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: False)
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
-    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script = tmp_path / "cgc_safe_index.py"
     fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     fake_script.chmod(0o755)
     monkeypatch.setattr(read_code_health, "_SCRIPT_DIR", tmp_path)
@@ -742,7 +742,7 @@ def test_codegraph_refresh_if_needed_background_refresh_logs_when_launch_fails(
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: False)
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
-    fake_script = tmp_path / "cgc_safe_index.sh"
+    fake_script = tmp_path / "cgc_safe_index.py"
     fake_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     fake_script.chmod(0o755)
     monkeypatch.setattr(read_code_health, "_SCRIPT_DIR", tmp_path)

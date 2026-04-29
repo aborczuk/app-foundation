@@ -26,7 +26,7 @@ Respect the spec routing contract throughout this command:
 ### 1. Setup + hard-block gate
 
 1. Run:
-   - `.specify/scripts/bash/check-prerequisites.sh --json`
+   - `.specify/scripts/python/check_prerequisites.py --json`
 2. Resolve:
    - `FEATURE_DIR`
    - `AVAILABLE_DOCS`

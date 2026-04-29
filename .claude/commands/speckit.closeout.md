@@ -16,7 +16,7 @@ Close the current task through one append-first path that records the task evide
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
+1. Run `.specify/scripts/python/check_prerequisites.py --json --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Require `--commit-sha` and `--qa-run-id` in the user input or reject the request.
 3. Invoke:

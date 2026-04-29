@@ -93,7 +93,7 @@
 | Surface | Status | Notes |
 |--------|--------|------|
 | `scripts/read_code.py` | PASS | Correct primary implementation surface. |
-| `scripts/read-code.sh` | PASS | Stable entrypoint preserved. |
+| `scripts/read_code.py` | PASS | Stable entrypoint preserved. |
 | `AGENTS.md` | PASS | Correct doc source for usage rules. |
 | `src/mcp_codebase/index/domain.py` | PASS | Existing `body` field is the right reuse target. |
 | `src/mcp_codebase/indexer.py` | PASS | Existing top-k query surface can support the wider retrieval pool. |

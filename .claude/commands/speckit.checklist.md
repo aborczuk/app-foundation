@@ -33,7 +33,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution Steps
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
+1. **Setup**: Run `.specify/scripts/python/check_prerequisites.py --json` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - All file paths must be absolute.
    - Use shell quoting per CLAUDE.md "Shell Script Compatibility".

@@ -24,7 +24,7 @@ Produce `plan.md`, `data-model.md`, `quickstart.md`, and the plan-review / feasi
 
 Run these steps first; only load expanded guidance when a gate fails or the user asks for detail.
 
-1. Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse `FEATURE_SPEC`, `IMPL_PLAN`, `FEATURE_DIR`, and `BRANCH`.
+1. Run `.specify/scripts/python/setup_plan.py --json` from repo root and parse `FEATURE_SPEC`, `IMPL_PLAN`, `FEATURE_DIR`, and `BRANCH`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 2. Derive `FEATURE_DIR="$(dirname "$FEATURE_SPEC")"` and run deterministic gates:
     - `uv run python scripts/speckit_gate_status.py --mode plan --feature-dir "$FEATURE_DIR" --json`
@@ -42,8 +42,8 @@ Run these steps first; only load expanded guidance when a gate fails or the user
 4. Fill the scaffolded artifacts using `spec.md`, the routing contract, `research.md` when required, and repo context with this mandatory read hierarchy:
     - Start from the machine-readable routing contract in `spec.md`; if it says research is skipped, do not require `research.md` to exist for gating.
     - First, run the read helpers (entrypoint):
-      - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
-      - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
+      - Code: `source scripts/read_code.py && read_code_context <file> <symbol_or_pattern> 80`
+      - Markdown: `source scripts/read_markdown.py && read_markdown_section <file> <section_heading>`
     - Helper behavior (internal order): semantic lookup first, then exact bounded read.
     - After the seam is anchored, run discovery checks (`codegraph` caller/callee/import blast radius).
    - Do not start with broad `codegraph` or grep sweeps unless helper-driven reads fail to locate the target.
@@ -127,7 +127,7 @@ The existing workflow still includes `/speckit.planreview` and `/speckit.feasibi
 Run the smoke test to verify that the plan scaffold wiring still matches the manifest and command doc:
 
 ```bash
-.specify/scripts/test-plan.sh feature_id=XYZ
+.specify/scripts/test_plan.py feature_id=XYZ
 ```
 
 The harness checks:

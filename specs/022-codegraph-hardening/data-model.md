@@ -97,7 +97,7 @@ Entities, relationships, and state transitions for the local CodeGraph/Kuzu heal
   "id": "refresh-after-lock-clear",
   "action": "safe_refresh",
   "summary": "Clear the lock, then refresh the graph with the safe index wrapper.",
-  "command": "scripts/cgc_safe_index.sh src/mcp_codebase",
+  "command": "scripts/cgc_safe_index.py src/mcp_codebase",
   "preserves_last_good": true
 }
 ```

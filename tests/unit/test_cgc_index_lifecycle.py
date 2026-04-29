@@ -7,11 +7,13 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 READ_CODE_SCRIPT = REPO_ROOT / "scripts" / "read_code.py"
+READ_CODE_HEALTH_SCRIPT = REPO_ROOT / "scripts" / "read_code_health.py"
 
 
 def _load_read_code_module():
@@ -26,8 +28,21 @@ def _load_read_code_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+def _load_read_code_health_module():
+    scripts_dir = READ_CODE_HEALTH_SCRIPT.parent
+    scripts_dir_str = str(scripts_dir)
+    if scripts_dir_str not in sys.path:
+        sys.path.insert(0, scripts_dir_str)
+    spec = importlib.util.spec_from_file_location("read_code_health", READ_CODE_HEALTH_SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
+read_code_health = _load_read_code_health_module()
 read_code = _load_read_code_module()
 
 
@@ -38,7 +53,7 @@ def _copy_script_repo(tmp_path: Path) -> Path:
     scripts_dir.mkdir(parents=True, exist_ok=True)
     db_dir.mkdir(parents=True, exist_ok=True)
 
-    for name in ("cgc_safe_index.sh", "cgc_index_repo.sh", "cgc_owner.sh"):
+    for name in ("cgc_safe_index.py", "cgc_index_repo.py", "cgc_owner.py"):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts_dir / name)
         (scripts_dir / name).chmod(0o755)
 
@@ -80,7 +95,7 @@ JSON
       ;;
     stale)
       cat <<'JSON'
-{"access_mode":"READ_ONLY","checked_at":"2026-04-19T00:00:00Z","detail":"stale","latency_ms":1.0,"recovery_hint":{"action":"refresh","command":"scripts/cgc_safe_index.sh .","id":"refresh-scoped-index","preserves_last_good":true,"summary":"stale"},"source":"filesystem-freshness","status":"stale"}
+{"access_mode":"READ_ONLY","checked_at":"2026-04-19T00:00:00Z","detail":"stale","latency_ms":1.0,"recovery_hint":{"action":"refresh","command":"scripts/cgc_safe_index.py .","id":"refresh-scoped-index","preserves_last_good":true,"summary":"stale"},"source":"filesystem-freshness","status":"stale"}
 JSON
       exit 0
       ;;
@@ -93,7 +108,7 @@ JSON
   "latency_ms":1.0,
   "recovery_hint":{
     "action":"fallback",
-    "command":"scripts/read-code.sh <file> <symbol> --allow-fallback",
+    "command":"scripts/read_code.py <file> <symbol> --allow-fallback",
     "id":"fallback-to-files",
     "preserves_last_good":false,
     "summary":"fallback"
@@ -126,7 +141,7 @@ def _run_script(
     if env:
         proc_env.update(env)
     return subprocess.run(
-        ["bash", f"scripts/{script}", target],
+        [sys.executable, f"scripts/{script}", target],
         cwd=repo,
         text=True,
         capture_output=True,
@@ -148,11 +163,14 @@ def test_safe_index_waits_for_live_owner_then_runs(tmp_path: Path) -> None:
     owner = subprocess.Popen(["sleep", "1"], text=True)
     owner_pid_file.write_text(f"{owner.pid}\n", encoding="utf-8")
     lock_file.write_text("locked\n", encoding="utf-8")
+    reaper = threading.Timer(1.0, owner.wait)
+    reaper.daemon = True
+    reaper.start()
 
     start = time.monotonic()
     result = _run_script(
         repo,
-        "cgc_safe_index.sh",
+        "cgc_safe_index.py",
         "src/mcp_codebase",
         env={
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -185,7 +203,7 @@ def test_safe_index_cleans_stale_owner_without_blocking(tmp_path: Path) -> None:
     start = time.monotonic()
     result = _run_script(
         repo,
-        "cgc_safe_index.sh",
+        "cgc_safe_index.py",
         "src/mcp_codebase",
         env={
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -215,7 +233,7 @@ def test_safe_index_cleans_stale_lock_without_owner_after_age_threshold(tmp_path
 
     result = _run_script(
         repo,
-        "cgc_safe_index.sh",
+        "cgc_safe_index.py",
         "src/mcp_codebase",
         env={
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -246,7 +264,7 @@ def test_safe_index_refuses_when_owner_stays_live_past_timeout(tmp_path: Path) -
     try:
         result = _run_script(
             repo,
-            "cgc_safe_index.sh",
+            "cgc_safe_index.py",
             "src/mcp_codebase",
             env={
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -276,7 +294,7 @@ def test_safe_index_records_memory_pressure_and_health_reports_it(tmp_path: Path
 
     result = _run_script(
         repo,
-        "cgc_safe_index.sh",
+        "cgc_safe_index.py",
         "src/mcp_codebase",
         env={
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -323,7 +341,7 @@ def test_read_code_health_status_marks_dirty_tree_stale(
     monkeypatch.setenv("FAKE_CGC_LOG", str(log_file))
     monkeypatch.setenv("FAKE_UV_DOCTOR_STATUS", "healthy")
 
-    status = read_code.codegraph_health_status(repo)
+    status = read_code_health.codegraph_health_status(repo)
     captured = capsys.readouterr()
 
     assert status == "stale"
@@ -336,7 +354,7 @@ def test_index_repo_reuses_safe_index_and_full_repo_opt_in(tmp_path: Path) -> No
 
     result = _run_script(
         repo,
-        "cgc_index_repo.sh",
+        "cgc_index_repo.py",
         ".",
         env={
             "PATH": f"{bin_dir}:{os.environ['PATH']}",

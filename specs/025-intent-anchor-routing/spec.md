@@ -13,7 +13,7 @@ Make read-code easier and faster for agents by returning better anchor candidate
 
 ## Consumer & Context *(mandatory)*
 
-- **Primary consumer**: Agents and contributors using `scripts/read-code.sh` and `scripts/read_code.py`.
+- **Primary consumer**: Agents and contributors using `scripts/read_code.py` and `scripts/read_code.py`.
 - **Operational context**: Interactive code exploration and workflow command execution.
 - **Main pain point**: Too much trial-and-error around anchors and line-window reads.
 - **Why now**: Current flow creates avoidable retries and token waste during normal code reading.

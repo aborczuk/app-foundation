@@ -79,9 +79,9 @@ The index is backed by Chroma + `fastembed` and stored under `.codegraphcontext/
 
 ### Inputs
 
-- source files with indexable suffixes (`.py`, `.pyi`, `.md`, `.markdown`, `.mdown`, `.sh`, `.bash`, `.zsh`, `.yaml`, `.yml`)
+- source files with indexable suffixes (`.py`, `.pyi`, `.md`, `.markdown`, `.mdown`, `.bash`, `.zsh`, `.yaml`, `.yml`)
 - repository git state (commit drift + path drift signals)
-- helper scope path (`scripts/read-code.sh` or `scripts/read-markdown.sh` request target)
+- helper scope path (`scripts/read_code.py` or `scripts/read_markdown.py` request target)
 
 ### Execution
 

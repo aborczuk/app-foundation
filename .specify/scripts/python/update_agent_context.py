@@ -537,7 +537,7 @@ def print_summary(ctx: RuntimeContext, plan_data: PlanData) -> None:
 
     print()
     log_info(
-        "Usage: update-agent-context.sh [claude|gemini|copilot|cursor-agent|qwen|opencode|codex|windsurf|kilocode|auggie|roo|codebuddy|amp|shai|kiro-cli|agy|bob|qodercli]"
+        "Usage: update_agent_context.py [claude|gemini|copilot|cursor-agent|qwen|opencode|codex|windsurf|kilocode|auggie|roo|codebuddy|amp|shai|kiro-cli|agy|bob|qodercli]"
     )
 
 

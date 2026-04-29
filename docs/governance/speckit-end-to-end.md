@@ -53,7 +53,7 @@ For exact matrix and event semantics, use `constitution.md`.
 ## How A Step Actually Executes
 
 1. Command contract is read from `.claude/commands/speckit.<step>.md`.
-2. Setup script discovers context (`check-prerequisites.sh` or `setup-plan.sh`).
+2. Setup script discovers context (`check_prerequisites.py` or `setup_plan.py`).
 3. If templated outputs are required, scaffold is run by script:
    - shared: `.specify/scripts/pipeline-scaffold.py`
    - or dedicated: `.specify/scripts/bash/<script>.sh`

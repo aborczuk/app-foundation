@@ -102,9 +102,9 @@ Yes.
 
 ### Existing assets extended
 
-- `create-new-feature.sh` branch creation now deterministic from `main` by default
+- `create_new_feature.py` branch creation now deterministic from `main` by default
 - root `command-manifest.yaml` becomes canonical command registry path
-- `read-markdown.sh` exact heading lookup to avoid regex ambiguity
+- `read_markdown.py` exact heading lookup to avoid regex ambiguity
 
 ### Net-new architecture required
 

@@ -23,8 +23,8 @@
 
 | Command | Canonical Manifest Entry | Mirror Parity (`command-manifest.yaml`) | Scaffold Path | Template/Artifact Target |
 |---|---|---|---|---|
-| `speckit.specify` | `command-manifest.yaml:commands.speckit.specify` | required (`cmp -s` must pass) | `.specify/scripts/bash/create-new-feature.sh` + `pipeline-scaffold.py speckit.specify` | `spec-template.md` + `requirements-checklist-template.md` |
-| `speckit.plan` | `command-manifest.yaml:commands.speckit.plan` | required (`cmp -s` must pass) | `.specify/scripts/bash/setup-plan.sh` + `pipeline-scaffold.py speckit.plan` | `plan-template.md`, `data-model-template.md`, `quickstart-template.md` |
+| `speckit.specify` | `command-manifest.yaml:commands.speckit.specify` | required (`cmp -s` must pass) | `.specify/scripts/python/create_new_feature.py` + `pipeline-scaffold.py speckit.specify` | `spec-template.md` + `requirements-checklist-template.md` |
+| `speckit.plan` | `command-manifest.yaml:commands.speckit.plan` | required (`cmp -s` must pass) | `.specify/scripts/python/setup_plan.py` + `pipeline-scaffold.py speckit.plan` | `plan-template.md`, `data-model-template.md`, `quickstart-template.md` |
 | `speckit.sketch` | `command-manifest.yaml:commands.speckit.sketch` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.sketch` | `sketch-template.md` |
 | `speckit.solutionreview` | `command-manifest.yaml:commands.speckit.solutionreview` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.solutionreview` | `solutionreview-template.md` |
 | `speckit.tasking` | `command-manifest.yaml:commands.speckit.tasking` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking` | `tasks-template.md` |

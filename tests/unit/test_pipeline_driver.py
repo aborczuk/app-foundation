@@ -988,7 +988,7 @@ def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> N
                 "    description: \"example\"",
                 "    driver:",
                 "      mode: script",
-                "      script_path: scripts/example.sh",
+                "      script_path: scripts/example.py",
                 "      timeout_seconds: 30",
                 "    emits:",
                 "      - event: example_event",
@@ -1010,7 +1010,7 @@ def test_load_driver_routes_normalizes_mode_and_script_path(tmp_path: Path) -> N
         {"event": "example_event", "required_fields": []}
     ]
     assert routes["speckit.example"]["script_path"] == str(
-        (tmp_path / "scripts" / "example.sh").resolve()
+        (tmp_path / "scripts" / "example.py").resolve()
     )
 
     assert routes["speckit.fallback"]["mode"] == "legacy"
@@ -1028,7 +1028,7 @@ def test_load_driver_routes_preserves_route_and_emit_metadata(tmp_path: Path) ->
                 "    description: \" example route \"",
                 "    canonical_trigger: \" speckit.run \"",
                 "    scripts:",
-                "      - \" scripts/example.sh \"",
+                "      - \" scripts/example.py \"",
                 "    artifacts:",
                 "      - output_path: \" ${FEATURE_DIR}/example.md \"",
                 "        template: \" example-template.md \"",
@@ -1038,7 +1038,7 @@ def test_load_driver_routes_preserves_route_and_emit_metadata(tmp_path: Path) ->
                 "          - \" speckit.checkpoint \"",
                 "    driver:",
                 "      mode: deterministic",
-                "      script_path: scripts/example.sh",
+                "      script_path: scripts/example.py",
                 "    emits:",
                 "      - event: example_event",
                 "        required_fields:",
@@ -1053,7 +1053,7 @@ def test_load_driver_routes_preserves_route_and_emit_metadata(tmp_path: Path) ->
     route = routes["speckit.example"]
     assert route["description"] == "example route"
     assert route["canonical_trigger"] == "speckit.run"
-    assert route["scripts"] == ["scripts/example.sh"]
+    assert route["scripts"] == ["scripts/example.py"]
     assert route["artifacts"] == [
         {
             "output_path": "${FEATURE_DIR}/example.md",
@@ -1757,7 +1757,7 @@ def test_resolve_step_mapping_routes_deterministic_phase(tmp_path: Path) -> None
                 "    description: \"planning phase\"",
                 "    driver:",
                 "      mode: deterministic",
-                "      script_path: scripts/plan.sh",
+                "      script_path: scripts/plan.py",
                 "      timeout_seconds: 60",
                 "    emits:",
                 "      - event: plan_started",
@@ -1796,7 +1796,7 @@ def test_resolve_step_mapping_defaults_canonical_trigger_for_driver_managed_rout
                 "    description: \"example route\"",
                 "    driver:",
                 "      mode: deterministic",
-                "      script_path: scripts/example.sh",
+                "      script_path: scripts/example.py",
                 "    emits:",
                 "      - event: example_event",
                 "        required_fields: []",

@@ -54,15 +54,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git grep -nE 'cgc[[:space:]]+index[[:space:]]+--force[[:space:]]+(\.|/)' -- 'scripts/*.sh' '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+          if git grep -nE 'cgc[[:space:]]+index[[:space:]]+--force[[:space:]]+(\.|/)' -- 'scripts/*.py' '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
             echo "::error::Blocked unsafe CodeGraph usage: full-scope force index detected."
-            echo "::error::Use scripts/cgc_safe_index.sh with a scoped path."
+            echo "::error::Use scripts/cgc_safe_index.py with a scoped path."
             exit 1
           fi
 
-          if git grep -nE 'cgc[[:space:]]+index[[:space:]]+--force[[:space:]]+(\$REPO_ROOT|\$\{REPO_ROOT\}|/Users/andreborczuk/app-foundation)' -- 'scripts/*.sh' '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
+          if git grep -nE 'cgc[[:space:]]+index[[:space:]]+--force[[:space:]]+(\$REPO_ROOT|\$\{REPO_ROOT\}|/Users/andreborczuk/app-foundation)' -- 'scripts/*.py' '.github/workflows/*.yml' '.github/workflows/*.yaml'; then
             echo "::error::Blocked unsafe CodeGraph usage: force index against repo root detected."
-            echo "::error::Use scripts/cgc_safe_index.sh with a scoped path."
+            echo "::error::Use scripts/cgc_safe_index.py with a scoped path."
             exit 1
           fi
 

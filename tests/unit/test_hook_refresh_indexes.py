@@ -170,16 +170,16 @@ def test_refresh_codegraph_batches_sibling_files(monkeypatch, tmp_path) -> None:
     assert len(refresh_calls) == 1
     command, label = refresh_calls[0]
     assert label == f"codegraph {sibling_dir}"
-    assert command[:2] == ["bash", str(repo_root / "scripts" / "cgc_safe_index.sh")]
+    assert command[:2] == [sys.executable, str(repo_root / "scripts" / "cgc_safe_index.py")]
     assert command[2] == str(sibling_dir)
 
 
-def test_refresh_vector_includes_shell_paths(monkeypatch, tmp_path) -> None:
-    """Include shell edits in the vector refresh path filter."""
+def test_refresh_vector_includes_python_paths(monkeypatch, tmp_path) -> None:
+    """Include python edits in the vector refresh path filter."""
     hook = _load_hook_module()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    script_path = repo_root / "scripts" / "refresh.sh"
+    script_path = repo_root / "scripts" / "refresh.py"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#!/usr/bin/env bash\necho refresh\n", encoding="utf-8")
     ignored_path = repo_root / "notes.txt"

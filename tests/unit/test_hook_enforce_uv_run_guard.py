@@ -28,7 +28,7 @@ def test_direct_uv_run_is_denied() -> None:
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "Direct uv run calls are denied" in decision["permissionDecisionReason"]
-    assert "uv_cache_dir.sh" in decision["permissionDecisionReason"]
+    assert "uv_cache_dir.py" in decision["permissionDecisionReason"]
 
 
 def test_absolute_uv_run_is_denied() -> None:
@@ -43,7 +43,7 @@ def test_absolute_uv_run_is_denied() -> None:
 def test_uv_cache_helper_command_is_allowed() -> None:
     """Commands that source the cache helper should pass through."""
     stdout = _run_hook(
-        "source scripts/uv_cache_dir.sh && uv run --no-sync python scripts/pytest_guard.py run -- "
+        "source scripts/uv_cache_dir.py && uv run --no-sync python scripts/pytest_guard.py run -- "
         "tests/unit/test_x.py"
     )
 

@@ -17,7 +17,7 @@
 
 ## Best Practices
 
-- Run `scripts/cgc_safe_index.sh` to keep the code graph fresh.
+- Run `scripts/cgc_safe_index.py` to keep the code graph fresh.
 - Always update `walkthrough.md` for any feature change.
 - Prefer a no-server solution (automation nodes, etc.) over building custom backend servers when it meets requirements safely.
 

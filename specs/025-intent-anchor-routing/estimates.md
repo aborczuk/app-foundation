@@ -16,7 +16,7 @@
 | T009 | 2 | Add regression coverage for the non-top candidate follow-up path and bounded retry behavior | Testing the new helper path is straightforward once the core behavior exists. |
 | T010 | 1 | Update `AGENTS.md` with the read-code rule source, the top-5 shortlist, the `90/100` cutoff, and the bounded follow-up helper rule | Docs-only change in a single markdown file. |
 | T011 | 1 | Update the feature quickstart with shortlist/body examples and the follow-up helper explanation | Docs-only change in a single markdown file. |
-| T012 | 1 | Align `scripts/read-code.sh` help text and usage guidance with the new shortlist/body contract | Small shell wrapper documentation tweak, no new logic. |
+| T012 | 1 | Align `scripts/read_code.py` help text and usage guidance with the new shortlist/body contract | Small shell wrapper documentation tweak, no new logic. |
 | T013 | 1 | Confirm the solution-review and tasking artifacts remain consistent with the sketch contract after implementation edits | Process/documentation safeguard only; no code path changes. |
 
 ## Solution Sketch — T002

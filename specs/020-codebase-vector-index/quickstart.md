@@ -155,7 +155,7 @@ That keeps the tool flow semantic-first instead of “grep everything first.”
 Verify the workflow contracts are still wired correctly:
 
 ```bash
-bash .specify/scripts/test-plan.sh feature_id=020
+bash .specify/scripts/test_plan.py feature_id=020
 ```
 
 For the feature itself, the implementation should eventually provide a deterministic test that:

@@ -34,10 +34,10 @@ def _completed(returncode: int, *, stdout: str = "", stderr: str = "") -> subpro
 
 def test_main_rejects_non_python_paths(tmp_path: Path, capsys) -> None:
     """ruff_guard should fail fast when non-python file paths are provided."""
-    shell_script = tmp_path / "script.sh"
-    shell_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    text_file = tmp_path / "script.txt"
+    text_file.write_text("not python\n", encoding="utf-8")
 
-    rc = ruff_guard.main([str(shell_script)])
+    rc = ruff_guard.main([str(text_file)])
     stderr = capsys.readouterr().err
 
     assert rc == 2

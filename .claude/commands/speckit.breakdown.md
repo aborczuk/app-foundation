@@ -30,7 +30,7 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
 1. **Run prerequisites check** from repo root:
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    ```
-   .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+   .specify/scripts/python/check_prerequisites.py --json --require-tasks --include-tasks
    ```
    Parse `FEATURE_DIR`. Derive paths for `tasks.md` and `estimates.md`.
    - If either file is missing, abort with a clear error and the appropriate next command.

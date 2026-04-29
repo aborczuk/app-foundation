@@ -137,10 +137,10 @@ def _codegraph_refresh_targets(paths: Iterable[Path]) -> list[Path]:
 
 def _refresh_codegraph(paths: Iterable[Path]) -> list[str]:
     """Refresh codegraph using a batched, target-minimized safe wrapper."""
-    script = _repo_root() / "scripts" / "cgc_safe_index.sh"
+    script = _repo_root() / "scripts" / "cgc_safe_index.py"
     failures: list[str] = []
     for target in _codegraph_refresh_targets(paths):
-        error = _run_refresh(["bash", str(script), str(target)], f"codegraph {target}")
+        error = _run_refresh([sys.executable, str(script), str(target)], f"codegraph {target}")
         if error:
             failures.append(error)
     return failures

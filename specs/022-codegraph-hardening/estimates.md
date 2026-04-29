@@ -12,7 +12,7 @@
 | T000 | 1 | Record the external ingress / runtime readiness gate as N/A with rationale in `tasks.md` and keep the plan's local-only readiness stance explicit | Pure documentation/governance alignment with one existing plan section; no code path changes |
 | T001 | 3 | Create `src/mcp_codebase/health.py` with the shared graph-readiness domain models and classifier seam | New module plus typed classifier logic, but the decision surface is still local and follows existing typed-result patterns |
 | T002 | 3 | Add the MCP health tool registration to `src/mcp_codebase/server.py` and serialize the shared health result there with run-scoped JSONL logging | Extends an existing FastMCP adapter and logger path without changing the server architecture |
-| T003 | 3 | Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.sh` wrapper for a direct operator-facing health command | Two new IO-facing surfaces, but both are thin adapters over the shared health seam |
+| T003 | 3 | Create `src/mcp_codebase/doctor.py` and the `scripts/cgc_doctor.py` wrapper for a direct operator-facing health command | Two new IO-facing surfaces, but both are thin adapters over the shared health seam |
 | T004 | 2 | Add structured telemetry fields for health checks in `health.py` and `server.py` | Small logging/schema threading change across two existing files with a clear pattern to follow |
 | T005 | 3 | Add unit tests for healthy/stale/locked/unavailable classification and recovery hint selection | Moderate matrix of states and hints with one new test module and no external IO |
 | T006 | 3 | Add integration coverage for the doctor command and the MCP health tool contract | Crosses subprocess and MCP adapter boundaries, but remains a bounded contract test |
@@ -21,16 +21,16 @@
 | T009 | 3 | Thread the recovery hint into the MCP adapter and CLI doctor adapter so the agent-facing and operator-facing outputs say the same next action | Touches two adapters and a shared result contract; moderate composition work, but still limited scope |
 | T010 | 3 | Add failure-mode coverage proving last-known-good graph preservation after refresh failure | Requires simulated refresh failure and snapshot-preservation checks, which are integration-heavy but bounded |
 | T011 | 1 | Update `quickstart.md` with the doctor command, the safe refresh / rebuild flow, and the smoke-test instructions | Documentation-only with one existing feature doc to align |
-| T012 | 1 | Add a deterministic smoke validation note for `scripts/validate_doc_graph.sh` and the new doctor flow in the feature docs | Documentation-only smoke guidance with no implementation change |
+| T012 | 1 | Add a deterministic smoke validation note for `scripts/validate_doc_graph.py` and the new doctor flow in the feature docs | Documentation-only smoke guidance with no implementation change |
 | T013 | 3 | Add large-graph timeout regression coverage for health/smoke checks in `tests/integration/test_codegraph_recovery.py` | Large-graph timeout handling crosses subprocess and recovery-path boundaries, so it needs a dedicated integration regression |
 | T014 | 3 | Add shared graph-health models and read-only classification in `src/mcp_codebase/health.py` with unit coverage for healthy, stale, locked, and unavailable states plus recovery hints | Extends the existing health seam with typed status and hint objects, but the logic stays local and follows the repo's existing typed-result patterns |
 | T015 | 3 | Wire the MCP `get_graph_health` tool to the shared contract in `src/mcp_codebase/server.py` and verify the adapter returns the same structured hint payload | Thin adapter work over an existing FastMCP registration path plus run-scoped logging |
-| T016 | 3 | Add the CLI doctor entrypoint and shell wrapper hardening in `src/mcp_codebase/doctor.py` and `scripts/cgc_doctor.sh` with deterministic exit codes and subprocess smoke coverage | New operator-facing surface, but it is still a thin wrapper over the shared health contract |
-| T017 | 5 | Add graceful shutdown and bounded timeout handling for Kuzu-owned lifecycle paths in `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` so refresh/rebuild waits for the owner to exit before recovery proceeds | Crosses shell lifecycle, owner detection, and timeout handling, so there are multiple failure modes to verify |
-| T018 | 5 | Add stale-owner cleanup and lock-marker reclamation after a bounded timeout in `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` so confirmed orphaned owners are cleaned up without blind killing | Requires distinguishing a live owner from a confirmed stale owner and proving the timeout-based fallback is safe |
+| T016 | 3 | Add the CLI doctor entrypoint and shell wrapper hardening in `src/mcp_codebase/doctor.py` and `scripts/cgc_doctor.py` with deterministic exit codes and subprocess smoke coverage | New operator-facing surface, but it is still a thin wrapper over the shared health contract |
+| T017 | 5 | Add graceful shutdown and bounded timeout handling for Kuzu-owned lifecycle paths in `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` so refresh/rebuild waits for the owner to exit before recovery proceeds | Crosses shell lifecycle, owner detection, and timeout handling, so there are multiple failure modes to verify |
+| T018 | 5 | Add stale-owner cleanup and lock-marker reclamation after a bounded timeout in `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` so confirmed orphaned owners are cleaned up without blind killing | Requires distinguishing a live owner from a confirmed stale owner and proving the timeout-based fallback is safe |
 | T019 | 3 | Fail fast on buffer-pool exhaustion and other memory-pressure failures in `src/mcp_codebase/health.py` and the safe-index path so the recovery hint is explicit instead of swallowing the error | A focused failure-mapping change against an existing classifier and safe-index flow |
 | T020 | 5 | Route query-only CodeGraph probes through `READ_ONLY` connections while keeping refresh and rebuild on the single `READ_WRITE` owner and add concurrency regression coverage for probe-vs-refresh contention | Touches connection ownership, adapter selection, and contention tests, so it is more than a small shim |
-| T021 | 5 | Make freshness invalidation edit-aware in `scripts/read-code.sh` and `scripts/cgc_safe_index.sh` so local working-tree edits mark the graph stale before stale symbol answers are served | Requires a freshness signal, invalidation flow, and regression coverage for stale-answer prevention |
+| T021 | 5 | Make freshness invalidation edit-aware in `scripts/read_code.py` and `scripts/cgc_safe_index.py` so local working-tree edits mark the graph stale before stale symbol answers are served | Requires a freshness signal, invalidation flow, and regression coverage for stale-answer prevention |
 | T022 | 1 | Update `specs/022-codegraph-hardening/quickstart.md` and operator notes with the doctor flow, safe recovery, and failure-mode guidance | Documentation-only alignment with one existing feature doc |
 
 ---
@@ -60,8 +60,8 @@ No detailed sketch required. This is a repo-process documentation update.
 ### T003 — Solution Sketch
 
 **Modify**: `src/mcp_codebase/doctor.py:main` — create the CLI entrypoint that renders the same health contract for operators.  
-**Create**: `src/mcp_codebase/doctor.py` and `scripts/cgc_doctor.sh`.  
-**Reuse**: `scripts/validate_doc_graph.sh` for shell-wrapper shape and `src/mcp_codebase/health.py` for the shared decision logic.  
+**Create**: `src/mcp_codebase/doctor.py` and `scripts/cgc_doctor.py`.  
+**Reuse**: `scripts/validate_doc_graph.py` for shell-wrapper shape and `src/mcp_codebase/health.py` for the shared decision logic.  
 **Composition**: the shell wrapper launches the Python CLI, the CLI calls the shared classifier, and the CLI output mirrors the MCP tool's next-action text so operators and agents see the same guidance.  
 **Failing test assertion**: the subprocess test should fail until the doctor command prints a clear healthy/stale/locked/unavailable verdict and exits non-zero on unhealthy states.  
 **Domains touched**: `.claude/domains/10_observability.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/13_identity_access_control.md`, `.claude/domains/14_security_controls.md`, `.claude/domains/16_ops_governance.md`, `.claude/domains/17_code_patterns.md`
@@ -101,7 +101,7 @@ No detailed sketch required. The task only threads structured telemetry fields t
 
 **Modify**: `tests/integration/test_codegraph_recovery.py:test_lock_and_query_failure_modes` — verify the lock/unreadable/query-failure matrix.  
 **Create**: `tests/integration/test_codegraph_recovery.py`.  
-**Reuse**: the safe index wrapper behavior in `scripts/cgc_safe_index.sh` and the health contract from `src/mcp_codebase/health.py`.  
+**Reuse**: the safe index wrapper behavior in `scripts/cgc_safe_index.py` and the health contract from `src/mcp_codebase/health.py`.  
 **Composition**: the test drives a deliberately unhealthy graph state and confirms that the recovery hint changes with the failure class rather than collapsing to a single opaque error.  
 **Failing test assertion**: the test should fail until each failure mode emits its own recovery guidance and the command path remains deterministic.  
 **Domains touched**: `.claude/domains/10_observability.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/13_identity_access_control.md`, `.claude/domains/14_security_controls.md`, `.claude/domains/17_code_patterns.md`
@@ -119,7 +119,7 @@ No detailed sketch required. The task only threads structured telemetry fields t
 
 **Modify**: `tests/integration/test_codegraph_recovery.py:test_last_known_good_snapshot_preserved` — prove a refresh failure does not destroy the last known good graph.  
 **Create**: `tests/integration/test_codegraph_recovery.py` snapshot-preservation fixtures if needed.  
-**Reuse**: `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` for safe refresh/rebuild semantics, plus the snapshot/recovery model from `specs/022-codegraph-hardening/plan.md`.  
+**Reuse**: `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` for safe refresh/rebuild semantics, plus the snapshot/recovery model from `specs/022-codegraph-hardening/plan.md`.  
 **Composition**: the test forces a refresh failure, then checks that the previous snapshot remains usable and that the recovery hint still points to the safe path.  
 **Failing test assertion**: the test should fail until the prior snapshot survives a failed refresh and remains the fallback target.  
 **Domains touched**: `.claude/domains/03_data_storage_persistence.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/13_identity_access_control.md`, `.claude/domains/14_security_controls.md`, `.claude/domains/17_code_patterns.md`
@@ -161,16 +161,16 @@ No detailed sketch required. This is a docs-only smoke-note task.
 
 ### T016 — Solution Sketch
 
-**Modify**: `src/mcp_codebase/doctor.py:main` and `scripts/cgc_doctor.sh` — create the CLI entrypoint that renders the same health contract for operators.  
+**Modify**: `src/mcp_codebase/doctor.py:main` and `scripts/cgc_doctor.py` — create the CLI entrypoint that renders the same health contract for operators.  
 **Create**: the hardened doctor wrapper and any formatting helper needed to keep the summary text deterministic.  
-**Reuse**: `scripts/validate_doc_graph.sh` for shell-wrapper shape and `src/mcp_codebase/health.py` for the shared decision logic.  
+**Reuse**: `scripts/validate_doc_graph.py` for shell-wrapper shape and `src/mcp_codebase/health.py` for the shared decision logic.  
 **Composition**: the shell wrapper launches the Python CLI, the CLI calls the shared classifier, and the CLI output mirrors the MCP tool's next-action text so operators and agents see the same guidance.  
 **Failing test assertion**: the subprocess test should fail until the doctor command prints a clear healthy/stale/locked/unavailable verdict and exits non-zero on unhealthy states.  
 **Domains touched**: `.claude/domains/10_observability.md`, `.claude/domains/11_resilience_continuity.md`, `.claude/domains/12_testing_quality_gates.md`, `.claude/domains/16_ops_governance.md`, `.claude/domains/17_code_patterns.md`
 
 ### T017 — Solution Sketch
 
-**Modify**: `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` — add the bounded wait loop and graceful owner-shutdown handling before a refresh proceeds.  
+**Modify**: `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` — add the bounded wait loop and graceful owner-shutdown handling before a refresh proceeds.  
 **Create**: small shell helpers for the timeout window and process-state polling if the current wrapper does not already expose them.  
 **Reuse**: the existing `KUZUDB_PATH`, `IGNORE_DIRS`, and safe-index guardrails already present in the wrapper scripts.  
 **Composition**: the refresh/rebuild path checks for an active owner, waits within a bounded window, and only advances when the live owner has exited cleanly.  
@@ -179,7 +179,7 @@ No detailed sketch required. This is a docs-only smoke-note task.
 
 ### T018 — Solution Sketch
 
-**Modify**: `scripts/cgc_safe_index.sh` and `scripts/cgc_index_repo.sh` — add the stale-owner cleanup branch that runs only after the bounded timeout proves the owner is stale.  
+**Modify**: `scripts/cgc_safe_index.py` and `scripts/cgc_index_repo.py` — add the stale-owner cleanup branch that runs only after the bounded timeout proves the owner is stale.  
 **Create**: the cleanup routine or lock-marker reclamation helper that removes confirmed stale ownership without touching a live owner.  
 **Reuse**: the timeout state and owner-detection logic introduced by T017 plus the existing lock-marker conventions.  
 **Composition**: once the timeout expires, the wrapper checks that the owner is truly stale, reclaims the lock markers, and preserves the last known good snapshot rather than blindly killing processes.  
@@ -206,7 +206,7 @@ No detailed sketch required. This is a docs-only smoke-note task.
 
 ### T021 — Solution Sketch
 
-**Modify**: `scripts/read-code.sh` and `scripts/cgc_safe_index.sh` — detect local edits and invalidate graph freshness before stale answers are served.  
+**Modify**: `scripts/read_code.py` and `scripts/cgc_safe_index.py` — detect local edits and invalidate graph freshness before stale answers are served.  
 **Create**: a freshness fingerprint or invalidation marker if the current wrapper logic needs one.  
 **Reuse**: the existing ignore-dir logic and safe-index wrapper behavior already present in the repo.  
 **Composition**: when the working tree changes, the graph flips stale and forces patch/reindex before symbol answers continue.  

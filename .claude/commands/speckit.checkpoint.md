@@ -22,7 +22,7 @@ This command is a **validation gate** — it verifies that the software actually
 ## Outline
 
 1. **Locate the feature and tasks file**:
-   - Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
+   - Run `.specify/scripts/python/check_prerequisites.py --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute.
    - Read tasks.md from FEATURE_DIR.
    - Read plan.md from FEATURE_DIR (for tech stack context — how to run the software, what entrypoints exist).
 

@@ -12,7 +12,7 @@ You **MUST** consider the user input before proceeding. If `--status` is present
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --include-tasks` from repo root and parse `PROJECT_ROOT`, `FEATURE_DIR`, and `AVAILABLE_DOCS`.
+1. Run `.specify/scripts/python/check_prerequisites.py --json --include-tasks` from repo root and parse `PROJECT_ROOT`, `FEATURE_DIR`, and `AVAILABLE_DOCS`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. Validate runtime environment variables:

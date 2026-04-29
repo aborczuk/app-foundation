@@ -23,7 +23,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 Prove that the architecture committed to `plan.md` is actually buildable before any task breakdown or LLD begins.
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` and parse `FEATURE_DIR` and `IMPL_PLAN`.
+1. Run `.specify/scripts/python/check_prerequisites.py --json --paths-only` and parse `FEATURE_DIR` and `IMPL_PLAN`.
 2. Read `## Open Feasibility Questions` in `plan.md`.
    - If no open questions remain, emit `feasibility_spike_completed` with `fq_count: 0` and exit.
 3. For each open FQ, run a targeted probe.
@@ -35,7 +35,7 @@ Prove that the architecture committed to `plan.md` is actually buildable before 
 
 ### 1. Setup
 
-Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root. Parse `FEATURE_DIR` and `IMPL_PLAN`. Read `plan.md`.
+Run `.specify/scripts/python/check_prerequisites.py --json --paths-only` from repo root. Parse `FEATURE_DIR` and `IMPL_PLAN`. Read `plan.md`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 ### 2. Read Open Feasibility Questions

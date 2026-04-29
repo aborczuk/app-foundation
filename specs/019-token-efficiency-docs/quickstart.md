@@ -31,7 +31,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run ruff --version
 ### 3. Ensure feature artifacts exist
 
 ```bash
-.specify/scripts/bash/setup-plan.sh --json
+.specify/scripts/python/setup_plan.py --json
 UV_CACHE_DIR=/tmp/uv-cache uv run python .specify/scripts/pipeline-scaffold.py speckit.plan \
   --feature-dir specs/019-token-efficiency-docs \
   FEATURE_NAME="Deterministic Pipeline Driver with LLM Handoff"

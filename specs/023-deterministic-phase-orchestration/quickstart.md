@@ -89,7 +89,7 @@ uv run pytest tests/unit/test_validate_command_script_coverage.py tests/unit/tes
 Expected: all tests pass.
 
 ```bash
-bash scripts/validate_doc_graph.sh
+bash scripts/validate_doc_graph.py
 ```
 
 Expected: `Doc graph validation PASSED.`
@@ -139,7 +139,7 @@ The solution phase is a producer-vs-driver ownership boundary: `/speckit.solutio
 | Issue | Symptom | Fix |
 |-------|---------|-----|
 | Missing canonical manifest | `manifest not found: .../command-manifest.yaml` | Ensure root `command-manifest.yaml` exists and is committed. |
-| Feature branch created from wrong base | Feature branch ancestry does not include latest `main` | Use `.specify/scripts/bash/create-new-feature.sh --base main ...` or rely on new default behavior. |
+| Feature branch created from wrong base | Feature branch ancestry does not include latest `main` | Use `.specify/scripts/python/create_new_feature.py --base main ...` or rely on new default behavior. |
 | Plan gate fails | `missing_requirements_checklist` or incomplete checklist items | Complete `specs/023.../checklists/requirements.md` and rerun gate. |
 | Implement step blocked | `gate=implement_execution` with reasons such as `gate_status_failed` or `phase_gate_failed` | Open the `debug_path` file from the step result and inspect stage-level `stdout_tail` / `stderr_tail` for the failing gate. |
 

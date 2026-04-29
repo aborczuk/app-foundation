@@ -107,7 +107,7 @@ Non-code synthesis from web research. Standard approaches, common patterns, know
 
 Log which tools and queries ran. Used to diagnose shallow results in future debugging.
 
-- Agent A (Code Discovery): local repository inspection (`command-manifest.yaml`, ledger/gate scripts), scoped CodeGraph helper reads (`scripts/read-code.sh`), GitHub repo metadata checks via `gh repo view`.
+- Agent A (Code Discovery): local repository inspection (`command-manifest.yaml`, ledger/gate scripts), scoped CodeGraph helper reads (`scripts/read_code.py`), GitHub repo metadata checks via `gh repo view`.
 - Agent B (Package Discovery): `python3 -m pip index versions` for `transitions`, `tenacity`, `pydantic`, `jsonschema`, `filelock`; PyPI/Web verification fallback.
 - Agent C (Conceptual Patterns): Web research on GitHub Actions concurrency + approvals, OpenTelemetry log-trace correlation, idempotent-consumer pattern, deterministic workflow constraints.
 

@@ -230,7 +230,7 @@ def test_extract_yaml_sections_builds_top_level_structured_chunks(tmp_path: Path
 version: 1
 commands:
   read-code:
-    script: scripts/read-code.sh
+    script: scripts/read_code.py
 domains:
   - security
   - observability

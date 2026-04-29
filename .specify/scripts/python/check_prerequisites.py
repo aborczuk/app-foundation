@@ -17,7 +17,8 @@ from common import (
 
 
 def _help_text() -> str:
-    return """Usage: check-prerequisites.sh [OPTIONS]
+    """Return the CLI help text for the prerequisite checker."""
+    return """Usage: check_prerequisites.py [OPTIONS]
 
 Consolidated prerequisite checking for Spec-Driven Development workflow.
 
@@ -30,13 +31,13 @@ OPTIONS:
 
 EXAMPLES:
   # Check task prerequisites (plan.md required)
-  ./check-prerequisites.sh --json
-  
+  ./check_prerequisites.py --json
+
   # Check implementation prerequisites (plan.md + tasks.md required)
-  ./check-prerequisites.sh --json --require-tasks --include-tasks
-  
+  ./check_prerequisites.py --json --require-tasks --include-tasks
+
   # Get feature paths only (no validation)
-  ./check-prerequisites.sh --paths-only
+  ./check_prerequisites.py --paths-only
   """
 
 

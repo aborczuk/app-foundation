@@ -27,7 +27,7 @@ Note: This review is expected to run AFTER `/speckit.plan` completes and BEFORE 
 
 Execution steps:
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root **once**. Parse fields:
+1. Run `.specify/scripts/python/check_prerequisites.py --json --paths-only` from repo root **once**. Parse fields:
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
    - `FEATURE_DIR`
    - `IMPL_PLAN` (plan.md path)

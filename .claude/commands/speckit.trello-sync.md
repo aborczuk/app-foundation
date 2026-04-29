@@ -12,7 +12,7 @@ You **MUST** consider the user input before proceeding (if not empty). If a boar
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`. All paths must be absolute.
+1. Run `.specify/scripts/python/check_prerequisites.py --json --require-tasks --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`. All paths must be absolute.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
 
 2. Derive the tasks.md path: `FEATURE_DIR/tasks.md`. Confirm it exists.

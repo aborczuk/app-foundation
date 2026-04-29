@@ -30,14 +30,14 @@ The stack also has two gate families:
 - `scripts/speckit_plan_gate.py`: Plan gate validator. It checks research prerequisites, required plan sections, and design-artifact presence.
 - `scripts/speckit_implement_gate.py`: Implement gate validator. It checks task preflight, offline QA payloads, task evidence, and phase-close requirements.
 - `scripts/speckit_tasks_gate.py`: Task-file validator. It checks `tasks.md` formatting, phase headers, task ordering, marker consistency, and description shape.
-- `.specify/scripts/bash/check-prerequisites.sh`: Consolidated prerequisite script. It resolves the feature directory from the branch, checks that the required docs exist for the current phase, and lists optional docs that are available for the feature.
+- `.specify/scripts/python/check_prerequisites.py`: Consolidated prerequisite script. It resolves the feature directory from the branch, checks that the required docs exist for the current phase, and lists optional docs that are available for the feature.
 - `docs/governance/pipeline-driver-handoff.md`: Feature-specific handoff note for the pipeline-driver stack. It describes the implementation state and the migration context for feature 019.
 
 ## Ownership Diagram
 
 ```mermaid
 flowchart TD
-    A[.specify/scripts/bash/check-prerequisites.sh] --> B[speckit gate scripts]
+    A[.specify/scripts/python/check_prerequisites.py] --> B[speckit gate scripts]
     B --> C[scripts/task_ledger.py]
     B --> D[scripts/pipeline_ledger.py]
     D --> E[scripts/pipeline_driver_state.py]
@@ -72,7 +72,7 @@ flowchart TD
 
 Reading it left to right:
 
-- `check-prerequisites.sh` and the `speckit_*` gate scripts decide whether work may start.
+- `check_prerequisites.py` and the `speckit_*` gate scripts decide whether work may start.
 - `task_ledger.py` owns task ordering and per-actor start checks.
 - `pipeline_ledger.py` owns feature-phase transitions and phase-complete assertions.
 - `pipeline_driver_state.py` derives the current phase from the pipeline ledger and manages feature locks.
@@ -81,7 +81,7 @@ Reading it left to right:
 
 ## How The Pieces Interact
 
-- `check-prerequisites.sh` runs first in the spec-driven workflow. It discovers the feature directory, confirms `plan.md` exists, and optionally requires `tasks.md` before implementation work starts.
+- `check_prerequisites.py` runs first in the spec-driven workflow. It discovers the feature directory, confirms `plan.md` exists, and optionally requires `tasks.md` before implementation work starts.
 - `speckit_spec_gate.py`, `speckit_plan_gate.py`, `speckit_implement_gate.py`, and `speckit_tasks_gate.py` provide deterministic gate checks around spec, plan, implementation, and task-format readiness.
 - `task_ledger.py assert-can-start` blocks a task if the ledger is invalid, if a prior task is still open, if the same actor already owns another open task, or if the task is not ready in the declared order.
 - `pipeline_ledger.py assert-phase-complete` blocks phase progression until the required feature-level event is present in the ledger and the event sequence is valid.
@@ -137,7 +137,7 @@ These tests exercise the stack end to end:
 
 If you are tracing a bug or following a phase change, read the files in this order:
 
-1. `.specify/scripts/bash/check-prerequisites.sh`
+1. `.specify/scripts/python/check_prerequisites.py`
 2. `scripts/speckit_spec_gate.py`
 3. `scripts/speckit_plan_gate.py`
 4. `scripts/speckit_implement_gate.py`

@@ -86,8 +86,8 @@ The feature extends the existing `src/mcp_codebase` package with a dedicated vec
 | `src/mcp_codebase/security.py` | module | Validates file paths against project root | Reuse scope validation for index queries/builds | Reusable | Primary |
 | `src/mcp_codebase/health.py` / `doctor.py` | modules | Graph-health and operator output patterns | Guide status/staleness reporting shape | Reusable patterns | Blast radius |
 | `.codegraphcontext/` | storage home | Existing repo-local codegraph home | Persist vector index under same home | Reusable convention | Primary |
-| `scripts/cgc_safe_index.sh` | script | Scoped safe indexing pattern | Operational fallback / pattern reference only | Reusable pattern | Blast radius |
-| `scripts/read-markdown.sh` | script | Section-aware markdown reads | Consumer fallback for query results | Reusable pattern | Blast radius |
+| `scripts/cgc_safe_index.py` | script | Scoped safe indexing pattern | Operational fallback / pattern reference only | Reusable pattern | Blast radius |
+| `scripts/read_markdown.py` | script | Section-aware markdown reads | Consumer fallback for query results | Reusable pattern | Blast radius |
 | `specs/020-codebase-vector-index/quickstart.md` | docs | Current local setup guide | Must match final storage path and CLI entry points | Needs update | Blast radius |
 
 ---
@@ -99,8 +99,8 @@ The feature extends the existing `src/mcp_codebase` package with a dedicated vec
 | `src/mcp_codebase` MCP server | `src/mcp_codebase/server.py` | Agent query surface | Hybrid | tool args, project root | query/status results | none | tool registration | Modify |
 | Vector-index CLI | `src/mcp_codebase/indexer.py` | Local build/watch/query operator surface | Deterministic | subcommand, scope, query, top_k | index build/refesh status, query results | none | thin adapter to service | New |
 | Repo-local index storage | `.codegraphcontext/global/db/vector-index/` | Derived state persistence | Deterministic | extracted units, metadata, embeddings | active collection + metadata sidecar | none | storage backend | New |
-| Markdown read fallback | `scripts/read-markdown.sh` | Consumer fallback | Deterministic | file path, heading | section excerpt | none | read-after-query path | Reuse |
-| Safe scoped indexing pattern | `scripts/cgc_safe_index.sh` | Operational fallback | Deterministic | scoped path | refreshed codegraph state | none | fallback pattern only | Reuse |
+| Markdown read fallback | `scripts/read_markdown.py` | Consumer fallback | Deterministic | file path, heading | section excerpt | none | read-after-query path | Reuse |
+| Safe scoped indexing pattern | `scripts/cgc_safe_index.py` | Operational fallback | Deterministic | scoped path | refreshed codegraph state | none | fallback pattern only | Reuse |
 
 ---
 
@@ -133,7 +133,7 @@ The feature extends the existing `src/mcp_codebase` package with a dedicated vec
 | `src/mcp_codebase/config.py` | Index storage path, model id, and watcher scope settings live here or in a new index config module | regression |
 | `specs/020-codebase-vector-index/quickstart.md` | Quickstart must match the final storage path and entry points | docs |
 | `tests/unit/` and `tests/integration/` | Needs coverage for query, refresh, staleness, and interruption recovery | regression |
-| `scripts/read-markdown.sh` | Used as consumer fallback when a markdown query result points to a section | observability / operator |
+| `scripts/read_markdown.py` | Used as consumer fallback when a markdown query result points to a section | observability / operator |
 
 ### Caller / Callee / Dependency Notes
 
@@ -191,8 +191,8 @@ The feature extends the existing `src/mcp_codebase` package with a dedicated vec
 ### Reuse Unchanged
 
 - `src/mcp_codebase/security.py` path validation pattern
-- `scripts/read-markdown.sh`
-- `scripts/cgc_safe_index.sh`
+- `scripts/read_markdown.py`
+- `scripts/cgc_safe_index.py`
 - `.codegraphcontext/` as the repo-local storage home
 
 ### Modify / Extend Existing
@@ -479,7 +479,7 @@ Tasking must follow these rules:
 
 - Keep extractor logic pure and adapter IO isolated.
 - Use the same service from both the MCP tool surface and the CLI wrapper.
-- Treat `scripts/cgc_safe_index.sh` and `scripts/read-markdown.sh` as fallback patterns, not primary feature code.
+- Treat `scripts/cgc_safe_index.py` and `scripts/read_markdown.py` as fallback patterns, not primary feature code.
 
 ---
 
@@ -691,8 +691,8 @@ Lock the behavior with deterministic unit and integration coverage and update th
 Regression and operator validation.
 
 **Blast-Radius Neighbors**  
-- `scripts/read-markdown.sh`
-- `scripts/cgc_safe_index.sh`
+- `scripts/read_markdown.py`
+- `scripts/cgc_safe_index.py`
 - `specs/020-codebase-vector-index/data-model.md`
 
 **Reuse / Modify / Create Classification**  

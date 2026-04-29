@@ -10,7 +10,7 @@ The feature can stay inside the existing repo and reuse the current read-code he
 
 | Option | FRs covered | How it works | Gap (uncovered FRs) |
 |--------|-------------|--------------|---------------------|
-| Existing read-code helper + AGENTS guidance + local vector index | FR-001, FR-002, FR-003, FR-004, FR-005 | Agents consult `AGENTS.md`, use `scripts/read-code.sh`/`scripts/read_code.py`, and consume indexed symbol metadata from the local vector store. | Needs the documented 5-item shortlist, one bounded expansion rule, and body-first preference made explicit. Current helper still returns one best anchor by default. |
+| Existing read-code helper + AGENTS guidance + local vector index | FR-001, FR-002, FR-003, FR-004, FR-005 | Agents consult `AGENTS.md`, use `scripts/read_code.py`/`scripts/read_code.py`, and consume indexed symbol metadata from the local vector store. | Needs the documented 5-item shortlist, one bounded expansion rule, and body-first preference made explicit. Current helper still returns one best anchor by default. |
 
 ---
 
@@ -20,7 +20,7 @@ Assemble pieces from the current repository to cover the feature.
 
 | Source (owner/repo) | File(s) to copy/adapt | FRs covered | Notes |
 |---------------------|----------------------|-------------|-------|
-| `aborczuk/app-foundation` | `AGENTS.md`, `scripts/read-code.sh` | FR-001, FR-005 | `AGENTS.md` already defines code-file read efficiency, bounded reads, and the rule to use `read_code_context`/`read_code_window` before seam anchoring. Last upstream commit on `main`: `2026-04-20`; public repo. |
+| `aborczuk/app-foundation` | `AGENTS.md`, `scripts/read_code.py` | FR-001, FR-005 | `AGENTS.md` already defines code-file read efficiency, bounded reads, and the rule to use `read_code_context`/`read_code_window` before seam anchoring. Last upstream commit on `main`: `2026-04-20`; public repo. |
 | `aborczuk/app-foundation` | `scripts/read_code.py` | FR-002, FR-003, FR-004, FR-005 | Existing logic already ranks vector hits, enforces bounded windows, and consults the local vector index with `--top-k 5`; needs shortlist/expansion semantics and body-first preference surfaced to the agent. |
 | `aborczuk/app-foundation` | `src/mcp_codebase/index/domain.py` | FR-003 | `CodeSymbol.body` and `QueryResult.body` already carry full body text, so body-return can reuse existing indexed data instead of introducing a new storage shape. |
 | `aborczuk/app-foundation` | `src/mcp_codebase/indexer.py` | FR-004 | The indexer already exposes query top-k controls and defaults; the read-code path can widen retrieval without changing index storage. |
@@ -62,7 +62,7 @@ No external package adoption is needed for this feature. The current implementat
 - Code Discovery: `uv run cgc find pattern -- "read_code_context"`, `uv run cgc find pattern -- "body"`, `uv run cgc find pattern -- "AGENTS.md"`, `uv run cgc find pattern -- "top_k"`
 - Package Discovery: Not applicable; no external package adoption candidate was identified for this scope.
 - Conceptual Patterns: WebSearch queries `retrieval reranking top k confidence standard pattern documentation` and `full passage vs snippet retrieval best practices documentation`; Web results reviewed from TopK, Pinecone, and Coveo.
-- Local Context Mapping: `AGENTS.md`, `scripts/read-code.sh`, `scripts/read_code.py`, `src/mcp_codebase/index/domain.py`, `src/mcp_codebase/indexer.py`, `specs/025-intent-anchor-routing/spec.md`
+- Local Context Mapping: `AGENTS.md`, `scripts/read_code.py`, `scripts/read_code.py`, `src/mcp_codebase/index/domain.py`, `src/mcp_codebase/indexer.py`, `specs/025-intent-anchor-routing/spec.md`
 - Repo Metadata: GitHub connector repo lookup for `aborczuk/app-foundation`; local `git log origin/main -1 --format=%cs`
 
 ---

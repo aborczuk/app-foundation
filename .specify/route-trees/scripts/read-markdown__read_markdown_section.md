@@ -1,5 +1,5 @@
 ---
-source_path: "scripts/read-markdown.sh"
+source_path: "scripts/read_markdown.py"
 source_kind: "script"
 source_symbol: "read_markdown_section"
 generated_by: "generate_route_tree.py"
@@ -11,7 +11,7 @@ generated_at: "2026-04-16T16:28:02Z"
 ## Route
 
 - **Root router**: `CLAUDE.md`
-- **Primary tool**: scripts/read-markdown.sh
+- **Primary tool**: scripts/read_markdown.py
 - **Implementation**: scripts/read_markdown.py
 - **Problem class**: documentation navigation and workflow routing
 - **Why this route**: The source is best understood by anchoring the exact file or symbol first, then expanding only when the question needs broader relationships.
@@ -26,7 +26,7 @@ generated_at: "2026-04-16T16:28:02Z"
 
 ## How To
 
-1. Run `scripts/read-markdown.sh` against the source path to anchor the exact location.
+1. Run `scripts/read_markdown.py` against the source path to anchor the exact location.
 2. Use `scripts/read_markdown.py` if you need to inspect or modify the underlying logic.
 3. Read only the smallest bounded window or section needed to complete the change.
 

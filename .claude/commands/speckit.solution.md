@@ -34,7 +34,7 @@ Top-level LLD phase for sketch-first planning. Produce the `solution_approved` p
 
 ### 1. Setup
 
-Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse `FEATURE_DIR`, `IMPL_PLAN`, and `AVAILABLE_DOCS`.
+Run `.specify/scripts/python/check_prerequisites.py --json` from repo root. Parse `FEATURE_DIR`, `IMPL_PLAN`, and `AVAILABLE_DOCS`.
 
 ### 2. Hard-block gate (MANDATORY)
 
@@ -50,8 +50,8 @@ Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root. Parse 
 
 - Use this order whenever repo code/docs are used for sketching, review, decomposition, or drift analysis:
   1. Run helper entrypoints first:
-     - Code: `source scripts/read-code.sh && read_code_context <file> <symbol_or_pattern> 80`
-     - Markdown: `source scripts/read-markdown.sh && read_markdown_section <file> <section_heading>`
+     - Code: `source scripts/read_code.py && read_code_context <file> <symbol_or_pattern> 80`
+     - Markdown: `source scripts/read_markdown.py && read_markdown_section <file> <section_heading>`
   2. Treat helper output as semantic-first + exact bounded read anchor.
   3. Run `discovery checks` (`codegraph` blast-radius/caller/callee/import checks) from that anchored seam.
 - Do not start with broad `codegraph` sweeps before helper-driven reads, unless those reads fail.

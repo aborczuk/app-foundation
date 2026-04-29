@@ -32,7 +32,7 @@ This command operates on the **current feature branch's spec**, or on a spec ide
 
    a. Run prerequisites check:
       ```
-      .specify/scripts/bash/check-prerequisites.sh --json
+      .specify/scripts/python/check_prerequisites.py --json
       ```
       Parse `FEATURE_DIR` and `BRANCH_NAME`. Derive path to `spec.md`.
 
@@ -149,7 +149,7 @@ This command operates on the **current feature branch's spec**, or on a spec ide
 
    b. Run create script for each phase:
       ```
-      .specify/scripts/bash/create-new-feature.sh --json --number [N] --short-name "[phase-short-name]" "[Phase description]"
+      .specify/scripts/python/create_new_feature.py --json --number [N] --short-name "[phase-short-name]" "[Phase description]"
       ```
       Capture `SPEC_FILE` and `BRANCH_NAME` from JSON output.
 

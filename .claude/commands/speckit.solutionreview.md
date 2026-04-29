@@ -59,7 +59,7 @@ If any of these fail materially, tasking must be blocked.
 Run from repo root:
 
 ```bash
-.specify/scripts/bash/check-prerequisites.sh --json
+.specify/scripts/python/check_prerequisites.py --json
 ```
 
 Parse:

@@ -172,8 +172,8 @@ Given that feature description, do this:
     ```
 
 12. Report completion with branch name, spec file path, checklist results, t-shirt size estimate, and readiness for the next phase.
-    - If size is **XS/S**, report that the feature is **Ready for Tasking** (driver will handle ledger catch-up).
-    - Otherwise, report readiness for the next phase (`/speckit.research`).
+    - If size is **XS/S**, report the feature's actual next phase from the pipeline driver, for example `Next phase: solution`, instead of a generic tasking label. The driver will handle ledger catch-up.
+    - Otherwise, report readiness for the actual next phase selected by the workflow.
    - In **update mode**, explicitly report that existing spec scope was updated in-place (no new branch created).
 
 **NOTE:** In default mode, the script creates and checks out a new branch and initializes the spec file before writing. In update mode, no new branch is created.

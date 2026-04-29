@@ -160,7 +160,7 @@ def _extract_read_code_policy(command: str) -> tuple[str, str, int, bool] | None
             helper_idx = idx
             helper_mode = "context" if token == "read_code_context" else "window"
             break
-        if token.endswith("read-code.sh") or token.endswith("read_code.py"):
+        if token.endswith("read_code.py"):
             helper_idx = idx
             helper_mode = ""
             break

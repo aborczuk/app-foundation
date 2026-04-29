@@ -10,9 +10,9 @@ from typing import Any, Mapping
 
 import yaml
 
-REQUIRED_BASH_SCAFFOLDS: dict[str, str] = {
-    "speckit.specify": "create-new-feature.sh",
-    "speckit.plan": "setup-plan.sh",
+REQUIRED_PYTHON_SCAFFOLDS: dict[str, str] = {
+    "speckit.specify": "create_new_feature.py",
+    "speckit.plan": "setup_plan.py",
 }
 
 
@@ -90,7 +90,7 @@ def build_coverage_report(
             if not expected_path.exists():
                 command_reasons.append(f"missing_scaffold_script:{normalized_name}")
 
-        required_scaffold = REQUIRED_BASH_SCAFFOLDS.get(command_id)
+        required_scaffold = REQUIRED_PYTHON_SCAFFOLDS.get(command_id)
         if required_scaffold is not None and required_scaffold not in declared_scaffold_names:
             command_reasons.append(f"missing_required_scaffold_reference:{required_scaffold}")
 
@@ -161,8 +161,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--bash-scripts-dir",
-        default=".specify/scripts/bash",
-        help="Directory containing referenced bash scaffold scripts.",
+        default=".specify/scripts/python",
+        help="Directory containing referenced Python scaffold scripts.",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON payload.")
     return parser

@@ -12,7 +12,7 @@ SCRIPT_PATH = (
     / ".specify"
     / "scripts"
     / "bash"
-    / "check-prerequisites.sh"
+    / "check_prerequisites.py"
 )
 
 

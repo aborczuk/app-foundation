@@ -22,7 +22,7 @@ commands:
     artifacts:
     - output_path: ${FEATURE_DIR}/spec.md
       template: spec-template.md
-      scaffold_script: create-new-feature.sh
+      scaffold_script: create_new_feature.py
     - output_path: ${FEATURE_DIR}/checklists/requirements.md
       template: requirements-checklist-template.md
     emits:
@@ -49,7 +49,7 @@ commands:
     description: Ask targeted clarification questions and encode answers into spec
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - scripts/pipeline_ledger.py
     artifacts: []
     emits:
@@ -60,12 +60,12 @@ commands:
       specs
     mode: legacy
     scripts:
-    - .specify/scripts/bash/create-new-feature.sh
+    - .specify/scripts/python/create_new_feature.py
     - .specify/scripts/pipeline-scaffold.py
     artifacts:
     - output_path: ${FEATURE_DIR}/spec.md
       template: spec-template.md
-      scaffold_script: create-new-feature.sh
+      scaffold_script: create_new_feature.py
     - output_path: ${FEATURE_DIR}/checklists/requirements.md
       template: requirements-checklist-template.md
     emits: []
@@ -73,7 +73,7 @@ commands:
     description: Generate custom checklists for a feature based on user requirements
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     artifacts:
     - output_path: ${FEATURE_DIR}/checklists/${DOMAIN}.md
@@ -85,7 +85,7 @@ commands:
       mode: generative
       timeout_seconds: 240
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -101,8 +101,8 @@ commands:
       mode: generative
       timeout_seconds: 300
     scripts:
-    - .specify/scripts/bash/setup-plan.sh
-    - .specify/scripts/bash/update-agent-context.sh
+    - .specify/scripts/python/setup_plan.py
+    - .specify/scripts/python/update_agent_context.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/speckit_gate_status.py
     - scripts/speckit_plan_gate.py
@@ -110,7 +110,7 @@ commands:
     artifacts:
     - output_path: ${FEATURE_DIR}/plan.md
       template: plan-template.md
-      scaffold_script: setup-plan.sh
+      scaffold_script: setup_plan.py
       consumed_by:
       - speckit.planreview
       - speckit.feasibilityspike
@@ -132,7 +132,7 @@ commands:
       mode: generative
       timeout_seconds: 180
     scripts:
-    - .specify/scripts/bash/setup-plan.sh
+    - .specify/scripts/python/setup_plan.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -151,7 +151,7 @@ commands:
     description: Prove all Open Feasibility Questions in plan with targeted probes
     mode: legacy
     scripts:
-    - .specify/scripts/bash/setup-plan.sh
+    - .specify/scripts/python/setup_plan.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -173,7 +173,7 @@ commands:
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
-      - .specify/scripts/bash/check-prerequisites.sh
+      - .specify/scripts/python/check_prerequisites.py
       - .specify/scripts/pipeline-scaffold.py
       - scripts/speckit_tasking_chain.py
       - scripts/speckit_remake_huds.py
@@ -218,7 +218,7 @@ commands:
       mode: generative
       timeout_seconds: 180
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -235,7 +235,7 @@ commands:
     description: Estimate fibonacci complexity for each task by evaluating codebase
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -252,7 +252,7 @@ commands:
       \ (\u22645 points each)"
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     artifacts: []
     emits: []
   speckit.analyze:
@@ -260,7 +260,7 @@ commands:
       generation
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -275,7 +275,7 @@ commands:
       repo-grounded, and decomposition-ready'
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -307,7 +307,7 @@ commands:
     description: Generate E2E testing pipeline artifacts (e2e.md + executable script)
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
@@ -332,7 +332,7 @@ commands:
       and verifying observable behavior
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - scripts/speckit_implement_gate.py
     artifacts: []
     emits: []
@@ -345,7 +345,7 @@ commands:
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - scripts/speckit_implement_step.py
     - scripts/speckit_gate_status.py
     - scripts/speckit_implement_gate.py
@@ -354,7 +354,7 @@ commands:
     - scripts/offline_qa.py
     - scripts/speckit_implement_docs.py
     - scripts/task_ledger.py
-    - scripts/cgc_safe_index.sh
+    - scripts/cgc_safe_index.py
     artifacts: []
     emits:
     - event: implementation_completed
@@ -364,7 +364,7 @@ commands:
       and hand off to checkpoint when a user story ends
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - scripts/speckit_closeout_task.py
     - scripts/task_ledger.py
     artifacts: []
@@ -386,14 +386,14 @@ commands:
       issues for the feature
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     artifacts: []
     emits: []
   speckit.retro:
     description: Generate a retrospective for the current feature
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     artifacts:
       - output_path: "${FEATURE_DIR}/retro.md"
         template: "retro-template.md"
@@ -403,7 +403,7 @@ commands:
       estimate, spec sync when needed, and prerequisite readiness projection
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     - scripts/pipeline_ledger.py
     artifacts: []
     emits:
@@ -449,7 +449,7 @@ commands:
       principle inputs
     mode: legacy
     scripts:
-    - scripts/validate_constitution_sync.sh
+    - scripts/validate_constitution_sync.py
     artifacts: []
     emits: []
   speckit.trello-sync:
@@ -457,7 +457,7 @@ commands:
       Trello Bridge
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     artifacts: []
     emits: []
   speckit.clickup-sync:
@@ -465,7 +465,7 @@ commands:
       tree
     mode: legacy
     scripts:
-    - .specify/scripts/bash/check-prerequisites.sh
+    - .specify/scripts/python/check_prerequisites.py
     artifacts: []
     emits: []
 manual_events:

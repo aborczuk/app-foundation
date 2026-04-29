@@ -10,7 +10,7 @@ SCRIPT_PATH = (
     / ".specify"
     / "scripts"
     / "bash"
-    / "update-agent-context.sh"
+    / "update_agent_context.py"
 )
 
 
