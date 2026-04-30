@@ -10,6 +10,9 @@ logs/
 # Claude Code local settings (machine-specific, personal overrides)
 .claude/settings.local.json
 
+# Speckit runtime artifacts
+.speckit/runtime/
+
 # Universal local/editor artifacts
 .DS_Store
 Thumbs.db
