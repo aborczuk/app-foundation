@@ -25,16 +25,36 @@ def _load_script_module(module_name: str, script_name: str):
 speckit_gate_status = _load_script_module("speckit_gate_status", "speckit_gate_status.py")
 
 
-def test_implement_report_does_not_require_e2e_artifacts(tmp_path: Path) -> None:
-    """Implement gates should only require estimates and checklist completion."""
+def test_implement_report_requires_task_hud(tmp_path: Path) -> None:
+    """Implement gates should only require at least one task HUD."""
     repo_root = tmp_path
     feature_dir = repo_root / "specs" / "019-token-efficiency-docs"
     feature_dir.mkdir(parents=True)
-    (feature_dir / "estimates.md").write_text("# Estimates\n", encoding="utf-8")
+    hud_path = feature_dir / "huds" / "T048.md"
+    hud_path.parent.mkdir(parents=True)
+    hud_path.write_text("# HUD T048\n", encoding="utf-8")
 
     report, exit_code = speckit_gate_status._implement_report(feature_dir, repo_root)
 
     assert exit_code == 0
     assert report["ok"] is True
     assert report["hard_block_reasons"] == []
-    assert "e2e" not in report
+    assert report["task_huds"]["directory_exists"] is True
+    assert report["task_huds"]["count"] == 1
+    assert report["task_huds"]["entries"] == [str(hud_path)]
+
+
+def test_implement_report_blocks_without_task_hud(tmp_path: Path) -> None:
+    """Implement gates should block when no task HUD exists."""
+    repo_root = tmp_path
+    feature_dir = repo_root / "specs" / "019-token-efficiency-docs"
+    feature_dir.mkdir(parents=True)
+
+    report, exit_code = speckit_gate_status._implement_report(feature_dir, repo_root)
+
+    assert exit_code == 2
+    assert report["ok"] is False
+    assert report["hard_block_reasons"] == ["missing_task_hud"]
+    assert report["task_huds"]["directory_exists"] is False
+    assert report["task_huds"]["count"] == 0
+    assert report["task_huds"]["entries"] == []

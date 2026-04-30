@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,7 +13,39 @@ from src.mcp_codebase.index import service as index_service
 from src.mcp_codebase.index.service import VectorIndexService
 
 
-def test_code_symbol_lookup_returns_metadata(tmp_path: Path) -> None:
+def _build_offline_vector_index_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> VectorIndexService:
+    """Create a temp-repo vector index service with a seeded local embedding cache."""
+
+    repo_root = Path(__file__).resolve().parents[2]
+    source_cache = (
+        repo_root / ".codegraphcontext" / "global" / "db" / "vector-index" / "fastembed-cache"
+    )
+    if not source_cache.exists():
+        raise AssertionError(f"Missing shared fastembed cache at {source_cache}")
+
+    target_cache = (
+        tmp_path / ".codegraphcontext" / "global" / "db" / "vector-index" / "fastembed-cache"
+    )
+    target_cache.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_cache, target_cache, dirs_exist_ok=True)
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    return VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+
+
+def test_code_symbol_lookup_returns_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Code-symbol queries should surface direct metadata and empty-result behavior."""
 
     source = tmp_path / "src" / "sample.py"
@@ -46,13 +79,7 @@ Run the index and then query the doctor.
         encoding="utf-8",
     )
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
     service.build_full_index(revision="test-rev")
 
     results = service.query("vector search", scope=IndexScope.CODE, top_k=3)
@@ -71,7 +98,9 @@ Run the index and then query the doctor.
     assert service.query("nonsense phrase", scope=IndexScope.CODE, top_k=3) == []
 
 
-def test_markdown_section_lookup_returns_breadcrumb(tmp_path: Path) -> None:
+def test_markdown_section_lookup_returns_breadcrumb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Markdown-topic queries should surface breadcrumb and preview metadata."""
 
     source = tmp_path / "specs" / "guide.md"
@@ -102,13 +131,7 @@ Use the local index for governance lookups.
         encoding="utf-8",
     )
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
     service.build_full_index(revision="test-rev")
 
     results = service.query("markdown usage", scope=IndexScope.MARKDOWN, top_k=3)
@@ -137,13 +160,7 @@ def current_name() -> str:
         encoding="utf-8",
     )
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
     service.build_full_index(revision="rev-a")
 
     source.write_text(
@@ -181,7 +198,7 @@ def current_name() -> str:
 
 
 def test_refresh_excludes_generated_artifacts_and_surfaces_post_edit_symbols(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Generated artifacts should stay out of the index while refreshed symbols surface."""
 
@@ -207,13 +224,7 @@ def generated_symbol() -> str:
         encoding="utf-8",
     )
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
     service.build_full_index(revision="rev-a")
 
     assert service.query("generated_symbol", scope=IndexScope.CODE, top_k=1) == []
@@ -243,7 +254,9 @@ def refreshed_symbol() -> str:
     assert service.query("generated_symbol", scope=IndexScope.CODE, top_k=1) == []
 
 
-def test_staleness_reports_commit_delta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_staleness_reports_commit_delta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Status should report when the active snapshot lags behind the current HEAD."""
 
     source = tmp_path / "src" / "sample.py"
@@ -260,13 +273,7 @@ def stable_symbol() -> str:
     status_time = datetime(2026, 4, 14, 13, 0, tzinfo=UTC)
     monkeypatch.setattr(index_service, "_utc_now", lambda: build_time)
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
     service.build_full_index(revision="rev-a")
 
     monkeypatch.setattr(index_service, "_resolve_current_commit", lambda repo_root: "rev-b")

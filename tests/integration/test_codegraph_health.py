@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -32,7 +33,7 @@ def _seed_repo(
 def _run_doctor(repo: Path, project_root: Path) -> tuple[int, dict[str, object], str]:
     proc = subprocess.run(
         [
-            "bash",
+            sys.executable,
             "scripts/cgc_doctor.py",
             "--json",
             "--project-root",

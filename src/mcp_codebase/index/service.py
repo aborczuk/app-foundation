@@ -129,13 +129,15 @@ class VectorIndexService:
         )
 
     def status(self) -> IndexMetadata | None:
-        """Return snapshot metadata with git-primary stale diagnostics and mtime fallback."""
-        metadata = self._store.status()
-        if metadata is None:
+        """Return snapshot metadata with git, coverage, and mtime stale diagnostics."""
+        snapshot = self._store.load_snapshot()
+        if snapshot is None:
             return None
+        metadata, records = snapshot
 
         current_commit = _resolve_current_commit(self._config.repo_root)
         current_signature = _current_git_signature(self._config.repo_root)
+        current_source_paths = self._iter_source_files()
         indexed_age_seconds = round(max(0.0, (_utc_now() - metadata.indexed_at).total_seconds()), 3)
         updates: dict[str, object] = {"indexed_age_seconds": indexed_age_seconds}
         stale_reasons: list[str] = []
@@ -207,6 +209,23 @@ class VectorIndexService:
                     stale_reason_class = "mtime-fallback-drift"
                 elif stale_reason_class == "commit-drift":
                     stale_reason_class = "commit-and-mtime-fallback-drift"
+
+        coverage_gap_paths = _collect_missing_indexable_content_paths(
+            self._config.repo_root,
+            current_source_paths,
+            records,
+        )
+        if coverage_gap_paths:
+            joined = ", ".join(coverage_gap_paths[:8])
+            if len(coverage_gap_paths) > 8:
+                joined += ", ..."
+            stale_reasons.append(f"non-empty indexable files missing from snapshot: {joined}")
+            stale_drift_paths = tuple(sorted(set(stale_drift_paths).union(coverage_gap_paths)))
+            if stale_reason_class == "none":
+                stale_reason_class = "coverage-gap"
+                stale_signal_source = "coverage"
+                stale_signal_available = True
+                stale_signal_error = ""
 
         is_stale = bool(stale_reasons)
         stale_reason = ""
@@ -505,6 +524,40 @@ def _collect_git_indexable_drift_paths(
             _add_indexable_drift_path(paths, candidate, root, exclude_patterns)
 
     return tuple(sorted(paths)), None
+
+
+def _collect_missing_indexable_content_paths(
+    repo_root: Path,
+    current_source_paths: Sequence[Path],
+    indexed_units: Sequence[CodeSymbol | MarkdownSection],
+) -> tuple[str, ...]:
+    """Collect non-empty indexable source files missing from the active snapshot."""
+    root = repo_root.resolve()
+    indexed_paths: set[str] = set()
+    for unit in indexed_units:
+        try:
+            indexed_path = unit.file_path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            continue
+        indexed_paths.add(indexed_path)
+
+    missing_paths: list[str] = []
+    for source_path in current_source_paths:
+        resolved = source_path.resolve()
+        try:
+            relative_path = resolved.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if relative_path in indexed_paths:
+            continue
+        try:
+            if resolved.stat().st_size <= 0:
+                continue
+        except OSError:
+            continue
+        missing_paths.append(relative_path)
+
+    return tuple(sorted(dict.fromkeys(missing_paths)))
 
 
 def _add_indexable_drift_path(

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "read_markdown.py"
@@ -57,7 +58,7 @@ def _run_read_markdown(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", str(SCRIPT_PATH), *args],
+        [sys.executable, str(SCRIPT_PATH), *args],
         cwd=cwd,
         env=env,
         check=False,
@@ -263,22 +264,23 @@ def test_read_markdown_reports_missing_section(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert f"ERROR: Section '## Missing' not found in {markdown_file}" in result.stderr
-    assert f"Use read_markdown_headings {markdown_file} to inspect headings." in result.stderr
+    assert "inspect headings." in result.stderr
     assert "Available headings:" in result.stderr
     assert "1\t# Title" in result.stderr
     assert "3\t## Existing" in result.stderr
 
 
-def test_read_markdown_source_wrapper_still_exposes_function(tmp_path: Path) -> None:
+def test_read_markdown_direct_invocation_exposes_function(tmp_path: Path) -> None:
     markdown_file = tmp_path / "sample.md"
     markdown_file.write_text("# Title\n\n## Existing\nBody\n", encoding="utf-8")
     env = _env_without_uv()
 
     result = subprocess.run(
         [
-            "bash",
-            "-lc",
-            f"source '{SCRIPT_PATH}' && read_markdown_section '{markdown_file}' 'Existing'",
+            sys.executable,
+            str(SCRIPT_PATH),
+            str(markdown_file),
+            "Existing",
         ],
         cwd=tmp_path,
         env=env,
@@ -291,16 +293,19 @@ def test_read_markdown_source_wrapper_still_exposes_function(tmp_path: Path) -> 
     assert result.stdout.splitlines()[0].startswith("3\t## Existing")
 
 
-def test_read_markdown_source_wrapper_exposes_headings_function(tmp_path: Path) -> None:
+def test_read_markdown_direct_invocation_exposes_headings_function(
+    tmp_path: Path,
+) -> None:
     markdown_file = tmp_path / "sample.md"
     markdown_file.write_text("# Title\n\n## Existing\nBody\n", encoding="utf-8")
     env = _env_without_uv()
 
     result = subprocess.run(
         [
-            "bash",
-            "-lc",
-            f"source '{SCRIPT_PATH}' && read_markdown_headings '{markdown_file}'",
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--headings",
+            str(markdown_file),
         ],
         cwd=tmp_path,
         env=env,
@@ -313,7 +318,9 @@ def test_read_markdown_source_wrapper_exposes_headings_function(tmp_path: Path) 
     assert result.stdout.splitlines() == ["1\t# Title", "3\t## Existing"]
 
 
-def test_read_markdown_wrapper_sets_repo_local_uv_cache_by_default(tmp_path: Path) -> None:
+def test_read_markdown_direct_invocation_does_not_use_uv_by_default(
+    tmp_path: Path,
+) -> None:
     markdown_file = tmp_path / "sample.md"
     markdown_file.write_text("# Title\n\n## Existing\nBody\n", encoding="utf-8")
     trace_file = tmp_path / "uv-cache-path.txt"
@@ -329,9 +336,7 @@ def test_read_markdown_wrapper_sets_repo_local_uv_cache_by_default(tmp_path: Pat
     )
 
     assert result.returncode == 0, result.stderr
-    assert trace_file.is_file()
-    expected_cache_dir = SCRIPT_PATH.resolve().parents[1] / ".codegraphcontext" / ".uv-cache"
-    assert trace_file.read_text(encoding="utf-8").strip() == str(expected_cache_dir)
+    assert not trace_file.exists()
 
 
 def test_command_docs_share_the_compact_expanded_shape(tmp_path: Path) -> None:

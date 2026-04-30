@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -11,14 +12,14 @@ SCRIPT_PATH = (
     Path(__file__).resolve().parents[2]
     / ".specify"
     / "scripts"
-    / "bash"
+    / "python"
     / "check_prerequisites.py"
 )
 
 
 def _run_check_prereq(repo_dir: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [str(SCRIPT_PATH), *args],
+        [sys.executable, str(SCRIPT_PATH), *args],
         cwd=repo_dir,
         env=env,
         check=False,

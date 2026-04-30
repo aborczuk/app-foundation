@@ -110,6 +110,9 @@ uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . watch
 The watcher listens for local edits and calls the incremental refresh path for
 changed Python and markdown files. If you only need a one-off update, use
 `refresh`; if you want the snapshot to stay current while you work, use `watch`.
+`status` also warns when a non-empty indexable file is present in the repo but
+missing from the active snapshot, which is the coverage gap signal behind the
+read-code stale warning.
 
 You can inspect the stored snapshot directly on disk under
 `.codegraphcontext/global/db/vector-index/`:

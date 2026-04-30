@@ -24,16 +24,17 @@ def test_speckit_solution_doc_exposes_compact_and_expanded_headings() -> None:
     read_markdown = _load_read_markdown_module()
     doc_path = Path(__file__).resolve().parents[2] / ".claude" / "commands" / "speckit.solution.md"
 
-    assert (
-        read_markdown.read_markdown_section(str(doc_path), "Compact Contract (Load First)")
-        == 0
+    compact_section = read_markdown.read_markdown_section(
+        str(doc_path), "Compact Contract (Load First)"
     )
-    assert (
-        read_markdown.read_markdown_section(
-            str(doc_path), "Expanded Guidance (Load On Demand)"
-        )
-        == 0
+    expanded_section = read_markdown.read_markdown_section(
+        str(doc_path), "Expanded Guidance (Load On Demand)"
     )
+
+    assert compact_section
+    assert expanded_section
+    assert any("## Compact Contract (Load First)" in line for line in compact_section)
+    assert any("## Expanded Guidance (Load On Demand)" in line for line in expanded_section)
 
 
 def test_speckit_solution_doc_removes_direct_ledger_append_ownership() -> None:

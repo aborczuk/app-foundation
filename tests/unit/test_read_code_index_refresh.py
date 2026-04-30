@@ -166,6 +166,31 @@ def test_vector_index_probe_parses_stale_payload_with_cause_details(monkeypatch)
     assert "src/sample.py" in probe.stale_reason
 
 
+def test_vector_index_probe_parses_coverage_gap_payload(monkeypatch) -> None:
+    monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code_health.subprocess,
+        "run",
+        lambda *args, **kwargs: _completed(
+            0,
+            stdout=(
+                '{"is_stale": true, "stale_reason": "non-empty indexable files missing from snapshot: '
+                'src/new_feature.py", "stale_reason_class": "coverage-gap", '
+                '"stale_drift_paths": ["src/new_feature.py"], "stale_signal_source": "coverage", '
+                '"stale_signal_available": true, "stale_signal_error": ""}\n'
+            ),
+        ),
+    )
+
+    probe = read_code_health.vector_index_probe()
+
+    assert probe.status == "stale"
+    assert probe.stale_reason_class == "coverage-gap"
+    assert probe.stale_drift_paths == ("src/new_feature.py",)
+    assert probe.stale_signal_source == "coverage"
+    assert "src/new_feature.py" in probe.stale_reason
+
+
 def test_vector_index_probe_uses_short_ttl_cache(monkeypatch) -> None:
     calls = {"count": 0}
 

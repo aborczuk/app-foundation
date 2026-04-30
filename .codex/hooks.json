@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/andreborczuk/app-foundation/.codex/hooks/session_start_context.py",
-            "statusMessage": "Loading session notes and repo UV cache"
+            "command": "",
+            "statusMessage": "Stay focused, listen, and do your best"
           }
         ]
       }

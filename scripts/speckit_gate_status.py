@@ -94,6 +94,16 @@ def _scan_checklists(feature_dir: Path) -> tuple[bool, list[ChecklistStatus]]:
     return (True, statuses)
 
 
+def _scan_task_huds(feature_dir: Path) -> tuple[bool, list[Path]]:
+    """Return task HUD markdown files under the feature's huds/ directory."""
+    huds_dir = feature_dir / "huds"
+    if not huds_dir.is_dir():
+        return (False, [])
+
+    hud_files = [path for path in sorted(huds_dir.glob("T[0-9][0-9][0-9].md")) if path.is_file()]
+    return (True, hud_files)
+
+
 def _plan_report(feature_dir: Path) -> tuple[dict[str, Any], int]:
     """Evaluate plan entry gates."""
     requirements_path = feature_dir / "checklists" / "requirements.md"
@@ -128,18 +138,24 @@ def _plan_report(feature_dir: Path) -> tuple[dict[str, Any], int]:
 
 
 def _implement_report(feature_dir: Path, repo_root: Path) -> tuple[dict[str, Any], int]:
-    """Evaluate implement entry gates."""
+    """Evaluate implement entry gates using task HUD availability."""
     estimates_doc = feature_dir / "estimates.md"
     checklists_dir_exists, checklist_entries = _scan_checklists(feature_dir)
     incomplete_total = sum(entry.incomplete for entry in checklist_entries)
+    task_huds_dir_exists, task_hud_files = _scan_task_huds(feature_dir)
     hard_block_reasons: list[str] = []
 
-    if not estimates_doc.exists():
-        hard_block_reasons.append("missing_estimates_md")
+    if not task_hud_files:
+        hard_block_reasons.append("missing_task_hud")
 
     report: dict[str, Any] = {
         "mode": "implement",
         "feature_dir": str(feature_dir),
+        "task_huds": {
+            "directory_exists": task_huds_dir_exists,
+            "count": len(task_hud_files),
+            "entries": [str(path) for path in task_hud_files],
+        },
         "estimates": {
             "path": str(estimates_doc),
             "exists": estimates_doc.exists(),
@@ -231,14 +247,11 @@ def _print_human(report: dict[str, Any]) -> None:
             f"incomplete_total={checks['incomplete_total']}"
         )
     elif mode == "implement":
-        e2e = report["e2e"]
-        est = report["estimates"]
-        checks = report["checklists"]
+        task_huds = report["task_huds"]
         print(
-            "e2e="
-            f"{'present' if e2e['ok'] else 'missing'} "
-            f"estimates={'present' if est['exists'] else 'missing'} "
-            f"incomplete_total={checks['incomplete_total']}"
+            "task_huds="
+            f"{'present' if task_huds['count'] > 0 else 'missing'} "
+            f"count={task_huds['count']}"
         )
 
     reasons = report.get("hard_block_reasons", [])

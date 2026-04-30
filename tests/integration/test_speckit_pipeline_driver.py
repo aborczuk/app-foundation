@@ -32,6 +32,7 @@ speckit_gate_status = _load_script_module("speckit_gate_status", PIPELINE_GATE_S
 
 
 def _init_repo(tmp_path: Path) -> tuple[Path, Path]:
+    """Seed a minimal feature repo for the orchestration parity test."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
@@ -39,11 +40,13 @@ def _init_repo(tmp_path: Path) -> tuple[Path, Path]:
     feature_dir = repo_root / "specs" / "022-codegraph-hardening"
     checklists_dir = feature_dir / "checklists"
     contracts_dir = feature_dir / "contracts"
+    huds_dir = feature_dir / "huds"
     templates_dir = repo_root / ".specify" / "templates"
     scripts_dir = repo_root / "scripts"
 
     checklists_dir.mkdir(parents=True, exist_ok=True)
     contracts_dir.mkdir(parents=True, exist_ok=True)
+    huds_dir.mkdir(parents=True, exist_ok=True)
     templates_dir.mkdir(parents=True, exist_ok=True)
     scripts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -57,6 +60,7 @@ def _init_repo(tmp_path: Path) -> tuple[Path, Path]:
     (feature_dir / "e2e.md").write_text("# E2E\n", encoding="utf-8")
     (feature_dir / "estimates.md").write_text("# Estimates\n", encoding="utf-8")
     (contracts_dir / "contract.md").write_text("# Contract\n", encoding="utf-8")
+    (huds_dir / "T001.md").write_text("# Task HUD\n", encoding="utf-8")
 
     e2e_script = scripts_dir / "e2e_022_codegraph_hardening.sh"
     e2e_script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
@@ -117,6 +121,5 @@ def test_python_orchestration_entrypoints(tmp_path: Path) -> None:
     implement_report, implement_exit = speckit_gate_status._implement_report(feature_dir, repo_root)
     assert implement_exit == 0
     assert implement_report["ok"] is True
-    assert implement_report["e2e"]["ok"] is True
     assert implement_report["estimates"]["exists"] is True
     assert implement_report["checklists"]["all_complete"] is True

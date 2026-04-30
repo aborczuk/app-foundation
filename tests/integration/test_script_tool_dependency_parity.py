@@ -66,8 +66,9 @@ def _normalize(text: str, repo_root: Path) -> str:
 
 
 def _run_shell(repo_root: Path, script_path: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+    """Run the migrated Python script inside the selected workspace."""
     return subprocess.run(
-        ["/bin/bash", str(script_path), *args],
+        [sys.executable, str(script_path), *args],
         cwd=repo_root,
         env=env,
         check=False,
@@ -123,7 +124,7 @@ exec {sys.executable} "$@"
 
     shell_result = _run_shell(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "setup_plan.py",
+        shell_repo / ".specify" / "scripts" / "python" / "setup_plan.py",
         shell_env,
         "--json",
     )
@@ -165,7 +166,7 @@ exec {sys.executable} "$@"
 
     shell_result = _run_shell(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "update_agent_context.py",
+        shell_repo / ".specify" / "scripts" / "python" / "update_agent_context.py",
         shell_env,
         "claude",
     )
@@ -198,7 +199,7 @@ exec {sys.executable} "$@"
 
     shell_result = _run_shell(
         shell_repo,
-        shell_repo / ".specify" / "scripts" / "bash" / "check_prerequisites.py",
+        shell_repo / ".specify" / "scripts" / "python" / "check_prerequisites.py",
         shell_env,
         "--json",
         "--paths-only",

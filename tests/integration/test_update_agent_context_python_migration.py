@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[2]
     / ".specify"
     / "scripts"
-    / "bash"
+    / "python"
     / "update_agent_context.py"
 )
 
@@ -17,8 +18,9 @@ SCRIPT_PATH = (
 def _run_update_agent_context(
     repo_dir: Path, *args: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
+    """Run the migrated update-agent-context Python entrypoint."""
     return subprocess.run(
-        [str(SCRIPT_PATH), *args],
+        [sys.executable, str(SCRIPT_PATH), *args],
         cwd=repo_dir,
         env=env,
         check=False,

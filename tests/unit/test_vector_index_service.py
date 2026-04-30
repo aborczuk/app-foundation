@@ -171,6 +171,42 @@ def test_status_uses_mtime_fallback_only_when_git_signal_unavailable(
     assert stale_status.stale_signal_available is False
 
 
+def test_status_marks_new_nonempty_files_missing_from_snapshot_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    indexed_source = tmp_path / "src" / "sample.py"
+    indexed_source.parent.mkdir(parents=True, exist_ok=True)
+    indexed_source.write_text("def alpha() -> str:\n    return 'a'\n", encoding="utf-8")
+
+    service = VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    monkeypatch.setattr(service._store, "_embed_texts", _fake_embeddings)
+    monkeypatch.setattr(vector_service_module, "_resolve_current_commit", lambda _: "same-revision")
+    monkeypatch.setattr(vector_service_module, "_resolve_commit_distance", lambda *_: 0)
+    monkeypatch.setattr(vector_service_module, "_current_git_signature", lambda _: "clean-signature")
+
+    _ = service.build_full_index(revision="same-revision")
+
+    missing_source = tmp_path / "src" / "new_feature.py"
+    missing_source.write_text("def beta() -> str:\n    return 'b'\n", encoding="utf-8")
+
+    fresh_status = service.status()
+
+    assert fresh_status is not None
+    assert fresh_status.current_commit == "same-revision"
+    assert fresh_status.is_stale is True
+    assert fresh_status.stale_reason_class == "coverage-gap"
+    assert fresh_status.stale_drift_paths == ("src/new_feature.py",)
+    assert fresh_status.stale_signal_source == "coverage"
+    assert fresh_status.stale_signal_available is True
+
+
 def test_service_indexes_shell_scripts_as_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     script = tmp_path / "scripts" / "refresh.sh"
     script.parent.mkdir(parents=True, exist_ok=True)

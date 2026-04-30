@@ -8,9 +8,9 @@ $ARGUMENTS
 
 ## Compact Contract (Load First)
 
-Execute implementation through deterministic script-owned gates, verification, QA handoff, and documentation updates.
+Execute implementation through deterministic HUD-gated preflight, verification, QA handoff, and documentation updates.
 
-1. Resolve feature context and run pre-implementation gate checks.
+1. Resolve feature context and run HUD-only pre-implementation gate checks.
 2. Execute next eligible task from `tasks.md` / HUD contracts.
 3. Run verification gates before task closeout.
 4. Run offline QA handoff and canonical ledger closeout.
@@ -29,11 +29,8 @@ Execute implementation through deterministic script-owned gates, verification, Q
 3. Run gate status:
    - `uv run --no-sync python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`
 4. Gate handling (required):
-   - If `missing_estimates_md`, stop and require `/speckit.estimate` (or `/speckit.solution` path that includes estimation).
+   - If `missing_task_hud`, stop and require at least one task HUD under `huds/`.
    - Map failures to `docs/governance/gate-reason-codes.yaml`.
-5. Checklist handling (required, until centralized in script):
-   - If `checklists.incomplete_total > 0`, stop and ask human whether to proceed.
-   - Continue only on explicit proceed confirmation.
 
 ### 2. Context + setup verification
 

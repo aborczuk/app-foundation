@@ -71,20 +71,28 @@ Registration: `uv run python -m mcp_codebase` with `cwd: /Users/andreborczuk/app
 
 ### Codebase Reading and Discovery
 
-Use repository read_code.py instead of grep, ripgrep, cat, or broad shell search. Direct text-search tools are banned in this repo by hook.
+Use repository `read_code.py` instead of `grep`, `ripgrep`, `cat`, or broad shell search. Direct text-search tools are banned in this repo by hook.
+
+Pick the query mode by what you need:
+
+- `context` as the default lookup mode for natural-language descriptions, symbols, strings, or the best matching seam.
+- `find` when you want exact structural matches or need to enumerate occurrences of a known symbol, pattern, or text.
+- `analyze` after you have a candidate and need callers, callees, dependencies, or structural context.
 
 Primary tools:
 
-- `scripts/read_code.py` — unified reader for Python, shell, YAML, Markdown, and code-like files. Also provides access to Graph Discovery (codegraph) and Search.
+- `scripts/read_code.py` — unified reader for Python, shell, YAML, Markdown, and code-like files. It exposes both structural search and semantic context lookup.
 - `codebase-lsp` — type inference and diagnostics for Python files.
+
+For Markdown files, use `read_markdown_headings` first, then `read_markdown_section` with the exact heading title you want to inspect.
 
 ### Code Reading Workflow
 
 Read code by intent, not by guessing file windows.
 
-1. **Start with a natural-language query**
-   - Use `uv run python scripts/read_code.py context` with a natural-language query, symbol name, or behavior description.
-   - Let the helper perform semantic lookup first and return the best matching result.
+1. **Start with `context` **
+   - Use `uv run python scripts/read_code.py context` for natural-language queries, symbols, strings, or the best matching seam.
+
 
    Examples:
 
@@ -113,7 +121,7 @@ Read code by intent, not by guessing file windows.
 
 4. **Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
 
-   Once semantic search returns a result with a unit_id, use read_code's analyze mode to find where it's called:
+   Once `find` or `context` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
 
    ```bash
    uv run python scripts/read_code.py analyze callers "_resolve_pattern_anchor"      # Find all functions that call this
@@ -136,7 +144,7 @@ Read code by intent, not by guessing file windows.
 
    Use `read_code analyze` to map blast radius, inheritance, imports, dead-code, and other structural questions.
 
-   - Do not use broad `find content` for reassurance once the relevant file or seam is already known.
+   - Do not use broad `find content` for reassurance once the relevant file or seam is already known; prefer `analyze`, `window`, or a narrower `context` query.
 
    Examples:
 

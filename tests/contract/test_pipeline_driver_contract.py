@@ -160,6 +160,18 @@ def test_load_driver_routes_normalizes_mode_and_emit_contracts(tmp_path: Path) -
     assert routes["speckit.fallback"]["driver_managed"] is False
 
 
+def test_actual_manifest_specify_uses_canonical_script_path() -> None:
+    """The specify route should advertise its single canonical scaffold entry script."""
+    repo_root = Path(__file__).resolve().parents[2]
+    routes = contracts.load_driver_routes(repo_root / "command-manifest.yaml")
+    specify_route = routes["speckit.specify"]
+
+    assert specify_route["mode"] == "generative"
+    assert specify_route["script_path"] == str(
+        (repo_root / ".specify" / "scripts" / "python" / "create_new_feature.py").resolve()
+    )
+
+
 def test_load_driver_routes_rejects_unknown_driver_mode(tmp_path: Path) -> None:
     """Unknown driver modes should fail fast instead of silently falling back."""
     manifest_path = tmp_path / "command-manifest.yaml"

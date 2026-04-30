@@ -2,11 +2,47 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from time import perf_counter
 
+import pytest
+
 from src.mcp_codebase.index import IndexConfig, IndexScope
 from src.mcp_codebase.index.service import VectorIndexService
+
+
+def _build_offline_vector_index_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    exclude_patterns: tuple[str, ...] = (),
+) -> VectorIndexService:
+    """Create a temp-repo vector index service with a seeded local embedding cache."""
+
+    repo_root = Path(__file__).resolve().parents[2]
+    source_cache = (
+        repo_root / ".codegraphcontext" / "global" / "db" / "vector-index" / "fastembed-cache"
+    )
+    if not source_cache.exists():
+        raise AssertionError(f"Missing shared fastembed cache at {source_cache}")
+
+    target_cache = (
+        tmp_path / ".codegraphcontext" / "global" / "db" / "vector-index" / "fastembed-cache"
+    )
+    target_cache.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_cache, target_cache, dirs_exist_ok=True)
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    return VectorIndexService(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+            exclude_patterns=exclude_patterns,
+        )
+    )
 
 
 def _write_python_modules(root: Path, count: int) -> list[Path]:
@@ -28,7 +64,9 @@ def symbol_{index}() -> str:
     return created
 
 
-def test_configurable_excludes_respected(tmp_path: Path) -> None:
+def test_configurable_excludes_respected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Configured exclude patterns should block indexing beyond built-in generated rules."""
 
     source = tmp_path / "src" / "live.py"
@@ -56,13 +94,10 @@ Do not index this section.
         encoding="utf-8",
     )
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-            exclude_patterns=("docs/build/**",),
-        )
+    service = _build_offline_vector_index_service(
+        tmp_path,
+        monkeypatch,
+        exclude_patterns=("docs/build/**",),
     )
     service.build_full_index(revision="rev-a")
 
@@ -74,18 +109,14 @@ Do not index this section.
     assert hidden == []
 
 
-def test_index_build_and_refresh_meets_timing_budgets(tmp_path: Path) -> None:
+def test_index_build_and_refresh_meets_timing_budgets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Build and single-file refresh should stay inside the spec timing budget."""
 
     source_paths = _write_python_modules(tmp_path, count=40)
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
 
     build_started = perf_counter()
     built = service.build_full_index(revision="rev-a")
@@ -121,7 +152,9 @@ def refreshed_symbol() -> str:
     assert refreshed_result[0].file_path == changed
 
 
-def test_index_handles_max_volume_without_oom(tmp_path: Path) -> None:
+def test_index_handles_max_volume_without_oom(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A larger local checkout should remain buildable without memory failure."""
 
     source_paths = _write_python_modules(tmp_path, count=240)
@@ -142,13 +175,7 @@ This is document {index}.
             encoding="utf-8",
         )
 
-    service = VectorIndexService(
-        IndexConfig(
-            repo_root=tmp_path,
-            db_path=Path(".codegraphcontext/global/db/vector-index"),
-            embedding_model="local-default",
-        )
-    )
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
 
     built = service.build_full_index(revision="rev-a")
 

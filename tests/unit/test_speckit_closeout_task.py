@@ -1,11 +1,12 @@
 """Tests for the canonical Speckit task closeout script."""
 
+# isort: skip_file
 from __future__ import annotations
 
+from pathlib import Path
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 
 SCRIPT = Path("scripts/speckit_closeout_task.py")
@@ -51,25 +52,29 @@ def _run_closeout(
     ledger_file: Path,
     commit_sha: str,
     qa_run_id: str,
+    qa_result_file: Path | None = None,
 ) -> dict[str, object]:
+    cmd = [
+        sys.executable,
+        str(SCRIPT),
+        "--feature-id",
+        feature_id,
+        "--task-id",
+        task_id,
+        "--tasks-file",
+        str(tasks_file),
+        "--ledger-file",
+        str(ledger_file),
+        "--commit-sha",
+        commit_sha,
+        "--qa-run-id",
+        qa_run_id,
+        "--json",
+    ]
+    if qa_result_file is not None:
+        cmd.extend(["--qa-result-file", str(qa_result_file)])
     result = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--feature-id",
-            feature_id,
-            "--task-id",
-            task_id,
-            "--tasks-file",
-            str(tasks_file),
-            "--ledger-file",
-            str(ledger_file),
-            "--commit-sha",
-            commit_sha,
-            "--qa-run-id",
-            qa_run_id,
-            "--json",
-        ],
+        cmd,
         check=True,
         capture_output=True,
         text=True,
@@ -106,7 +111,9 @@ def _write_tasks_file(path: Path, *, phase_two_task_open: bool = True) -> None:
 def test_closeout_script_continues_when_phase_has_more_tasks(tmp_path: Path) -> None:
     tasks_file = tmp_path / "tasks.md"
     ledger_file = tmp_path / "ledger.jsonl"
+    qa_result_file = tmp_path / "qa-result.json"
     _write_tasks_file(tasks_file, phase_two_task_open=True)
+    qa_result_file.write_text(json.dumps({"verdict": "PASS", "findings": []}), encoding="utf-8")
 
     _append_ledger_event(ledger_file, feature_id="000", task_id="T001", event="task_started")
     _append_ledger_event(ledger_file, feature_id="000", task_id="T001", event="discovery_completed")
@@ -118,6 +125,7 @@ def test_closeout_script_continues_when_phase_has_more_tasks(tmp_path: Path) -> 
         ledger_file=ledger_file,
         commit_sha="abc1234",
         qa_run_id="qa-1",
+        qa_result_file=qa_result_file,
     )
 
     assert payload["ok"] is True
@@ -130,7 +138,9 @@ def test_closeout_script_continues_when_phase_has_more_tasks(tmp_path: Path) -> 
 def test_closeout_script_hard_stops_when_phase_is_complete(tmp_path: Path) -> None:
     tasks_file = tmp_path / "tasks.md"
     ledger_file = tmp_path / "ledger.jsonl"
+    qa_result_file = tmp_path / "qa-result.json"
     _write_tasks_file(tasks_file, phase_two_task_open=False)
+    qa_result_file.write_text(json.dumps({"verdict": "PASS", "findings": []}), encoding="utf-8")
 
     _append_ledger_event(ledger_file, feature_id="000", task_id="T003", event="task_started")
     _append_ledger_event(ledger_file, feature_id="000", task_id="T003", event="discovery_completed")
@@ -142,6 +152,7 @@ def test_closeout_script_hard_stops_when_phase_is_complete(tmp_path: Path) -> No
         ledger_file=ledger_file,
         commit_sha="def5678",
         qa_run_id="qa-2",
+        qa_result_file=qa_result_file,
     )
 
     assert payload["ok"] is True
@@ -157,4 +168,4 @@ def test_closeout_docs_point_to_canonical_script() -> None:
 
     assert "scripts/speckit_closeout_task.py" in closeout_doc
     assert "/speckit.checkpoint [phase]" in closeout_doc
-    assert "/speckit.closeout" in claude_doc
+    assert "AGENTS.md" in claude_doc

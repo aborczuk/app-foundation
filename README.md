@@ -87,7 +87,7 @@ The index is backed by Chroma + `fastembed` and stored under `.codegraphcontext/
 
 1. Build or refresh snapshots with `src.mcp_codebase.indexer` (`build`, `refresh`, `status`, `watch`).
 2. Extract structured units from Python, Markdown, Shell, and YAML via `src/mcp_codebase/index/extractors/`.
-3. Compute stale status using git-first drift detection with mtime fallback only when git signals are unavailable.
+3. Compute stale status using git-first drift detection, plus a coverage gap alert when a non-empty indexable file is present in the repo but absent from the active snapshot.
 4. During helper preflight, apply scope-aware stale handling:
    - overlap => synchronous scoped refresh
    - no overlap => warning + background scoped refresh + proceed
