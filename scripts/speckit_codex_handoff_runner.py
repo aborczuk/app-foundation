@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,36 @@ def _tail_lines(text: str, count: int = 20) -> list[str]:
         return []
     lines = text.splitlines()
     return lines[-count:]
+
+
+def _sanitize_for_filename(value: str) -> str:
+    """Normalize arbitrary text into a filesystem-safe token."""
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "unknown"
+
+
+def _write_runner_log(
+    *,
+    repo_root: Path,
+    correlation_id: str,
+    task_id: str,
+    task_attempt: int,
+    retry_index: int,
+    payload: Mapping[str, Any],
+) -> str:
+    """Persist the full runner trace and return the artifact path."""
+    log_dir = repo_root / ".speckit" / "runtime" / "implement" / "runner"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    filename = "__".join(
+        [
+            _sanitize_for_filename(correlation_id),
+            _sanitize_for_filename(task_id),
+            f"attempt-{task_attempt}",
+            f"retry-{retry_index}",
+        ]
+    ) + ".json"
+    log_path = (log_dir / filename).resolve()
+    log_path.write_text(json.dumps(dict(payload), indent=2, sort_keys=True), encoding="utf-8")
+    return str(log_path)
 
 
 def _string(value: object) -> str:
@@ -271,6 +302,51 @@ def run_codex_handoff(
         qa_feedback=qa_feedback if isinstance(qa_feedback, Mapping) else None,
         retry_index=retry_index,
     )
+
+    def _attach_runner_log(
+        result: dict[str, Any],
+        *,
+        codex_exit_code: int | None = None,
+        codex_stdout: str = "",
+        codex_stderr: str = "",
+        last_message: str = "",
+        commit_sha: str | None = None,
+        changed_files: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Persist the full runner trace and attach the artifact path."""
+        runner_log_payload = {
+            "schema_version": SCHEMA_VERSION,
+            "correlation_id": correlation_id,
+            "feature_id": feature_id,
+            "phase": phase,
+            "task_id": task_id,
+            "task_attempt": task_attempt,
+            "task_action": task_action,
+            "artifact_path": artifact_path,
+            "completion_marker": completion_marker,
+            "resume_session": resume_session,
+            "retry_index": retry_index,
+            "prompt": prompt,
+            "handoff": dict(handoff),
+            "qa_feedback": dict(qa_feedback) if isinstance(qa_feedback, Mapping) else None,
+            "codex_exit_code": codex_exit_code,
+            "codex_stdout": codex_stdout,
+            "codex_stderr": codex_stderr,
+            "last_message": last_message,
+            "commit_sha": commit_sha,
+            "changed_files": list(changed_files or []),
+            "result": dict(result),
+        }
+        result["runner_log_path"] = _write_runner_log(
+            repo_root=repo_root,
+            correlation_id=correlation_id,
+            task_id=task_id,
+            task_attempt=task_attempt,
+            retry_index=retry_index,
+            payload=runner_log_payload,
+        )
+        return result
+
     try:
         codex_exit_code, codex_stdout, codex_stderr, last_message = _run_codex_exec(
             prompt,
@@ -279,68 +355,110 @@ def run_codex_handoff(
         )
     except ValueError as exc:
         reason = str(exc) or "codex_exec_failed"
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "ok": False,
-            "exit_code": 1,
-            "correlation_id": correlation_id,
-            "feature_id": feature_id,
-            "phase": phase,
-            "task_id": task_id,
-            "task_attempt": task_attempt,
-            "task_action": task_action,
-            "artifact_path": artifact_path,
-            "completion_marker": completion_marker,
-            "runner": "codex-local",
-            "handoff_execution": "codex_exec",
-            "session_mode": "resume" if resume_session else "fresh",
-            "reasons": [reason],
-            "error_code": reason,
-            "debug_path": None,
-            "commit_sha": None,
-            "summary": "",
-            "changed_files": [],
-            "stdout_tail": [],
-            "stderr_tail": [],
-            "handoff": dict(handoff),
-        }
+        return _attach_runner_log(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": False,
+                "exit_code": 1,
+                "correlation_id": correlation_id,
+                "feature_id": feature_id,
+                "phase": phase,
+                "task_id": task_id,
+                "task_attempt": task_attempt,
+                "task_action": task_action,
+                "artifact_path": artifact_path,
+                "completion_marker": completion_marker,
+                "runner": "codex-local",
+                "handoff_execution": "codex_exec",
+                "session_mode": "resume" if resume_session else "fresh",
+                "reasons": [reason],
+                "error_code": reason,
+                "debug_path": None,
+                "commit_sha": None,
+                "summary": "",
+                "changed_files": [],
+                "stdout_tail": [],
+                "stderr_tail": [],
+                "handoff": dict(handoff),
+            },
+            codex_exit_code=None,
+        )
 
     if codex_exit_code != 0:
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "ok": False,
-            "exit_code": codex_exit_code,
-            "correlation_id": correlation_id,
-            "feature_id": feature_id,
-            "phase": phase,
-            "task_id": task_id,
-            "task_attempt": task_attempt,
-            "task_action": task_action,
-            "artifact_path": artifact_path,
-            "completion_marker": completion_marker,
-            "runner": "codex-local",
-            "handoff_execution": "codex_exec",
-            "session_mode": "resume" if resume_session else "fresh",
-            "reasons": ["codex_exec_failed"],
-            "error_code": "codex_exec_failed",
-            "debug_path": None,
-            "commit_sha": None,
-            "summary": last_message or "",
-            "changed_files": [],
-            "stdout_tail": _tail_lines(codex_stdout),
-            "stderr_tail": _tail_lines(codex_stderr),
-            "handoff": dict(handoff),
-        }
+        return _attach_runner_log(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": False,
+                "exit_code": codex_exit_code,
+                "correlation_id": correlation_id,
+                "feature_id": feature_id,
+                "phase": phase,
+                "task_id": task_id,
+                "task_attempt": task_attempt,
+                "task_action": task_action,
+                "artifact_path": artifact_path,
+                "completion_marker": completion_marker,
+                "runner": "codex-local",
+                "handoff_execution": "codex_exec",
+                "session_mode": "resume" if resume_session else "fresh",
+                "reasons": ["codex_exec_failed"],
+                "error_code": "codex_exec_failed",
+                "debug_path": None,
+                "commit_sha": None,
+                "summary": last_message or "",
+                "changed_files": [],
+                "stdout_tail": _tail_lines(codex_stdout),
+                "stderr_tail": _tail_lines(codex_stderr),
+                "handoff": dict(handoff),
+            },
+            codex_exit_code=codex_exit_code,
+            codex_stdout=codex_stdout,
+            codex_stderr=codex_stderr,
+            last_message=last_message,
+        )
 
     commit_message = f"speckit implement {feature_id} {task_id} attempt {task_attempt}"
     try:
         commit_sha, changed_files = _stage_and_commit(repo_root, commit_message)
     except ValueError as exc:
         reason = str(exc) or "git_commit_failed"
-        return {
+        return _attach_runner_log(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "ok": False,
+                "exit_code": 1,
+                "correlation_id": correlation_id,
+                "feature_id": feature_id,
+                "phase": phase,
+                "task_id": task_id,
+                "task_attempt": task_attempt,
+                "task_action": task_action,
+                "artifact_path": artifact_path,
+                "completion_marker": completion_marker,
+                "runner": "codex-local",
+                "handoff_execution": "codex_exec",
+                "session_mode": "resume" if resume_session else "fresh",
+                "reasons": [reason],
+                "error_code": reason,
+                "debug_path": None,
+                "commit_sha": None,
+                "summary": last_message or "",
+                "changed_files": [],
+                "stdout_tail": _tail_lines(codex_stdout),
+                "stderr_tail": _tail_lines(codex_stderr),
+                "handoff": dict(handoff),
+            },
+            codex_exit_code=codex_exit_code,
+            codex_stdout=codex_stdout,
+            codex_stderr=codex_stderr,
+            last_message=last_message,
+        )
+
+    return _attach_runner_log(
+        {
             "schema_version": SCHEMA_VERSION,
-            "ok": False,
-            "exit_code": 1,
+            "ok": True,
+            "exit_code": 0,
             "correlation_id": correlation_id,
             "feature_id": feature_id,
             "phase": phase,
@@ -352,42 +470,23 @@ def run_codex_handoff(
             "runner": "codex-local",
             "handoff_execution": "codex_exec",
             "session_mode": "resume" if resume_session else "fresh",
-            "reasons": [reason],
-            "error_code": reason,
+            "reasons": [],
+            "error_code": None,
             "debug_path": None,
-            "commit_sha": None,
+            "commit_sha": commit_sha,
             "summary": last_message or "",
-            "changed_files": [],
+            "changed_files": changed_files,
             "stdout_tail": _tail_lines(codex_stdout),
             "stderr_tail": _tail_lines(codex_stderr),
             "handoff": dict(handoff),
-        }
-
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "ok": True,
-        "exit_code": 0,
-        "correlation_id": correlation_id,
-        "feature_id": feature_id,
-        "phase": phase,
-        "task_id": task_id,
-        "task_attempt": task_attempt,
-        "task_action": task_action,
-        "artifact_path": artifact_path,
-        "completion_marker": completion_marker,
-        "runner": "codex-local",
-        "handoff_execution": "codex_exec",
-        "session_mode": "resume" if resume_session else "fresh",
-        "reasons": [],
-        "error_code": None,
-        "debug_path": None,
-        "commit_sha": commit_sha,
-        "summary": last_message or "",
-        "changed_files": changed_files,
-        "stdout_tail": _tail_lines(codex_stdout),
-        "stderr_tail": _tail_lines(codex_stderr),
-        "handoff": dict(handoff),
-    }
+        },
+        codex_exit_code=codex_exit_code,
+        codex_stdout=codex_stdout,
+        codex_stderr=codex_stderr,
+        last_message=last_message,
+        commit_sha=commit_sha,
+        changed_files=changed_files,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

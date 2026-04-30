@@ -801,6 +801,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "timed_out": handoff_run.timed_out,
                         "stdout_tail": _tail_lines(handoff_run.stdout),
                         "stderr_tail": _tail_lines(handoff_run.stderr),
+                        "runner_log_path": None,
                         "resume_session": resume_session,
                         "retry_index": retry_index,
                         "input": handoff_input,
@@ -846,7 +847,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                             )
                             print(json.dumps(envelope, sort_keys=True))
                             return 2
-    
+                    handoff_details["runner_log_path"] = (
+                        handoff_payload.get("runner_log_path") if isinstance(handoff_payload, Mapping) else None
+                    )
+
                     if handoff_run.exit_code != 0 or (handoff_payload is not None and handoff_payload.get("ok") is False):
                         _finish_stage(
                             handoff_stage,

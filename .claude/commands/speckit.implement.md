@@ -61,6 +61,7 @@ Before task execution or handoff:
 - Append `task_started` only when the selected task is not already active.
 - Execute only the next eligible task from `tasks.md` and corresponding HUD.
 - Hand that task to the local Codex runner at `scripts/speckit_codex_handoff_runner.py`.
+- The runner writes a full JSON trace under `.speckit/runtime/implement/runner/` with the prompt, Codex stdout/stderr, and the final result payload.
 - If offline QA fails, feed the QA feedback back into the same runner session and retry the same task before closeout.
 - Preserve task dependency and phase ordering.
 - Emit required task-ledger progression events via `scripts/task_ledger.py`.

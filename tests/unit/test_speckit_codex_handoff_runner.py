@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -72,6 +73,14 @@ def test_run_codex_handoff_commits_changes(tmp_path: Path, monkeypatch) -> None:
     assert result["summary"] == "Implementation complete"
     assert result["changed_files"] == ["specs/023-deterministic-phase-orchestration/implementation.md"]
     assert result["session_mode"] == "fresh"
+    runner_log_path = Path(result["runner_log_path"])
+    assert runner_log_path.is_file()
+    runner_log = json.loads(runner_log_path.read_text(encoding="utf-8"))
+    assert runner_log["prompt"].startswith("You are the local Codex implementation runner")
+    assert runner_log["codex_stdout"] == "codex stdout"
+    assert runner_log["codex_stderr"] == "codex stderr"
+    assert runner_log["result"]["ok"] is True
+    assert runner_log["result"]["commit_sha"] == result["commit_sha"]
 
 
 def test_run_codex_handoff_accepts_flat_payload(tmp_path: Path, monkeypatch) -> None:
@@ -162,3 +171,47 @@ def test_run_codex_handoff_resumes_session_with_feedback(tmp_path: Path, monkeyp
     assert captured["resume_session"] is True
     assert "QA feedback:" in str(captured["prompt"])
     assert "missing_readme_update" in str(captured["prompt"])
+    runner_log = json.loads(Path(result["runner_log_path"]).read_text(encoding="utf-8"))
+    assert runner_log["qa_feedback"]["reasons"] == ["missing_readme_update"]
+
+
+def test_run_codex_handoff_writes_log_artifact_on_codex_failure(tmp_path: Path, monkeypatch) -> None:
+    """Codex handoff should persist a full log even when Codex exits unsuccessfully."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    def fake_run_codex_exec(prompt, repo_root_param, *, resume_session=False):  # noqa: ANN001
+        del prompt, repo_root_param, resume_session
+        return 1, "codex stdout failure", "codex stderr failure", "Last attempt before failure"
+
+    monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
+
+    result = speckit_codex_handoff_runner.run_codex_handoff(
+        {
+            "feature_id": "023",
+            "phase": "implement",
+            "correlation_id": "run-test:speckit.implement.failure",
+            "handoff": {
+                "feature_dir": str(repo_root / "specs" / "023-deterministic-phase-orchestration"),
+                "task_id": "T001",
+                "task_attempt": 1,
+                "task_action": "started",
+                "output_template_path": str(
+                    repo_root / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
+                ),
+                "completion_marker": "## Summary",
+            },
+        },
+        repo_root=repo_root,
+    )
+
+    assert result["ok"] is False
+    assert result["error_code"] == "codex_exec_failed"
+    runner_log_path = Path(result["runner_log_path"])
+    assert runner_log_path.is_file()
+    runner_log = json.loads(runner_log_path.read_text(encoding="utf-8"))
+    assert runner_log["codex_exit_code"] == 1
+    assert runner_log["codex_stdout"] == "codex stdout failure"
+    assert runner_log["codex_stderr"] == "codex stderr failure"
+    assert runner_log["result"]["error_code"] == "codex_exec_failed"

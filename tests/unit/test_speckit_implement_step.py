@@ -235,6 +235,14 @@ def test_main_consumes_registered_tasks_and_runs_local_handoff(
                         "changed_files": ["README.md"],
                         "stdout_tail": [],
                         "stderr_tail": [],
+                        "runner_log_path": str(
+                            repo_root
+                            / ".speckit"
+                            / "runtime"
+                            / "implement"
+                            / "runner"
+                            / "run-test_speckit.implement__T001__attempt-1__retry-0.json"
+                        ),
                         "handoff": {
                             "task_id": "T001",
                             "task_attempt": 1,
@@ -472,6 +480,14 @@ def test_main_keeps_the_codex_session_warm_across_multiple_tasks(
                         "changed_files": ["README.md"],
                         "stdout_tail": [],
                         "stderr_tail": [],
+                        "runner_log_path": str(
+                            repo_root
+                            / ".speckit"
+                            / "runtime"
+                            / "implement"
+                            / "runner"
+                            / f"run-test_speckit.implement__{task_id}__attempt-1__retry-{round_index - 1}.json"
+                        ),
                         "handoff": {
                             "task_id": task_id,
                             "task_attempt": 1,
@@ -675,6 +691,14 @@ def test_main_retries_after_qa_failure_with_same_session(
                         "changed_files": ["README.md"],
                         "stdout_tail": [],
                         "stderr_tail": [],
+                        "runner_log_path": str(
+                            repo_root
+                            / ".speckit"
+                            / "runtime"
+                            / "implement"
+                            / "runner"
+                            / f"run-test_speckit.implement__T001__attempt-1__retry-{round_index - 1}.json"
+                        ),
                         "handoff": {
                             "task_id": "T001",
                             "task_attempt": 1,
@@ -729,6 +753,8 @@ def test_main_retries_after_qa_failure_with_same_session(
         "docs_update",
         "task_gate",
     ]
+    handoff_stage = next(stage for stage in debug_payload["stages"] if stage["name"] == "llm_handoff_round_1")
+    assert handoff_stage["details"]["runner_log_path"]
     handoff_inputs = observed["handoff_inputs"]
     assert len(handoff_inputs) == 2
     first_handoff = handoff_inputs[0]
