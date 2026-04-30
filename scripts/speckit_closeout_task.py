@@ -38,7 +38,6 @@ class CloseoutResult:
     qa_run_id: str
     next_action: str
     next_task_id: str | None
-    checkpoint_phase: str | None
     qa_verdict: str | None
 
     def to_json(self) -> str:
@@ -52,7 +51,6 @@ class CloseoutResult:
                 "qa_run_id": self.qa_run_id,
                 "next_action": self.next_action,
                 "next_task_id": self.next_task_id,
-                "checkpoint_phase": self.checkpoint_phase,
                 "qa_verdict": self.qa_verdict,
             },
             sort_keys=True,
@@ -236,26 +234,16 @@ def _closeout(
     repo_root = Path(__file__).resolve().parent.parent
     lines = _task_lines(tasks_file)
     task_idx = _find_task_line(lines, task_id)
-    start, end, phase_heading = _phase_bounds(lines, task_idx)
-    phase_text = "".join(lines[start:end])
-    has_checkpoint = "Checkpoint" in phase_text
+    start, end, _ = _phase_bounds(lines, task_idx)
 
     existing_events = _ledger_events_for_task(ledger_file, feature_id, task_id)
     existing_event_set = set(existing_events)
 
-    if not _phase_has_open_tasks(lines, start, end, task_id):
-        if has_checkpoint:
-            checkpoint_phase = phase_heading.lstrip("# ").strip()
-            next_action = "checkpoint"
-            next_task_id = None
-        else:
-            checkpoint_phase = None
-            next_action = "continue"
-            next_task_id = None
-    else:
-        checkpoint_phase = None
-        next_action = "continue"
+    next_action = "continue"
+    if _phase_has_open_tasks(lines, start, end, task_id):
         next_task_id = _phase_next_task(lines, start, end, task_id)
+    else:
+        next_task_id = None
 
     # Check QA result before proceeding
     resolved_qa_path = _resolve_qa_result_path(repo_root, feature_id, task_id, qa_run_id, qa_result_path)
@@ -294,7 +282,6 @@ def _closeout(
             qa_run_id=qa_run_id,
             next_action="fix_required",
             next_task_id=None,
-            checkpoint_phase=None,
             qa_verdict=qa_verdict,
         )
 
@@ -334,7 +321,6 @@ def _closeout(
         qa_run_id=qa_run_id,
         next_action=next_action,
         next_task_id=next_task_id,
-        checkpoint_phase=checkpoint_phase,
         qa_verdict=qa_verdict,
     )
 

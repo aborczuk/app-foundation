@@ -1,5 +1,5 @@
 ---
-description: Close a completed task through the canonical append-first ledger path and hand off to checkpoint when a user story ends
+description: Close a completed task through the canonical append-first ledger path and stop cleanly at story boundaries
 ---
 
 ## User Input
@@ -12,7 +12,7 @@ You **MUST** consider the user input before proceeding.
 
 ## Purpose
 
-Close the current task through one append-first path that records the task evidence, updates the task ledger, marks `[X]` in `tasks.md`, and emits a compact next-action payload. When the current user story is complete, the command hard-stops by handing off to `/speckit.checkpoint`.
+Close the current task through one append-first path that records the task evidence, updates the task ledger, marks `[X]` in `tasks.md`, and emits a compact next-action payload. When the current user story is complete, the command hard-stops after reporting the final payload.
 
 ## Outline
 
@@ -34,11 +34,11 @@ Close the current task through one append-first path that records the task evide
 
 4. Parse the JSON payload:
    - `next_action=continue`: report the compact status line and stop.
-   - `next_action=checkpoint`: invoke `/speckit.checkpoint [phase]` and stop.
+   - `next_task_id=None`: report the compact status line and stop because the story has no more open tasks.
 5. Do not emit a prose summary. Return only the compact status line plus the closeout payload fields.
 
 ## Contract
 
 - Closeout must remain ledger-first.
 - The command must not manually rewrite task state outside the canonical closeout script.
-- The command must preserve the silent-continuation behavior between tasks and the hard stop at story boundaries.
+- The command must preserve the silent-continuation behavior between tasks and the hard stop at story boundaries without handing off to another command.

@@ -94,13 +94,13 @@ def _write_tasks_file(path: Path, *, phase_two_task_open: bool = True) -> None:
                 "- [ ] T001 First task",
                 "- [ ] T002 Second task",
                 "",
-                "**Checkpoint**: Story one hard-stops after checkpoint validation.",
+                "**Story boundary**: Story one hard-stops at the end of the phase.",
                 "",
                 "## Phase 2: Story Two",
                 "",
                 phase_two_line,
                 "",
-                "**Checkpoint**: Story two hard-stops after checkpoint validation.",
+                "**Story boundary**: Story two hard-stops at the end of the phase.",
                 "",
             ]
         ),
@@ -131,11 +131,10 @@ def test_closeout_script_continues_when_phase_has_more_tasks(tmp_path: Path) -> 
     assert payload["ok"] is True
     assert payload["next_action"] == "continue"
     assert payload["next_task_id"] == "T002"
-    assert payload["checkpoint_phase"] is None
     assert "- [X] T001 First task" in tasks_file.read_text(encoding="utf-8")
 
 
-def test_closeout_script_hard_stops_when_phase_is_complete(tmp_path: Path) -> None:
+def test_closeout_script_stops_when_phase_is_complete(tmp_path: Path) -> None:
     tasks_file = tmp_path / "tasks.md"
     ledger_file = tmp_path / "ledger.jsonl"
     qa_result_file = tmp_path / "qa-result.json"
@@ -156,9 +155,8 @@ def test_closeout_script_hard_stops_when_phase_is_complete(tmp_path: Path) -> No
     )
 
     assert payload["ok"] is True
-    assert payload["next_action"] == "checkpoint"
+    assert payload["next_action"] == "continue"
     assert payload["next_task_id"] is None
-    assert payload["checkpoint_phase"] == "Phase 2: Story Two"
     assert "- [X] T003 Third task" in tasks_file.read_text(encoding="utf-8")
 
 
@@ -167,5 +165,6 @@ def test_closeout_docs_point_to_canonical_script() -> None:
     claude_doc = Path("CLAUDE.md").read_text(encoding="utf-8")
 
     assert "scripts/speckit_closeout_task.py" in closeout_doc
-    assert "/speckit.checkpoint [phase]" in closeout_doc
+    assert "/speckit.checkpoint" not in closeout_doc
+    assert "next_task_id=None" in closeout_doc
     assert "AGENTS.md" in claude_doc

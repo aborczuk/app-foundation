@@ -1,8 +1,8 @@
-version: 1.1.3
-last_updated: '2026-04-29T00:00:00Z'
+version: 1.1.4
+last_updated: '2026-04-30T00:00:00Z'
 manifest:
-  version: 1.1.3
-  updated_utc: '2026-04-29T00:00:00Z'
+  version: 1.1.4
+  updated_utc: '2026-04-30T00:00:00Z'
   ledger_sync_policy:
   - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
     emitted event contract changes, update this manifest in the same PR.
@@ -43,8 +43,6 @@ commands:
     artifacts:
     - output_path: .speckit/runtime/${FEATURE_ID}/${RUN_SCOPE}-step-result.json
       produced_by: scripts/pipeline_driver.py
-      consumed_by:
-      - speckit.checkpoint
     emits: []
   speckit.clarify:
     description: Ask targeted clarification questions and encode answers into spec
@@ -188,7 +186,6 @@ commands:
       - speckit.estimate
       - speckit.breakdown
       - speckit.implement
-      - speckit.checkpoint
     emits:
     - event: tasking_completed
       required_fields:
@@ -304,39 +301,6 @@ commands:
       - task_count
       - story_count
       - estimate_points
-  speckit.e2e:
-    description: Generate E2E testing pipeline artifacts (e2e.md + executable script)
-    mode: legacy
-    scripts:
-    - .specify/scripts/python/check_prerequisites.py
-    - .specify/scripts/pipeline-scaffold.py
-    - scripts/pipeline_ledger.py
-    artifacts:
-    - output_path: ${FEATURE_DIR}/e2e.md
-      template: e2e-template.md
-    - output_path: scripts/e2e_${FEATURE_SLUG}.sh
-      template: e2e-script-template.sh
-    emits:
-    - event: e2e_generated
-      required_fields:
-      - e2e_artifact
-  speckit.e2e-run:
-    description: Execute the E2E testing pipeline for the current feature as automation-first
-      acceptance gate
-    mode: legacy
-    scripts:
-    - scripts/e2e_${FEATURE_SLUG}.sh
-    artifacts: []
-    emits: []
-  speckit.checkpoint:
-    description: Validate a phase checkpoint from tasks.md by running the software
-      and verifying observable behavior
-    mode: legacy
-    scripts:
-    - .specify/scripts/python/check_prerequisites.py
-    - scripts/speckit_implement_gate.py
-    artifacts: []
-    emits: []
   speckit.implement:
     description: Execute the next registered task through driver-owned approval, validation,
       QA, and closeout sequencing
@@ -362,7 +326,7 @@ commands:
       required_fields: []
   speckit.closeout:
     description: Close a completed task through the canonical append-first ledger path
-      and hand off to checkpoint when a user story ends
+      and finalize the feature when a user story ends
     mode: legacy
     scripts:
     - .specify/scripts/python/check_prerequisites.py
@@ -382,14 +346,6 @@ commands:
       - qa_run_id
     - event: task_closed
       required_fields: []
-  speckit.taskstoissues:
-    description: Convert existing tasks into actionable, dependency-ordered GitHub
-      issues for the feature
-    mode: legacy
-    scripts:
-    - .specify/scripts/python/check_prerequisites.py
-    artifacts: []
-    emits: []
   speckit.retro:
     description: Generate a retrospective for the current feature
     mode: legacy
@@ -398,53 +354,6 @@ commands:
     artifacts:
       - output_path: "${FEATURE_DIR}/retro.md"
         template: "retro-template.md"
-  speckit.addtobacklog:
-    description: Classify ad-hoc work against the current feature first, then route
-      it to the current feature or universal backlog, with architectural fit check,
-      estimate, spec sync when needed, and prerequisite readiness projection
-    mode: legacy
-    scripts:
-    - .specify/scripts/python/check_prerequisites.py
-    - scripts/pipeline_ledger.py
-    artifacts: []
-    emits:
-    - event: backlog_registered
-      required_fields: []
-    - event: research_completed
-      required_fields: []
-    - event: plan_started
-      required_fields: []
-    - event: planreview_completed
-      required_fields:
-      - fq_count
-      - questions_asked
-    - event: plan_approved
-      required_fields:
-      - feasibility_required
-    - event: sketch_completed
-      required_fields: []
-    - event: solutionreview_completed
-      required_fields:
-      - critical_count
-      - high_count
-    - event: estimation_completed
-      required_fields:
-      - estimate_points
-    - event: tasking_completed
-      required_fields:
-      - task_count
-      - story_count
-    - event: solution_approved
-      required_fields:
-      - task_count
-      - story_count
-      - estimate_points
-    - event: analysis_completed
-      required_fields:
-      - critical_count
-    - event: e2e_generated
-      required_fields:
-      - e2e_artifact
   speckit.constitution:
     description: Create or update the project constitution from interactive or provided
       principle inputs
@@ -453,22 +362,9 @@ commands:
     - scripts/validate_constitution_sync.py
     artifacts: []
     emits: []
-  speckit.trello-sync:
-    description: Sync the current feature's tasks.md to a Trello board using the MCP
-      Trello Bridge
-    mode: legacy
-    scripts:
-    - .specify/scripts/python/check_prerequisites.py
-    artifacts: []
-    emits: []
-  speckit.clickup-sync:
-    description: Bootstrap or report ClickUp sync status for the current speckit feature
-      tree
-    mode: legacy
-    scripts:
-    - .specify/scripts/python/check_prerequisites.py
-    artifacts: []
-    emits: []
 manual_events:
   feature_closed:
     required_fields: []
+  e2e_generated:
+    required_fields:
+    - e2e_artifact

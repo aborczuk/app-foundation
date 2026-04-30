@@ -1035,7 +1035,6 @@ def test_load_driver_routes_preserves_route_and_emit_metadata(tmp_path: Path) ->
                 "        scaffold_script: \" scripts/scaffold.py \"",
                 "        consumed_by:",
                 "          - \" speckit.implement \"",
-                "          - \" speckit.checkpoint \"",
                 "    driver:",
                 "      mode: deterministic",
                 "      script_path: scripts/example.py",
@@ -1059,7 +1058,7 @@ def test_load_driver_routes_preserves_route_and_emit_metadata(tmp_path: Path) ->
             "output_path": "${FEATURE_DIR}/example.md",
             "template": "example-template.md",
             "scaffold_script": "scripts/scaffold.py",
-            "consumed_by": ["speckit.implement", "speckit.checkpoint"],
+            "consumed_by": ["speckit.implement"],
         }
     ]
     assert route["emit_contracts"] == [
