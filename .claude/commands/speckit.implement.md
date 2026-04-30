@@ -8,10 +8,10 @@ $ARGUMENTS
 
 ## Compact Contract (Load First)
 
-Execute implementation through deterministic HUD-gated preflight, verification, QA handoff, and documentation updates.
+Execute implementation through deterministic HUD-gated preflight, task start, local Codex task execution, QA handoff, and documentation updates. The step runner owns the helper sequence.
 
 1. Resolve feature context and run HUD-only pre-implementation gate checks.
-2. Execute next eligible task from `tasks.md` / HUD contracts.
+2. Consume the next registered task from `.speckit/task-ledger.jsonl` and the matching `tasks.md` / HUD contract.
 3. Run verification gates before task closeout.
 4. Run offline QA handoff and canonical ledger closeout.
 5. Update quickstart runbook + decision log via `scripts/speckit_implement_docs.py`.
@@ -55,7 +55,12 @@ Before task execution or handoff:
 
 ### 3. Task execution flow (required)
 
+- Tasking has already registered the task queue into `.speckit/task-ledger.jsonl`.
+- Select the next registered task in `tasks.md` order.
+- Append `task_started` only when the selected task is not already active.
 - Execute only the next eligible task from `tasks.md` and corresponding HUD.
+- Hand that task to the local Codex runner at `scripts/speckit_codex_handoff_runner.py`.
+- If offline QA fails, feed the QA feedback back into the same runner session and retry the same task before closeout.
 - Preserve task dependency and phase ordering.
 - Emit required task-ledger progression events via `scripts/task_ledger.py`.
 - Run targeted verification before closeout (tests/diagnostics/gates required by task scope).
@@ -63,10 +68,12 @@ Before task execution or handoff:
   - `scripts/speckit_offline_qa_handoff.py`
   - `scripts/speckit_closeout_task.py`
 
-### 4. Documentation step (required until fully script-centralized)
+### 4. Documentation step (runner-owned until fully centralized)
 
-Primary path (script-owned):
+Primary path (runner-owned, script-backed):
 - `uv run --no-sync python scripts/speckit_implement_docs.py --feature-dir "$FEATURE_DIR" --entry-id "<task-or-run-id>" --runbook-note "<note>" --decision-entry "<decision>" --json`
+
+The step runner invokes this helper after closeout; do not re-sequence these actions manually in the command doc.
 
 Required outputs:
 - update quickstart runbook notes for implementation outcome
@@ -79,12 +86,15 @@ Required outputs:
 
 If script path is temporarily unavailable, preserve these outputs manually in `quickstart.md` and keep format stable.
 
-### 5. Phase completion
+### 5. Completion
 
 Return completion payload to the runner/driver when:
 - required tasks for current scope are closed
 - deterministic verification/QA paths passed
 - required documentation update is complete
+- the task gate has run after closeout so it can inspect the task ledger and either emit completion or point to the next open task
+
+The task gate uses the task ledger as the source of truth for whether work is still open.
 
 `implementation_completed` append is driver-owned (pipeline driver route), not command-doc-owned.
 

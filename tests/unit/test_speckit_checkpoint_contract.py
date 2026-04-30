@@ -12,6 +12,17 @@ def test_implement_doc_requires_github_sync_and_compact_status() -> None:
     assert "/speckit.checkpoint Phase [N]" in text
     assert "compact status line" in text
     assert "do not emit a prose summary" in text.lower()
+    assert "Tasking has already registered the task queue" in text
+    assert "Consume the next registered task" in text
+    assert "Register missing tasks" not in text
+
+
+def test_tasking_doc_registers_tasks_before_implement() -> None:
+    text = Path(".claude/commands/speckit.tasking.md").read_text(encoding="utf-8")
+
+    assert "the tasking step owns `task_registered` events" in text.lower()
+    assert "scripts/task_ledger.py register" in text
+    assert ".speckit/task-ledger.jsonl" in text
 
 
 def test_checkpoint_doc_requires_compact_stop_at_story_boundary() -> None:

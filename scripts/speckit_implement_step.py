@@ -14,13 +14,19 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
+
+import speckit_closeout_task
+import speckit_implement_docs
+import speckit_offline_qa_handoff
+import task_ledger
 
 SCHEMA_VERSION = "1.0.0"
 IMPLEMENT_GATE = "implement_execution"
 DEFAULT_TIMEOUT_SECONDS = 300
 DEFAULT_PHASE_TYPE = "story"
 DEFAULT_NEXT_PHASE = "closed"
+MAX_QA_RETRIES = 3
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,12 @@ def _tail_lines(text: str, count: int = 20) -> list[str]:
 def _sanitize_for_filename(value: str) -> str:
     """Normalize arbitrary text into a filesystem-safe token."""
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "unknown"
+
+
+def _default_handoff_runner(repo_root: Path) -> str:
+    """Return the canonical local Codex runner command."""
+    runner_path = (repo_root / "scripts" / "speckit_codex_handoff_runner.py").resolve()
+    return f"{shlex.quote(sys.executable)} {shlex.quote(str(runner_path))}"
 
 
 def _write_debug_payload(
@@ -135,6 +147,243 @@ def _resolve_feature_dir(repo_root: Path, feature_id: str) -> Path:
             "feature_id_ambiguous:" + ",".join(path.name for path in candidates[:5])
         )
     return candidates[0].resolve()
+
+
+def _task_ledger_path(repo_root: Path) -> Path:
+    """Return the canonical task ledger path for the repository."""
+    return (repo_root / ".speckit" / "task-ledger.jsonl").resolve()
+
+
+def _resolve_commit_sha(
+    repo_root: Path,
+    *,
+    timeout_seconds: int,
+    handoff_payload: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Resolve the commit SHA for closeout, preferring handoff output when available."""
+    if handoff_payload is not None:
+        candidate = str(handoff_payload.get("commit_sha") or "").strip()
+        if candidate:
+            return candidate, "handoff_payload"
+
+    commit_run = _run_command(["git", "rev-parse", "HEAD"], cwd=repo_root, timeout_seconds=timeout_seconds)
+    if commit_run.timed_out:
+        raise ValueError("commit_sha_resolution_timeout")
+    if commit_run.exit_code != 0:
+        raise ValueError("commit_sha_unavailable")
+
+    commit_sha = commit_run.stdout.strip()
+    if not commit_sha:
+        raise ValueError("commit_sha_unavailable")
+    return commit_sha, "git_head"
+
+
+def _run_offline_qa_handoff(
+    *,
+    feature_id: str,
+    task_id: str,
+    attempt: int,
+) -> dict[str, Any]:
+    """Run the offline QA handoff helper and return its payload."""
+    return speckit_offline_qa_handoff.run_offline_qa_handoff(
+        feature_id=feature_id,
+        task_id=task_id,
+        attempt=attempt,
+    )
+
+
+def _build_handoff_input(
+    *,
+    feature_id: str,
+    phase: str,
+    correlation_id: str,
+    feature_dir: Path,
+    repo_root: Path,
+    task_context: Mapping[str, Any],
+    resume_session: bool,
+    retry_index: int,
+    qa_feedback: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Build the JSON payload for the Codex handoff runner."""
+    payload: dict[str, Any] = {
+        "feature_id": feature_id,
+        "phase": phase,
+        "correlation_id": correlation_id,
+        "step_name": "speckit.implement",
+        "feature_dir": str(feature_dir),
+        "repo_root": str(repo_root),
+        "task_id": task_context["next_task_id"],
+        "task_attempt": task_context["task_attempt"],
+        "task_action": task_context["task_action"],
+        "task_registered": task_context["task_registered"],
+        "task_parallel": task_context["task_parallel"],
+        "resume_session": resume_session,
+        "retry_index": retry_index,
+    }
+    if qa_feedback is not None:
+        payload["qa_feedback"] = dict(qa_feedback)
+    return payload
+
+
+def _run_handoff_round(
+    *,
+    repo_root: Path,
+    feature_id: str,
+    phase: str,
+    correlation_id: str,
+    feature_dir: Path,
+    task_context: Mapping[str, Any],
+    handoff_runner: str,
+    timeout_seconds: int,
+    resume_session: bool,
+    retry_index: int,
+    qa_feedback: Mapping[str, Any] | None,
+) -> tuple[CommandResult, dict[str, Any]]:
+    """Execute one Codex handoff round and return its raw result."""
+    handoff_cmd = shlex.split(handoff_runner)
+    if not handoff_cmd:
+        raise ValueError("runner_command_empty")
+
+    handoff_input = _build_handoff_input(
+        feature_id=feature_id,
+        phase=phase,
+        correlation_id=correlation_id,
+        feature_dir=feature_dir,
+        repo_root=repo_root,
+        task_context=task_context,
+        resume_session=resume_session,
+        retry_index=retry_index,
+        qa_feedback=qa_feedback,
+    )
+    handoff_run = _run_command(
+        handoff_cmd,
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+        input_payload=json.dumps(handoff_input, sort_keys=True),
+    )
+    return handoff_run, handoff_input
+
+
+def _closeout_task(
+    *,
+    feature_id: str,
+    task_id: str,
+    tasks_file: Path,
+    ledger_path: Path,
+    commit_sha: str,
+    qa_run_id: str,
+    qa_result_path: Path,
+    actor: str,
+) -> speckit_closeout_task.CloseoutResult:
+    """Run canonical closeout through the dedicated helper module."""
+    return speckit_closeout_task.closeout_task(
+        feature_id=feature_id,
+        task_id=task_id,
+        tasks_file=tasks_file,
+        ledger_file=ledger_path,
+        commit_sha=commit_sha,
+        qa_run_id=qa_run_id,
+        qa_result_path=qa_result_path,
+        actor=actor,
+    )
+
+
+def _update_implementation_docs(
+    *,
+    feature_dir: Path,
+    correlation_id: str,
+    task_context: dict[str, Any],
+    commit_sha: str,
+    qa_run_id: str,
+    closeout_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Record deterministic implement notes after a successful closeout."""
+    task_id = str(task_context["next_task_id"])
+    task_action = str(task_context["task_action"])
+    task_attempt = int(task_context["task_attempt"])
+    entry_id = f"{correlation_id}:{task_id}:docs"
+    request = speckit_implement_docs.UpdateRequest(
+        feature_dir=feature_dir,
+        entry_id=entry_id,
+        runbook_notes=(
+            f"Closed out task {task_id} ({task_action}, attempt {task_attempt}) at commit {commit_sha}.",
+        ),
+        decision_log_entries=(
+            f"Task {task_id} reached closeout after offline QA run {qa_run_id}.",
+            f"Closeout next_action={closeout_result['next_action']} next_task_id={closeout_result['next_task_id'] or 'none'}.",
+        ),
+    )
+    return speckit_implement_docs.apply_update(request)
+
+
+def _select_next_registered_task(
+    *,
+    repo_root: Path,
+    feature_dir: Path,
+    feature_id: str,
+    actor: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Select the next registered task and start or resume it."""
+    ledger_path = _task_ledger_path(repo_root)
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        raise ValueError("missing_tasks_md")
+
+    feature_state = task_ledger.feature_state_for(ledger_path, feature_id)
+    if not any(task_state.registered for task_state in feature_state.tasks.values()):
+        raise ValueError("task_registration_required")
+
+    next_task = task_ledger.next_registered_task(feature_state)
+    if next_task is None:
+        raise ValueError("no_registered_open_tasks")
+
+    next_task_id, task_state = next_task
+
+    task_definitions = task_ledger.parse_task_definitions(tasks_file)
+
+    task_action = "resumed" if task_state.started else "started"
+    if task_state.started:
+        owner_actor = task_state.owner_actor or "unknown"
+        if owner_actor != actor:
+            raise ValueError(f"task_owned_by_other_actor:{owner_actor}")
+    else:
+        task_ledger.assert_can_start_task(
+            ledger_path,
+            tasks_file,
+            feature_id,
+            next_task_id,
+            actor=actor,
+        )
+        task_ledger.append_task_started_event(
+            ledger_path,
+            feature_id,
+            next_task_id,
+            actor=actor,
+            details=f"queued by {correlation_id}",
+        )
+        feature_state = task_ledger.feature_state_for(ledger_path, feature_id)
+        task_state = feature_state.tasks.get(next_task_id)
+        if task_state is None:
+            raise ValueError("task_state_missing_after_start")
+
+    events = task_ledger.read_events(ledger_path)
+    attempt = task_ledger.latest_attempt(events, feature_id, next_task_id)
+    return {
+        "ledger_path": str(ledger_path),
+        "tasks_file": str(tasks_file),
+        "next_task_id": next_task_id,
+        "task_action": task_action,
+        "task_attempt": attempt,
+        "task_registered": bool(task_state.registered),
+        "task_started": bool(task_state.started),
+        "task_closed": bool(task_state.closed),
+        "task_owner_actor": task_state.owner_actor or actor,
+        "task_parallel": next(
+            (definition.is_parallel for definition in task_definitions if definition.task_id == next_task_id),
+            False,
+        ),
+    }
 
 
 def _ensure_implement_branch(repo_root: Path, feature_dir: Path, *, timeout_seconds: int) -> dict[str, Any]:
@@ -285,7 +534,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     correlation_id = str(args.correlation_id).strip()
     require_handoff = bool(args.require_handoff or _bool_env("SPECKIT_REQUIRE_HANDOFF"))
     timeout_seconds = max(1, int(args.timeout_seconds))
+    actor_name = task_ledger.resolve_actor(None)
     stages: list[dict[str, Any]] = []
+    handoff_runner = str(args.handoff_runner).strip() or str(os.environ.get("SPECKIT_HANDOFF_RUNNER", "")).strip()
+    if not handoff_runner:
+        handoff_runner = _default_handoff_runner(repo_root)
 
     debug_stub: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -294,13 +547,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "feature_id": str(args.feature_id),
         "phase": str(args.phase),
         "stages": stages,
-        "config": {
-            "phase_type": str(args.phase_type),
-            "next_phase": str(args.next_phase),
-            "require_handoff": require_handoff,
-            "handoff_runner_configured": bool(str(args.handoff_runner).strip() or os.environ.get("SPECKIT_HANDOFF_RUNNER", "").strip()),
-        },
-    }
+            "config": {
+                "phase_type": str(args.phase_type),
+                "next_phase": str(args.next_phase),
+                "require_handoff": require_handoff,
+                "handoff_runner_configured": bool(handoff_runner),
+                "actor": actor_name,
+            },
+        }
 
     feature_dir: Path | None = None
     try:
@@ -409,203 +663,563 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         _finish_stage(branch_stage, status="pass", details=branch_details)
 
-        handoff_runner = str(args.handoff_runner).strip() or str(os.environ.get("SPECKIT_HANDOFF_RUNNER", "")).strip()
-        handoff_stage = _start_stage(
-            "llm_handoff",
-            details={"runner_configured": bool(handoff_runner), "required": require_handoff},
-        )
-        stages.append(handoff_stage)
-        if not handoff_runner:
-            if require_handoff:
-                _finish_stage(
-                    handoff_stage,
-                    status="blocked",
-                    details={"reason": "handoff_runner_not_configured"},
-                )
-                debug_path = _write_debug_payload(
-                    repo_root=repo_root,
-                    correlation_id=correlation_id,
-                    payload={**debug_stub, "result": {"blocked_stage": "llm_handoff", "reason": "handoff_runner_not_configured"}},
-                )
-                envelope = _build_envelope(
-                    correlation_id=correlation_id,
-                    exit_code=1,
-                    gate=IMPLEMENT_GATE,
-                    reasons=["llm_runner_not_configured"],
-                    next_phase=None,
-                    debug_path=debug_path,
-                )
-                print(json.dumps(envelope, sort_keys=True))
-                return 1
-            _finish_stage(handoff_stage, status="skipped", details={"reason": "runner_not_configured"})
-        else:
-            handoff_cmd = shlex.split(handoff_runner)
-            if not handoff_cmd:
-                _finish_stage(handoff_stage, status="error", details={"reason": "runner_command_empty"})
-                debug_path = _write_debug_payload(
-                    repo_root=repo_root,
-                    correlation_id=correlation_id,
-                    payload={**debug_stub, "result": {"error_stage": "llm_handoff", "error_code": "handoff_runner_empty"}},
-                )
-                envelope = _build_envelope(
-                    correlation_id=correlation_id,
-                    exit_code=2,
-                    error_code="handoff_runner_empty",
-                    debug_path=debug_path,
-                )
-                print(json.dumps(envelope, sort_keys=True))
-                return 2
-
-            handoff_input = {
-                "feature_id": str(args.feature_id),
-                "phase": str(args.phase),
-                "correlation_id": correlation_id,
-                "step_name": "speckit.implement",
-                "feature_dir": str(feature_dir),
-            }
-            handoff_run = _run_command(
-                handoff_cmd,
-                cwd=repo_root,
-                timeout_seconds=timeout_seconds,
-                input_payload=json.dumps(handoff_input, sort_keys=True),
+        task_queue_stage = _start_stage("task_queue", details={"actor": actor_name, "feature_branch": feature_dir.name})
+        stages.append(task_queue_stage)
+        try:
+            task_context = _select_next_registered_task(
+                repo_root=repo_root,
+                feature_dir=feature_dir,
+                feature_id=str(args.feature_id).strip(),
+                actor=actor_name,
+                correlation_id=correlation_id,
             )
-            handoff_details: dict[str, Any] = {
-                "command": handoff_run.command,
-                "exit_code": handoff_run.exit_code,
-                "timed_out": handoff_run.timed_out,
-                "stdout_tail": _tail_lines(handoff_run.stdout),
-                "stderr_tail": _tail_lines(handoff_run.stderr),
-            }
-            if handoff_run.timed_out:
-                _finish_stage(handoff_stage, status="blocked", details=handoff_details)
-                debug_path = _write_debug_payload(
-                    repo_root=repo_root,
-                    correlation_id=correlation_id,
-                    payload={**debug_stub, "result": {"blocked_stage": "llm_handoff", "reason": "handoff_timeout"}},
-                )
-                envelope = _build_envelope(
-                    correlation_id=correlation_id,
-                    exit_code=1,
-                    gate=IMPLEMENT_GATE,
-                    reasons=["llm_handoff_failed"],
-                    next_phase=None,
-                    debug_path=debug_path,
-                )
-                print(json.dumps(envelope, sort_keys=True))
-                return 1
-
-            handoff_payload: dict[str, Any] | None = None
-            if handoff_run.stdout.strip():
-                try:
-                    handoff_payload = _parse_json_payload(handoff_run.stdout)
-                except ValueError as exc:
-                    _finish_stage(handoff_stage, status="error", details={**handoff_details, "parse_error": str(exc)})
-                    debug_path = _write_debug_payload(
-                        repo_root=repo_root,
-                        correlation_id=correlation_id,
-                        payload={**debug_stub, "result": {"error_stage": "llm_handoff", "error_code": "handoff_invalid_json"}},
-                    )
-                    envelope = _build_envelope(
-                        correlation_id=correlation_id,
-                        exit_code=2,
-                        error_code="handoff_invalid_json",
-                        debug_path=debug_path,
-                    )
-                    print(json.dumps(envelope, sort_keys=True))
-                    return 2
-
-            if handoff_run.exit_code != 0 or (handoff_payload is not None and handoff_payload.get("ok") is False):
-                _finish_stage(
-                    handoff_stage,
-                    status="blocked",
-                    details={**handoff_details, "payload": handoff_payload},
-                )
-                debug_path = _write_debug_payload(
-                    repo_root=repo_root,
-                    correlation_id=correlation_id,
-                    payload={**debug_stub, "result": {"blocked_stage": "llm_handoff", "payload": handoff_payload}},
-                )
-                envelope = _build_envelope(
-                    correlation_id=correlation_id,
-                    exit_code=1,
-                    gate=IMPLEMENT_GATE,
-                    reasons=["llm_handoff_failed"],
-                    next_phase=None,
-                    debug_path=debug_path,
-                )
-                print(json.dumps(envelope, sort_keys=True))
-                return 1
-            _finish_stage(handoff_stage, status="pass", details={**handoff_details, "payload": handoff_payload})
-
-        phase_gate_stage = _start_stage("phase_gate")
-        stages.append(phase_gate_stage)
-        phase_gate_cmd = [
-            sys.executable,
-            str((repo_root / "scripts" / "speckit_implement_gate.py").resolve()),
-            "phase-gate",
-            "--feature-dir",
-            str(feature_dir),
-            "--phase-name",
-            str(args.phase),
-            "--phase-type",
-            str(args.phase_type),
-            "--layer1",
-            "pass",
-            "--layer2",
-            "pass",
-            "--layer3",
-            "pass",
-            "--json",
-        ]
-        phase_gate_run = _run_command(phase_gate_cmd, cwd=repo_root, timeout_seconds=timeout_seconds)
-        phase_gate_details: dict[str, Any] = {
-            "command": phase_gate_run.command,
-            "exit_code": phase_gate_run.exit_code,
-            "timed_out": phase_gate_run.timed_out,
-            "stdout_tail": _tail_lines(phase_gate_run.stdout),
-            "stderr_tail": _tail_lines(phase_gate_run.stderr),
-        }
-        if phase_gate_run.timed_out:
-            _finish_stage(phase_gate_stage, status="error", details=phase_gate_details)
+        except SystemExit:
+            _finish_stage(task_queue_stage, status="blocked", details={"reason": "task_queue_failed"})
             debug_path = _write_debug_payload(
                 repo_root=repo_root,
                 correlation_id=correlation_id,
-                payload={**debug_stub, "result": {"error_stage": "phase_gate", "error_code": "phase_gate_timeout"}},
-            )
-            envelope = _build_envelope(
-                correlation_id=correlation_id,
-                exit_code=2,
-                error_code="phase_gate_timeout",
-                debug_path=debug_path,
-            )
-            print(json.dumps(envelope, sort_keys=True))
-            return 2
-
-        phase_gate_payload = _parse_json_payload(phase_gate_run.stdout)
-        phase_gate_details["report"] = phase_gate_payload
-        if phase_gate_run.exit_code != 0 or not bool(phase_gate_payload.get("ok")):
-            _finish_stage(phase_gate_stage, status="blocked", details=phase_gate_details)
-            debug_path = _write_debug_payload(
-                repo_root=repo_root,
-                correlation_id=correlation_id,
-                payload={**debug_stub, "result": {"blocked_stage": "phase_gate", "gate_report": phase_gate_payload}},
+                payload={
+                    **debug_stub,
+                    "result": {"blocked_stage": "task_queue", "reason": "task_queue_failed"},
+                },
             )
             envelope = _build_envelope(
                 correlation_id=correlation_id,
                 exit_code=1,
                 gate=IMPLEMENT_GATE,
-                reasons=["phase_gate_failed"],
+                reasons=["task_queue_failed"],
                 next_phase=None,
                 debug_path=debug_path,
             )
             print(json.dumps(envelope, sort_keys=True))
             return 1
-        _finish_stage(phase_gate_stage, status="pass", details=phase_gate_details)
+        except ValueError as exc:
+            reason = str(exc) or "task_queue_failed"
+            _finish_stage(task_queue_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "task_queue", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(task_queue_stage, status="pass", details=task_context)
+
+        resume_session = False
+        qa_feedback: Mapping[str, Any] | None = None
+        retry_index = 0
+        handoff_payload: dict[str, Any] | None = None
+        commit_sha = ""
+        commit_source = ""
+        qa_run_id = ""
+        qa_result_path = Path("")
+        closeout_payload: dict[str, Any] | None = None
+        docs_payload: dict[str, Any] | None = None
+
+        while True:
+            handoff_stage = _start_stage(
+                f"llm_handoff_round_{retry_index + 1}",
+                details={
+                    "runner_configured": bool(handoff_runner),
+                    "required": require_handoff,
+                    "task_id": task_context["next_task_id"],
+                    "task_action": task_context["task_action"],
+                    "task_attempt": task_context["task_attempt"],
+                    "resume_session": resume_session,
+                    "retry_index": retry_index,
+                },
+            )
+            stages.append(handoff_stage)
+            if not handoff_runner:
+                if require_handoff:
+                    _finish_stage(
+                        handoff_stage,
+                        status="blocked",
+                        details={"reason": "handoff_runner_not_configured"},
+                    )
+                    debug_path = _write_debug_payload(
+                        repo_root=repo_root,
+                        correlation_id=correlation_id,
+                        payload={**debug_stub, "result": {"blocked_stage": "llm_handoff", "reason": "handoff_runner_not_configured"}},
+                    )
+                    envelope = _build_envelope(
+                        correlation_id=correlation_id,
+                        exit_code=1,
+                        gate=IMPLEMENT_GATE,
+                        reasons=["llm_runner_not_configured"],
+                        next_phase=None,
+                        debug_path=debug_path,
+                    )
+                    print(json.dumps(envelope, sort_keys=True))
+                    return 1
+                _finish_stage(handoff_stage, status="skipped", details={"reason": "runner_not_configured"})
+                handoff_payload = None
+            else:
+                try:
+                    handoff_run, handoff_input = _run_handoff_round(
+                        repo_root=repo_root,
+                        feature_id=str(args.feature_id).strip(),
+                        phase=str(args.phase),
+                        correlation_id=correlation_id,
+                        feature_dir=feature_dir,
+                        task_context=task_context,
+                        handoff_runner=handoff_runner,
+                        timeout_seconds=timeout_seconds,
+                        resume_session=resume_session,
+                        retry_index=retry_index,
+                        qa_feedback=qa_feedback,
+                    )
+                except ValueError as exc:
+                    reason = str(exc) or "handoff_runner_empty"
+                    _finish_stage(handoff_stage, status="error", details={"reason": reason})
+                    debug_path = _write_debug_payload(
+                        repo_root=repo_root,
+                        correlation_id=correlation_id,
+                        payload={**debug_stub, "result": {"error_stage": "llm_handoff", "error_code": reason}},
+                    )
+                    envelope = _build_envelope(
+                        correlation_id=correlation_id,
+                        exit_code=2,
+                        error_code=reason,
+                        debug_path=debug_path,
+                    )
+                    print(json.dumps(envelope, sort_keys=True))
+                    return 2
+
+                handoff_details: dict[str, Any] = {
+                    "command": handoff_run.command,
+                    "exit_code": handoff_run.exit_code,
+                    "timed_out": handoff_run.timed_out,
+                    "stdout_tail": _tail_lines(handoff_run.stdout),
+                    "stderr_tail": _tail_lines(handoff_run.stderr),
+                    "resume_session": resume_session,
+                    "retry_index": retry_index,
+                    "input": handoff_input,
+                }
+                if handoff_run.timed_out:
+                    _finish_stage(handoff_stage, status="blocked", details=handoff_details)
+                    debug_path = _write_debug_payload(
+                        repo_root=repo_root,
+                        correlation_id=correlation_id,
+                        payload={**debug_stub, "result": {"blocked_stage": "llm_handoff", "reason": "handoff_timeout"}},
+                    )
+                    envelope = _build_envelope(
+                        correlation_id=correlation_id,
+                        exit_code=1,
+                        gate=IMPLEMENT_GATE,
+                        reasons=["llm_handoff_failed"],
+                        next_phase=None,
+                        debug_path=debug_path,
+                    )
+                    print(json.dumps(envelope, sort_keys=True))
+                    return 1
+
+                handoff_payload = None
+                if handoff_run.stdout.strip():
+                    try:
+                        handoff_payload = _parse_json_payload(handoff_run.stdout)
+                    except ValueError as exc:
+                        _finish_stage(
+                            handoff_stage,
+                            status="error",
+                            details={**handoff_details, "parse_error": str(exc)},
+                        )
+                        debug_path = _write_debug_payload(
+                            repo_root=repo_root,
+                            correlation_id=correlation_id,
+                            payload={**debug_stub, "result": {"error_stage": "llm_handoff", "error_code": "handoff_invalid_json"}},
+                        )
+                        envelope = _build_envelope(
+                            correlation_id=correlation_id,
+                            exit_code=2,
+                            error_code="handoff_invalid_json",
+                            debug_path=debug_path,
+                        )
+                        print(json.dumps(envelope, sort_keys=True))
+                        return 2
+
+                if handoff_run.exit_code != 0 or (handoff_payload is not None and handoff_payload.get("ok") is False):
+                    _finish_stage(
+                        handoff_stage,
+                        status="blocked",
+                        details={**handoff_details, "payload": handoff_payload},
+                    )
+                    debug_path = _write_debug_payload(
+                        repo_root=repo_root,
+                        correlation_id=correlation_id,
+                        payload={**debug_stub, "result": {"blocked_stage": "llm_handoff", "payload": handoff_payload}},
+                    )
+                    envelope = _build_envelope(
+                        correlation_id=correlation_id,
+                        exit_code=1,
+                        gate=IMPLEMENT_GATE,
+                        reasons=["llm_handoff_failed"],
+                        next_phase=None,
+                        debug_path=debug_path,
+                    )
+                    print(json.dumps(envelope, sort_keys=True))
+                    return 1
+                _finish_stage(handoff_stage, status="pass", details={**handoff_details, "payload": handoff_payload})
+
+            commit_stage = _start_stage(
+                f"commit_resolution_round_{retry_index + 1}",
+                details={
+                    "task_id": task_context["next_task_id"],
+                    "task_attempt": task_context["task_attempt"],
+                    "retry_index": retry_index,
+                },
+            )
+            stages.append(commit_stage)
+            try:
+                commit_sha, commit_source = _resolve_commit_sha(
+                    repo_root,
+                    timeout_seconds=timeout_seconds,
+                    handoff_payload=handoff_payload,
+                )
+            except ValueError as exc:
+                reason = str(exc) or "commit_sha_unavailable"
+                _finish_stage(commit_stage, status="blocked", details={"reason": reason})
+                debug_path = _write_debug_payload(
+                    repo_root=repo_root,
+                    correlation_id=correlation_id,
+                    payload={**debug_stub, "result": {"blocked_stage": "commit_resolution", "reason": reason}},
+                )
+                envelope = _build_envelope(
+                    correlation_id=correlation_id,
+                    exit_code=1,
+                    gate=IMPLEMENT_GATE,
+                    reasons=[reason],
+                    next_phase=None,
+                    debug_path=debug_path,
+                )
+                print(json.dumps(envelope, sort_keys=True))
+                return 1
+            _finish_stage(
+                commit_stage,
+                status="pass",
+                details={"commit_sha": commit_sha, "source": commit_source},
+            )
+
+            task_id = str(task_context["next_task_id"])
+            task_attempt = int(task_context["task_attempt"])
+
+            offline_qa_stage = _start_stage(
+                f"offline_qa_handoff_round_{retry_index + 1}",
+                details={
+                    "task_id": task_id,
+                    "task_attempt": task_attempt,
+                    "retry_index": retry_index,
+                },
+            )
+            stages.append(offline_qa_stage)
+            try:
+                qa_payload = _run_offline_qa_handoff(
+                    feature_id=str(args.feature_id).strip(),
+                    task_id=task_id,
+                    attempt=task_attempt,
+                )
+            except ValueError as exc:
+                reason = str(exc) or "offline_qa_handoff_failed"
+                _finish_stage(offline_qa_stage, status="blocked", details={"reason": reason})
+                debug_path = _write_debug_payload(
+                    repo_root=repo_root,
+                    correlation_id=correlation_id,
+                    payload={**debug_stub, "result": {"blocked_stage": "offline_qa_handoff", "reason": reason}},
+                )
+                envelope = _build_envelope(
+                    correlation_id=correlation_id,
+                    exit_code=1,
+                    gate=IMPLEMENT_GATE,
+                    reasons=[reason],
+                    next_phase=None,
+                    debug_path=debug_path,
+                )
+                print(json.dumps(envelope, sort_keys=True))
+                return 1
+
+            qa_result_file_raw = str(qa_payload.get("result_file") or "").strip()
+            qa_run_id = str(qa_payload.get("qa_run_id") or "").strip()
+            qa_result_verdict = str(qa_payload.get("result_verdict") or "").strip().upper()
+            if not qa_result_file_raw:
+                _finish_stage(
+                    offline_qa_stage,
+                    status="blocked",
+                    details={**qa_payload, "reason": "offline_qa_result_file_missing"},
+                )
+                debug_path = _write_debug_payload(
+                    repo_root=repo_root,
+                    correlation_id=correlation_id,
+                    payload={
+                        **debug_stub,
+                        "result": {
+                            "blocked_stage": "offline_qa_handoff",
+                            "reason": "offline_qa_result_file_missing",
+                            "payload": qa_payload,
+                        },
+                    },
+                )
+                envelope = _build_envelope(
+                    correlation_id=correlation_id,
+                    exit_code=1,
+                    gate=IMPLEMENT_GATE,
+                    reasons=["offline_qa_result_file_missing"],
+                    next_phase=None,
+                    debug_path=debug_path,
+                )
+                print(json.dumps(envelope, sort_keys=True))
+                return 1
+            if not qa_run_id:
+                _finish_stage(
+                    offline_qa_stage,
+                    status="blocked",
+                    details={**qa_payload, "reason": "offline_qa_run_id_missing"},
+                )
+                debug_path = _write_debug_payload(
+                    repo_root=repo_root,
+                    correlation_id=correlation_id,
+                    payload={
+                        **debug_stub,
+                        "result": {
+                            "blocked_stage": "offline_qa_handoff",
+                            "reason": "offline_qa_run_id_missing",
+                            "payload": qa_payload,
+                        },
+                    },
+                )
+                envelope = _build_envelope(
+                    correlation_id=correlation_id,
+                    exit_code=1,
+                    gate=IMPLEMENT_GATE,
+                    reasons=["offline_qa_run_id_missing"],
+                    next_phase=None,
+                    debug_path=debug_path,
+                )
+                print(json.dumps(envelope, sort_keys=True))
+                return 1
+
+            qa_passed = qa_result_verdict == "PASS" and bool(qa_payload.get("ok", False))
+            qa_result_path = Path(qa_result_file_raw)
+            if qa_passed:
+                _finish_stage(offline_qa_stage, status="pass", details=qa_payload)
+                break
+
+            reason = "offline_qa_failed"
+            _finish_stage(
+                offline_qa_stage,
+                status="blocked",
+                details={
+                    **qa_payload,
+                    "reason": reason,
+                    "retry_index": retry_index,
+                    "resume_session": bool(handoff_runner),
+                    "will_retry": retry_index < MAX_QA_RETRIES - 1 and bool(handoff_runner),
+                },
+            )
+            if retry_index >= MAX_QA_RETRIES - 1 or not handoff_runner:
+                debug_path = _write_debug_payload(
+                    repo_root=repo_root,
+                    correlation_id=correlation_id,
+                    payload={
+                        **debug_stub,
+                        "result": {
+                            "blocked_stage": "offline_qa_handoff",
+                            "reason": reason,
+                            "payload": qa_payload,
+                        },
+                    },
+                )
+                envelope = _build_envelope(
+                    correlation_id=correlation_id,
+                    exit_code=1,
+                    gate=IMPLEMENT_GATE,
+                    reasons=[reason],
+                    next_phase=None,
+                    debug_path=debug_path,
+                )
+                print(json.dumps(envelope, sort_keys=True))
+                return 1
+
+            resume_session = True
+            qa_feedback = qa_payload
+            retry_index += 1
+            continue
+
+        closeout_stage = _start_stage(
+            "closeout",
+            details={
+                "task_id": task_id,
+                "task_attempt": task_attempt,
+                "qa_run_id": qa_run_id,
+                "commit_sha": commit_sha,
+            },
+        )
+        stages.append(closeout_stage)
+        try:
+            closeout_result = _closeout_task(
+                feature_id=str(args.feature_id).strip(),
+                task_id=task_id,
+                tasks_file=Path(task_context["tasks_file"]),
+                ledger_path=Path(task_context["ledger_path"]),
+                commit_sha=commit_sha,
+                qa_run_id=qa_run_id,
+                qa_result_path=qa_result_path,
+                actor=actor_name,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "task_closeout_failed"
+            _finish_stage(closeout_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "closeout", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+
+        closeout_payload = json.loads(closeout_result.to_json())
+        if not closeout_result.ok:
+            reason = "offline_qa_failed" if closeout_result.qa_verdict and closeout_result.qa_verdict != "PASS" else "task_closeout_failed"
+            _finish_stage(closeout_stage, status="blocked", details={"reason": reason, "result": closeout_payload})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "closeout", "reason": reason, "closeout": closeout_payload}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(closeout_stage, status="pass", details=closeout_payload)
+        assert closeout_payload is not None
+
+        docs_stage = _start_stage(
+            "docs_update",
+            details={
+                "task_id": task_id,
+                "commit_sha": commit_sha,
+                "qa_run_id": qa_run_id,
+            },
+        )
+        stages.append(docs_stage)
+        try:
+            docs_payload = _update_implementation_docs(
+                feature_dir=feature_dir,
+                correlation_id=correlation_id,
+                task_context=task_context,
+                commit_sha=commit_sha,
+                qa_run_id=qa_run_id,
+                closeout_result=closeout_payload,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "implement_docs_failed"
+            _finish_stage(docs_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "docs_update", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(docs_stage, status="pass", details=docs_payload)
+
+        task_gate_stage = _start_stage("task_gate")
+        stages.append(task_gate_stage)
+        task_gate_cmd = [
+            sys.executable,
+            str((repo_root / "scripts" / "speckit_implement_gate.py").resolve()),
+            "task-gate",
+            "--feature-dir",
+            str(feature_dir),
+            "--json",
+        ]
+        task_gate_run = _run_command(task_gate_cmd, cwd=repo_root, timeout_seconds=timeout_seconds)
+        task_gate_details: dict[str, Any] = {
+            "command": task_gate_run.command,
+            "exit_code": task_gate_run.exit_code,
+            "timed_out": task_gate_run.timed_out,
+            "stdout_tail": _tail_lines(task_gate_run.stdout),
+            "stderr_tail": _tail_lines(task_gate_run.stderr),
+        }
+        if task_gate_run.timed_out:
+            _finish_stage(task_gate_stage, status="error", details=task_gate_details)
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"error_stage": "task_gate", "error_code": "task_gate_timeout"}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=2,
+                error_code="task_gate_timeout",
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 2
+
+        task_gate_payload = _parse_json_payload(task_gate_run.stdout)
+        task_gate_details["report"] = task_gate_payload
+        if task_gate_run.exit_code != 0 or not bool(task_gate_payload.get("ok")):
+            _finish_stage(task_gate_stage, status="blocked", details=task_gate_details)
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "task_gate", "gate_report": task_gate_payload}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=["task_gate_failed"],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(task_gate_stage, status="pass", details=task_gate_details)
 
         debug_path = _write_debug_payload(
             repo_root=repo_root,
             correlation_id=correlation_id,
-            payload={**debug_stub, "result": {"status": "success"}},
+            payload={
+                **debug_stub,
+                "result": {
+                    "status": "success",
+                    "task_id": task_id,
+                    "task_attempt": task_attempt,
+                    "commit_sha": commit_sha,
+                    "qa_run_id": qa_run_id,
+                },
+            },
         )
         envelope = _build_envelope(
             correlation_id=correlation_id,
