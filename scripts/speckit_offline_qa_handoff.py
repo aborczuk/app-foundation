@@ -33,35 +33,27 @@ def _json_print(payload: dict[str, Any], as_json: bool) -> None:
         print(f"- {reason}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Validate and execute one offline-QA handoff attempt for a task."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--feature-id", required=True)
-    parser.add_argument("--task-id", required=True)
-    parser.add_argument("--attempt", type=int, default=1)
-    parser.add_argument("--payload-file")
-    parser.add_argument("--result-file")
-    parser.add_argument(
-        "--no-autobuild-payload",
-        action="store_true",
-        help="Disable automatic payload generation when payload file is missing.",
-    )
-    parser.add_argument("--json", action="store_true")
-    args = parser.parse_args(argv)
-
+def run_offline_qa_handoff(
+    *,
+    feature_id: str,
+    task_id: str,
+    attempt: int = 1,
+    payload_file: Path | None = None,
+    result_file: Path | None = None,
+    no_autobuild_payload: bool = False,
+) -> dict[str, Any]:
+    """Run the offline QA handoff and return the structured payload."""
     repo_root = Path(__file__).resolve().parent.parent
-    default_payload, default_result = _default_paths(
-        repo_root, args.feature_id, args.task_id, args.attempt
-    )
+    default_payload, default_result = _default_paths(repo_root, feature_id, task_id, attempt)
 
-    payload_file = Path(args.payload_file).resolve() if args.payload_file else default_payload
-    result_file = Path(args.result_file).resolve() if args.result_file else default_result
+    payload_file = Path(payload_file).resolve() if payload_file else default_payload
+    result_file = Path(result_file).resolve() if result_file else default_result
 
     payload: dict[str, Any] = {
         "mode": "offline_qa_handoff",
-        "feature_id": args.feature_id,
-        "task_id": args.task_id,
-        "attempt": args.attempt,
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "attempt": attempt,
         "payload_file": str(payload_file),
         "result_file": str(result_file),
         "reasons": [],
@@ -69,20 +61,19 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     if not payload_file.exists():
-        if args.no_autobuild_payload:
+        if no_autobuild_payload:
             payload["reasons"].append("missing_payload_file")
-            _json_print(payload, as_json=bool(args.json))
-            return 2
+            return payload
 
         build_cmd = [
             sys.executable,
             str(repo_root / "scripts" / "speckit_build_offline_qa_payload.py"),
             "--feature-id",
-            args.feature_id,
+            feature_id,
             "--task-id",
-            args.task_id,
+            task_id,
             "--attempt",
-            str(args.attempt),
+            str(attempt),
             "--payload-file",
             str(payload_file),
             "--json",
@@ -94,8 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             payload["payload_autobuild_stderr"] = build_err
         if build_code != 0 or not payload_file.exists():
             payload["reasons"].append("payload_autobuild_failed")
-            _json_print(payload, as_json=bool(args.json))
-            return 2
+            return payload
         payload["payload_autobuild"] = "created"
 
     validate_cmd = [
@@ -113,8 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         payload["validate_stderr"] = validate_err
     if validate_code != 0:
         payload["reasons"].append("offline_payload_invalid")
-        _json_print(payload, as_json=bool(args.json))
-        return 2
+        return payload
 
     result_file.parent.mkdir(parents=True, exist_ok=True)
     qa_cmd = [
@@ -136,14 +125,40 @@ def main(argv: list[str] | None = None) -> int:
             result_json = json.loads(result_file.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             payload["reasons"].append("invalid_result_json")
-            _json_print(payload, as_json=bool(args.json))
-            return 2
+            return payload
         payload["result_verdict"] = result_json.get("verdict")
         payload["qa_run_id"] = result_json.get("qa_run_id")
 
     payload["ok"] = qa_code == 0
+    return payload
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Validate and execute one offline-QA handoff attempt for a task."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--feature-id", required=True)
+    parser.add_argument("--task-id", required=True)
+    parser.add_argument("--attempt", type=int, default=1)
+    parser.add_argument("--payload-file")
+    parser.add_argument("--result-file")
+    parser.add_argument(
+        "--no-autobuild-payload",
+        action="store_true",
+        help="Disable automatic payload generation when payload file is missing.",
+    )
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+
+    payload = run_offline_qa_handoff(
+        feature_id=args.feature_id,
+        task_id=args.task_id,
+        attempt=args.attempt,
+        payload_file=Path(args.payload_file) if args.payload_file else None,
+        result_file=Path(args.result_file) if args.result_file else None,
+        no_autobuild_payload=args.no_autobuild_payload,
+    )
     _json_print(payload, as_json=bool(args.json))
-    return qa_code
+    return 0 if payload["ok"] else 2
 
 
 if __name__ == "__main__":

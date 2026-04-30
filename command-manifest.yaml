@@ -166,8 +166,8 @@ commands:
       required_fields:
       - failed_fq
   speckit.tasking:
-    description: Decompose an approved sketch.md into tasks.md, then perform estimate/breakdown
-      stabilization and generate HUDs + acceptance tests
+    description: Decompose an approved sketch.md into tasks.md, register the tasks in the
+      task ledger, then perform estimate/breakdown stabilization and generate HUDs + acceptance tests
     driver:
       mode: generative
       timeout_seconds: 300
@@ -337,7 +337,7 @@ commands:
     artifacts: []
     emits: []
   speckit.implement:
-    description: Execute the implementation plan through driver-owned approval, validation,
+    description: Execute the next registered task through driver-owned approval, validation,
       QA, and closeout sequencing
     driver:
       mode: deterministic

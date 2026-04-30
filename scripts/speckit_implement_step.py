@@ -16,6 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+import speckit_closeout_task
+import speckit_implement_docs
+import speckit_offline_qa_handoff
+import task_ledger
+
 SCHEMA_VERSION = "1.0.0"
 IMPLEMENT_GATE = "implement_execution"
 DEFAULT_TIMEOUT_SECONDS = 300
@@ -51,6 +56,12 @@ def _tail_lines(text: str, count: int = 20) -> list[str]:
 def _sanitize_for_filename(value: str) -> str:
     """Normalize arbitrary text into a filesystem-safe token."""
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "unknown"
+
+
+def _default_handoff_runner(repo_root: Path) -> str:
+    """Return the canonical local Codex runner command."""
+    runner_path = (repo_root / "scripts" / "speckit_codex_handoff_runner.py").resolve()
+    return f"{shlex.quote(sys.executable)} {shlex.quote(str(runner_path))}"
 
 
 def _write_debug_payload(
@@ -137,6 +148,242 @@ def _resolve_feature_dir(repo_root: Path, feature_id: str) -> Path:
     return candidates[0].resolve()
 
 
+def _task_ledger_path(repo_root: Path) -> Path:
+    """Return the canonical task ledger path for the repository."""
+    return (repo_root / ".speckit" / "task-ledger.jsonl").resolve()
+
+
+def _resolve_commit_sha(
+    repo_root: Path,
+    *,
+    timeout_seconds: int,
+    handoff_payload: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Resolve the commit SHA for closeout, preferring handoff output when available."""
+    if handoff_payload is not None:
+        candidate = str(handoff_payload.get("commit_sha") or "").strip()
+        if candidate:
+            return candidate, "handoff_payload"
+
+    commit_run = _run_command(["git", "rev-parse", "HEAD"], cwd=repo_root, timeout_seconds=timeout_seconds)
+    if commit_run.timed_out:
+        raise ValueError("commit_sha_resolution_timeout")
+    if commit_run.exit_code != 0:
+        raise ValueError("commit_sha_unavailable")
+
+    commit_sha = commit_run.stdout.strip()
+    if not commit_sha:
+        raise ValueError("commit_sha_unavailable")
+    return commit_sha, "git_head"
+
+
+def _run_offline_qa_handoff(
+    *,
+    feature_id: str,
+    task_id: str,
+    attempt: int,
+) -> dict[str, Any]:
+    """Run the offline QA handoff helper and return its payload."""
+    return speckit_offline_qa_handoff.run_offline_qa_handoff(
+        feature_id=feature_id,
+        task_id=task_id,
+        attempt=attempt,
+    )
+
+
+def _closeout_task(
+    *,
+    feature_id: str,
+    task_id: str,
+    tasks_file: Path,
+    ledger_path: Path,
+    commit_sha: str,
+    qa_run_id: str,
+    qa_result_path: Path,
+    actor: str,
+) -> speckit_closeout_task.CloseoutResult:
+    """Run canonical closeout through the dedicated helper module."""
+    return speckit_closeout_task.closeout_task(
+        feature_id=feature_id,
+        task_id=task_id,
+        tasks_file=tasks_file,
+        ledger_file=ledger_path,
+        commit_sha=commit_sha,
+        qa_run_id=qa_run_id,
+        qa_result_path=qa_result_path,
+        actor=actor,
+    )
+
+
+def _update_implementation_docs(
+    *,
+    feature_dir: Path,
+    correlation_id: str,
+    task_context: dict[str, Any],
+    commit_sha: str,
+    qa_run_id: str,
+    closeout_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Record deterministic implement notes after a successful closeout."""
+    task_id = str(task_context["next_task_id"])
+    task_action = str(task_context["task_action"])
+    task_attempt = int(task_context["task_attempt"])
+    entry_id = f"{correlation_id}:{task_id}:docs"
+    request = speckit_implement_docs.UpdateRequest(
+        feature_dir=feature_dir,
+        entry_id=entry_id,
+        runbook_notes=(
+            f"Closed out task {task_id} ({task_action}, attempt {task_attempt}) at commit {commit_sha}.",
+        ),
+        decision_log_entries=(
+            f"Task {task_id} reached closeout after offline QA run {qa_run_id}.",
+            f"Closeout next_action={closeout_result['next_action']} next_task_id={closeout_result['next_task_id'] or 'none'}.",
+        ),
+    )
+    return speckit_implement_docs.apply_update(request)
+
+
+def _select_next_registered_task(
+    *,
+    repo_root: Path,
+    feature_dir: Path,
+    feature_id: str,
+    actor: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Select the next registered task and start or resume it."""
+    ledger_path = _task_ledger_path(repo_root)
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        raise ValueError("missing_tasks_md")
+
+    feature_state = task_ledger.feature_state_for(ledger_path, feature_id)
+    if not any(task_state.registered for task_state in feature_state.tasks.values()):
+        raise ValueError("task_registration_required")
+
+    next_task = task_ledger.next_registered_task(feature_state)
+    if next_task is None:
+        raise ValueError("no_registered_open_tasks")
+
+    next_task_id, task_state = next_task
+
+    task_definitions = task_ledger.parse_task_definitions(tasks_file)
+
+    task_action = "resumed" if task_state.started else "started"
+    if task_state.started:
+        owner_actor = task_state.owner_actor or "unknown"
+        if owner_actor != actor:
+            raise ValueError(f"task_owned_by_other_actor:{owner_actor}")
+    else:
+        task_ledger.assert_can_start_task(
+            ledger_path,
+            tasks_file,
+            feature_id,
+            next_task_id,
+            actor=actor,
+        )
+        task_ledger.append_task_started_event(
+            ledger_path,
+            feature_id,
+            next_task_id,
+            actor=actor,
+            details=f"queued by {correlation_id}",
+        )
+        feature_state = task_ledger.feature_state_for(ledger_path, feature_id)
+        task_state = feature_state.tasks.get(next_task_id)
+        if task_state is None:
+            raise ValueError("task_state_missing_after_start")
+
+    events = task_ledger.read_events(ledger_path)
+    attempt = task_ledger.latest_attempt(events, feature_id, next_task_id)
+    return {
+        "ledger_path": str(ledger_path),
+        "tasks_file": str(tasks_file),
+        "next_task_id": next_task_id,
+        "task_action": task_action,
+        "task_attempt": attempt,
+        "task_registered": bool(task_state.registered),
+        "task_started": bool(task_state.started),
+        "task_closed": bool(task_state.closed),
+        "task_owner_actor": task_state.owner_actor or actor,
+        "task_parallel": next(
+            (definition.is_parallel for definition in task_definitions if definition.task_id == next_task_id),
+            False,
+        ),
+    }
+
+
+def _ensure_implement_branch(repo_root: Path, feature_dir: Path, *, timeout_seconds: int) -> dict[str, Any]:
+    """Create or activate the implementation branch for the feature."""
+    branch_name = feature_dir.name
+
+    current_branch_run = _run_command(
+        ["git", "branch", "--show-current"],
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+    if current_branch_run.timed_out:
+        raise ValueError("branch_current_timeout")
+    if current_branch_run.exit_code != 0:
+        raise ValueError("branch_current_lookup_failed")
+    current_branch = current_branch_run.stdout.strip()
+
+    branch_list_run = _run_command(
+        ["git", "branch", "--list", branch_name],
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+    if branch_list_run.timed_out:
+        raise ValueError("branch_list_timeout")
+    if branch_list_run.exit_code != 0:
+        raise ValueError("branch_list_failed")
+    branch_exists = bool(branch_list_run.stdout.strip())
+
+    if current_branch == branch_name:
+        return {
+            "branch_name": branch_name,
+            "current_branch": current_branch,
+            "branch_exists": branch_exists,
+            "status": "already_checked_out",
+        }
+
+    if branch_exists:
+        switch_run = _run_command(
+            ["git", "switch", branch_name],
+            cwd=repo_root,
+            timeout_seconds=timeout_seconds,
+        )
+        if switch_run.timed_out:
+            raise ValueError("branch_switch_timeout")
+        if switch_run.exit_code != 0:
+            raise ValueError("branch_switch_failed")
+        return {
+            "branch_name": branch_name,
+            "current_branch": current_branch,
+            "branch_exists": True,
+            "status": "switched",
+        }
+
+    if current_branch != "main":
+        raise ValueError("implement_branch_requires_main")
+
+    create_run = _run_command(
+        ["git", "switch", "-c", branch_name],
+        cwd=repo_root,
+        timeout_seconds=timeout_seconds,
+    )
+    if create_run.timed_out:
+        raise ValueError("branch_create_timeout")
+    if create_run.exit_code != 0:
+        raise ValueError("branch_create_failed")
+    return {
+        "branch_name": branch_name,
+        "current_branch": current_branch,
+        "branch_exists": False,
+        "status": "created",
+    }
+
+
 def _start_stage(name: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
     """Initialize an observability stage envelope before command execution."""
     return {
@@ -214,7 +461,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     correlation_id = str(args.correlation_id).strip()
     require_handoff = bool(args.require_handoff or _bool_env("SPECKIT_REQUIRE_HANDOFF"))
     timeout_seconds = max(1, int(args.timeout_seconds))
+    actor_name = task_ledger.resolve_actor(None)
     stages: list[dict[str, Any]] = []
+    handoff_runner = str(args.handoff_runner).strip() or str(os.environ.get("SPECKIT_HANDOFF_RUNNER", "")).strip()
+    if not handoff_runner:
+        handoff_runner = _default_handoff_runner(repo_root)
 
     debug_stub: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -223,13 +474,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "feature_id": str(args.feature_id),
         "phase": str(args.phase),
         "stages": stages,
-        "config": {
-            "phase_type": str(args.phase_type),
-            "next_phase": str(args.next_phase),
-            "require_handoff": require_handoff,
-            "handoff_runner_configured": bool(str(args.handoff_runner).strip() or os.environ.get("SPECKIT_HANDOFF_RUNNER", "").strip()),
-        },
-    }
+            "config": {
+                "phase_type": str(args.phase_type),
+                "next_phase": str(args.next_phase),
+                "require_handoff": require_handoff,
+                "handoff_runner_configured": bool(handoff_runner),
+                "actor": actor_name,
+            },
+        }
 
     feature_dir: Path | None = None
     try:
@@ -312,12 +564,94 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         _finish_stage(gate_stage, status="pass", details=gate_details)
 
-        handoff_runner = str(args.handoff_runner).strip() or str(os.environ.get("SPECKIT_HANDOFF_RUNNER", "")).strip()
+        branch_stage = _start_stage("branch_setup", details={"feature_branch": feature_dir.name})
+        stages.append(branch_stage)
+        try:
+            branch_details = _ensure_implement_branch(repo_root, feature_dir, timeout_seconds=timeout_seconds)
+        except ValueError as exc:
+            _finish_stage(branch_stage, status="blocked", details={"reason": str(exc)})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={
+                    **debug_stub,
+                    "result": {"blocked_stage": "branch_setup", "reason": str(exc)},
+                },
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=["implement_branch_setup_failed"],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(branch_stage, status="pass", details=branch_details)
+
+        task_queue_stage = _start_stage("task_queue", details={"actor": actor_name, "feature_branch": feature_dir.name})
+        stages.append(task_queue_stage)
+        try:
+            task_context = _select_next_registered_task(
+                repo_root=repo_root,
+                feature_dir=feature_dir,
+                feature_id=str(args.feature_id).strip(),
+                actor=actor_name,
+                correlation_id=correlation_id,
+            )
+        except SystemExit:
+            _finish_stage(task_queue_stage, status="blocked", details={"reason": "task_queue_failed"})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={
+                    **debug_stub,
+                    "result": {"blocked_stage": "task_queue", "reason": "task_queue_failed"},
+                },
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=["task_queue_failed"],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        except ValueError as exc:
+            reason = str(exc) or "task_queue_failed"
+            _finish_stage(task_queue_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "task_queue", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(task_queue_stage, status="pass", details=task_context)
+
         handoff_stage = _start_stage(
             "llm_handoff",
-            details={"runner_configured": bool(handoff_runner), "required": require_handoff},
+            details={
+                "runner_configured": bool(handoff_runner),
+                "required": require_handoff,
+                "task_id": task_context["next_task_id"],
+                "task_action": task_context["task_action"],
+                "task_attempt": task_context["task_attempt"],
+            },
         )
         stages.append(handoff_stage)
+        handoff_payload: dict[str, Any] | None = None
         if not handoff_runner:
             if require_handoff:
                 _finish_stage(
@@ -365,6 +699,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "correlation_id": correlation_id,
                 "step_name": "speckit.implement",
                 "feature_dir": str(feature_dir),
+                "repo_root": str(repo_root),
+                "task_id": task_context["next_task_id"],
+                "task_attempt": task_context["task_attempt"],
+                "task_action": task_context["task_action"],
+                "task_registered": task_context["task_registered"],
+                "task_parallel": task_context["task_parallel"],
             }
             handoff_run = _run_command(
                 handoff_cmd,
@@ -505,10 +845,261 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         _finish_stage(phase_gate_stage, status="pass", details=phase_gate_details)
 
+        commit_stage = _start_stage(
+            "commit_resolution",
+            details={
+                "task_id": task_context["next_task_id"],
+                "task_attempt": task_context["task_attempt"],
+            },
+        )
+        stages.append(commit_stage)
+        try:
+            commit_sha, commit_source = _resolve_commit_sha(
+                repo_root,
+                timeout_seconds=timeout_seconds,
+                handoff_payload=handoff_payload,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "commit_sha_unavailable"
+            _finish_stage(commit_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "commit_resolution", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(commit_stage, status="pass", details={"commit_sha": commit_sha, "source": commit_source})
+
+        task_id = str(task_context["next_task_id"])
+        task_attempt = int(task_context["task_attempt"])
+
+        offline_qa_stage = _start_stage(
+            "offline_qa_handoff",
+            details={
+                "task_id": task_id,
+                "task_attempt": task_attempt,
+            },
+        )
+        stages.append(offline_qa_stage)
+        try:
+            qa_payload = _run_offline_qa_handoff(
+                feature_id=str(args.feature_id).strip(),
+                task_id=task_id,
+                attempt=task_attempt,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "offline_qa_handoff_failed"
+            _finish_stage(offline_qa_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "offline_qa_handoff", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+
+        qa_result_file_raw = str(qa_payload.get("result_file") or "").strip()
+        qa_run_id = str(qa_payload.get("qa_run_id") or "").strip()
+        qa_result_verdict = str(qa_payload.get("result_verdict") or "").strip()
+        if not qa_result_file_raw:
+            _finish_stage(offline_qa_stage, status="blocked", details={**qa_payload, "reason": "offline_qa_result_file_missing"})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={
+                    **debug_stub,
+                    "result": {
+                        "blocked_stage": "offline_qa_handoff",
+                        "reason": "offline_qa_result_file_missing",
+                        "payload": qa_payload,
+                    },
+                },
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=["offline_qa_result_file_missing"],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        if not qa_run_id:
+            _finish_stage(offline_qa_stage, status="blocked", details={**qa_payload, "reason": "offline_qa_run_id_missing"})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={
+                    **debug_stub,
+                    "result": {
+                        "blocked_stage": "offline_qa_handoff",
+                        "reason": "offline_qa_run_id_missing",
+                        "payload": qa_payload,
+                    },
+                },
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=["offline_qa_run_id_missing"],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        if not qa_result_verdict and not qa_payload.get("ok", False):
+            reason = "offline_qa_handoff_failed"
+            _finish_stage(offline_qa_stage, status="blocked", details={**qa_payload, "reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "offline_qa_handoff", "reason": reason, "payload": qa_payload}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(offline_qa_stage, status="pass", details=qa_payload)
+
+        qa_result_path = Path(qa_result_file_raw)
+
+        closeout_stage = _start_stage(
+            "closeout",
+            details={
+                "task_id": task_id,
+                "task_attempt": task_attempt,
+                "qa_run_id": qa_run_id,
+                "commit_sha": commit_sha,
+            },
+        )
+        stages.append(closeout_stage)
+        try:
+            closeout_result = _closeout_task(
+                feature_id=str(args.feature_id).strip(),
+                task_id=task_id,
+                tasks_file=Path(task_context["tasks_file"]),
+                ledger_path=Path(task_context["ledger_path"]),
+                commit_sha=commit_sha,
+                qa_run_id=qa_run_id,
+                qa_result_path=qa_result_path,
+                actor=actor_name,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "task_closeout_failed"
+            _finish_stage(closeout_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "closeout", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+
+        closeout_payload = json.loads(closeout_result.to_json())
+        if not closeout_result.ok:
+            reason = "offline_qa_failed" if closeout_result.qa_verdict and closeout_result.qa_verdict != "PASS" else "task_closeout_failed"
+            _finish_stage(closeout_stage, status="blocked", details={"reason": reason, "result": closeout_payload})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "closeout", "reason": reason, "closeout": closeout_payload}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(closeout_stage, status="pass", details=closeout_payload)
+
+        docs_stage = _start_stage(
+            "docs_update",
+            details={
+                "task_id": task_id,
+                "commit_sha": commit_sha,
+                "qa_run_id": qa_run_id,
+            },
+        )
+        stages.append(docs_stage)
+        try:
+            docs_payload = _update_implementation_docs(
+                feature_dir=feature_dir,
+                correlation_id=correlation_id,
+                task_context=task_context,
+                commit_sha=commit_sha,
+                qa_run_id=qa_run_id,
+                closeout_result=closeout_payload,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "implement_docs_failed"
+            _finish_stage(docs_stage, status="blocked", details={"reason": reason})
+            debug_path = _write_debug_payload(
+                repo_root=repo_root,
+                correlation_id=correlation_id,
+                payload={**debug_stub, "result": {"blocked_stage": "docs_update", "reason": reason}},
+            )
+            envelope = _build_envelope(
+                correlation_id=correlation_id,
+                exit_code=1,
+                gate=IMPLEMENT_GATE,
+                reasons=[reason],
+                next_phase=None,
+                debug_path=debug_path,
+            )
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
+        _finish_stage(docs_stage, status="pass", details=docs_payload)
+
         debug_path = _write_debug_payload(
             repo_root=repo_root,
             correlation_id=correlation_id,
-            payload={**debug_stub, "result": {"status": "success"}},
+            payload={
+                **debug_stub,
+                "result": {
+                    "status": "success",
+                    "task_id": task_id,
+                    "task_attempt": task_attempt,
+                    "commit_sha": commit_sha,
+                    "qa_run_id": qa_run_id,
+                },
+            },
         )
         envelope = _build_envelope(
             correlation_id=correlation_id,

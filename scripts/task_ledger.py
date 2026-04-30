@@ -36,6 +36,7 @@ VALID_VERDICTS = {VERDICT_PASS, VERDICT_FAIL}
 VALID_CI_STATUS = {"pass", "fail"}
 
 VALID_EVENTS = {
+    "task_registered",
     "task_started",
     "discovery_completed",
     "lld_recorded",            # 3+ point task: HUD read + sketch validated, ready to implement
@@ -77,7 +78,8 @@ REQUIRED_BY_EVENT = {
 }
 
 ALLOWED_TRANSITIONS = {
-    "task_started": {None},
+    "task_registered": {None},
+    "task_started": {None, "task_registered"},
     "discovery_completed": {"task_started", "discovery_completed"},
     "lld_recorded": {"discovery_completed"},
     "quality_guards_passed": {"discovery_completed", "lld_recorded", "human_action_verified"},
@@ -115,6 +117,7 @@ ALLOWED_TRANSITIONS = {
 class TaskState:
     """Mutable validation state for a single task while replaying ledger events."""
 
+    registered: bool = False
     started: bool = False
     closed: bool = False
     owner_actor: str | None = None
@@ -205,6 +208,140 @@ def read_events(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def append_event_record(ledger_path: Path, event: dict[str, Any]) -> None:
+    """Append a validated event record to the ledger JSONL file."""
+    existing = read_events(ledger_path)
+    provisional = [dict(item) for item in existing] + [dict(event)]
+    errors, _ = validate_sequence(provisional)
+    if errors:
+        print("ERROR: append rejected due to sequence validation failure:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with ledger_path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+def event_from_append_args(args: argparse.Namespace) -> dict[str, Any]:
+    """Build a normalized event record from append command arguments."""
+    event: dict[str, Any] = {
+        "timestamp_utc": args.timestamp_utc or utc_now_iso(),
+        "feature_id": args.feature_id,
+        "task_id": args.task_id,
+        "attempt": args.attempt,
+        "event": args.event,
+        "actor": resolve_actor(args.actor),
+    }
+
+    optional_values = {
+        "status": args.status,
+        "verdict": args.verdict,
+        "details": args.details,
+        "commit_sha": args.commit_sha,
+        "merge_sha": args.merge_sha,
+        "pr_number": args.pr_number,
+        "ci_run_id": args.ci_run_id,
+        "qa_run_id": args.qa_run_id,
+        "clickup_item_id": args.clickup_item_id,
+        "story_id": args.story_id,
+        "e2e_run_id": args.e2e_run_id,
+        "phase_id": args.phase_id,
+        "claims_passed": args.claims_passed,
+        "verification_method": args.verification_method,
+    }
+    for key, value in optional_values.items():
+        if value is None:
+            continue
+        event[key] = value
+
+    if args.metadata_json:
+        try:
+            metadata_obj = json.loads(args.metadata_json)
+        except json.JSONDecodeError as exc:
+            fail(f"Invalid metadata JSON: {exc}")
+        event["metadata"] = metadata_obj
+
+    return event
+
+
+def next_registered_task(feature_state: FeatureState) -> tuple[str, TaskState] | None:
+    """Return the first registered open task, if any."""
+    for task_id, task_state in feature_state.tasks.items():
+        if task_state.closed:
+            continue
+        if task_state.registered:
+            return task_id, task_state
+    return None
+
+
+def register_tasks(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    *,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """Register missing tasks from tasks.md and return the next open registered task."""
+    task_definitions = parse_task_definitions(tasks_file)
+    existing = read_events(ledger_path)
+    errors, feature_states = validate_sequence(existing)
+    if errors:
+        print("ERROR: ledger is invalid; cannot register tasks:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+
+    feature_state = feature_states.get(feature_id, FeatureState())
+    registered_task_ids = {
+        task_id for task_id, task_state in feature_state.tasks.items() if task_state.registered
+    }
+    newly_registered_task_ids: list[str] = []
+    skipped_task_ids: list[str] = []
+
+    for definition in task_definitions:
+        task_id = definition.task_id
+        task_state = feature_state.tasks.get(task_id)
+        if task_id in registered_task_ids:
+            continue
+        if task_state and (task_state.started or task_state.closed):
+            skipped_task_ids.append(task_id)
+            continue
+
+        event = {
+            "timestamp_utc": utc_now_iso(),
+            "feature_id": feature_id,
+            "task_id": task_id,
+            "attempt": latest_attempt(existing, feature_id, task_id),
+            "event": "task_registered",
+            "actor": resolve_actor(actor),
+            "details": f"registered from {tasks_file}",
+        }
+        append_event_record(ledger_path, event)
+        existing = read_events(ledger_path)
+        errors, feature_states = validate_sequence(existing)
+        if errors:
+            print("ERROR: registration append failed validation:", file=sys.stderr)
+            for err in errors:
+                print(f"- {err}", file=sys.stderr)
+            raise SystemExit(1)
+        feature_state = feature_states.get(feature_id, FeatureState())
+        registered_task_ids.add(task_id)
+        newly_registered_task_ids.append(task_id)
+
+    next_task = next_registered_task(feature_state)
+    return {
+        "feature_id": feature_id,
+        "tasks_file": str(tasks_file),
+        "newly_registered_task_ids": newly_registered_task_ids,
+        "skipped_task_ids": skipped_task_ids,
+        "next_task_id": next_task[0] if next_task else None,
+        "next_task_started": bool(next_task and next_task[1].started),
+        "next_task_closed": bool(next_task and next_task[1].closed),
+    }
+
+
 def validate_event_shape(event: dict[str, Any], *, line_hint: str) -> list[str]:
     """Validate required event fields and per-event shape constraints."""
     errors: list[str] = []
@@ -284,6 +421,11 @@ def validate_sequence(events: list[dict[str, Any]]) -> tuple[list[str], dict[str
                 errors.append(f"{line_hint}: cannot restart closed task {task_id}")
             if task_state.started and not task_state.closed:
                 errors.append(f"{line_hint}: duplicate task_started for open task {task_id}")
+        elif event_name == "task_registered":
+            if task_state.started:
+                errors.append(f"{line_hint}: cannot register already started task {task_id}")
+            if task_state.closed:
+                errors.append(f"{line_hint}: cannot register closed task {task_id}")
 
         else:
             if not task_state.started:
@@ -363,6 +505,8 @@ def validate_sequence(events: list[dict[str, Any]]) -> tuple[list[str], dict[str
             task_state.started = True
             task_state.owner_actor = event_actor
             feature_state.active_tasks_by_actor[event_actor] = task_id
+        elif event_name == "task_registered":
+            task_state.registered = True
         elif event_name == "discovery_completed":
             task_state.has_discovery_completed = True
         elif event_name == "lld_recorded":
@@ -628,6 +772,128 @@ def maybe_auto_index_codegraph(
     )
 
 
+def feature_state_for(ledger_path: Path, feature_id: str) -> FeatureState:
+    """Return the validated task state snapshot for one feature."""
+    events = read_events(ledger_path)
+    errors, feature_states = validate_sequence(events)
+    if errors:
+        print("ERROR: ledger is invalid; cannot continue:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+    return feature_states.get(feature_id, FeatureState())
+
+
+def assert_can_start_task(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """Validate dependency and actor gates before starting a task."""
+    ensure_feature_id(feature_id)
+    ensure_task_id(task_id)
+
+    events = read_events(ledger_path)
+    errors, feature_states = validate_sequence(events)
+    if errors:
+        print("ERROR: ledger is invalid; cannot assert task start gate:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+
+    task_definitions = parse_task_definitions(tasks_file)
+    order = [definition.task_id for definition in task_definitions]
+    if task_id not in order:
+        fail(f"Task {task_id} not found in ordered task list from {tasks_file}")
+
+    actor_name = resolve_actor(actor)
+    feature_state = feature_states.get(feature_id, FeatureState())
+    active_for_actor = feature_state.active_tasks_by_actor.get(actor_name)
+    if active_for_actor and active_for_actor != task_id:
+        fail(
+            f"Cannot start {task_id}; actor {actor_name!r} already has open task "
+            f"{active_for_actor} in feature {feature_id}"
+        )
+
+    current_state = feature_state.tasks.get(task_id)
+    if current_state and current_state.closed:
+        fail(f"Cannot start {task_id}; it is already closed in the ledger")
+    if current_state and current_state.started and not current_state.closed:
+        owner = current_state.owner_actor or "unknown"
+        fail(
+            f"Cannot start {task_id}; it is already started by actor {owner!r} "
+            "and not yet closed"
+        )
+
+    task_lookup = {definition.task_id: definition for definition in task_definitions}
+    current_definition = task_lookup[task_id]
+    current_index = order.index(task_id)
+    preceding = task_definitions[:current_index]
+    if current_definition.is_parallel:
+        blocking_prior = [
+            definition.task_id for definition in preceding if not definition.is_parallel
+        ]
+    else:
+        blocking_prior = [definition.task_id for definition in preceding]
+
+    for prior in blocking_prior:
+        prior_state = feature_state.tasks.get(prior)
+        if not prior_state or not prior_state.closed:
+            fail(
+                f"Cannot start {task_id}; prior task {prior} is not closed in the ledger"
+            )
+
+    if not current_definition.is_parallel:
+        open_other_tasks = sorted(
+            candidate_task_id
+            for candidate_task_id, state in feature_state.tasks.items()
+            if candidate_task_id != task_id and state.started and not state.closed
+        )
+        if open_other_tasks:
+            fail(
+                f"Cannot start non-parallel task {task_id}; open tasks remain: "
+                f"{', '.join(open_other_tasks)}"
+            )
+
+    return {
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "actor": actor_name,
+        "parallel": current_definition.is_parallel,
+        "blocking_prior_tasks": blocking_prior,
+    }
+
+
+def append_task_started_event(
+    ledger_path: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+    details: str | None = None,
+) -> dict[str, Any]:
+    """Append a task_started event and return the recorded payload."""
+    ensure_feature_id(feature_id)
+    ensure_task_id(task_id)
+
+    existing = read_events(ledger_path)
+    event: dict[str, Any] = {
+        "timestamp_utc": utc_now_iso(),
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "attempt": latest_attempt(existing, feature_id, task_id),
+        "event": "task_started",
+        "actor": resolve_actor(actor),
+    }
+    if details:
+        event["details"] = details
+    append_event_record(ledger_path, event)
+    return event
+
+
 def cmd_append(args: argparse.Namespace) -> None:
     """Append one validated immutable event to the ledger."""
     ledger_path = Path(args.file)
@@ -646,55 +912,10 @@ def cmd_append(args: argparse.Namespace) -> None:
             attempt = current + 1
         else:
             attempt = current
-
-    event: dict[str, Any] = {
-        "timestamp_utc": args.timestamp_utc or utc_now_iso(),
-        "feature_id": args.feature_id,
-        "task_id": args.task_id,
-        "attempt": attempt,
-        "event": args.event,
-        "actor": resolve_actor(args.actor),
-    }
-
-    optional_values = {
-        "status": args.status,
-        "verdict": args.verdict,
-        "details": args.details,
-        "commit_sha": args.commit_sha,
-        "merge_sha": args.merge_sha,
-        "pr_number": args.pr_number,
-        "ci_run_id": args.ci_run_id,
-        "qa_run_id": args.qa_run_id,
-        "clickup_item_id": args.clickup_item_id,
-        "story_id": args.story_id,
-        "e2e_run_id": args.e2e_run_id,
-        "phase_id": args.phase_id,
-        "claims_passed": args.claims_passed,
-        "verification_method": args.verification_method,
-    }
-    for key, value in optional_values.items():
-        if value is None:
-            continue
-        event[key] = value
-
-    if args.metadata_json:
-        try:
-            metadata_obj = json.loads(args.metadata_json)
-        except json.JSONDecodeError as exc:
-            fail(f"Invalid metadata JSON: {exc}")
-        event["metadata"] = metadata_obj
-
-    provisional = [dict(item) for item in existing] + [dict(event)]
-    errors, _ = validate_sequence(provisional)
-    if errors:
-        print("ERROR: append rejected due to sequence validation failure:", file=sys.stderr)
-        for err in errors:
-            print(f"- {err}", file=sys.stderr)
-        raise SystemExit(1)
-
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    with ledger_path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(event, sort_keys=True) + "\n")
+    event = event_from_append_args(args)
+    event["attempt"] = attempt
+    provisional = existing + [event]
+    append_event_record(ledger_path, event)
 
     print(f"Appended {args.event} for {args.feature_id}:{args.task_id} (attempt={attempt})")
     maybe_auto_index_codegraph(
@@ -743,77 +964,36 @@ def cmd_validate(args: argparse.Namespace) -> None:
 
 def cmd_assert_can_start(args: argparse.Namespace) -> None:
     """Enforce dependency and per-actor start gates before task execution."""
+    summary = assert_can_start_task(
+        Path(args.file),
+        Path(args.tasks_file),
+        args.feature_id,
+        args.task_id,
+        actor=args.actor,
+    )
+    print(
+        f"Start gate passed for feature {summary['feature_id']} task {summary['task_id']} "
+        f"(actor={summary['actor']!r}, parallel={summary['parallel']})."
+    )
+
+
+def cmd_register(args: argparse.Namespace) -> None:
+    """Register missing tasks from tasks.md into the ledger."""
     ledger_path = Path(args.file)
     tasks_file = Path(args.tasks_file)
-
     ensure_feature_id(args.feature_id)
-    ensure_task_id(args.task_id)
+    summary = register_tasks(ledger_path, tasks_file, args.feature_id, actor=args.actor)
 
-    events = read_events(ledger_path)
-    errors, feature_states = validate_sequence(events)
-    if errors:
-        print("Ledger is invalid; cannot assert task start gate:", file=sys.stderr)
-        for err in errors:
-            print(f"- {err}", file=sys.stderr)
-        raise SystemExit(1)
+    if getattr(args, "json", False):
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        return
 
-    task_definitions = parse_task_definitions(tasks_file)
-    order = [definition.task_id for definition in task_definitions]
-    if args.task_id not in order:
-        fail(f"Task {args.task_id} not found in ordered task list from {tasks_file}")
-
-    actor = resolve_actor(args.actor)
-    feature_state = feature_states.get(args.feature_id, FeatureState())
-    active_for_actor = feature_state.active_tasks_by_actor.get(actor)
-    if active_for_actor and active_for_actor != args.task_id:
-        fail(
-            f"Cannot start {args.task_id}; actor {actor!r} already has open task "
-            f"{active_for_actor} in feature {args.feature_id}"
-        )
-
-    current_state = feature_state.tasks.get(args.task_id)
-    if current_state and current_state.closed:
-        fail(f"Cannot start {args.task_id}; it is already closed in the ledger")
-    if current_state and current_state.started and not current_state.closed:
-        owner = current_state.owner_actor or "unknown"
-        fail(
-            f"Cannot start {args.task_id}; it is already started by actor {owner!r} "
-            "and not yet closed"
-        )
-
-    task_lookup = {definition.task_id: definition for definition in task_definitions}
-    current_definition = task_lookup[args.task_id]
-    current_index = order.index(args.task_id)
-    preceding = task_definitions[:current_index]
-    if current_definition.is_parallel:
-        blocking_prior = [
-            definition.task_id for definition in preceding if not definition.is_parallel
-        ]
-    else:
-        blocking_prior = [definition.task_id for definition in preceding]
-
-    for prior in blocking_prior:
-        prior_state = feature_state.tasks.get(prior)
-        if not prior_state or not prior_state.closed:
-            fail(
-                f"Cannot start {args.task_id}; prior task {prior} is not closed in the ledger"
-            )
-
-    if not current_definition.is_parallel:
-        open_other_tasks = sorted(
-            task_id
-            for task_id, state in feature_state.tasks.items()
-            if task_id != args.task_id and state.started and not state.closed
-        )
-        if open_other_tasks:
-            fail(
-                f"Cannot start non-parallel task {args.task_id}; open tasks remain: "
-                f"{', '.join(open_other_tasks)}"
-            )
-
+    newly_registered = ", ".join(summary["newly_registered_task_ids"]) or "none"
+    skipped = ", ".join(summary["skipped_task_ids"]) or "none"
+    next_task = summary["next_task_id"] or "none"
     print(
-        f"Start gate passed for feature {args.feature_id} task {args.task_id} "
-        f"(actor={actor!r}, parallel={current_definition.is_parallel})."
+        f"Registered tasks for feature {args.feature_id}: "
+        f"new={newly_registered} skipped={skipped} next={next_task}"
     )
 
 
@@ -853,6 +1033,17 @@ def build_parser() -> argparse.ArgumentParser:
     append_p.add_argument("--metadata-json", help="Arbitrary JSON metadata object.")
     append_p.add_argument("--timestamp-utc", help="Override timestamp (ISO-8601 UTC).")
     append_p.set_defaults(func=cmd_append)
+
+    register_p = sub.add_parser(
+        "register",
+        help="Register missing tasks from tasks.md into the ledger.",
+    )
+    register_p.add_argument("--file", default=str(DEFAULT_LEDGER), help="Ledger JSONL path.")
+    register_p.add_argument("--tasks-file", required=True, help="Path to tasks.md for task order.")
+    register_p.add_argument("--feature-id", required=True, help="Feature ID, e.g. 018.")
+    register_p.add_argument("--actor", help="Actor identifier.")
+    register_p.add_argument("--json", action="store_true")
+    register_p.set_defaults(func=cmd_register)
 
     validate_p = sub.add_parser("validate", help="Validate ledger structure and event sequence.")
     validate_p.add_argument("--file", default=str(DEFAULT_LEDGER), help="Ledger JSONL path.")

@@ -339,6 +339,30 @@ def _closeout(
     )
 
 
+def closeout_task(
+    *,
+    feature_id: str,
+    task_id: str,
+    tasks_file: Path,
+    ledger_file: Path,
+    commit_sha: str,
+    qa_run_id: str,
+    qa_result_path: Path | None,
+    actor: str,
+) -> CloseoutResult:
+    """Run canonical task closeout and return the structured result."""
+    return _closeout(
+        feature_id=feature_id,
+        task_id=task_id,
+        tasks_file=tasks_file,
+        ledger_file=ledger_file,
+        commit_sha=commit_sha,
+        qa_run_id=qa_run_id,
+        qa_result_path=qa_result_path,
+        actor=actor,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser for closeout."""
     parser = argparse.ArgumentParser(description="Canonical Speckit task closeout path.")
@@ -358,7 +382,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     """Run canonical task closeout and return exit code."""
     args = build_parser().parse_args(list(argv) if argv is not None else None)
     qa_result_path = Path(args.qa_result_file) if args.qa_result_file else None
-    result = _closeout(
+    result = closeout_task(
         feature_id=args.feature_id,
         task_id=args.task_id,
         tasks_file=Path(args.tasks_file),

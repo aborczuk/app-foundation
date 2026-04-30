@@ -16,10 +16,11 @@ Respect the spec routing contract throughout this command:
 - The core sketch sections are sufficient when `sketch_profile = core`.
 
 1. Decompose `sketch.md` into `tasks.md` (authoritative source: the routed sketch design contract, including slices only when present).
-2. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py`.
-3. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
-4. Generate/hydrate HUDs via scaffold + `scripts/speckit_remake_huds.py`.
-5. Generate acceptance tests from the settled task graph.
+2. Register the generated tasks in `.speckit/task-ledger.jsonl`.
+3. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py`.
+4. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
+5. Generate/hydrate HUDs via scaffold + `scripts/speckit_remake_huds.py`.
+6. Generate acceptance tests from the settled task graph.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -148,7 +149,14 @@ Run:
 
 If non-zero exit, fix and re-run before continuing.
 
-### 6. HUD + acceptance generation (post-stabilization only)
+### 6. Task ledger registration (required)
+
+Run:
+- `uv run --no-sync python scripts/task_ledger.py register --tasks-file "$FEATURE_DIR/tasks.md" --feature-id "$FEATURE_ID" --json`
+
+Treat non-zero as hard-block. The tasking step owns `task_registered` events; implement only consumes the queue.
+
+### 7. HUD + acceptance generation (post-stabilization only)
 
 Generate and hydrate HUD implementation tickets only after task stabilization + format gate pass:
 - `.specify/scripts/pipeline-scaffold.py` for `speckit.tasking.hud-code`
