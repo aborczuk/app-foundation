@@ -22,12 +22,14 @@ def _load_script_module(module_name: str, script_name: str):
 tasking_chain = _load_script_module("speckit_tasking_chain", "speckit_tasking_chain.py")
 
 
-def test_chain_passes_when_estimates_already_stable(tmp_path: Path) -> None:
+def test_chain_passes_when_estimates_already_stable(tmp_path: Path, monkeypatch) -> None:
     """Existing estimates with no 8/13 tasks should pass without commands."""
     feature_dir = tmp_path / "feature"
     feature_dir.mkdir(parents=True, exist_ok=True)
     (feature_dir / "tasks.md").write_text("- [ ] T001 sample task ./file.py\n", encoding="utf-8")
     (feature_dir / "estimates.md").write_text("T001 | 3\n", encoding="utf-8")
+
+    monkeypatch.setattr(tasking_chain, "_clear_tasking_sessions", lambda _: [])
     args = tasking_chain._build_parser().parse_args(
         ["--feature-dir", str(feature_dir), "--json"]
     )
@@ -37,6 +39,34 @@ def test_chain_passes_when_estimates_already_stable(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert payload["high_point_tasks"] == []
     assert payload["command_results"] == []
+
+
+def test_chain_clears_session_state_when_stable(tmp_path: Path, monkeypatch) -> None:
+    """Stable estimates should trigger warm-session teardown."""
+    feature_dir = tmp_path / "feature"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    (feature_dir / "tasks.md").write_text("- [ ] T001 sample task ./file.py\n", encoding="utf-8")
+    (feature_dir / "estimates.md").write_text("T001 | 3\n", encoding="utf-8")
+
+    teardown_calls: list[Path] = []
+
+    def fake_clear_tasking_sessions(current_feature_dir: Path) -> list[str]:
+        teardown_calls.append(current_feature_dir)
+        return ["estimate-session-state.json", "breakdown-session-state.json"]
+
+    monkeypatch.setattr(tasking_chain, "_clear_tasking_sessions", fake_clear_tasking_sessions)
+    args = tasking_chain._build_parser().parse_args(
+        ["--feature-dir", str(feature_dir), "--json"]
+    )
+
+    payload = tasking_chain.run_chain(args)
+
+    assert payload["ok"] is True
+    assert payload["session_teardown_paths"] == [
+        "estimate-session-state.json",
+        "breakdown-session-state.json",
+    ]
+    assert teardown_calls == [feature_dir]
 
 
 def test_chain_requires_breakdown_command_when_high_points_remain(tmp_path: Path) -> None:

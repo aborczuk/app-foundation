@@ -17,7 +17,7 @@ Respect the spec routing contract throughout this command:
 
 1. Decompose `sketch.md` into `tasks.md` (authoritative source: the routed sketch design contract, including slices only when present).
 2. Register the generated tasks in `.speckit/task-ledger.jsonl`.
-3. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py`.
+3. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
 4. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
 5. Generate/hydrate HUDs via scaffold + `scripts/speckit_remake_huds.py`.
 6. Generate acceptance tests from the settled task graph.
@@ -130,11 +130,19 @@ Before acceptance generation, fail tasking if any generated non-`[H]` HUD still 
 ### 4. Estimate/breakdown stabilization (required)
 
 Primary path (script-owned):
-- `uv run --no-sync python scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json`
+```bash
+uv run --no-sync python scripts/speckit_tasking_chain.py \
+  --feature-dir "$FEATURE_DIR" \
+  --json \
+  --estimate-command "uv run --no-sync python scripts/speckit_tasking_codex_runner.py --mode estimate --feature-dir \"$FEATURE_DIR\" --json" \
+  --breakdown-command "uv run --no-sync python scripts/speckit_tasking_codex_runner.py --mode breakdown --feature-dir \"$FEATURE_DIR\" --json"
+```
 
-If command bridges are needed, run:
-- `--estimate-command "<estimate executor>"`
-- `--breakdown-command "<breakdown executor>"`
+Codex-backed bridge runners:
+- `uv run --no-sync python scripts/speckit_tasking_codex_runner.py --mode estimate --feature-dir "$FEATURE_DIR" --json`
+- `uv run --no-sync python scripts/speckit_tasking_codex_runner.py --mode breakdown --feature-dir "$FEATURE_DIR" --json`
+
+Each mode keeps its own warm Codex session across repeated stabilization rounds until the task graph settles.
 
 Required behavior:
 - run estimate against current `tasks.md`

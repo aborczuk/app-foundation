@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -104,6 +105,25 @@ def _fail(reasons: list[str], *, command_results: list[CommandResult]) -> dict[s
     }
 
 
+def _load_tasking_runner_module():
+    """Load the sibling Codex tasking runner module for teardown support."""
+    scripts_dir = Path(__file__).resolve().parent
+    script_path = scripts_dir / "speckit_tasking_codex_runner.py"
+    spec = importlib.util.spec_from_file_location("speckit_tasking_codex_runner", script_path)
+    if spec is None or spec.loader is None:
+        raise ValueError("missing_tasking_runner_module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _clear_tasking_sessions(feature_dir: Path) -> list[str]:
+    """Delete warm Codex session state once tasking has stabilized."""
+    runner_module = _load_tasking_runner_module()
+    repo_root = Path(__file__).resolve().parents[1]
+    return runner_module.clear_tasking_session_state(repo_root, feature_dir)
+
+
 def run_chain(args: argparse.Namespace) -> dict[str, Any]:
     """Execute estimate -> optional breakdown -> estimate loop until stabilized."""
     feature_dir, tasks_file, estimates_file = _resolve_paths(args)
@@ -137,11 +157,16 @@ def run_chain(args: argparse.Namespace) -> dict[str, Any]:
         estimates_text = estimates_file.read_text(encoding="utf-8")
         high_point_tasks = _extract_high_point_tasks(estimates_text)
         if not high_point_tasks:
+            try:
+                teardown_paths = _clear_tasking_sessions(feature_dir)
+            except (OSError, ValueError):
+                return _fail(["session_teardown_failed"], command_results=command_results)
             return {
                 "ok": True,
                 "reasons": [],
                 "rounds": rounds,
                 "high_point_tasks": [],
+                "session_teardown_paths": teardown_paths,
                 "command_results": [
                     {
                         "command": result.command,
