@@ -257,6 +257,6 @@
 2. Engineer B: Manifest/contracts/docs + contract/doc-shape regressions (T017-T023).
 3. Operator: Run human verification task T026 after automated regressions pass.
 
-### Delta Phase 9: Say Hooray
+## Delta Phase 9: Say Hooray
 
 - [ ] T057 Say hooray! — ./README.md

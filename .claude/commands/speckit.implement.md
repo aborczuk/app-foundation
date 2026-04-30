@@ -60,6 +60,7 @@ Treat non-zero as hard-block.
 - Append `task_started` only when the selected task is not already active.
 - Execute only the next eligible task from `tasks.md` and corresponding HUD.
 - Hand that task to the local Codex runner at `scripts/speckit_codex_handoff_runner.py`.
+- If offline QA fails, feed the QA feedback back into the same runner session and retry the same task before closeout.
 - Preserve task dependency and phase ordering.
 - Emit required task-ledger progression events via `scripts/task_ledger.py`.
 - Run targeted verification before closeout (tests/diagnostics/gates required by task scope).
@@ -85,12 +86,15 @@ Required outputs:
 
 If script path is temporarily unavailable, preserve these outputs manually in `quickstart.md` and keep format stable.
 
-### 5. Phase completion
+### 5. Completion
 
 Return completion payload to the runner/driver when:
 - required tasks for current scope are closed
 - deterministic verification/QA paths passed
 - required documentation update is complete
+- the task gate has run after closeout so it can inspect the task ledger and either emit completion or point to the next open task
+
+The task gate uses the task ledger as the source of truth for whether work is still open.
 
 `implementation_completed` append is driver-owned (pipeline driver route), not command-doc-owned.
 

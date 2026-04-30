@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a single implement-task handoff through local Codex and commit the result."""
+"""Run resumable implement-task handoffs through local Codex and commit the result."""
 
 from __future__ import annotations
 
@@ -47,7 +47,33 @@ def _normalize_handoff(payload: Mapping[str, Any]) -> dict[str, Any]:
         "step_name": _string(payload.get("step_name")),
         "output_template_path": _string(payload.get("output_template_path")),
         "completion_marker": _string(payload.get("completion_marker")),
+        "resume_session": payload.get("resume_session"),
+        "qa_feedback": payload.get("qa_feedback"),
+        "retry_index": payload.get("retry_index"),
     }
+
+
+def _coerce_bool(value: object) -> bool:
+    """Interpret common payload values as a boolean flag."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
+    """Interpret a payload field as an integer with a safe fallback."""
+    if value is None:
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return default
+        return int(stripped)
+    return int(value)
 
 
 def _load_payload(stdin_text: str) -> dict[str, Any]:
@@ -58,7 +84,14 @@ def _load_payload(stdin_text: str) -> dict[str, Any]:
     return payload
 
 
-def _build_prompt(payload: Mapping[str, Any], repo_root: Path) -> str:
+def _build_prompt(
+    payload: Mapping[str, Any],
+    repo_root: Path,
+    *,
+    resume_session: bool,
+    qa_feedback: Mapping[str, Any] | None,
+    retry_index: int,
+) -> str:
     """Build the Codex prompt for a single implement task."""
     handoff = _normalize_handoff(payload)
 
@@ -70,8 +103,7 @@ def _build_prompt(payload: Mapping[str, Any], repo_root: Path) -> str:
     task_action = _string(handoff.get("task_action"))
     feature_dir = _string(handoff.get("feature_dir"))
     handoff_json = json.dumps(dict(handoff), indent=2, sort_keys=True)
-
-    return (
+    prompt = (
         "You are the local Codex implementation runner for speckit.\n"
         f"Repository root: {repo_root}\n"
         f"Feature id: {feature_id}\n"
@@ -91,9 +123,18 @@ def _build_prompt(payload: Mapping[str, Any], repo_root: Path) -> str:
         "Handoff payload:\n"
         f"{handoff_json}\n"
     )
+    if resume_session:
+        prompt += (
+            "\nThis is a resumed Codex session for the same task.\n"
+            f"Resume index: {retry_index}\n"
+            "Incorporate the QA feedback below before making any further changes.\n"
+        )
+        if qa_feedback:
+            prompt += f"QA feedback:\n{json.dumps(dict(qa_feedback), indent=2, sort_keys=True)}\n"
+    return prompt
 
 
-def _run_codex_exec(prompt: str, repo_root: Path) -> tuple[int, str, str, str]:
+def _run_codex_exec(prompt: str, repo_root: Path, *, resume_session: bool = False) -> tuple[int, str, str, str]:
     """Execute Codex and return its exit code, streams, and last message."""
     codex_bin = shutil.which("codex")
     if not codex_bin:
@@ -103,17 +144,19 @@ def _run_codex_exec(prompt: str, repo_root: Path) -> tuple[int, str, str, str]:
         last_message_path = Path(handle.name)
 
     try:
-        command = [
-            codex_bin,
-            "exec",
-            "--ephemeral",
-            "--full-auto",
-            "--cd",
-            str(repo_root),
-            "--output-last-message",
-            str(last_message_path),
-            "-",
-        ]
+        command = [codex_bin, "exec"]
+        if resume_session:
+            command.extend(["resume", "--last"])
+        command.extend(
+            [
+                "--full-auto",
+                "--cd",
+                str(repo_root),
+                "--output-last-message",
+                str(last_message_path),
+                "-",
+            ]
+        )
         execution = subprocess.run(
             command,
             cwd=repo_root,
@@ -211,15 +254,28 @@ def run_codex_handoff(
     phase = _string(payload.get("phase"))
     correlation_id = _string(payload.get("correlation_id"))
     task_id = _string(handoff.get("task_id"))
-    task_attempt_raw = handoff.get("task_attempt")
-    task_attempt = int(task_attempt_raw) if str(task_attempt_raw).strip() else 0
+    task_attempt = _coerce_int(handoff.get("task_attempt"))
     task_action = _string(handoff.get("task_action"))
     artifact_path = _string(handoff.get("output_template_path"))
     completion_marker = _string(handoff.get("completion_marker"))
+    resume_session = _coerce_bool(handoff.get("resume_session") if "resume_session" in handoff else payload.get("resume_session"))
+    qa_feedback = handoff.get("qa_feedback") if "qa_feedback" in handoff else payload.get("qa_feedback")
+    retry_index_raw = handoff.get("retry_index") if "retry_index" in handoff else payload.get("retry_index")
+    retry_index = _coerce_int(retry_index_raw)
 
-    prompt = _build_prompt(payload, repo_root)
+    prompt = _build_prompt(
+        payload,
+        repo_root,
+        resume_session=resume_session,
+        qa_feedback=qa_feedback if isinstance(qa_feedback, Mapping) else None,
+        retry_index=retry_index,
+    )
     try:
-        codex_exit_code, codex_stdout, codex_stderr, last_message = _run_codex_exec(prompt, repo_root)
+        codex_exit_code, codex_stdout, codex_stderr, last_message = _run_codex_exec(
+            prompt,
+            repo_root,
+            resume_session=resume_session,
+        )
     except ValueError as exc:
         reason = str(exc) or "codex_exec_failed"
         return {
@@ -236,6 +292,7 @@ def run_codex_handoff(
             "completion_marker": completion_marker,
             "runner": "codex-local",
             "handoff_execution": "codex_exec",
+            "session_mode": "resume" if resume_session else "fresh",
             "reasons": [reason],
             "error_code": reason,
             "debug_path": None,
@@ -262,6 +319,7 @@ def run_codex_handoff(
             "completion_marker": completion_marker,
             "runner": "codex-local",
             "handoff_execution": "codex_exec",
+            "session_mode": "resume" if resume_session else "fresh",
             "reasons": ["codex_exec_failed"],
             "error_code": "codex_exec_failed",
             "debug_path": None,
@@ -292,6 +350,7 @@ def run_codex_handoff(
             "completion_marker": completion_marker,
             "runner": "codex-local",
             "handoff_execution": "codex_exec",
+            "session_mode": "resume" if resume_session else "fresh",
             "reasons": [reason],
             "error_code": reason,
             "debug_path": None,
@@ -317,6 +376,7 @@ def run_codex_handoff(
         "completion_marker": completion_marker,
         "runner": "codex-local",
         "handoff_execution": "codex_exec",
+        "session_mode": "resume" if resume_session else "fresh",
         "reasons": [],
         "error_code": None,
         "debug_path": None,

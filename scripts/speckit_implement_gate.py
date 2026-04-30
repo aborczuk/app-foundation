@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic gate checks for /speckit.implement execution."""
+"""Deterministic task gate checks for /speckit.implement execution."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Sequence
+
+import task_ledger
 
 TASK_LINE_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]\s+(?P<task_id>T\d{3})\b")
 CHECKBOX_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]")
@@ -59,6 +61,16 @@ def _find_task_in_text(tasks_content: str, task_id: str) -> bool:
 
 def _find_task_in_tasks_file(tasks_file: Path, task_id: str) -> bool:
     return _find_task_in_text(tasks_file.read_text(encoding="utf-8"), task_id)
+
+
+def _extract_task_ids(lines: list[str]) -> list[str]:
+    """Return ordered task IDs from a phase window."""
+    task_ids: list[str] = []
+    for line in lines:
+        match = TASK_LINE_RE.match(line)
+        if match:
+            task_ids.append(match.group("task_id"))
+    return task_ids
 
 
 def _task_exists_on_main(tasks_file: Path, task_id: str) -> bool | None:
@@ -282,6 +294,34 @@ def _find_phase_window(tasks_file: Path, phase_name: str) -> tuple[int, int] | N
     return (start_idx, end_idx)
 
 
+def _find_phase_window_for_task_id(tasks_file: Path, task_id: str) -> tuple[int, int] | None:
+    """Locate the phase window that contains a specific task ID."""
+    lines = tasks_file.read_text(encoding="utf-8").splitlines()
+    task_line_idx: int | None = None
+    for idx, line in enumerate(lines):
+        match = TASK_LINE_RE.match(line)
+        if match and match.group("task_id") == task_id:
+            task_line_idx = idx
+            break
+    if task_line_idx is None:
+        return None
+
+    start_idx: int | None = None
+    for idx in range(task_line_idx, -1, -1):
+        if PHASE_HEADER_RE.match(lines[idx]):
+            start_idx = idx
+            break
+    if start_idx is None:
+        return None
+
+    end_idx = len(lines)
+    for idx in range(start_idx + 1, len(lines)):
+        if PHASE_HEADER_RE.match(lines[idx]):
+            end_idx = idx
+            break
+    return (start_idx, end_idx)
+
+
 def _count_open_tasks(lines: list[str]) -> list[str]:
     open_task_ids: list[str] = []
     for line in lines:
@@ -310,29 +350,43 @@ def _find_matching_e2e_scripts(repo_root: Path, feature_dir: Path) -> list[str]:
     return [str(path) for path in matches]
 
 
-def _task_ledger_ready_for_implementation(repo_root: Path, feature_id: str) -> tuple[bool, list[str]]:
-    """Confirm the task ledger is valid and fully closed for the feature."""
+def _task_ledger_phase_state(
+    repo_root: Path,
+    feature_id: str,
+    phase_task_ids: list[str],
+) -> dict[str, Any]:
+    """Derive phase task status from the task ledger."""
     ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
-    result = subprocess.run(
-        [sys.executable, str(repo_root / "scripts" / "task_ledger.py"), "validate", "--file", str(ledger_path)],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return False, ["task_ledger_invalid"]
+    events = task_ledger.read_events(ledger_path)
+    errors, feature_states = task_ledger.validate_sequence(events)
+    feature_state = feature_states.get(feature_id, task_ledger.FeatureState())
 
-    match = None
-    for line in result.stdout.splitlines():
-        match = PIPELINE_FEATURE_SUMMARY_RE.search(line)
-        if match and match.group("feature_id") == feature_id:
-            break
-    if not match or match.group("feature_id") != feature_id:
-        return False, ["task_ledger_summary_missing"]
-    if int(match.group("open")) != 0:
-        return False, ["task_ledger_open_tasks"]
-    if match.group("active") != "none":
-        return False, ["task_ledger_active_task"]
-    return True, []
+    registered_task_ids: list[str] = []
+    open_registered_task_ids: list[str] = []
+    closed_task_ids: list[str] = []
+    unregistered_task_ids: list[str] = []
+    for task_id in phase_task_ids:
+        task_state = feature_state.tasks.get(task_id)
+        if task_state is None or not task_state.registered:
+            unregistered_task_ids.append(task_id)
+            continue
+        registered_task_ids.append(task_id)
+        if task_state.closed:
+            closed_task_ids.append(task_id)
+        else:
+            open_registered_task_ids.append(task_id)
+
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "phase_task_ids": phase_task_ids,
+        "registered_task_ids": registered_task_ids,
+        "open_registered_task_ids": open_registered_task_ids,
+        "closed_task_ids": closed_task_ids,
+        "unregistered_task_ids": unregistered_task_ids,
+        "continuation_task_id": open_registered_task_ids[0] if open_registered_task_ids else None,
+        "feature_state": feature_state,
+    }
 
 
 def _emit_implementation_completed_once(
@@ -386,8 +440,8 @@ def _emit_implementation_completed_once(
 
 
 def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    """Check the ledger for open tasks and emit completion once empty."""
     feature_dir = Path(args.feature_dir).resolve()
-    tasks_file = feature_dir / "tasks.md"
     repo_root = Path(__file__).resolve().parent.parent
     feature_id = feature_dir.name.split("-", 1)[0]
     reasons: list[str] = []
@@ -395,60 +449,27 @@ def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
 
     if not feature_dir.exists():
         reasons.append("missing_feature_dir")
-    if not tasks_file.exists():
-        reasons.append("missing_tasks_md")
-        return _exit_payload(
-            False,
-            {
-                "mode": "phase_gate",
-                "feature_dir": str(feature_dir),
-                "phase_name": args.phase_name,
-                "phase_type": args.phase_type,
-                "reasons": reasons,
-            },
-        )
 
-    window = _find_phase_window(tasks_file, args.phase_name)
-    if window is None:
-        reasons.append("phase_not_found")
-        return _exit_payload(
-            False,
-            {
-                "mode": "phase_gate",
-                "feature_dir": str(feature_dir),
-                "phase_name": args.phase_name,
-                "phase_type": args.phase_type,
-                "reasons": reasons,
-            },
-        )
+    ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
+    events = task_ledger.read_events(ledger_path)
+    errors, feature_states = task_ledger.validate_sequence(events)
+    feature_state = feature_states.get(feature_id, task_ledger.FeatureState())
+    if errors:
+        reasons.append("task_ledger_invalid")
 
-    lines = tasks_file.read_text(encoding="utf-8").splitlines()
-    start_idx, end_idx = window
-    phase_lines = lines[start_idx + 1 : end_idx]
-    open_task_ids = _count_open_tasks(phase_lines)
-    if open_task_ids:
-        reasons.append("open_tasks_in_phase")
+    open_task_ids: list[str] = []
+    closed_task_ids: list[str] = []
+    for task_id, task_state in feature_state.tasks.items():
+        if task_state.closed:
+            closed_task_ids.append(task_id)
+        else:
+            open_task_ids.append(task_id)
 
-    if args.layer1 != "pass":
-        reasons.append("layer1_not_pass")
-    if args.layer2 != "pass":
-        reasons.append("layer2_not_pass")
+    continuation_task_id = open_task_ids[0] if open_task_ids else None
 
-    if args.phase_type == "story":
-        if args.layer3 != "pass":
-            reasons.append("layer3_not_pass_for_story_phase")
-        e2e_doc = feature_dir / "e2e.md"
-        e2e_scripts = _find_matching_e2e_scripts(Path(__file__).resolve().parent.parent, feature_dir)
-        if not e2e_doc.exists():
-            reasons.append("missing_e2e_md")
-        if not e2e_scripts:
-            reasons.append("missing_e2e_script")
-
-    if not reasons and args.phase_name == IMPLEMENTATION_PHASE_NAME:
-        task_ledger_ready, task_ledger_reasons = _task_ledger_ready_for_implementation(repo_root, feature_id)
-        if not task_ledger_ready:
-            reasons.extend(task_ledger_reasons)
-            implementation_completed_state = "blocked_task_ledger"
+    if not reasons:
+        if open_task_ids:
+            implementation_completed_state = "continue_open_tasks"
         else:
             emitted, implementation_completed_state = _emit_implementation_completed_once(
                 repo_root,
@@ -459,14 +480,12 @@ def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 reasons.append(implementation_completed_state)
 
     payload: dict[str, Any] = {
-        "mode": "phase_gate",
+        "mode": "task_gate",
         "feature_dir": str(feature_dir),
-        "phase_name": args.phase_name,
-        "phase_type": args.phase_type,
+        "feature_id": feature_id,
         "open_task_ids": open_task_ids,
-        "layer1": args.layer1,
-        "layer2": args.layer2,
-        "layer3": args.layer3,
+        "closed_task_ids": closed_task_ids,
+        "continuation_task_id": continuation_task_id,
         "reasons": reasons,
         "implementation_completed_state": implementation_completed_state,
     }
@@ -508,15 +527,17 @@ def _build_parser() -> argparse.ArgumentParser:
     task_evidence.add_argument("--observability", choices=("pass", "fail", "na"), default="na")
     task_evidence.add_argument("--json", action="store_true")
 
-    phase_gate = subparsers.add_parser(
-        "phase-gate", help="Validate phase-close gate layers and open tasks."
-    )
+    task_gate = subparsers.add_parser("task-gate", help="Check the ledger for open tasks.")
+    task_gate.add_argument("--feature-dir", required=True)
+    task_gate.add_argument("--json", action="store_true")
+
+    phase_gate = subparsers.add_parser("phase-gate", help=argparse.SUPPRESS)
     phase_gate.add_argument("--feature-dir", required=True)
-    phase_gate.add_argument("--phase-name", required=True)
-    phase_gate.add_argument("--phase-type", choices=("setup", "foundational", "story", "polish"), required=True)
-    phase_gate.add_argument("--layer1", choices=("pass", "fail", "blocked"), required=True)
-    phase_gate.add_argument("--layer2", choices=("pass", "fail", "blocked"), required=True)
-    phase_gate.add_argument("--layer3", choices=("pass", "fail", "blocked", "na"), default="na")
+    phase_gate.add_argument("--phase-name")
+    phase_gate.add_argument("--phase-type")
+    phase_gate.add_argument("--layer1")
+    phase_gate.add_argument("--layer2")
+    phase_gate.add_argument("--layer3")
     phase_gate.add_argument("--json", action="store_true")
 
     return parser
@@ -533,7 +554,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         exit_code, payload = _offline_qa_payload(args)
     elif args.subcommand == "validate-task-evidence":
         exit_code, payload = _validate_task_evidence(args)
-    elif args.subcommand == "phase-gate":
+    elif args.subcommand in {"task-gate", "phase-gate"}:
         exit_code, payload = _phase_gate(args)
     else:
         parser.error(f"Unknown subcommand: {args.subcommand}")

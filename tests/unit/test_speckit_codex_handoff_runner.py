@@ -36,10 +36,12 @@ def test_run_codex_handoff_commits_changes(tmp_path: Path, monkeypatch) -> None:
     repo_root.mkdir()
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
 
-    def fake_run_codex_exec(prompt, repo_root_param):  # noqa: ANN001
+    def fake_run_codex_exec(prompt, repo_root_param, *, resume_session=False):  # noqa: ANN001
         target = repo_root_param / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("implemented\n", encoding="utf-8")
+        assert resume_session is False
+        assert "Implement the next registered task" in prompt
         return 0, "codex stdout", "codex stderr", "Implementation complete"
 
     monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
@@ -69,6 +71,7 @@ def test_run_codex_handoff_commits_changes(tmp_path: Path, monkeypatch) -> None:
     assert result["completion_marker"] == "## Summary"
     assert result["summary"] == "Implementation complete"
     assert result["changed_files"] == ["specs/023-deterministic-phase-orchestration/implementation.md"]
+    assert result["session_mode"] == "fresh"
 
 
 def test_run_codex_handoff_accepts_flat_payload(tmp_path: Path, monkeypatch) -> None:
@@ -77,10 +80,12 @@ def test_run_codex_handoff_accepts_flat_payload(tmp_path: Path, monkeypatch) -> 
     repo_root.mkdir()
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
 
-    def fake_run_codex_exec(prompt, repo_root_param):  # noqa: ANN001
+    def fake_run_codex_exec(prompt, repo_root_param, *, resume_session=False):  # noqa: ANN001
         target = repo_root_param / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("implemented\n", encoding="utf-8")
+        assert resume_session is False
+        assert "Handoff payload:" in prompt
         return 0, "codex stdout", "codex stderr", "Implementation complete"
 
     monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
@@ -105,3 +110,55 @@ def test_run_codex_handoff_accepts_flat_payload(tmp_path: Path, monkeypatch) -> 
     assert result["commit_sha"]
     assert result["summary"] == "Implementation complete"
     assert result["changed_files"] == ["specs/023-deterministic-phase-orchestration/implementation.md"]
+    assert result["session_mode"] == "fresh"
+
+
+def test_run_codex_handoff_resumes_session_with_feedback(tmp_path: Path, monkeypatch) -> None:
+    """Codex handoff should resume the prior session and include QA feedback."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_codex_exec(prompt, repo_root_param, *, resume_session=False):  # noqa: ANN001
+        captured["prompt"] = prompt
+        captured["resume_session"] = resume_session
+        target = repo_root_param / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("revised after qa\n", encoding="utf-8")
+        return 0, "codex stdout", "codex stderr", "Implementation revised"
+
+    monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
+
+    result = speckit_codex_handoff_runner.run_codex_handoff(
+        {
+            "feature_id": "023",
+            "phase": "implement",
+            "correlation_id": "run-test:speckit.implement.retry",
+            "handoff": {
+                "feature_dir": str(repo_root / "specs" / "023-deterministic-phase-orchestration"),
+                "task_id": "T001",
+                "task_attempt": 2,
+                "task_action": "resumed",
+                "output_template_path": str(
+                    repo_root / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
+                ),
+                "completion_marker": "## Summary",
+                "resume_session": True,
+                "retry_index": 1,
+                "qa_feedback": {
+                    "qa_run_id": "qa-023-T001-attempt-1",
+                    "result_verdict": "FAIL",
+                    "reasons": ["missing_readme_update"],
+                },
+            },
+        },
+        repo_root=repo_root,
+    )
+
+    assert result["ok"] is True
+    assert result["session_mode"] == "resume"
+    assert captured["resume_session"] is True
+    assert "QA feedback:" in str(captured["prompt"])
+    assert "missing_readme_update" in str(captured["prompt"])
