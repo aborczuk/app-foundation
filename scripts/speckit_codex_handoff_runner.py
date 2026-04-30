@@ -125,8 +125,9 @@ def _build_prompt(
     )
     if resume_session:
         prompt += (
-            "\nThis is a resumed Codex session for the same task.\n"
+            "\nThis is a resumed Codex session.\n"
             f"Resume index: {retry_index}\n"
+            "Continue from the existing workspace state.\n"
             "Incorporate the QA feedback below before making any further changes.\n"
         )
         if qa_feedback:

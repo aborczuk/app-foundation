@@ -319,6 +319,216 @@ def test_main_consumes_registered_tasks_and_runs_local_handoff(
     assert started_events
 
 
+def test_main_keeps_the_codex_session_warm_across_multiple_tasks(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Implement should reuse one Codex session until the task gate is empty."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    _write_tasks_file(feature_dir / "tasks.md")
+    _write_registered_tasks_ledger(repo_root / ".speckit" / "task-ledger.jsonl")
+
+    monkeypatch.setenv("SPECKIT_AGENT_ID", "codex")
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_resolve_feature_dir",
+        lambda _repo_root, _feature_id: feature_dir,
+    )
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_ensure_implement_branch",
+        lambda *args, **kwargs: {
+            "branch_name": feature_dir.name,
+            "current_branch": "023-deterministic-phase-orchestration",
+            "branch_exists": True,
+            "status": "already_checked_out",
+        },
+    )
+    def fake_offline_qa_handoff(*, feature_id, task_id, attempt):  # noqa: ANN001
+        result_path = repo_root / ".speckit" / "offline-qa" / f"{feature_id}_{task_id}_attempt_{attempt}.result.json"
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(json.dumps({"verdict": "PASS", "findings": []}, sort_keys=True), encoding="utf-8")
+        return {
+            "mode": "offline_qa_handoff",
+            "feature_id": feature_id,
+            "task_id": task_id,
+            "attempt": attempt,
+            "payload_file": str(result_path.with_suffix(".handoff.json")),
+            "result_file": str(result_path),
+            "reasons": [],
+            "ok": True,
+            "result_verdict": "PASS",
+            "qa_run_id": f"qa-{feature_id}-{task_id}-attempt-{attempt}",
+        }
+
+    monkeypatch.setattr(speckit_implement_step, "_run_offline_qa_handoff", fake_offline_qa_handoff)
+
+    closeout_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_closeout_task",
+        lambda **kwargs: closeout_calls.append(kwargs)
+        or speckit_implement_step.speckit_closeout_task.closeout_task(
+            feature_id=kwargs["feature_id"],
+            task_id=kwargs["task_id"],
+            tasks_file=kwargs["tasks_file"],
+            ledger_file=kwargs["ledger_path"],
+            commit_sha=kwargs["commit_sha"],
+            qa_run_id=kwargs["qa_run_id"],
+            qa_result_path=kwargs["qa_result_path"],
+            actor=kwargs["actor"],
+        ),
+    )
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_update_implementation_docs",
+        lambda **kwargs: {
+            "entry_id": kwargs["correlation_id"],
+            "updated": True,
+            "commit_sha": kwargs["commit_sha"],
+        },
+    )
+
+    observed: dict[str, Any] = {"handoff_inputs": [], "commands": []}
+    task_gate_rounds = iter(
+        [
+            {
+                "ok": True,
+                "mode": "task_gate",
+                "feature_id": "023",
+                "open_task_ids": ["T002"],
+                "closed_task_ids": ["T001"],
+                "continuation_task_id": "T002",
+                "implementation_completed_state": "continue_open_tasks",
+                "reasons": [],
+            },
+            {
+                "ok": True,
+                "mode": "task_gate",
+                "feature_id": "023",
+                "open_task_ids": [],
+                "closed_task_ids": ["T001", "T002"],
+                "continuation_task_id": None,
+                "implementation_completed_state": "emitted",
+                "reasons": [],
+            },
+        ]
+    )
+
+    def fake_run_command(command, *, cwd, timeout_seconds, input_payload=None):  # noqa: ANN001
+        command_text = " ".join(str(part) for part in command)
+        observed.setdefault("commands", []).append(list(command))
+        if "speckit_gate_status.py" in command_text:
+            return speckit_implement_step.CommandResult(
+                exit_code=0,
+                stdout=json.dumps({"ok": True}),
+                stderr="",
+                timed_out=False,
+                command=[str(part) for part in command],
+                timeout_seconds=timeout_seconds,
+            )
+        if "speckit_implement_gate.py" in command_text:
+            return speckit_implement_step.CommandResult(
+                exit_code=0,
+                stdout=json.dumps(next(task_gate_rounds)),
+                stderr="",
+                timed_out=False,
+                command=[str(part) for part in command],
+                timeout_seconds=timeout_seconds,
+            )
+        if "speckit_codex_handoff_runner.py" in command_text:
+            observed["handoff_inputs"].append(json.loads(input_payload or "{}"))
+            handoff_inputs = observed["handoff_inputs"]
+            round_index = len(handoff_inputs)
+            task_id = str(handoff_inputs[-1]["task_id"])
+            commit_sha = "1111111111111111111111111111111111111111" if round_index == 1 else "2222222222222222222222222222222222222222"
+            summary = "Implementation complete" if round_index == 1 else "Implementation continued in the warm session"
+            return speckit_implement_step.CommandResult(
+                exit_code=0,
+                stdout=json.dumps(
+                    {
+                        "ok": True,
+                        "exit_code": 0,
+                        "correlation_id": "run-test:speckit.implement",
+                        "feature_id": "023",
+                        "phase": "implement",
+                        "task_id": task_id,
+                        "task_attempt": 1,
+                        "task_action": "started",
+                        "artifact_path": "",
+                        "completion_marker": "",
+                        "runner": "codex-local",
+                        "handoff_execution": "codex_exec",
+                        "session_mode": "fresh" if round_index == 1 else "resume",
+                        "reasons": [],
+                        "error_code": None,
+                        "debug_path": None,
+                        "commit_sha": commit_sha,
+                        "summary": summary,
+                        "changed_files": ["README.md"],
+                        "stdout_tail": [],
+                        "stderr_tail": [],
+                        "handoff": {
+                            "task_id": task_id,
+                            "task_attempt": 1,
+                            "task_action": "started",
+                        },
+                    }
+                ),
+                stderr="",
+                timed_out=False,
+                command=[str(part) for part in command],
+                timeout_seconds=timeout_seconds,
+            )
+        raise AssertionError(f"unexpected command: {command_text}")
+
+    monkeypatch.setattr(speckit_implement_step, "_run_command", fake_run_command)
+
+    exit_code = speckit_implement_step.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--feature-id",
+            "023",
+            "--correlation-id",
+            "run-test:speckit.implement",
+            "--phase",
+            "implement",
+            "--phase-type",
+            "story",
+            "--next-phase",
+            "closed",
+            "--require-handoff",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["ok"] is True
+    debug_payload = json.loads(Path(payload["debug_path"]).read_text(encoding="utf-8"))
+    stage_names = [stage["name"] for stage in debug_payload["stages"]]
+    assert stage_names.count("task_queue") == 2
+    assert stage_names.count("llm_handoff_round_1") == 2
+    assert stage_names.count("closeout") == 2
+    assert stage_names.count("task_gate") == 2
+
+    handoff_inputs = observed["handoff_inputs"]
+    assert len(handoff_inputs) == 2
+    assert handoff_inputs[0]["task_id"] == "T001"
+    assert handoff_inputs[0]["resume_session"] is False
+    assert handoff_inputs[1]["task_id"] == "T002"
+    assert handoff_inputs[1]["resume_session"] is True
+    assert handoff_inputs[1]["retry_index"] == 0
+
+    assert len(closeout_calls) == 2
+    assert closeout_calls[0]["task_id"] == "T001"
+    assert closeout_calls[1]["task_id"] == "T002"
+
+
 def test_main_retries_after_qa_failure_with_same_session(
     tmp_path: Path,
     monkeypatch,

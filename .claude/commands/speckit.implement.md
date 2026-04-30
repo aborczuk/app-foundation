@@ -8,14 +8,15 @@ $ARGUMENTS
 
 ## Compact Contract (Load First)
 
-Execute implementation through deterministic HUD-gated preflight, task start, local Codex task execution, QA handoff, and documentation updates. The step runner owns the helper sequence.
+Execute implementation through deterministic HUD-gated preflight, task start, local Codex task execution, QA handoff, and documentation updates. The step runner owns the helper sequence and keeps the Codex session warm across queued tasks until the task gate says implementation is complete.
 
 1. Resolve feature context and run HUD-only pre-implementation gate checks.
 2. Consume the next registered task from `.speckit/task-ledger.jsonl` and the matching `tasks.md` / HUD contract.
 3. Run verification gates before task closeout.
 4. Run offline QA handoff and canonical ledger closeout.
-5. Update quickstart runbook + decision log via `scripts/speckit_implement_docs.py`.
-6. Preserve GitHub sync handoff via `/speckit.checkpoint Phase [N]` compact status line; do not emit a prose summary.
+5. If the task gate reports more open tasks, continue the warm Codex session on the next registered task.
+6. Update quickstart runbook + decision log via `scripts/speckit_implement_docs.py`.
+7. Preserve GitHub sync handoff via `/speckit.checkpoint Phase [N]` compact status line; do not emit a prose summary.
 
 ## Expanded Guidance (Load On Demand)
 

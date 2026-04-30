@@ -64,8 +64,8 @@ For small features (XS/S), the system automatically handles the "Linear Ledger C
 1. **Specify**: Run `/speckit.specify`. The Agent performs an **Implicit Sketch** via `read_code`.
 2. **Realize Routing**: Specify automatically projects the skipped phases (Research, Plan) into the ledger.
 3. **Tasking**: You enter the `solution` phase immediately. Run `edit_code task --add` to materialize HUDs, and the tasking step registers those tasks in `.speckit/task-ledger.jsonl`.
-4. **Implement**: The tasking step registers tasks, the implement step hands the next registered task to `scripts/speckit_codex_handoff_runner.py`, and the local Codex session resumes on QA feedback until QA passes.
-5. **QA Handoff**: Run `edit_code sync --handoff` for deterministic + generative verification. The runner keeps the same session alive until QA approves, then spins down at closeout. The task gate reads the task ledger and points to the next open task when more work remains.
+4. **Implement**: The tasking step registers tasks, the implement step hands the next registered task to `scripts/speckit_codex_handoff_runner.py`, and the local Codex session stays warm across queued tasks and QA feedback until the task gate says the queue is empty.
+5. **QA Handoff**: Run `edit_code sync --handoff` for deterministic + generative verification. The runner keeps the same session alive until QA approves and the current task closes, then the warm session is reused for the next open task. The task gate reads the task ledger and points to the next open task when more work remains.
 6. **Say hooray!**: Celebrate the completed feature and handoff.
 
 ### M/L/XL Full-Track
