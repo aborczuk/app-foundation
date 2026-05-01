@@ -95,8 +95,16 @@ class _FakeCloseoutResult:
         return json.dumps(self._payload, sort_keys=True)
 
 
-def test_main_blocks_when_feature_not_found(tmp_path: Path, capsys) -> None:
+def test_main_blocks_when_feature_not_found(tmp_path: Path, monkeypatch, capsys) -> None:
     """Missing feature directories should fail before any task work begins."""
+    bootstrap_calls: list[Path] = []
+    # Inject the bootstrap hook first so the failure path still proves startup ran.
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "bootstrap_session",
+        lambda repo_root: bootstrap_calls.append(Path(repo_root)) or {"bootstrap_ok": True},
+    )
+
     exit_code = speckit_implement_step.main(
         [
             "--repo-root",
@@ -116,6 +124,7 @@ def test_main_blocks_when_feature_not_found(tmp_path: Path, capsys) -> None:
     assert payload["reasons"] == ["feature_not_found"]
     assert isinstance(payload["debug_path"], str) and payload["debug_path"]
     assert Path(payload["debug_path"]).exists()
+    assert bootstrap_calls == [tmp_path.resolve()]
 
 
 def test_main_consumes_registered_tasks_and_runs_local_handoff(

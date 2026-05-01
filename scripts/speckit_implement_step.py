@@ -20,6 +20,7 @@ import speckit_closeout_task
 import speckit_implement_docs
 import speckit_offline_qa_handoff
 import task_ledger
+from bootstrap_session import bootstrap_session
 
 SCHEMA_VERSION = "1.0.0"
 IMPLEMENT_GATE = "implement_execution"
@@ -531,6 +532,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run deterministic implement orchestration and emit one JSON envelope."""
     args = _build_parser().parse_args(argv if argv is not None else sys.argv[1:])
     repo_root = Path(args.repo_root).resolve()
+    bootstrap_summary = bootstrap_session(repo_root)
+    if not bootstrap_summary["bootstrap_ok"]:
+        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
     correlation_id = str(args.correlation_id).strip()
     require_handoff = bool(args.require_handoff or _bool_env("SPECKIT_REQUIRE_HANDOFF"))
     timeout_seconds = max(1, int(args.timeout_seconds))

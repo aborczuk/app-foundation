@@ -16,6 +16,8 @@ commands:
       timeout_seconds: 300
     scripts:
     - .specify/scripts/python/create_new_feature.py
+    - scripts/bootstrap_session.py
+    - scripts/specify_fastpath.py
     - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
     - scripts/speckit_spec_gate.py

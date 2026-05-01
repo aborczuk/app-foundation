@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bootstrap_session import bootstrap_session
+
 TASK_ID_RE = re.compile(r"\bT\d{3}\b")
 HIGH_POINT_RE = re.compile(r"\b(8|13)\b")
 
@@ -126,6 +128,10 @@ def _clear_tasking_sessions(feature_dir: Path) -> list[str]:
 
 def run_chain(args: argparse.Namespace) -> dict[str, Any]:
     """Execute estimate -> optional breakdown -> estimate loop until stabilized."""
+    repo_root = Path(__file__).resolve().parent.parent
+    bootstrap_summary = bootstrap_session(repo_root)
+    if not bootstrap_summary["bootstrap_ok"]:
+        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
     feature_dir, tasks_file, estimates_file = _resolve_paths(args)
     command_results: list[CommandResult] = []
 

@@ -278,6 +278,19 @@ Use this calibration:
 ### Routing Contract
 
 Fill this block with the same routing and risk decisions above. Downstream automation reads this block.
+Use the exact routing vocabulary from `scripts/spec_routing.py`:
+- `research_route`: `skip` or `required`
+- `plan_profile`: `skip`, `lite`, or `full`
+- `sketch_profile`: `core` or `expanded`
+- `tasking_route`: `required` or `attach_to_existing_feature`
+- `estimate_route`: `required_after_tasking` or `reuse_existing_estimate`
+If conditional sketch sections are needed, use the canonical names from `scripts/spec_routing.py`:
+- `Repo Grounding`
+- `Contract / Artifact / Event Impact`
+- `Runtime / State / Failure Notes`
+- `Human / Operator Boundaries`
+- `Design Gaps and Repo Contradictions`
+- `Decomposition-Ready Design Slices`
 
 ```json
 {

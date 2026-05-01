@@ -49,7 +49,13 @@ def test_orchestrate_solution_runs_linear_solution_ladder(tmp_path: Path, monkey
 
     calls: list[CallRecord] = []
     events: list[tuple[str, str, dict[str, object] | None]] = []
+    bootstrap_calls: list[Path] = []
 
+    monkeypatch.setattr(
+        speckit_solution_step,
+        "bootstrap_session",
+        lambda repo_root: bootstrap_calls.append(Path(repo_root)) or {"bootstrap_ok": True},
+    )
     monkeypatch.setattr(
         speckit_solution_step,
         "_load_prerequisites",
@@ -164,6 +170,7 @@ def test_orchestrate_solution_runs_linear_solution_ladder(tmp_path: Path, monkey
     assert calls[1]["phase"] == "tasking"
     assert calls[1]["output_template_path"].name == "tasks.md"
     assert calls[1]["resume_session"] is True
+    assert bootstrap_calls == [Path(speckit_solution_step.__file__).resolve().parent.parent]
     assert events == [
         ("sketch", "sketch_completed", None),
         ("tasking", "tasking_completed", {"task_count": 1, "story_count": 1}),

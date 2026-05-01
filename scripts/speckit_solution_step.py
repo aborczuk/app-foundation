@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
+from bootstrap_session import bootstrap_session
 from task_ledger import parse_task_definitions
 
 SCHEMA_VERSION = "1.0.0"
@@ -391,6 +392,9 @@ def _write_debug_payload(path: Path, payload: Mapping[str, Any]) -> None:
 def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) -> dict[str, Any]:
     """Run the solution ladder from sketch through tasking and approval."""
     repo_root = Path(__file__).resolve().parent.parent
+    bootstrap_summary = bootstrap_session(repo_root)
+    if not bootstrap_summary["bootstrap_ok"]:
+        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
     prereq_payload = _load_prerequisites(repo_root)
     feature_dir = Path(prereq_payload["FEATURE_DIR"])
     sketch_path = feature_dir / "sketch.md"

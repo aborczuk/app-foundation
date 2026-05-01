@@ -18,6 +18,11 @@ from common import (
     has_git as common_has_git,
 )
 
+REPO_ROOT = get_repo_root(Path(__file__))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from bootstrap_session import bootstrap_session  # noqa: E402
+
 
 def _build_paths(script_path: Path) -> dict[str, str]:
     repo_root = get_repo_root(script_path)
@@ -45,6 +50,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     """CLI entrypoint for the setup-plan workflow."""
     args = _parse_args(argv)
+    bootstrap_summary = bootstrap_session(REPO_ROOT)
+    if not bootstrap_summary["bootstrap_ok"]:
+        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
     if args.help_mode:
         print("Usage: setup_plan.py [--json]")
         print("  --json    Output results in JSON format")
