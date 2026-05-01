@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -256,6 +257,151 @@ def _should_launch_background_refresh(scope_path: Path, *, channel: str) -> bool
     state = {name: ts for name, ts in state.items() if now - ts <= max(debounce * 6, 60.0)}
     _persist_session_state(cache_path, state)
     return True
+
+
+def _normalize_refresh_paths(scope_path: Path, drift_paths: tuple[str, ...]) -> list[Path]:
+    """Resolve stale drift paths to repo-local paths with a safe scope fallback."""
+    resolved: list[Path] = []
+    for raw_path in drift_paths:
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = (REPO_ROOT / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        if candidate.exists():
+            resolved.append(candidate)
+
+    if not resolved:
+        resolved.append(scope_path.resolve())
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in resolved:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        unique.append(candidate)
+    return unique
+
+
+def _codegraph_refresh_targets(paths: Iterable[Path]) -> list[Path]:
+    """Collapse changed paths to the smallest covering set of codegraph targets."""
+    root = REPO_ROOT.resolve()
+    targets: list[Path] = []
+    seen: set[Path] = set()
+
+    for path in paths:
+        if not path.exists():
+            continue
+        target = path if path.is_dir() else path.parent
+        if target == root:
+            target = path
+        try:
+            target.relative_to(root)
+        except ValueError:
+            continue
+        if target in seen:
+            continue
+        seen.add(target)
+
+        if any(target.is_relative_to(existing) for existing in targets):
+            continue
+        targets = [existing for existing in targets if not existing.is_relative_to(target)]
+        targets.append(target)
+
+    return sorted(targets)
+
+
+def _refresh_vector_paths(paths: Sequence[Path]) -> bool:
+    """Refresh the exact vector paths synchronously."""
+    if not paths:
+        return False
+    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", *[str(path) for path in paths])
+    proc = _run_command_capture(cmd, env=_vector_command_env())
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"index refresh failed: {stderr.splitlines()[0]}")
+        else:
+            _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
+        print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
+        return False
+    return True
+
+
+def _vector_stale_refresh_paths(scope_path: Path, probe: _VectorIndexProbe) -> list[Path]:
+    """Return exact vector refresh paths, falling back to the requested scope."""
+    root = REPO_ROOT.resolve()
+    paths = [root / Path(candidate) for candidate in probe.stale_drift_paths]
+    return paths or [scope_path]
+
+
+def _launch_vector_refresh_background(scope_path: Path, paths: Sequence[Path]) -> bool:
+    """Launch a scoped vector refresh in the background for the requested scope."""
+    if not _should_launch_background_refresh(scope_path, channel="vector"):
+        return False
+    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", *[str(path) for path in paths])
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=_vector_command_env(),
+        )
+    except OSError as exc:
+        print(f"WARN: vector background refresh could not start: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def _refresh_codegraph_paths(paths: Sequence[Path]) -> bool:
+    """Refresh the exact codegraph targets synchronously."""
+    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
+    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
+        print(f"ERROR: codegraph preflight failed: missing safe index script at {safe_index}", file=sys.stderr)
+        return False
+
+    for target in _codegraph_refresh_targets(paths):
+        proc = _run_command_capture([str(safe_index), str(target)])
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()
+            if stderr:
+                print(f"ERROR: codegraph refresh failed: {stderr.splitlines()[-1]}", file=sys.stderr)
+            else:
+                print(f"ERROR: codegraph refresh failed with exit code {proc.returncode}", file=sys.stderr)
+            print(f"ERROR: remediation: {safe_index} {target}", file=sys.stderr)
+            return False
+    return True
+
+
+def _launch_codegraph_refresh_background(scope_path: Path, paths: Sequence[Path]) -> bool:
+    """Launch a scoped codegraph refresh in the background for the requested scope."""
+    if not _should_launch_background_refresh(scope_path, channel="codegraph"):
+        return False
+
+    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
+    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
+        print(
+            f"WARN: codegraph background refresh skipped: missing safe index script at {safe_index}",
+            file=sys.stderr,
+        )
+        return False
+
+    launched = False
+    for target in _codegraph_refresh_targets(paths):
+        try:
+            subprocess.Popen(
+                [str(safe_index), str(target)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            print(f"WARN: codegraph background refresh could not start: {exc}", file=sys.stderr)
+            return False
+        launched = True
+    return launched
 
 
 def _launch_scoped_refresh_background(scope_path: Path, *, channel: str, cmd: list[str]) -> bool:
@@ -591,9 +737,7 @@ def _scope_needs_codegraph_refresh(scope_path: Path) -> bool:
     if current == cached:
         return False
 
-    current_paths = _signature_paths(current)
-    cached_paths = _signature_paths(cached)
-    drift_paths = current_paths.symmetric_difference(cached_paths)
+    drift_paths = _codegraph_drift_paths(REPO_ROOT)
     if not drift_paths:
         return True
 
@@ -611,6 +755,24 @@ def _scope_needs_codegraph_refresh(scope_path: Path) -> bool:
         if candidate == scope_rel or candidate.startswith(scope_prefix):
             return True
     return False
+
+
+def _codegraph_drift_paths(project_root: Path | None = None) -> tuple[str, ...]:
+    """Return the current codegraph edit-signature drift paths for the repo."""
+    root = project_root or REPO_ROOT
+    current = codegraph_current_edit_signature(root)
+    cached = codegraph_cached_edit_signature(root)
+    if current == cached:
+        return ()
+    drift_paths = _signature_paths(current).symmetric_difference(_signature_paths(cached))
+    return tuple(sorted(drift_paths))
+
+
+def _codegraph_stale_refresh_paths(scope_path: Path, project_root: Path | None = None) -> list[Path]:
+    """Return exact codegraph refresh paths, falling back to the requested scope."""
+    root = (project_root or REPO_ROOT).resolve()
+    paths = [root / Path(candidate) for candidate in _codegraph_drift_paths(project_root)]
+    return paths or [scope_path]
 
 
 def codegraph_health_status(project_root: Path | None = None) -> str:
@@ -689,24 +851,39 @@ def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealth
 
 
 def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
-    """Refresh scoped codegraph index and retry lock recovery deterministically."""
+    """Refresh scoped codegraph state, or bootstrap when the snapshot is missing."""
     path = scope_path or REPO_ROOT
     probe = codegraph_health_probe(REPO_ROOT)
     if probe.status == "healthy":
         return True
     if probe.status == "stale":
         overlap = _scope_needs_codegraph_refresh(path)
+        refresh_paths = _codegraph_stale_refresh_paths(path, REPO_ROOT)
         _emit_session_warning_once(
             key=f"codegraph-stale:{_scope_cache_key(path)}:{overlap}",
             message=(
-                f"WARN: codegraph is stale; launching async scoped refresh for {path}"
-                if overlap
-                else f"WARN: codegraph is stale; overlap=no; skipping scoped refresh for {path}"
+                f"WARN: codegraph is stale; overlap=yes; running synchronous stale-scope refresh for {path}"
+                if overlap is True
+                else f"WARN: codegraph is stale; overlap={'no' if overlap is False else 'unknown'}; launching async stale-scope refresh for {path}"
             ),
         )
-        if overlap:
-            _launch_codegraph_refresh_background(path)
-        return True
+        return _dispatch_refresh_action(
+            status=probe.status,
+            overlap=overlap,
+            sync_refresh=lambda: _refresh_codegraph_paths(refresh_paths)
+            and codegraph_health_status(REPO_ROOT) == "healthy",
+            async_refresh=lambda: _launch_codegraph_refresh_background(path, refresh_paths),
+            bootstrap_missing=lambda: _bootstrap_codegraph_index(path),
+        )
+
+    if probe.status == "missing":
+        return _dispatch_refresh_action(
+            status=probe.status,
+            overlap=None,
+            sync_refresh=lambda: True,
+            async_refresh=lambda: True,
+            bootstrap_missing=lambda: _bootstrap_codegraph_index(path),
+        )
 
     safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
     if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
@@ -908,31 +1085,30 @@ def _vector_stale_warning_message(
         if overlap is False
         else "unknown"
     )
+    action = (
+        "running synchronous stale-scope refresh"
+        if overlap is True
+        else "launching async stale-scope refresh"
+    )
     if verbose:
         cause = probe.stale_reason_class or "none"
         detail = probe.stale_reason or "no stale reason provided"
         signal = probe.stale_signal_source or "git"
-        action = "launching async scoped refresh" if overlap is not False else "skipping scoped refresh"
         return (
             "WARN: vector index is stale; "
             f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
             f"drift_paths={list(probe.stale_drift_paths)}; {action} for {path}"
         )
-    if overlap is False:
-        return (
-            "WARN: vector index is stale; "
-            f"overlap={overlap_label}; skipping scoped refresh for {path}"
-        )
-    return f"WARN: vector index is stale; overlap={overlap_label}; launching async scoped refresh for {path}"
+    return f"WARN: vector index is stale; overlap={overlap_label}; {action} for {path}"
 
 
-def _launch_vector_refresh_background(scope_path: Path) -> bool:
+def _launch_vector_refresh_background(scope_path: Path, paths: Sequence[Path]) -> bool:
     """Launch a scoped vector refresh in the background for the requested scope."""
-    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(scope_path))
+    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", *[str(path) for path in paths])
     return _launch_scoped_refresh_background(scope_path, channel="vector", cmd=cmd)
 
 
-def _launch_codegraph_refresh_background(scope_path: Path) -> bool:
+def _launch_codegraph_refresh_background(scope_path: Path, paths: Sequence[Path]) -> bool:
     """Launch a scoped codegraph refresh in the background for the requested scope."""
     safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
     if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
@@ -941,23 +1117,111 @@ def _launch_codegraph_refresh_background(scope_path: Path) -> bool:
             file=sys.stderr,
         )
         return False
-    cmd = [str(safe_index), str(scope_path)]
-    return _launch_scoped_refresh_background(scope_path, channel="codegraph", cmd=cmd)
+    targets = _codegraph_refresh_targets(paths)
+    if not targets:
+        targets = [scope_path]
+    launched = False
+    for target in targets:
+        cmd = [str(safe_index), str(target)]
+        if not _launch_scoped_refresh_background(scope_path, channel="codegraph", cmd=cmd):
+            return False
+        launched = True
+    return launched
+
+
+def _bootstrap_vector_index(scope_path: Path) -> bool:
+    """Bootstrap the vector index when the snapshot is missing."""
+    cmd = _vector_indexer_cmd(REPO_ROOT, "bootstrap")
+    proc = _run_command_capture(cmd, env=_vector_command_env())
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            _set_vector_runtime_note(f"vector bootstrap failed: {stderr.splitlines()[0]}")
+            print(f"ERROR: vector bootstrap failed: {stderr.splitlines()[-1]}", file=sys.stderr)
+        else:
+            _set_vector_runtime_note(f"vector bootstrap failed with exit code {proc.returncode}")
+            print(f"ERROR: vector bootstrap failed with exit code {proc.returncode}", file=sys.stderr)
+        return False
+
+    probe = vector_index_probe(scope_path)
+    if probe.status == "healthy":
+        return True
+    if probe.status == "missing":
+        _set_vector_runtime_note(
+            f"index snapshot missing at {VECTOR_DB_DIR}; run `{VECTOR_BOOTSTRAP_COMMAND}`"
+        )
+        print("ERROR: vector bootstrap did not materialize a healthy index", file=sys.stderr)
+        return False
+    return True
+
+
+def _bootstrap_codegraph_index(scope_path: Path) -> bool:
+    """Bootstrap the codegraph index when the snapshot is missing."""
+    bootstrap_script = _SCRIPT_DIR / "bootstrap_session.py"
+    if not bootstrap_script.is_file():
+        print(
+            f"ERROR: codegraph bootstrap failed: missing bootstrap script at {bootstrap_script}",
+            file=sys.stderr,
+        )
+        return False
+
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        str(bootstrap_script),
+        "--scope",
+        str(scope_path),
+        "--json",
+    ]
+    proc = _run_command_capture(cmd, env=_vector_command_env())
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        if stderr:
+            print(f"ERROR: codegraph bootstrap failed: {stderr.splitlines()[-1]}", file=sys.stderr)
+        else:
+            print(f"ERROR: codegraph bootstrap failed with exit code {proc.returncode}", file=sys.stderr)
+        return False
+
+    probe = codegraph_health_probe(scope_path)
+    return probe.status in {"healthy", "stale", "locked"}
+
+
+def _dispatch_refresh_action(
+    *,
+    status: str,
+    overlap: bool | None,
+    sync_refresh: Callable[[], bool],
+    async_refresh: Callable[[], bool],
+    bootstrap_missing: Callable[[], bool],
+) -> bool:
+    """Choose bootstrap, sync refresh, or async refresh for one database scope."""
+    if status == "missing":
+        return bootstrap_missing()
+    if overlap is True:
+        return sync_refresh()
+    async_refresh()
+    return True
 
 
 def vector_refresh_if_needed(scope_path: Path | None = None, *, verbose: bool = False) -> bool:
-    """Require a healthy vector index with scope-aware stale refresh branching."""
+    """Require a healthy vector index with scoped refresh and missing bootstrap."""
     path = scope_path or REPO_ROOT
     probe = vector_index_probe(REPO_ROOT)
     status = probe.status
     if status == "healthy":
         return True
-    if status in {"missing", "unavailable", "probe-failed"}:
-        if status == "missing":
-            _set_vector_runtime_note(
-                f"index snapshot missing at {VECTOR_DB_DIR}; run `{VECTOR_BOOTSTRAP_COMMAND}`"
-            )
-        elif probe.stale_reason:
+    if status == "missing":
+        return _dispatch_refresh_action(
+            status=status,
+            overlap=None,
+            sync_refresh=lambda: True,
+            async_refresh=lambda: True,
+            bootstrap_missing=lambda: _bootstrap_vector_index(path),
+        )
+    if status in {"unavailable", "probe-failed"}:
+        if probe.stale_reason:
             _set_vector_runtime_note(probe.stale_reason)
         print(f"ERROR: vector preflight failed: status is {status}", file=sys.stderr)
         return False
@@ -967,13 +1231,18 @@ def vector_refresh_if_needed(scope_path: Path | None = None, *, verbose: bool = 
         return False
 
     overlap = _scope_needs_vector_refresh(path, probe.stale_drift_paths)
+    refresh_paths = _vector_stale_refresh_paths(path, probe)
     _emit_session_warning_once(
         key=f"vector-stale:{_scope_cache_key(path)}:{probe.stale_reason_class or 'none'}:{overlap}",
         message=_vector_stale_warning_message(path, probe, overlap, verbose=verbose),
     )
-    if overlap is not False:
-        _launch_vector_refresh_background(path)
-    return True
+    return _dispatch_refresh_action(
+        status=status,
+        overlap=overlap,
+        sync_refresh=lambda: _refresh_vector_paths(refresh_paths),
+        async_refresh=lambda: _launch_vector_refresh_background(path, refresh_paths),
+        bootstrap_missing=lambda: _bootstrap_vector_index(path),
+    )
 
 
 def _refresh_indexes_for_read(file_path: Path, *, verbose: bool = False) -> bool:
