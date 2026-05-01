@@ -78,6 +78,7 @@ def _normalize_handoff(payload: Mapping[str, Any]) -> dict[str, Any]:
         "step_name": _string(payload.get("step_name")),
         "output_template_path": _string(payload.get("output_template_path")),
         "completion_marker": _string(payload.get("completion_marker")),
+        "instructions": _string(payload.get("instructions")),
         "resume_session": payload.get("resume_session"),
         "qa_feedback": payload.get("qa_feedback"),
         "retry_index": payload.get("retry_index"),
@@ -104,7 +105,10 @@ def _coerce_int(value: object, default: int = 0) -> int:
         if not stripped:
             return default
         return int(stripped)
-    return int(value)
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
 
 
 def _load_payload(stdin_text: str) -> dict[str, Any]:
@@ -123,7 +127,7 @@ def _build_prompt(
     qa_feedback: Mapping[str, Any] | None,
     retry_index: int,
 ) -> str:
-    """Build the Codex prompt for a single implement task."""
+    """Build the Codex prompt for a single speckit action."""
     handoff = _normalize_handoff(payload)
 
     feature_id = _string(payload.get("feature_id"))
@@ -133,9 +137,10 @@ def _build_prompt(
     task_attempt = _string(handoff.get("task_attempt"))
     task_action = _string(handoff.get("task_action"))
     feature_dir = _string(handoff.get("feature_dir"))
+    instructions = _string(handoff.get("instructions"))
     handoff_json = json.dumps(dict(handoff), indent=2, sort_keys=True)
     prompt = (
-        "You are the local Codex implementation runner for speckit.\n"
+        "You are the local Codex action runner for speckit.\n"
         f"Repository root: {repo_root}\n"
         f"Feature id: {feature_id}\n"
         f"Phase: {phase}\n"
@@ -144,13 +149,23 @@ def _build_prompt(
         f"Task attempt: {task_attempt}\n"
         f"Task action: {task_action}\n"
         f"Feature dir: {feature_dir}\n\n"
-        "Implement the next registered task for this feature.\n"
-        "The task has already been selected and started by the deterministic runner.\n"
-        "Use the task id and feature directory to inspect the relevant tasks.md and HUD context.\n"
-        "Make only the code, test, and documentation changes needed for this task.\n"
-        "Run targeted verification when it is useful to confirm the change.\n"
+        "Make the requested repository change with Codex.\n"
+    )
+    if instructions:
+        prompt += f"Requested instructions:\n{instructions}\n\n"
+    elif task_id:
+        prompt += (
+            "Implement the next registered task for this feature.\n"
+            "The task has already been selected and started by the deterministic runner.\n"
+            "Use the task id and feature directory to inspect the relevant tasks.md and HUD context.\n"
+            "Make only the code, test, and documentation changes needed for this task.\n"
+            "Run targeted verification when it is useful to confirm the change.\n"
+            "Return a short final summary of the changes.\n\n"
+        )
+    else:
+        prompt += "Use the handoff payload to make the requested repository change.\n\n"
+    prompt += (
         "Do not create a git commit. The wrapper will commit after you finish.\n"
-        "Return a short final summary of the changes.\n\n"
         "Handoff payload:\n"
         f"{handoff_json}\n"
     )

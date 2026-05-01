@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -55,8 +55,6 @@ def _base_prefix() -> list[dict[str, Any]]:
 def _new_solution_chain() -> list[dict[str, Any]]:
     return [
         _event("sketch_completed"),
-        _event("solutionreview_completed", critical_count=0, high_count=0),
-        _event("estimation_completed", estimate_points=21),
         _event("tasking_completed", task_count=12, story_count=3),
         _event("solution_approved", task_count=12, story_count=3, estimate_points=21),
     ]

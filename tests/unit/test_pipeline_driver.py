@@ -1616,6 +1616,86 @@ def test_main_passes_context_to_implement_step(monkeypatch) -> None:
     ]
 
 
+def test_main_passes_context_to_solution_step(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "023-deterministic-phase-orchestration",
+            "ledger_feature_id": "023",
+            "phase": "solution",
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "build_correlation_id",
+        lambda *args, **kwargs: "run-test:speckit.solution",
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "deterministic",
+            "command_id": "speckit.solution",
+            "route": {
+                "mode": "deterministic",
+                "script_path": "scripts/speckit_solution_step.py",
+                "timeout_seconds": 300,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "enforce_approval_breakpoint",
+        lambda *args, **kwargs: {
+            "ok": True,
+            "breakpoint_enforced": True,
+            "approval_granted": True,
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    observed: dict[str, object] = {}
+
+    def _fake_run_step(command, *, timeout_seconds, correlation_id, **kwargs):  # noqa: ANN001
+        observed["command"] = list(command)
+        observed["timeout_seconds"] = timeout_seconds
+        observed["correlation_id"] = correlation_id
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": "implement",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+        }
+
+    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+
+    exit_code = pipeline_driver.main(
+        ["--feature-id", "023-deterministic-phase-orchestration", "--phase", "solution"]
+    )
+
+    assert exit_code == 0
+    assert observed["timeout_seconds"] == 300
+    assert observed["correlation_id"] == "run-test:speckit.solution"
+    assert observed["command"] == [
+        "scripts/speckit_solution_step.py",
+        "--feature-id",
+        "023",
+        "--phase",
+        "solution",
+        "--correlation-id",
+        "run-test:speckit.solution",
+    ]
+
+
 def test_main_rejects_invalid_phase_input(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         pipeline_driver,
@@ -2032,7 +2112,6 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
         "plan",
         "planreview",
         "sketch",
-        "solution",
     ]
     for phase in generative_commands:
         result = pipeline_driver.resolve_step_mapping(
@@ -2050,6 +2129,10 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
     assert routes["speckit.run"]["script_path"]
     assert routes["speckit.tasking"]["mode"] != "legacy"
     assert routes["speckit.implement"]["mode"] != "legacy"
+    assert routes["speckit.solution"]["mode"] == "deterministic"
+    assert routes["speckit.solution"]["script_path"] == str(
+        (manifest_path.parent / "scripts" / "speckit_solution_step.py").resolve()
+    )
 
 
 def test_validate_generated_artifact_checks_completion_marker(tmp_path: Path) -> None:

@@ -33,7 +33,6 @@ Respect the spec routing contract throughout this command:
    - `AVAILABLE_DOCS`
 3. Require:
    - `FEATURE_DIR/sketch.md`
-   - passing sketch review (`solutionreview_completed` with `critical_count == 0`)
 4. If any hard-block condition fails, stop.
 
 ### 2. Authoritative context loading

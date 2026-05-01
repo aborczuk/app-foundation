@@ -19,7 +19,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NoReturn
@@ -152,7 +152,8 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
 VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT = _load_manifest_events()
 
 # Ordered pipeline phases — each event is a valid "next" from one or more predecessors.
-# Solution-phase sequence is sketch -> solutionreview -> estimation -> tasking -> solution_approved.
+# Solution-phase sequence is sketch -> tasking -> solution_approved, with estimate/breakdown
+# stabilized inside tasking rather than as a separate phase gate.
 ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "backlog_registered": {None},
     "spec_clarified": {"backlog_registered", "spec_clarified"},
@@ -165,7 +166,7 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "sketch_completed": {"plan_approved", "sketch_completed", "solutionreview_completed"},
     "solutionreview_completed": {"sketch_completed", "solutionreview_completed"},
     "estimation_completed": {"solutionreview_completed", "estimation_completed", "tasking_completed"},
-    "tasking_completed": {"estimation_completed", "tasking_completed"},
+    "tasking_completed": {"sketch_completed", "estimation_completed", "tasking_completed"},
     "solution_approved": {"tasking_completed"},
     "analysis_completed": {"solution_approved"},
     "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
@@ -529,7 +530,7 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
             print(f"- {err}", file=sys.stderr)
         raise SystemExit(1)
 
-    print(f"Manifest validation passed.")
+    print("Manifest validation passed.")
     print(f"- Commands: {len(manifest.get('commands', {}))}")
     print(f"- Events declared: {len(declared_events)}")
     print(f"- Templates: {len(list(template_dir.glob('*.md'))) + len(list(template_dir.glob('*.sh')))}")

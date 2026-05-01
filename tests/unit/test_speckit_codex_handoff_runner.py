@@ -76,7 +76,7 @@ def test_run_codex_handoff_commits_changes(tmp_path: Path, monkeypatch) -> None:
     runner_log_path = Path(result["runner_log_path"])
     assert runner_log_path.is_file()
     runner_log = json.loads(runner_log_path.read_text(encoding="utf-8"))
-    assert runner_log["prompt"].startswith("You are the local Codex implementation runner")
+    assert runner_log["prompt"].startswith("You are the local Codex action runner")
     assert runner_log["codex_stdout"] == "codex stdout"
     assert runner_log["codex_stderr"] == "codex stderr"
     assert runner_log["result"]["ok"] is True
@@ -120,6 +120,51 @@ def test_run_codex_handoff_accepts_flat_payload(tmp_path: Path, monkeypatch) -> 
     assert result["summary"] == "Implementation complete"
     assert result["changed_files"] == ["specs/023-deterministic-phase-orchestration/implementation.md"]
     assert result["session_mode"] == "fresh"
+
+
+def test_run_codex_handoff_includes_explicit_instructions(tmp_path: Path, monkeypatch) -> None:
+    """Codex handoff should surface explicit instructions in the action prompt."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_codex_exec(prompt, repo_root_param, *, resume_session=False):  # noqa: ANN001
+        captured["prompt"] = prompt
+        captured["resume_session"] = resume_session
+        target = repo_root_param / "specs" / "023-deterministic-phase-orchestration" / "sketch.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("sketched\n", encoding="utf-8")
+        return 0, "codex stdout", "codex stderr", "Sketch complete"
+
+    monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
+
+    result = speckit_codex_handoff_runner.run_codex_handoff(
+        {
+            "feature_id": "023",
+            "phase": "sketch",
+            "correlation_id": "run-test:speckit.solution.sketch",
+            "handoff": {
+                "feature_dir": str(repo_root / "specs" / "023-deterministic-phase-orchestration"),
+                "task_id": "",
+                "task_attempt": 1,
+                "task_action": "sketch",
+                "output_template_path": str(
+                    repo_root / "specs" / "023-deterministic-phase-orchestration" / "sketch.md"
+                ),
+                "completion_marker": "## Sketch Completion Summary",
+                "instructions": "Write a sketch-first solution summary.",
+            },
+        },
+        repo_root=repo_root,
+    )
+
+    assert result["ok"] is True
+    assert captured["resume_session"] is False
+    assert "Requested instructions:" in str(captured["prompt"])
+    assert "Write a sketch-first solution summary." in str(captured["prompt"])
+    assert result["changed_files"] == ["specs/023-deterministic-phase-orchestration/sketch.md"]
 
 
 def test_run_codex_handoff_resumes_session_with_feedback(tmp_path: Path, monkeypatch) -> None:

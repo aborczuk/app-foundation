@@ -73,21 +73,18 @@ Run `.specify/scripts/python/check_prerequisites.py --json` from repo root. Pars
 - Conditional sketch sections are only required when the routing contract or actual repo context triggers them.
 - If `sketch_profile = core`, do not require the expanded conditional sections just to satisfy the review loop.
 
-### 4. Auto-invoke `/speckit.solutionreview`
+### 4. Auto-invoke `/speckit.tasking`
 
-- Review `sketch.md`.
-- If CRITICAL findings exist, loop back to `/speckit.sketch` and re-run `/speckit.solutionreview`.
-
-### 5. Auto-invoke `/speckit.tasking`
-
-- Decompose approved sketch into `tasks.md`.
+- Decompose the approved sketch into `tasks.md`.
+- Treat `sketch.md` as the source of solutioning.
+- Keep the flow linear: sketch -> tasking -> estimate/breakdown.
 - Treat the core sketch contract as sufficient input when `sketch_profile = core`.
 - Only require the expanded/conditional sketch sections when the routing contract enables them or the work truly needs them.
-- Run estimate/breakdown subprocess loop to settle points.
-- Run deterministic tasks format gate.
+- Run the estimate/breakdown subprocess loop to settle points.
+- Run the deterministic tasks format gate.
 - Generate HUDs and acceptance tests only after stabilization.
 
-### 6. Produce `solution_approved`
+### 5. Produce `solution_approved`
 
 The command doc describes the `solution_approved` payload only. The pipeline driver records the event after the payload is accepted:
 
@@ -95,21 +92,16 @@ The command doc describes the `solution_approved` payload only. The pipeline dri
 {"event":"solution_approved","feature_id":"NNN","phase":"solution","task_count":N,"story_count":N,"estimate_points":N,"actor":"<agent-id>","timestamp_utc":"..."}
 ```
 
-### 7. Auto-invoke `/speckit.analyze`
+### 6. Report
 
-- Analyze consistency across `spec -> sketch -> tasks`, and include `plan.md` in that chain only when routing kept the plan phase enabled.
-- `analysis_completed` remains a separate event emitted by `/speckit.analyze`.
-
-### 8. Report
-
-- "Solution phase complete and analysis executed."
-- List generated artifacts: `sketch.md`, `solutionreview.md`, `tasks.md`, `estimates.md`, HUDs, acceptance tests, analysis report.
-- Suggested next: `/speckit.e2e`.
+- "Solution phase complete."
+- List generated artifacts: `sketch.md`, `tasks.md`, `estimates.md`, HUDs, acceptance tests.
+- Suggested next: `/speckit.implement`.
 
 ## Behavior rules
 
 - Hard-block on unresolved Open Feasibility Questions.
 - Enforce phase read hierarchy: `helper-driven read (semantic+exact) -> discovery checks` before any design claim grounded in repo context.
-- Do not emit `solution_approved` before sketch review and tasking stabilization complete.
+- Do not emit `solution_approved` before sketch and tasking stabilization complete.
 - Do not claim direct ledger append ownership in the command doc; `solution_approved` is produced for orchestration, not written here.
 - `solution_approved` is solution-phase completion; analysis remains a separate post-solution gate event.

@@ -1,8 +1,8 @@
-version: 1.1.5
-last_updated: '2026-04-30T00:00:00Z'
+version: 1.1.6
+last_updated: '2026-05-01T00:26:46Z'
 manifest:
-  version: 1.1.5
-  updated_utc: '2026-04-30T00:00:00Z'
+  version: 1.1.6
+  updated_utc: '2026-05-01T00:26:46Z'
   ledger_sync_policy:
   - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
     emitted event contract changes, update this manifest in the same PR.
@@ -225,9 +225,7 @@ commands:
     - output_path: ${FEATURE_DIR}/sketch.md
       template: sketch-template.md
       consumed_by:
-      - speckit.solutionreview
       - speckit.tasking
-      - speckit.analyze
     emits:
     - event: sketch_completed
       required_fields: []
@@ -289,14 +287,29 @@ commands:
       - critical_count
       - high_count
   speckit.solution:
-    description: Produce the solution_approved payload from sketch, solutionreview,
-      tasking, and analyze context
+    description: Deterministically orchestrate sketch -> tasking -> solution approval
     driver:
-      mode: generative
-      timeout_seconds: 180
+      mode: deterministic
+      script_path: scripts/speckit_solution_step.py
+      timeout_seconds: 300
+      canonical_trigger: speckit.run
     scripts:
+    - .specify/scripts/python/check_prerequisites.py
+    - scripts/speckit_solution_step.py
+    - scripts/speckit_codex_handoff_runner.py
+    - scripts/speckit_tasking_chain.py
+    - scripts/speckit_tasking_codex_runner.py
+    - scripts/speckit_tasks_gate.py
+    - scripts/task_ledger.py
+    - scripts/speckit_remake_huds.py
+    - .specify/scripts/pipeline-scaffold.py
+    - .specify/scripts/acceptance-test-scaffold.py
     - scripts/pipeline_ledger.py
-    artifacts: []
+    artifacts:
+    - output_path: ${FEATURE_DIR}/sketch.md
+      produced_by: scripts/speckit_solution_step.py
+    - output_path: ${FEATURE_DIR}/tasks.md
+      produced_by: scripts/speckit_solution_step.py
     emits:
     - event: solution_approved
       required_fields:
