@@ -68,7 +68,9 @@ You **MUST** consider the user input before proceeding (if not empty).
    - branch name
    - spec file path
    - size estimate
+   - the actual next phase from the pipeline driver
    - readiness for the next phase, only after the spec content is fully populated and the routing contract validates
+   - `Next phase: solution`
 3. In update mode, explicitly state that the spec was updated in place and no new branch was created.
 
 ## Notes
