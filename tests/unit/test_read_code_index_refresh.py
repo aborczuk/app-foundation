@@ -259,28 +259,23 @@ def test_vector_refresh_if_needed_refreshes_stale_index_for_overlap(monkeypatch,
     target = tmp_path / "src" / "sample.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("def sample() -> None:\n    pass\n", encoding="utf-8")
-    probes = iter(
-        [
-            _vector_probe(
-                status="stale",
-                stale_reason="indexable git drift paths: src/sample.py",
-                stale_reason_class="git-path-drift",
-                stale_drift_paths=("src/sample.py",),
-            ),
-            _vector_probe(status="healthy"),
-        ]
+    probe = _vector_probe(
+        status="stale",
+        stale_reason="indexable git drift paths: src/sample.py",
+        stale_reason_class="git-path-drift",
+        stale_drift_paths=("src/sample.py",),
     )
-    calls: list[tuple[list[str], dict[str, str]]] = []
+    calls: list[list[str]] = []
 
-    monkeypatch.setattr(read_code_health, "vector_index_probe", lambda project_root=None: next(probes))
+    monkeypatch.setattr(read_code_health, "vector_index_probe", lambda project_root=None: probe)
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
 
-    def fake_run(cmd, **kwargs):
-        calls.append((cmd, kwargs.get("env", {})))
-        return _completed(0, stdout='{"entry_count": 1}')
+    def fake_popen(cmd, **kwargs):
+        calls.append(cmd)
+        return object()
 
-    monkeypatch.setattr(read_code_health.subprocess, "run", fake_run)
+    monkeypatch.setattr(read_code_health.subprocess, "Popen", fake_popen)
 
     result = read_code_health.vector_refresh_if_needed(target)
     captured = capsys.readouterr()
@@ -288,7 +283,7 @@ def test_vector_refresh_if_needed_refreshes_stale_index_for_overlap(monkeypatch,
     assert result is True
     assert len(calls) == 1
     assert "overlap=yes" in captured.err
-    assert "refreshing targeted index for" in captured.err
+    assert "launching async scoped refresh" in captured.err
     assert "cause=git-path-drift" not in captured.err
 
 
@@ -300,28 +295,23 @@ def test_vector_refresh_if_needed_verbose_emits_detailed_stale_message(
     target = tmp_path / "src" / "sample.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("def sample() -> None:\n    pass\n", encoding="utf-8")
-    probes = iter(
-        [
-            _vector_probe(
-                status="stale",
-                stale_reason="indexable git drift paths: src/sample.py",
-                stale_reason_class="git-path-drift",
-                stale_drift_paths=("src/sample.py",),
-            ),
-            _vector_probe(status="healthy"),
-        ]
+    probe = _vector_probe(
+        status="stale",
+        stale_reason="indexable git drift paths: src/sample.py",
+        stale_reason_class="git-path-drift",
+        stale_drift_paths=("src/sample.py",),
     )
-    calls: list[tuple[list[str], dict[str, str]]] = []
+    calls: list[list[str]] = []
 
-    monkeypatch.setattr(read_code_health, "vector_index_probe", lambda project_root=None: next(probes))
+    monkeypatch.setattr(read_code_health, "vector_index_probe", lambda project_root=None: probe)
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
 
-    def fake_run(cmd, **kwargs):
-        calls.append((cmd, kwargs.get("env", {})))
-        return _completed(0, stdout='{"entry_count": 1}')
+    def fake_popen(cmd, **kwargs):
+        calls.append(cmd)
+        return object()
 
-    monkeypatch.setattr(read_code_health.subprocess, "run", fake_run)
+    monkeypatch.setattr(read_code_health.subprocess, "Popen", fake_popen)
 
     result = read_code_health.vector_refresh_if_needed(target, verbose=True)
     captured = capsys.readouterr()
@@ -331,6 +321,7 @@ def test_vector_refresh_if_needed_verbose_emits_detailed_stale_message(
     assert "cause=git-path-drift" in captured.err
     assert "detail=indexable git drift paths: src/sample.py" in captured.err
     assert "drift_paths=['src/sample.py']" in captured.err
+    assert "launching async scoped refresh" in captured.err
 
 
 def test_vector_refresh_if_needed_skips_background_refresh_when_scope_is_unaffected(
@@ -363,21 +354,21 @@ def test_vector_refresh_if_needed_skips_background_refresh_when_scope_is_unaffec
     captured = capsys.readouterr()
 
     assert result is True
-    assert len(calls) == 1
+    assert len(calls) == 0
     assert "overlap=no" in captured.err
-    assert "proceeding without blocking refresh" in captured.err
+    assert "skipping scoped refresh" in captured.err
     assert "cause=git-path-drift" not in captured.err
 
 
-def test_vector_refresh_if_needed_nonoverlap_never_launches_background_refresh(monkeypatch, tmp_path: Path) -> None:
+def test_vector_refresh_if_needed_debounces_overlapping_background_refresh(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         read_code_health,
         "vector_index_probe",
         lambda project_root=None: _vector_probe(
             status="stale",
-            stale_reason="indexable git drift paths: docs/guide.md",
+            stale_reason="indexable git drift paths: src/sample.py",
             stale_reason_class="git-path-drift",
-            stale_drift_paths=("docs/guide.md",),
+            stale_drift_paths=("src/sample.py",),
         ),
     )
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
@@ -397,31 +388,23 @@ def test_vector_refresh_if_needed_nonoverlap_never_launches_background_refresh(m
     assert len(calls) == 1  # first call launches refresh; second call blocked by debounce
 
 
-def test_vector_refresh_if_needed_proceeds_when_post_refresh_stale_is_out_of_scope(
+def test_vector_refresh_if_needed_launches_when_overlap_is_unknown(
     monkeypatch,
     tmp_path: Path,
     capsys,
 ) -> None:
-    probes = iter(
-        [
-            _vector_probe(
-                status="stale",
-                stale_reason="indexable git drift paths: src/sample.py",
-                stale_reason_class="git-path-drift",
-                stale_drift_paths=("src/sample.py",),
-            ),
-            _vector_probe(
-                status="stale",
-                stale_reason="indexable git drift paths: docs/guide.md",
-                stale_reason_class="git-path-drift",
-                stale_drift_paths=("docs/guide.md",),
-            ),
-        ]
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(
+            status="stale",
+            stale_reason="indexable git drift paths: unknown",
+            stale_reason_class="coverage-gap",
+            stale_drift_paths=(),
+        ),
     )
-    monkeypatch.setattr(read_code_health, "vector_index_probe", lambda project_root=None: next(probes))
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
-    monkeypatch.setattr(read_code_health.subprocess, "run", lambda *args, **kwargs: _completed(0))
 
     background_calls: list[list[str]] = []
 
@@ -435,8 +418,9 @@ def test_vector_refresh_if_needed_proceeds_when_post_refresh_stale_is_out_of_sco
     captured = capsys.readouterr()
 
     assert result is True
-    assert background_calls
-    assert "remains stale after scoped refresh" in captured.err
+    assert len(background_calls) == 1
+    assert "overlap=unknown" in captured.err
+    assert "launching async scoped refresh" in captured.err
 
 
 def test_codegraph_health_status_reports_unavailable_without_uv(monkeypatch) -> None:
@@ -611,13 +595,8 @@ def test_codegraph_current_edit_signature_ignores_codegraphcontext_on_leading_sp
 
 
 def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkeypatch, tmp_path: Path) -> None:
-    probes = iter(
-        [
-            read_code_health._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command=""),
-            read_code_health._CodegraphHealthProbe(status="healthy", detail="ok", recovery_command=""),
-        ]
-    )
-    monkeypatch.setattr(read_code_health, "codegraph_health_probe", lambda project_root=None: next(probes))
+    probe = read_code_health._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command="")
+    monkeypatch.setattr(read_code_health, "codegraph_health_probe", lambda project_root=None: probe)
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: True)
 
@@ -628,11 +607,11 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
 
     calls: list[list[str]] = []
 
-    def fake_run(cmd, **kwargs):
+    def fake_popen(cmd, **kwargs):
         calls.append(cmd)
-        return _completed(0)
+        return object()
 
-    monkeypatch.setattr(read_code_health.subprocess, "run", fake_run)
+    monkeypatch.setattr(read_code_health.subprocess, "Popen", fake_popen)
 
     scope_path = tmp_path / "src"
     result = read_code.codegraph_refresh_if_needed(scope_path)
@@ -726,6 +705,7 @@ def test_codegraph_refresh_if_needed_fails_for_unavailable_status(monkeypatch, t
 def test_codegraph_refresh_if_needed_background_refreshes_when_scope_is_unaffected(
     monkeypatch,
     tmp_path: Path,
+    capsys,
 ) -> None:
     monkeypatch.setattr(
         read_code_health,
@@ -749,9 +729,12 @@ def test_codegraph_refresh_if_needed_background_refreshes_when_scope_is_unaffect
     monkeypatch.setattr(read_code_health.subprocess, "Popen", fake_popen)
 
     result = read_code.codegraph_refresh_if_needed(tmp_path / "src")
+    captured = capsys.readouterr()
 
     assert result is True
-    assert calls == [[str(fake_script), str(tmp_path / "src")]]
+    assert calls == []
+    assert "overlap=no" in captured.err
+    assert "skipping scoped refresh" in captured.err
 
 
 def test_codegraph_refresh_if_needed_background_refresh_logs_when_launch_fails(
@@ -764,7 +747,7 @@ def test_codegraph_refresh_if_needed_background_refresh_logs_when_launch_fails(
         "codegraph_health_probe",
         lambda project_root=None: read_code_health._CodegraphHealthProbe(status="stale", detail="dirty tree", recovery_command=""),
     )
-    monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: False)
+    monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: True)
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
     fake_script = tmp_path / "cgc_safe_index.py"

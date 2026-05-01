@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Health, preflight, and probe logic for read_code vector/codegraph dependencies."""
+"""Health, preflight, and probe logic for read_code vector/codegraph dependencies.
+
+Scoped stale refreshes are launched asynchronously so preflight only touches
+the overlapping drift paths instead of blocking on a full rebuild.
+"""
 
 from __future__ import annotations
 
@@ -251,6 +255,24 @@ def _should_launch_background_refresh(scope_path: Path, *, channel: str) -> bool
     state[key] = now
     state = {name: ts for name, ts in state.items() if now - ts <= max(debounce * 6, 60.0)}
     _persist_session_state(cache_path, state)
+    return True
+
+
+def _launch_scoped_refresh_background(scope_path: Path, *, channel: str, cmd: list[str]) -> bool:
+    """Launch a scoped refresh command in the background when debounce allows it."""
+    if not _should_launch_background_refresh(scope_path, channel=channel):
+        return False
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=_vector_command_env(),
+        )
+    except OSError as exc:
+        print(f"WARN: {channel} background refresh could not start: {exc}", file=sys.stderr)
+        return False
     return True
 
 
@@ -672,29 +694,18 @@ def codegraph_refresh_if_needed(scope_path: Path | None = None) -> bool:
     probe = codegraph_health_probe(REPO_ROOT)
     if probe.status == "healthy":
         return True
-    if probe.status == "stale" and not _scope_needs_codegraph_refresh(path):
+    if probe.status == "stale":
+        overlap = _scope_needs_codegraph_refresh(path)
         _emit_session_warning_once(
-            key=f"codegraph-stale-nonoverlap:{_scope_cache_key(path)}",
-            message=f"WARN: codegraph is stale; refreshing scoped index for {path}",
+            key=f"codegraph-stale:{_scope_cache_key(path)}:{overlap}",
+            message=(
+                f"WARN: codegraph is stale; launching async scoped refresh for {path}"
+                if overlap
+                else f"WARN: codegraph is stale; overlap=no; skipping scoped refresh for {path}"
+            ),
         )
-        safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
-        if safe_index.is_file() and os.access(safe_index, os.X_OK) and _should_launch_background_refresh(
-            path, channel="codegraph"
-        ):
-            try:
-                subprocess.Popen(
-                    [str(safe_index), str(path)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-            except OSError as exc:
-                print(f"WARN: codegraph background refresh could not start: {exc}", file=sys.stderr)
-        else:
-            print(
-                f"WARN: codegraph background refresh skipped: missing safe index script at {safe_index}",
-                file=sys.stderr,
-            )
+        if overlap:
+            _launch_codegraph_refresh_background(path)
         return True
 
     safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
@@ -901,32 +912,37 @@ def _vector_stale_warning_message(
         cause = probe.stale_reason_class or "none"
         detail = probe.stale_reason or "no stale reason provided"
         signal = probe.stale_signal_source or "git"
+        action = "launching async scoped refresh" if overlap is not False else "skipping scoped refresh"
         return (
             "WARN: vector index is stale; "
             f"cause={cause}; signal={signal}; overlap={overlap_label}; detail={detail}; "
-            f"drift_paths={list(probe.stale_drift_paths)}; "
-            f"refreshing targeted index for {path}"
+            f"drift_paths={list(probe.stale_drift_paths)}; {action} for {path}"
         )
     if overlap is False:
         return (
             "WARN: vector index is stale; "
-            f"overlap={overlap_label}; proceeding without blocking refresh; "
-            f"launching async scoped refresh for ({path})"
+            f"overlap={overlap_label}; skipping scoped refresh for {path}"
         )
-    return f"WARN: vector index is stale; overlap={overlap_label}; refreshing targeted index for {path}"
+    return f"WARN: vector index is stale; overlap={overlap_label}; launching async scoped refresh for {path}"
 
 
-def _vector_post_refresh_warning_message(path: Path, *, verbose: bool) -> str:
-    """Format the follow-up stale warning after a scoped refresh."""
-    if verbose:
-        return (
-            "WARN: vector index remains stale after scoped refresh, but stale drift does not overlap "
-            f"requested scope ({path}); proceeding and refreshing in background"
+def _launch_vector_refresh_background(scope_path: Path) -> bool:
+    """Launch a scoped vector refresh in the background for the requested scope."""
+    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(scope_path))
+    return _launch_scoped_refresh_background(scope_path, channel="vector", cmd=cmd)
+
+
+def _launch_codegraph_refresh_background(scope_path: Path) -> bool:
+    """Launch a scoped codegraph refresh in the background for the requested scope."""
+    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
+    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
+        print(
+            f"WARN: codegraph background refresh skipped: missing safe index script at {safe_index}",
+            file=sys.stderr,
         )
-    return (
-        "WARN: vector index remains stale after scoped refresh; overlap=no; "
-        f"proceeding and refreshing in background for ({path})"
-    )
+        return False
+    cmd = [str(safe_index), str(scope_path)]
+    return _launch_scoped_refresh_background(scope_path, channel="codegraph", cmd=cmd)
 
 
 def vector_refresh_if_needed(scope_path: Path | None = None, *, verbose: bool = False) -> bool:
@@ -951,67 +967,12 @@ def vector_refresh_if_needed(scope_path: Path | None = None, *, verbose: bool = 
         return False
 
     overlap = _scope_needs_vector_refresh(path, probe.stale_drift_paths)
-    cause = probe.stale_reason_class or "none"
-    if overlap is False:
-        _emit_session_warning_once(
-            key=f"vector-stale-nonoverlap:{_scope_cache_key(path)}:{cause}",
-            message=_vector_stale_warning_message(path, probe, overlap, verbose=verbose),
-        )
-        if _should_launch_background_refresh(path, channel="vector"):
-            followup_cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
-            try:
-                subprocess.Popen(
-                    followup_cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                    env=_vector_command_env(),
-                )
-            except OSError:
-                pass
-        return True
-
-    print(_vector_stale_warning_message(path, probe, overlap, verbose=verbose), file=sys.stderr)
-    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
-    proc = _run_command_capture(cmd, env=_vector_command_env())
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        if stderr:
-            _set_vector_runtime_note(f"index refresh failed: {stderr.splitlines()[0]}")
-        else:
-            _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
-        print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
-        return False
-
-    _invalidate_vector_probe_cache()
-    refreshed_probe = vector_index_probe(REPO_ROOT)
-    if refreshed_probe.status != "healthy":
-        refreshed_overlap = _scope_needs_vector_refresh(path, refreshed_probe.stale_drift_paths)
-        if refreshed_probe.status == "stale" and refreshed_overlap is False:
-            _emit_session_warning_once(
-                key=f"vector-post-refresh-stale-nonoverlap:{_scope_cache_key(path)}",
-                message=_vector_post_refresh_warning_message(path, verbose=verbose),
-            )
-            if _should_launch_background_refresh(path, channel="vector"):
-                followup_cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", str(path))
-                try:
-                    subprocess.Popen(
-                        followup_cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        start_new_session=True,
-                        env=_vector_command_env(),
-                    )
-                except OSError as exc:
-                    print(f"WARN: vector follow-up background refresh could not start: {exc}", file=sys.stderr)
-            return True
-
-        _set_vector_runtime_note(f"index status after refresh is {refreshed_probe.status}")
-        print(
-            f"ERROR: vector preflight failed after refresh: status is {refreshed_probe.status}",
-            file=sys.stderr,
-        )
-        return False
+    _emit_session_warning_once(
+        key=f"vector-stale:{_scope_cache_key(path)}:{probe.stale_reason_class or 'none'}:{overlap}",
+        message=_vector_stale_warning_message(path, probe, overlap, verbose=verbose),
+    )
+    if overlap is not False:
+        _launch_vector_refresh_background(path)
     return True
 
 
