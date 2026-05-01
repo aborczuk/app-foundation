@@ -12,26 +12,13 @@ from typing import Any, Sequence
 
 from spec_routing import load_spec_routing_contract
 
-CHECKBOX_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]")
 NEEDS_CLARIFICATION_RE = re.compile(r"\[NEEDS CLARIFICATION:\s*(?P<text>[^\]]+)\]")
 QUESTION_HEADER_RE = re.compile(r"^\s*##\s+Question\s+(?P<num>\d+)\s*:\s*(?P<title>.+?)\s*$")
-
-REQUIRED_CHECKLIST_HEADINGS = (
-    "## Content Quality",
-    "## Requirement Completeness",
-    "## Feature Readiness",
-)
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="subcommand", required=True)
-
-    checklist = sub.add_parser(
-        "checklist-status", help="Validate requirements checklist presence and completion."
-    )
-    checklist.add_argument("--feature-dir", required=True)
-    checklist.add_argument("--json", action="store_true")
 
     clarifications = sub.add_parser(
         "extract-clarifications", help="Extract [NEEDS CLARIFICATION: ...] markers from spec.md."
@@ -68,63 +55,6 @@ def _emit(payload: dict[str, Any], as_json: bool) -> None:
     print(f"ok={payload.get('ok')} mode={payload.get('mode')}")
     for reason in payload.get("reasons", []):
         print(f"- {reason}")
-
-
-def _checklist_status(feature_dir: Path) -> tuple[int, dict[str, Any]]:
-    checklists_dir = feature_dir / "checklists"
-    requirements = checklists_dir / "requirements.md"
-    reasons: list[str] = []
-    entries: list[dict[str, Any]] = []
-    incomplete_total = 0
-
-    if not checklists_dir.is_dir():
-        reasons.append("missing_checklists_dir")
-    if not requirements.exists():
-        reasons.append("missing_requirements_checklist")
-
-    for checklist in sorted(checklists_dir.glob("*.md")) if checklists_dir.is_dir() else []:
-        total = 0
-        completed = 0
-        incomplete = 0
-        for line in checklist.read_text(encoding="utf-8").splitlines():
-            match = CHECKBOX_RE.match(line)
-            if not match:
-                continue
-            total += 1
-            if match.group("state").lower() == "x":
-                completed += 1
-            else:
-                incomplete += 1
-        incomplete_total += incomplete
-        entries.append(
-            {
-                "name": checklist.name,
-                "path": str(checklist),
-                "total": total,
-                "completed": completed,
-                "incomplete": incomplete,
-                "status": "PASS" if incomplete == 0 else "FAIL",
-            }
-        )
-
-    if requirements.exists():
-        requirements_text = requirements.read_text(encoding="utf-8")
-        for heading in REQUIRED_CHECKLIST_HEADINGS:
-            if heading not in requirements_text:
-                reasons.append(f"requirements_missing_heading:{heading}")
-    if incomplete_total > 0:
-        reasons.append("incomplete_checklist_items")
-
-    payload = {
-        "mode": "checklist_status",
-        "feature_dir": str(feature_dir),
-        "requirements_path": str(requirements),
-        "entries": entries,
-        "incomplete_total": incomplete_total,
-        "reasons": reasons,
-        "ok": len(reasons) == 0,
-    }
-    return (0 if payload["ok"] else 2, payload)
 
 
 def _dedupe_keep_order(values: list[str]) -> list[str]:
@@ -290,7 +220,7 @@ def _realize_routing(spec_file: Path, feature_id: str) -> tuple[int, dict[str, A
                 sys.executable, "scripts/pipeline_ledger.py", "append",
                 "--feature-id", feature_id,
                 "--event", event,
-                "--details", f"Projected by realize-routing (plan_profile: skip)"
+                "--details", "Projected by realize-routing (plan_profile: skip)"
             ]
             if event == "plan_approved":
                 cmd.extend(["--feasibility-required", "false"])
@@ -314,9 +244,7 @@ def _realize_routing(spec_file: Path, feature_id: str) -> tuple[int, dict[str, A
 def main(argv: Sequence[str] | None = None) -> int:
     """Run selected /speckit.specify deterministic gate check."""
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    if args.subcommand == "checklist-status":
-        exit_code, payload = _checklist_status(Path(args.feature_dir).resolve())
-    elif args.subcommand == "extract-clarifications":
+    if args.subcommand == "extract-clarifications":
         exit_code, payload = _extract_clarifications(Path(args.spec_file).resolve())
     elif args.subcommand == "validate-clarification-questions":
         exit_code, payload = _validate_clarification_questions(

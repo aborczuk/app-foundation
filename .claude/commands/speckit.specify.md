@@ -26,7 +26,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    python3 scripts/specify_fastpath.py [--short-name "<name>"] "$ARGUMENTS"
    ```
 
-   This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds both `spec.md` and `checklists/requirements.md`.
+   This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
    It also calls `scripts/bootstrap_session.py` first, so the session warmup is centralized.
 5. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
 6. In update mode, resolve the current spec paths with:
@@ -58,7 +58,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    uv run --no-sync python3 scripts/speckit_spec_gate.py validate-routing --spec-file "$SPEC_FILE" --json
    ```
 
-2. Review the generated checklist and mark findings.
+2. Review the generated spec output and mark findings.
 3. If validation fails, update the spec and re-run the gate until it passes.
 
 ## Completion
@@ -67,13 +67,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 2. Report:
    - branch name
    - spec file path
-   - checklist status
    - size estimate
    - readiness for the next phase
 3. In update mode, explicitly state that the spec was updated in place and no new branch was created.
 
 ## Notes
 
-- The fast-path helper covers cache setup, discovery, and checklist scaffolding so those steps are not repeated manually.
+- The fast-path helper covers cache setup and discovery so those steps are not repeated manually.
 - `scripts/bootstrap_session.py` is the shared bootstrap entrypoint for UV cache setup and codegraph warmup.
 - Do not substitute a shortened helper-only flow for the actual spec writing and validation steps above.

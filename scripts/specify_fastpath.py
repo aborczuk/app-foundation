@@ -70,14 +70,6 @@ def _extract_terms(description: str) -> list[str]:
     return terms or ["feature"]
 
 
-def _titleize_short_name(short_name: str) -> str:
-    """Convert a branch-style slug into a checklist-friendly label."""
-    parts = [part for part in re.split(r"[-_/]+", short_name) if part]
-    if not parts:
-        return "Feature"
-    return " ".join(part.capitalize() for part in parts)
-
-
 def _run_uv_command(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """Run a repo command through uv with the repo-local cache enabled."""
     return subprocess.run(
@@ -138,21 +130,6 @@ def _create_feature(description: str, short_name: str, env: dict[str, str]) -> d
         raise RuntimeError(f"feature creation returned invalid JSON: {exc}") from exc
 
 
-def _scaffold_checklist(feature_dir: Path, feature_name: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Create the requirements checklist next to a new feature spec."""
-    return _run_uv_command(
-        [
-            "python3",
-            ".specify/scripts/pipeline-scaffold.py",
-            "speckit.specify",
-            "--feature-dir",
-            str(feature_dir),
-            f"FEATURE_NAME={feature_name}",
-        ],
-        env=env,
-    )
-
-
 def _render_discovery_result(result: dict[str, Any]) -> str:
     """Return a human-readable discovery block for a single search term."""
     lines = [f"- Term: {result['term']}"]
@@ -183,23 +160,15 @@ def main(argv: list[str]) -> int:
 
     feature = _create_feature(args.feature_description, args.short_name, env)
     feature_dir = Path(feature["SPEC_FILE"]).resolve().parent
-    feature_name = _titleize_short_name(args.short_name or feature["BRANCH_NAME"].split("-", 1)[-1])
-    checklist = _scaffold_checklist(feature_dir, feature_name, env)
 
     summary = {
         "BRANCH_NAME": feature["BRANCH_NAME"],
         "FEATURE_NUM": feature["FEATURE_NUM"],
         "FEATURE_DIR": str(feature_dir),
         "SPEC_FILE": feature["SPEC_FILE"],
-        "CHECKLIST_FILE": str(feature_dir / "checklists" / "requirements.md"),
         "DISCOVERY_TERMS": terms,
         "DISCOVERY": discovery,
-        "checklist_returncode": checklist.returncode,
     }
-
-    if checklist.returncode != 0:
-        message = (checklist.stderr or checklist.stdout or "checklist scaffolding failed").strip()
-        raise RuntimeError(message)
 
     if args.json:
         print(json.dumps(summary, separators=(",", ":")))
@@ -212,7 +181,6 @@ def main(argv: list[str]) -> int:
     print()
     print("Scaffolded")
     print(f"- spec: {summary['SPEC_FILE']}")
-    print(f"- checklist: {summary['CHECKLIST_FILE']}")
     print(f"- branch: {summary['BRANCH_NAME']}")
     return 0
 
