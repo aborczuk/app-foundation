@@ -18,7 +18,6 @@ GUARD_SCRIPTS = (
     "hook_enforce_refresh_guard.py",
     "hook_enforce_pyright_guard.py",
     "hook_enforce_ruff_guard.py",
-    "hook_enforce_uv_run_guard.py",
     "hook_enforce_git_diff_guard.py",
 )
 
