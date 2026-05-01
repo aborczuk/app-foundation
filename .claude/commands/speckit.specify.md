@@ -28,7 +28,6 @@ Given that feature description, do this:
    - If the remaining description is empty: ERROR "No feature description provided"
    - Use the current checkout only.
    - Do not create temp worktrees or alternate checkout paths.
-   - If the current checkout is dirty, stop and ask the user to commit, stash, or discard the changes first.
 
 2. **If in default mode, generate a concise short name** (2-4 words):
    - Extract the highest-signal keywords from the feature description.
@@ -40,18 +39,18 @@ Given that feature description, do this:
     a. Run (pass only `--json` and `--short-name`; never pass `--number`):
 
       ```bash
-      uv run --no-sync python .specify/scripts/python/create_new_feature.py --json --short-name "your-short-name" "Feature description"
+      uv run --no-sync python3 .specify/scripts/python/create_new_feature.py --json --short-name "your-short-name" "Feature description"
       ```
 
    b. Parse JSON output and treat it as authoritative for `BRANCH_NAME`, `FEATURE_DIR`, and `SPEC_FILE`.
    c. Run this script once per feature. For single quotes in args like "I'm Groot", escape as `'\''` or use double quotes.
-   d. Stay in the current `main` checkout; do not create a git branch, temp worktree, or spare checkout. If the checkout is dirty, abort and ask for commit/stash/discard before proceeding.
+   d. Stay in the current `main` checkout; do not create a git branch, temp worktree, or spare checkout.
 
 4. **If in update mode (`--update-current-spec`) resolve existing spec paths with the Python entrypoint**:
    - Run:
 
       ```bash
-      uv run --no-sync python .specify/scripts/python/check_prerequisites.py --json --paths-only
+      uv run --no-sync python3 .specify/scripts/python/check_prerequisites.py --json --paths-only
       ```
 
    - Parse `FEATURE_DIR` and `FEATURE_SPEC` from JSON output.
@@ -113,13 +112,13 @@ Given that feature description, do this:
 
    a. **Validate Routing Contract**:
 
-      1. Run: `uv run --no-sync python scripts/speckit_spec_gate.py validate-routing --spec-file "$SPEC_FILE" --json`
+      1. Run: `uv run --no-sync python3 scripts/speckit_spec_gate.py validate-routing --spec-file "$SPEC_FILE" --json`
          - Confirms the machine-readable `routing` + `risk` block exists
          - Parses the JSON block and rejects placeholder-only or incomplete routing values
 
    b. **Create Spec Quality Checklist**: Pre-scaffold the checklist file from the template:
 
-      1. Run: `uv run --no-sync python .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
+      1. Run: `uv run --no-sync python3 .specify/scripts/pipeline-scaffold.py speckit.specify --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
          - Reads `command-manifest.yaml` to resolve which artifacts speckit.specify owns
          - Copies `.specify/templates/requirements-checklist-template.md` to `$FEATURE_DIR/checklists/requirements.md`
          - Performs scalar substitutions: `[FEATURE_NAME]` → the feature name, `[DATE]` → today's date, etc.

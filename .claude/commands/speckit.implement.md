@@ -28,7 +28,7 @@ Execute implementation through deterministic HUD-gated preflight, task start, lo
    - `FEATURE_DIR`
    - `AVAILABLE_DOCS`
 3. Run gate status:
-   - `uv run --no-sync python scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`
+   - `uv run --no-sync python3 scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`
 4. Gate handling (required):
    - If `missing_task_hud`, stop and require at least one task HUD under `huds/`.
    - Map failures to `docs/governance/gate-reason-codes.yaml`.
@@ -46,13 +46,14 @@ If present, include:
 - `quickstart.md`
 
 Run setup verification:
-- `uv run --no-sync python scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json`
+- `uv run --no-sync python3 scripts/speckit_prepare_ignores.py --repo-root . --plan-file "$FEATURE_DIR/plan.md" --json`
 
 Treat non-zero as hard-block.
 
 Before task execution or handoff:
 - Ensure the implementation branch named after `FEATURE_DIR` is checked out or created from `main`.
 - Keep `specify` on `main`; branch creation belongs to the implement path, not the spec path.
+- If the current checkout is dirty, stop and ask the user to commit, stash, or discard the changes before branch checkout or task execution.
 
 ### 3. Task execution flow (required)
 
@@ -73,7 +74,7 @@ Before task execution or handoff:
 ### 4. Documentation step (runner-owned until fully centralized)
 
 Primary path (runner-owned, script-backed):
-- `uv run --no-sync python scripts/speckit_implement_docs.py --feature-dir "$FEATURE_DIR" --entry-id "<task-or-run-id>" --runbook-note "<note>" --decision-entry "<decision>" --json`
+- `uv run --no-sync python3 scripts/speckit_implement_docs.py --feature-dir "$FEATURE_DIR" --entry-id "<task-or-run-id>" --runbook-note "<note>" --decision-entry "<decision>" --json`
 
 The step runner invokes this helper after closeout; do not re-sequence these actions manually in the command doc.
 
