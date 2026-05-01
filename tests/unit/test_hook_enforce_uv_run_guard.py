@@ -28,7 +28,9 @@ def test_direct_uv_run_is_denied() -> None:
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "Direct uv run calls are denied" in decision["permissionDecisionReason"]
-    assert "uv_cache_dir.py" in decision["permissionDecisionReason"]
+    assert "UV_CACHE_DIR=$(python3 scripts/uv_cache_dir.py) uv run ..." in decision[
+        "permissionDecisionReason"
+    ]
 
 
 def test_absolute_uv_run_is_denied() -> None:
