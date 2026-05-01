@@ -52,10 +52,13 @@ from read_code_health import (
     _set_vector_runtime_note,
     _vector_command_env,
     _vector_indexer_cmd,
-    codegraph_refresh_if_needed,
+    codegraph_refresh_by_state,
     codegraph_supports_file,
     init_codegraph_env,
 )
+
+# Backwards-compatible alias for older callers and tests.
+codegraph_refresh_if_needed = codegraph_refresh_by_state
 
 SOURCE_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SOURCE_PATH.parent

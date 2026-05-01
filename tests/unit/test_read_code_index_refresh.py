@@ -514,7 +514,7 @@ def test_refresh_indexes_for_read_launches_async_codegraph_preflight_once_per_se
         "_launch_codegraph_preflight_background",
         lambda _path, _sid: launch_calls.__setitem__("count", launch_calls["count"] + 1) or True,
     )
-    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path, **kwargs: True)
+    monkeypatch.setattr(read_code_health, "vector_refresh_by_state", lambda _path, **kwargs: True)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
 
@@ -542,7 +542,7 @@ def test_refresh_indexes_for_read_uses_cached_unavailable_without_blocking(
         "_launch_codegraph_preflight_background",
         lambda _path, _sid: launch_calls.__setitem__("count", launch_calls["count"] + 1) or True,
     )
-    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path, **kwargs: True)
+    monkeypatch.setattr(read_code_health, "vector_refresh_by_state", lambda _path, **kwargs: True)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_DONE", False)
     monkeypatch.setattr(read_code_health, "_CODEGRAPH_SESSION_PROBE_AVAILABLE", True)
 
@@ -564,7 +564,7 @@ def test_refresh_indexes_for_read_uses_persisted_session_probe_cache(monkeypatch
     monkeypatch.setattr(read_code_health, "codegraph_supports_file", lambda _path: True)
     monkeypatch.setattr(read_code_health, "_load_codegraph_session_probe_cache", lambda _sid: True)
     monkeypatch.setattr(read_code_health, "_read_code_session_id", lambda: "unit-session")
-    monkeypatch.setattr(read_code_health, "vector_refresh_if_needed", lambda _path, **kwargs: True)
+    monkeypatch.setattr(read_code_health, "vector_refresh_by_state", lambda _path, **kwargs: True)
     monkeypatch.setattr(read_code_health, "_vector_command_env", lambda: {})
     monkeypatch.setattr(
         read_code_health.subprocess,
@@ -623,7 +623,7 @@ def test_codegraph_refresh_if_needed_runs_scoped_refresh_for_stale_status(monkey
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: True)
-    monkeypatch.setattr(read_code_health, "_codegraph_stale_refresh_paths", lambda scope_path, project_root=None: [tmp_path / "src"])
+    monkeypatch.setattr(read_code_health, "codegraph_scoped_refresh_paths", lambda scope_path, project_root=None: [tmp_path / "src"])
     monkeypatch.setattr(read_code_health, "codegraph_health_status", lambda project_root=None: "healthy")
 
     fake_script = tmp_path / "cgc_safe_index.py"
@@ -742,7 +742,7 @@ def test_codegraph_refresh_if_needed_background_refreshes_when_scope_is_unaffect
     )
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: False)
-    monkeypatch.setattr(read_code_health, "_codegraph_stale_refresh_paths", lambda scope_path, project_root=None: [tmp_path / "src"])
+    monkeypatch.setattr(read_code_health, "codegraph_scoped_refresh_paths", lambda scope_path, project_root=None: [tmp_path / "src"])
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
     fake_script = tmp_path / "cgc_safe_index.py"
@@ -781,7 +781,7 @@ def test_codegraph_refresh_if_needed_background_refresh_logs_when_launch_fails(
     )
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(read_code_health, "_scope_needs_codegraph_refresh", lambda scope_path: False)
-    monkeypatch.setattr(read_code_health, "_codegraph_stale_refresh_paths", lambda scope_path, project_root=None: [tmp_path / "src"])
+    monkeypatch.setattr(read_code_health, "codegraph_scoped_refresh_paths", lambda scope_path, project_root=None: [tmp_path / "src"])
     monkeypatch.setattr(read_code.os, "access", lambda path, mode: True)
 
     fake_script = tmp_path / "cgc_safe_index.py"
