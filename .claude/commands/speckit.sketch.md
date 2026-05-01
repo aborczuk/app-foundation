@@ -35,6 +35,7 @@ This phase owns `sketch.md` only. It is **design-only**.
 
 - Ground the sketch in the approved planning context and repo-discovery outputs.
 - If `spec.md` routes `plan_profile=skip`, ground the sketch directly in the spec routing contract and repo reality rather than waiting on a plan artifact.
+- Treat `command-manifest.yaml` and `.claude/commands/` as the authoritative command-location source for workflow behavior.
 - Scaffold and complete `sketch.md` for the feature without changing the artifact shape.
 - Capture the implementation surfaces, reuse seams, symbol boundaries, and blast radius needed for downstream tasking.
 - Hand off the completed sketch to `/speckit.solutionreview` through the manifest-declared completion event.
@@ -45,11 +46,11 @@ Sketch must be grounded in the actual repository, not inferred from plan text al
 
 Use this discovery order:
 
-1. Use the project’s bounded read helpers for direct inspection:
-   - use `scripts/read_code.py` for code files
-   - use `scripts/read_markdown.py` for markdown artifacts
-
-2. Use **CodeGraphContext** first to identify the relevant modules, symbols, callers, callees, import relationships, and likely touched surfaces.
+1. Use `scripts/read_code.py context` as the default lookup mode for code, command docs, Markdown artifacts, symbols, strings, and the best matching seam.
+2. `context` can resolve Markdown too. When you already know the document, use `read_markdown_headings` first, then `read_markdown_section` with the exact heading title to keep the read bounded.
+3. Use `find` only for exact structural matches or to enumerate known symbols, patterns, or text.
+4. Use `analyze` after a candidate is identified and you need callers, callees, imports, or structural context.
+5. Treat `command-manifest.yaml` and `.claude/commands/` as the authoritative locations for command behavior, routing, and workflow ownership.
 
 Do not determine touched files, touched symbols, or blast radius from intuition alone.
 

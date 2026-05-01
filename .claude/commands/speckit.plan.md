@@ -63,11 +63,11 @@ Read:
 ### 1a. Read hierarchy enforcement (MANDATORY)
 
 For any repo code/doc claim included in `plan.md`:
-- Start with helper-driven exact reads:
-  - `read_code_context` / `read_code_window` for code
-  - `read_markdown_section` for docs
-- These helpers are semantic-first internally and return bounded, anchored reads.
-- Run discovery checks (`codegraph`) only after the exact seam is confirmed.
+- Start with `scripts/read_code.py context` as the default lookup mode for natural-language descriptions, symbols, strings, Markdown artifacts, or the best matching seam.
+- `context` can resolve Markdown too. When you already know the document, use `read_markdown_headings` first, then `read_markdown_section` with the exact heading title to keep the read bounded.
+- Use `find` only when you need exact structural matches or to enumerate known symbols, patterns, or text.
+- Use `analyze` after a candidate is identified and you need callers, callees, dependencies, or structural context.
+- Treat `command-manifest.yaml` and `.claude/commands/` as the authoritative locations for command behavior, routing, and workflow ownership.
 
 This order is required for architecture decisions, risk reasoning, and any blast-radius statement.
 

@@ -84,14 +84,13 @@ Primary tools:
 - `scripts/read_code.py` — unified reader for Python, shell, YAML, Markdown, and code-like files. It exposes both structural search and semantic context lookup.
 - `codebase-lsp` — type inference and diagnostics for Python files.
 
-For Markdown files, use `read_markdown_headings` first, then `read_markdown_section` with the exact heading title you want to inspect.
 
 ### Code Reading Workflow
 
 Read code by intent, not by guessing file windows.
 
 1. **Start with `context` **
-   - Use `uv run python scripts/read_code.py context` for natural-language queries, symbols, strings, or the best matching seam.
+   - Use `uv run python scripts/read_code.py context` for EVERYTHING. natural-language queries, symbols, strings, markdown, or the best matching seam. It will get you to some starting confidence to explore from.
 
 
    Examples:
@@ -119,9 +118,9 @@ Read code by intent, not by guessing file windows.
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body
    ```
 
-4. **Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
+4. **For code symbols, Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
 
-   Once `find` or `context` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
+   Once `context` or `find` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
 
    ```bash
    uv run python scripts/read_code.py analyze callers "_resolve_pattern_anchor"      # Find all functions that call this
@@ -181,31 +180,12 @@ uv run python scripts/read_code.py find content "semantic search"
 - `overrides <method>` — find all implementations of a method across classes
 - `variable <name>` — analyze where a variable is defined and used
 
-### 2. Materialize: `task --add`
+7. **After using context to get a seam, for Markdown symbols, use this dig workflow:**
 
-For ad-hoc tasks or inner-loop tasking, use the task materializer to generate HUDs and update the backlog:
-
-```bash
-uv run python scripts/edit_code.py task --add "Implement behavior X — src/file.py:symbol" --feature-id 023
-```
-
-This command:
-- Appends the task to `tasks.md` (initializes it from template if missing)
-- Materializes the Task HUD (Acceptance Criteria, File:Symbol) via `speckit_remake_huds.py`
-
-### 3. Implement: `sync`
-
-Examples:
-```bash
-uv run python scripts/read_code.py analyze callers "_resolve_pattern_anchor"
-uv run python scripts/read_code.py analyze calls "read_code_context"
-uv run python scripts/read_code.py analyze dead-code
-```
-
-7. **For Markdown files, use the integrated workflow:**
-
-   - Use `headings` to discover structure: `uv run python scripts/read_code.py headings <file>` — lists headings with line numbers.
    - Use `window` or `context` for bounded reads: `uv run python scripts/read_code.py window <file> 1 100` — reads lines.
+
+   - Use `headings` if you truly need discover structure: `uv run python scripts/read_code.py headings <file>` — lists headings with line numbers. Use sparingly because it can be extra tokens
+   
    - This keeps markdown reads bounded and intent-driven, just like code reads.
 
 8. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
