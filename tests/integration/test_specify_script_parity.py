@@ -359,7 +359,7 @@ def test_setup_plan_branch_validation_parity(tmp_path: Path) -> None:
     assert "feature" in _normalize_text(shell_result.stderr, shell_repo).lower()
 
 
-def test_create_new_feature_blocks_dirty_main_parity(tmp_path: Path) -> None:
+def test_create_new_feature_allows_dirty_main_parity(tmp_path: Path) -> None:
     shell_repo = _bootstrap_create_feature_workspace(tmp_path / "shell")
     python_repo = _bootstrap_create_feature_workspace(tmp_path / "python")
 
@@ -388,8 +388,11 @@ def test_create_new_feature_blocks_dirty_main_parity(tmp_path: Path) -> None:
     )
 
     _assert_parity(shell_result, shell_repo, python_result, python_repo)
-    assert shell_result.returncode == 1
-    assert "Local 'main' has uncommitted changes." in _normalize_text(shell_result.stderr, shell_repo)
+    assert shell_result.returncode == 0
+    shell_payload = json.loads(_normalize_text(shell_result.stdout, shell_repo))
+    python_payload = json.loads(_normalize_text(python_result.stdout, python_repo))
+    assert Path(shell_payload["SPEC_FILE"].replace("<REPO_ROOT>", str(shell_repo))).is_file()
+    assert Path(python_payload["SPEC_FILE"].replace("<REPO_ROOT>", str(python_repo))).is_file()
 
 
 def test_create_new_feature_blocks_dirty_non_main_before_switch_parity(tmp_path: Path) -> None:

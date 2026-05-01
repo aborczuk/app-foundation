@@ -44,12 +44,10 @@ STOP_WORDS = {
 
 
 def _build_uv_env() -> dict[str, str]:
-    """Return the bootstrap-enriched environment for repo workflows."""
-    from bootstrap_session import bootstrap_session
+    """Return the repo-local environment for spec workflows."""
+    from uv_env import repo_uv_env
 
-    summary = bootstrap_session(REPO_ROOT)
-    if not summary["bootstrap_ok"]:
-        raise RuntimeError(summary["codegraph_detail"] or "session bootstrap failed")
+    os.environ.update(repo_uv_env())
     return os.environ.copy()
 
 

@@ -111,12 +111,6 @@ def _resolve_base_ref(requested: str, repo_root: Path) -> str | None:
     return None
 
 
-def _working_tree_dirty(repo_root: Path) -> bool:
-    """Return True when tracked or untracked changes are present."""
-    status = _run_git(["status", "--porcelain"], repo_root, check=False)
-    return bool(status.stdout.strip())
-
-
 def _count_rev_list(repo_root: Path, range_expr: str) -> int:
     """Return commit count for a rev-list range expression."""
     result = _run_git(["rev-list", "--count", range_expr], repo_root, check=False)
@@ -128,7 +122,7 @@ def _count_rev_list(repo_root: Path, range_expr: str) -> int:
 
 
 def _ensure_main_branch_ready(repo_root: Path, base_ref: str) -> int:
-    """Enforce clean main before spec scaffolding."""
+    """Enforce that spec scaffolding starts from main."""
     has_main = _run_git(["rev-parse", "--verify", "--quiet", "main^{commit}"], repo_root, check=False)
     if has_main.returncode != 0:
         print("Error: Local 'main' branch is required for deterministic /speckit.specify spec scaffolding.", file=sys.stderr)
@@ -139,11 +133,6 @@ def _ensure_main_branch_ready(repo_root: Path, base_ref: str) -> int:
     if current_branch != "main":
         print(f"Error: /speckit.specify must run from main, not '{current_branch}'.", file=sys.stderr)
         print("Switch to main first, then rerun /speckit.specify.", file=sys.stderr)
-        return 1
-
-    if _working_tree_dirty(repo_root):
-        print("Error: Local 'main' has uncommitted changes.", file=sys.stderr)
-        print("Commit/stash/discard them, then rerun /speckit.specify.", file=sys.stderr)
         return 1
 
     return 0

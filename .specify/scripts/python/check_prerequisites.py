@@ -15,11 +15,6 @@ from common import (
     has_git,
 )
 
-REPO_ROOT = get_repo_root(Path(__file__))
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-from bootstrap_session import bootstrap_session  # noqa: E402
-
 
 def _help_text() -> str:
     """Return the CLI help text for the prerequisite checker."""
@@ -105,9 +100,6 @@ def _check_dir(path: Path, label: str) -> str:
 def main(argv: list[str]) -> int:
     """CLI entrypoint for the check-prerequisites workflow."""
     json_mode, require_tasks, include_tasks, paths_only = _parse_args(argv)
-    bootstrap_summary = bootstrap_session(REPO_ROOT)
-    if not bootstrap_summary["bootstrap_ok"]:
-        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
     script_path = Path(__file__)
     paths = _get_feature_paths(script_path)
 

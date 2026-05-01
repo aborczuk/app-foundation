@@ -27,7 +27,6 @@ You **MUST** consider the user input before proceeding (if not empty).
    ```
 
    This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
-   It also calls `scripts/bootstrap_session.py` first, so the session warmup is centralized.
 5. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
 6. In update mode, resolve the current spec paths with:
 
@@ -74,5 +73,5 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Notes
 
 - The fast-path helper covers cache setup and discovery so those steps are not repeated manually.
-- `scripts/bootstrap_session.py` is the shared bootstrap entrypoint for UV cache setup and codegraph warmup.
+- `scripts/bootstrap_session.py` is the shared bootstrap entrypoint for implement-side UV cache setup and codegraph warmup.
 - Do not substitute a shortened helper-only flow for the actual spec writing and validation steps above.
