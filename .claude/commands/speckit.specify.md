@@ -28,7 +28,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
 5. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
-6. In update mode, resolve the current spec paths with:
+6. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
+7. In update mode, resolve the current spec paths with:
 
    ```bash
    uv run --no-sync python3 .specify/scripts/python/check_prerequisites.py --json --paths-only
@@ -67,7 +68,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - branch name
    - spec file path
    - size estimate
-   - readiness for the next phase
+   - readiness for the next phase, only after the spec content is fully populated and the routing contract validates
 3. In update mode, explicitly state that the spec was updated in place and no new branch was created.
 
 ## Notes
