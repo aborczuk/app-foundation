@@ -17,25 +17,24 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Fast Path
 
-1. Parse the user description from `$ARGUMENTS`.
-2. If the description is empty, error with `No feature description provided`.
-3. If the description starts with `--update-current-spec`, treat it as update mode and strip the flag before continuing.
-4. In default mode, run:
+1. In default mode, run:
 
    ```bash
    python3 scripts/specify_fastpath.py [--short-name "<name>"] "$ARGUMENTS"
    ```
 
    This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
-5. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
-6. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
-7. In update mode, resolve the current spec paths with:
+2. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
+3. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
+4. In update mode, resolve the current spec paths with:
 
    ```bash
    uv run --no-sync python3 .specify/scripts/python/check_prerequisites.py --json --paths-only
    ```
 
    Then update the existing `spec.md` in place.
+5. If the description is empty, error with `No feature description provided`.
+6. If the description starts with `--update-current-spec`, treat it as update mode and strip the flag before continuing.
 
 ## Spec Writing
 
