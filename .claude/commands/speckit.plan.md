@@ -89,7 +89,6 @@ Keep the generated artifacts table-driven and compact:
 
 - The pipeline driver already owns phase transitions and event sequencing.
 - This command only fills the artifacts and uses the existing handoff flow.
-- Do not spawn sub-agents for plan generation.
 - Do not invent a second orchestration layer in shell snippets.
 - Do not append JSONL ledger files directly; use `scripts/pipeline_ledger.py`.
 - Do not use invented CLI flags; the scaffold command only accepts the manifest-defined artifact flow.

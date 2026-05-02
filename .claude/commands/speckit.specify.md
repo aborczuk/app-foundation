@@ -17,16 +17,17 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Fast Path
 
-1. In default mode, run:
+1. Run the fast-path helper first:
 
    ```bash
    python3 scripts/specify_fastpath.py [--short-name "<name>"] "$ARGUMENTS"
    ```
 
    This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
-2. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
-3. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
-4. In update mode, resolve the current spec paths with:
+2. Use the helper's discovery output and scaffold as the input for the spec-writing pass.
+3. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
+4. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
+5. In update mode, resolve the current spec paths with:
 
    ```bash
    uv run --no-sync python3 .specify/scripts/python/check_prerequisites.py --json --paths-only

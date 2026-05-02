@@ -11,8 +11,9 @@ Use this skill as the Codex-native entrypoint for the repo's `speckit.specify` w
 
 ## Dispatch
 
-1. Load `.claude/commands/speckit.specify.md`.
-2. Execute that command doc exactly.
+1. Run `python3 scripts/specify_fastpath.py [--short-name "<name>"] "$ARGUMENTS"`.
+2. Load `.claude/commands/speckit.specify.md`.
+3. Execute that command doc exactly.
 
 ## Notes
 
