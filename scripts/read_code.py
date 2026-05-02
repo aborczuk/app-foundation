@@ -127,7 +127,7 @@ class _WindowArgs:
 
     file_path: Path
     start_line: int
-    line_count: int
+    end_line: int
     pattern: str
     use_hud_fast_path: bool
     allow_fallback: bool
@@ -699,6 +699,14 @@ def _validate_file_and_positive_int(
     return file_path, int(value_raw, 10)
 
 
+def _validate_positive_int(value_raw: str, *, value_label: str) -> int | None:
+    """Validate a standalone positive integer argument."""
+    if not value_raw.isdigit() or int(value_raw, 10) <= 0:
+        print(f"ERROR: {value_label} must be a positive integer: {value_raw}", file=sys.stderr)
+        return None
+    return int(value_raw, 10)
+
+
 def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
     """Parse and validate read_code_context arguments."""
     if len(argv) < 1:
@@ -812,19 +820,18 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
 
 def _parse_window_args(argv: list[str]) -> _WindowArgs | None:
     """Parse and validate read_code_window arguments."""
-    if len(argv) < 2:
+    if len(argv) < 3:
         print(
-            "ERROR: read_code_window requires: <file_path> <start_line> [line_count]",
+            "ERROR: read_code_window requires: <file_path> <start_line> <end_line>",
             file=sys.stderr,
         )
         return None
 
     file_arg = argv[0]
     start_line_raw = argv[1]
-    extra = argv[2:]
+    end_line_raw = argv[2]
+    extra = argv[3:]
 
-    line_count = READ_CODE_DEFAULT_WINDOW_LINES
-    line_count_set = False
     pattern = ""
     hud_flag = False
     allow_fallback = False
@@ -834,9 +841,6 @@ def _parse_window_args(argv: list[str]) -> _WindowArgs | None:
             hud_flag = True
         elif token == "--allow-fallback":
             allow_fallback = True
-        elif token.isdigit() and not line_count_set:
-            line_count = int(token, 10)
-            line_count_set = True
         elif not pattern:
             pattern = token
         else:
@@ -848,19 +852,26 @@ def _parse_window_args(argv: list[str]) -> _WindowArgs | None:
         return None
     file_path, start_line = validated
 
-    line_count_raw = str(line_count)
-    if not line_count_raw.isdigit() or int(line_count_raw, 10) <= 0:
-        print(f"ERROR: line_count must be a positive integer: {line_count}", file=sys.stderr)
+    end_line = _validate_positive_int(end_line_raw, value_label="end_line")
+    if end_line is None:
         return None
-    line_count_value = int(line_count_raw, 10)
-    if line_count_value > READ_CODE_MAX_LINES:
-        print(f"ERROR: line_count exceeds max ({READ_CODE_MAX_LINES}): {line_count_value}", file=sys.stderr)
+
+    if end_line < start_line:
+        print(
+            f"ERROR: end_line must be greater than or equal to start_line: {end_line} < {start_line}",
+            file=sys.stderr,
+        )
+        return None
+
+    window_lines = end_line - start_line + 1
+    if window_lines > READ_CODE_MAX_LINES:
+        print(f"ERROR: window exceeds max ({READ_CODE_MAX_LINES}) lines: {window_lines}", file=sys.stderr)
         return None
 
     return _WindowArgs(
         file_path=file_path,
         start_line=start_line,
-        line_count=line_count_value,
+        end_line=end_line,
         pattern=pattern,
         use_hud_fast_path=hud_flag,
         allow_fallback=allow_fallback,
@@ -966,8 +977,7 @@ def read_code_window(argv: list[str], *, verbose: bool = False) -> int:
             print(f"ERROR: No match found for '{parsed.pattern}'", file=sys.stderr)
             return 1
 
-    end_line = parsed.start_line + parsed.line_count - 1
-    _render_numbered_window(parsed.file_path, parsed.start_line, end_line)
+    _render_numbered_window(parsed.file_path, parsed.start_line, parsed.end_line)
     return 0
 
 
@@ -1021,7 +1031,7 @@ def _print_usage() -> None:
         "  read_code context <file_path> <symbol_or_pattern> [--inline-body] [...]"
     )
     print(
-        "  read_code window  <file_path> <start_line> [line_count]"
+        "  read_code window  <file_path> <start_line> <end_line>"
     )
     print(
         "  read_code headings <markdown_file>"
