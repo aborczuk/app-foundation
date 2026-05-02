@@ -10,8 +10,10 @@ metadata:
 Use this skill as the Codex-native entrypoint for the repo's `speckit.specify` workflow.
 
 ## Dispatch
-
+**IMMEDIATLY**:
 1. Run `python3 scripts/specify_fastpath.py [--short-name "<name>"] "$ARGUMENTS"`.
+
+Then,
 2. Load `.claude/commands/speckit.specify.md`.
 3. Execute that command doc exactly.
 

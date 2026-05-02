@@ -111,7 +111,6 @@ If bounded reads do not validate current behavior for a slice, write `BLOCKED: c
 
 - Do not generate `tasks.md`.
 - Do not generate HUDs, acceptance tests, or estimates.
-- Do not mutate production code.
 - Prefer repository-grounded reuse over speculative net-new design.
 - If codebase reality materially contradicts the plan, record the contradiction explicitly in `sketch.md`.
 - If a key design dependency cannot be validated from the repo or artifacts, surface it as a design gap instead of guessing.

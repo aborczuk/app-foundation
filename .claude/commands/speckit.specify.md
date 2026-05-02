@@ -25,7 +25,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
 2. Use the helper's discovery output and scaffold as the input for the spec-writing pass.
-3. If discovery reports matches, read the matched files before writing the spec. If it reports no matches, say so explicitly in the spec output.
+3. If discovery reports matches, read the matched context before writing the spec. If it reports no matches, say so explicitly in the spec output.
 4. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
 5. In update mode, resolve the current spec paths with:
 
@@ -70,7 +70,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - size estimate
    - the actual next phase from the pipeline driver
    - readiness for the next phase, only after the spec content is fully populated and the routing contract validates
-   - `Next phase: solution`
+   - `Next phase: <Insert Phase>`
 3. In update mode, explicitly state that the spec was updated in place and no new branch was created.
 
 ## Notes
