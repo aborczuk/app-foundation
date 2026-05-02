@@ -84,26 +84,28 @@ def _run_uv_command(args: list[str], *, env: dict[str, str]) -> subprocess.Compl
 
 
 def _run_discovery(terms: Iterable[str], env: dict[str, str]) -> list[dict[str, Any]]:
-    """Run codegraph discovery for each search term in parallel."""
+    """Run semantic code discovery for each search term in parallel."""
     term_list = list(terms)
     if not term_list:
         return []
 
     with ThreadPoolExecutor(max_workers=min(len(term_list), 5)) as pool:
         future_map = {
-            pool.submit(_run_uv_command, ["cgc", "find", "content", term], env=env): term
+            pool.submit(_run_uv_command, ["python3", "scripts/read_code.py", "context", term], env=env): term
             for term in term_list
         }
         results: list[dict[str, Any]] = []
         for future, term in future_map.items():
             proc = future.result()
+            stdout = proc.stdout or ""
+            stderr = proc.stderr or ""
             results.append(
                 {
                     "term": term,
                     "returncode": proc.returncode,
-                    "stdout": proc.stdout or "",
-                    "stderr": proc.stderr or "",
-                    "has_matches": "No content matches found" not in (proc.stdout or ""),
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "has_matches": proc.returncode == 0 and "ERROR: No match found" not in stdout + stderr,
                 }
             )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import scripts.specify_fastpath as fastpath
@@ -8,6 +9,23 @@ import scripts.specify_fastpath as fastpath
 def test_extract_terms_filters_generic_words() -> None:
     """Discovery terms should keep signal and skip generic filler words."""
     assert fastpath._extract_terms("Build a playable Tetris game in the app.") == ["tetris"]
+
+
+def test_run_discovery_uses_semantic_context_lookup(monkeypatch, tmp_path: Path) -> None:
+    """Discovery should call the semantic read helper, not a structural content search."""
+    calls: list[tuple[tuple[str, ...], dict[str, str]]] = []
+
+    def fake_run_uv_command(args: list[str], *, env: dict[str, str]):
+        calls.append((tuple(args), env))
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="file_path: /repo/item.py", stderr="")
+
+    monkeypatch.setattr(fastpath, "_run_uv_command", fake_run_uv_command)
+
+    results = fastpath._run_discovery(["tetris"], {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")})
+
+    assert len(calls) == 1
+    assert calls[0][0] == ("python3", "scripts/read_code.py", "context", "tetris")
+    assert results[0]["has_matches"] is True
 
 
 def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys) -> None:
