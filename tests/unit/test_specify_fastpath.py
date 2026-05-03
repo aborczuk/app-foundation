@@ -66,3 +66,11 @@ def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys
         f"discover:tetris:{tmp_path / '.uv-cache'}",
         f"create:tetris-game:{tmp_path / '.uv-cache'}",
     ]
+
+    discovery_path = tmp_path / "specs" / "028-tetris-game" / "discovery.md"
+    assert discovery_path.exists()
+    assert discovery_path.read_text(encoding="utf-8") == (
+        "# Discovery\n\n"
+        "- Term: tetris\n"
+        "  No content matches found for 'tetris'\n"
+    )

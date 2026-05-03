@@ -144,6 +144,18 @@ def _render_discovery_result(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _write_discovery_artifact(feature_dir: Path, discovery: list[dict[str, Any]]) -> Path:
+    """Write the captured discovery output into discovery.md for the feature."""
+    discovery_path = feature_dir / "discovery.md"
+    discovery_path.parent.mkdir(parents=True, exist_ok=True)
+    blocks = ["# Discovery", ""]
+    for result in discovery:
+        blocks.append(_render_discovery_result(result))
+        blocks.append("")
+    discovery_path.write_text("\n".join(blocks).rstrip() + "\n", encoding="utf-8")
+    return discovery_path
+
+
 def main(argv: list[str]) -> int:
     """Run the fast-path spec bootstrap for a new feature description."""
     parser = argparse.ArgumentParser(description="Fast-path bootstrap for speckit.specify")
@@ -163,12 +175,14 @@ def main(argv: list[str]) -> int:
 
     feature = _create_feature(args.feature_description, args.short_name, env)
     feature_dir = Path(feature["SPEC_FILE"]).resolve().parent
+    discovery_path = _write_discovery_artifact(feature_dir, discovery)
 
     summary = {
         "BRANCH_NAME": feature["BRANCH_NAME"],
         "FEATURE_NUM": feature["FEATURE_NUM"],
         "FEATURE_DIR": str(feature_dir),
         "SPEC_FILE": feature["SPEC_FILE"],
+        "DISCOVERY_FILE": str(discovery_path),
         "DISCOVERY_TERMS": terms,
         "DISCOVERY": discovery,
     }
@@ -184,6 +198,7 @@ def main(argv: list[str]) -> int:
     print()
     print("Scaffolded")
     print(f"- spec: {summary['SPEC_FILE']}")
+    print(f"- discovery: {summary['DISCOVERY_FILE']}")
     print(f"- branch: {summary['BRANCH_NAME']}")
     return 0
 

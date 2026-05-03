@@ -23,7 +23,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    python3 scripts/specify_fastpath.py [--short-name "<name>"] "$ARGUMENTS"
    ```
 
-   This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, and scaffolds `spec.md`.
+   This helper pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, writes `discovery.md`, and scaffolds `spec.md`.
 2. Use the helper's discovery output and scaffold as the input for the spec-writing pass.
 3. If discovery reports matches, read the matched context before writing the spec. If it reports no matches, say so explicitly in the spec output.
 4. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
