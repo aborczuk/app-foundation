@@ -50,6 +50,7 @@ packages = ["src/mcp_trello", "src/mcp_codebase", "src/clickup_control_plane", "
 [tool.ruff]
 line-length = 320
 exclude = [
+    ".speckit/acceptance-tests",
     ".specify/acceptance-tests",
     "specs/**/.speckit/acceptance-tests",
 ]

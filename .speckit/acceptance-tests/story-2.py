@@ -1,3 +1,5 @@
+"""Acceptance test scaffold for story 2."""
+
 from pathlib import Path
 
 
