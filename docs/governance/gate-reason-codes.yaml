@@ -9,7 +9,39 @@
 # - Enforced by parse_step_result and drill_down_failure functions
 
 version: "1.0.1"
-last_updated: "2026-04-23"
+last_updated: "2026-05-04"
+
+codes:
+  - code: artifact_not_created
+    gate: artifact_validation
+    remediation: "Re-run the producing step and ensure it writes the expected artifact before emitting success."
+  - code: invalid_feature_id
+    gate: invalid_input
+    remediation: "Reject the request and require a three-digit feature id."
+  - code: requested_phase_mismatch
+    gate: phase_drift
+    remediation: "Rerun the driver for the ledger-authoritative current phase."
+  - code: command_not_in_migration_scope
+    gate: command_not_driver_managed
+    remediation: "Keep the command on the legacy path until it is explicitly migrated."
+  - code: security_sensitive_migration
+    gate: approval_required
+    remediation: "Pause execution and wait for explicit human approval."
+  - code: fq_count_nonzero
+    gate: planreview_questions
+    remediation: "Resolve open feasibility questions before advancing the spec."
+  - code: feature_branch_stale
+    gate: implement_task_preflight
+    remediation: "Refresh the feature branch before continuing implementation."
+  - code: feature_not_found
+    gate: implement_execution
+    remediation: "Confirm the feature id exists and the spec scaffold was created."
+  - code: step_timeout
+    gate: standard_error_codes
+    remediation: "Check logs, then increase the timeout or optimize the step."
+  - code: invalid_exit_code
+    gate: standard_error_codes
+    remediation: "Inspect the step output and normalize the exit status contract."
 
 gates:
   artifact_validation:
