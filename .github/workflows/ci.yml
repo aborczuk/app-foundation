@@ -45,7 +45,7 @@ jobs:
             base_sha="${{ github.event.before }}"
           fi
 
-          changed_py_files="$(git diff --name-only "$base_sha" HEAD -- '*.py' | awk '!/^tests\\//')"
+          changed_py_files="$(git diff --name-only "$base_sha" HEAD -- '*.py' | grep -v '^tests/' || true)"
           if [ -z "$changed_py_files" ]; then
             echo "No Python files changed; skipping docstring validation."
             exit 0
