@@ -104,7 +104,6 @@ def main(argv: list[str]) -> int:
         print(_usage(), file=sys.stderr)
         return 1
 
-    repo_root = Path(__file__).resolve().parents[2]
     tmp_root = Path(tempfile.mkdtemp(prefix="specify-smoke-"))
     try:
         _write_spec_template(tmp_root)

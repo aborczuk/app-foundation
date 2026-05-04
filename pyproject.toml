@@ -49,6 +49,10 @@ packages = ["src/mcp_trello", "src/mcp_codebase", "src/clickup_control_plane", "
 
 [tool.ruff]
 line-length = 320
+exclude = [
+    ".specify/acceptance-tests",
+    "specs/**/.speckit/acceptance-tests",
+]
 
 [tool.ruff.lint]
 # D: pydocstyle — enforce docstrings on public functions, classes, and modules

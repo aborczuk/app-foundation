@@ -39,7 +39,6 @@ def extract_shell_scripts(
     source_text: str | None = None,
 ) -> list[CodeSymbol]:
     """Extract shell scripts as semantic chunks plus top-level blocks."""
-
     repo_root = Path(repo_root or Path.cwd()).expanduser().resolve()
     candidate = Path(file_path)
 

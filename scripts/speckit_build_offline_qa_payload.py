@@ -7,7 +7,6 @@ import argparse
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +176,7 @@ def _diff_summary(repo_root: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the offline QA payload builder CLI."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feature-id", required=True)
     parser.add_argument("--task-id", required=True)

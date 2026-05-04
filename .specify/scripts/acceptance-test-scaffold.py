@@ -14,7 +14,6 @@ import re
 import sys
 from pathlib import Path
 
-
 STORY_HEADER_RE = re.compile(
     r"^## Phase\s+\d+:\s+User Story\s+(?P<num>\d+)\s*-\s*(?P<title>.+?)\s*\(Priority:.*$",
     re.MULTILINE,
@@ -26,6 +25,7 @@ ACCEPTANCE_LINE_RE = re.compile(r"^\|\s*\d+\s*\|\s*(?P<given>.+?)\s*\|\s*(?P<whe
 
 
 def slugify(value: str) -> str:
+    """Return a filesystem-safe slug for a story title."""
     value = value.lower()
     value = re.sub(r"[^a-z0-9]+", "_", value)
     value = re.sub(r"_+", "_", value).strip("_")
@@ -33,6 +33,7 @@ def slugify(value: str) -> str:
 
 
 def extract_story_sections(tasks_text: str) -> list[dict[str, str]]:
+    """Extract per-story sections from a tasks.md document."""
     sections: list[dict[str, str]] = []
     matches = list(STORY_HEADER_RE.finditer(tasks_text))
     for idx, match in enumerate(matches):
@@ -57,6 +58,7 @@ def extract_story_sections(tasks_text: str) -> list[dict[str, str]]:
 
 
 def render_story_test(story: dict[str, str]) -> str:
+    """Render a red-first pytest scaffold for one story."""
     story_num = story["num"]
     title = story["title"]
     slug = slugify(title)
@@ -76,6 +78,7 @@ def test_story{story_num}_{slug}(tmp_path: Path) -> None:
 
 
 def main() -> int:
+    """Scaffold acceptance tests from tasks.md."""
     parser = argparse.ArgumentParser(description="Scaffold acceptance tests from tasks.md")
     parser.add_argument("--tasks-file", required=True, help="Path to tasks.md")
     parser.add_argument(

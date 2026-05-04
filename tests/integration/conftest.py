@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -87,4 +87,3 @@ def driver_flow_harness(tmp_path: Path):
         acquire=acquire,
         release=release,
     )
-

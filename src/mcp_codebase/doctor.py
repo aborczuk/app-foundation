@@ -5,13 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import sys
 from typing import Sequence
 
 from src.mcp_codebase.health import GraphHealthStatus, classify_graph_health
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for the graph-readiness doctor."""
     parser = argparse.ArgumentParser(description="Check local CodeGraph readiness")
     parser.add_argument(
         "--project-root",
@@ -30,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def render_human(result: dict[str, object]) -> str:
+    """Render a compact human-readable graph health summary."""
     recovery_hint = result.get("recovery_hint", {})
     hint_command = ""
     if isinstance(recovery_hint, dict):
@@ -46,6 +47,7 @@ def render_human(result: dict[str, object]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the graph-readiness doctor command."""
     parser = build_parser()
     args = parser.parse_args(argv)
 

@@ -86,7 +86,7 @@ def main(argv: list[str]) -> int:
         text=True,
     ).returncode != 0:
         print(f"ERROR: base ref not found: {base_ref}", file=sys.stderr)
-        print(f"Hint: pass an explicit ref, e.g. scripts/validate_constitution_sync.py main", file=sys.stderr)
+        print("Hint: pass an explicit ref, e.g. scripts/validate_constitution_sync.py main", file=sys.stderr)
         return 2
 
     if _run_command_script_coverage(repo_root) != 0:

@@ -14,14 +14,16 @@ Examples:
 """
 
 import argparse
-import sys
 import re
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
+
 import yaml
 
 
 def main():
+    """Scaffold output artifacts from manifest templates."""
     parser = argparse.ArgumentParser(
         description="Scaffold output artifacts from templates"
     )

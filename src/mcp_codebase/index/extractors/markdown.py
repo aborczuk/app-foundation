@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import re
 from pathlib import Path
@@ -22,7 +21,6 @@ def extract_markdown_sections(
     source_text: str | None = None,
 ) -> list[MarkdownSection]:
     """Extract normalized markdown sections with breadcrumbs and previews."""
-
     repo_root = Path(repo_root or Path.cwd()).expanduser().resolve()
     candidate = Path(file_path)
 
