@@ -8,13 +8,18 @@ import shutil
 import sys
 from pathlib import Path
 
-from common import (
+SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from bootstrap_session import bootstrap_session  # noqa: E402
+from common import (  # noqa: E402
     check_feature_branch,
     find_feature_dir_by_prefix,
     get_current_branch,
     get_repo_root,
 )
-from common import (
+from common import (  # noqa: E402
     has_git as common_has_git,
 )
 
@@ -45,6 +50,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     """CLI entrypoint for the setup-plan workflow."""
     args = _parse_args(argv)
+    bootstrap_session(Path(__file__).resolve().parents[3])
     if args.help_mode:
         print("Usage: setup_plan.py [--json]")
         print("  --json    Output results in JSON format")

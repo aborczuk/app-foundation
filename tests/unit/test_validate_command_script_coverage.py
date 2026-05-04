@@ -88,7 +88,8 @@ def test_speckit_specify_doc_uses_the_driver_next_phase_label() -> None:
 
     assert "Ready for Tasking" not in content
     assert "actual next phase from the pipeline driver" in content
-    assert "Next phase: solution" in content
+    assert "Next phase: <Insert Phase>" in content
+    assert "Next phase: solution" not in content
 
 
 def test_validate_command_script_coverage_reports_missing_required_reference(tmp_path: Path) -> None:

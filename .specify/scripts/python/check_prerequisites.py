@@ -7,7 +7,12 @@ import json
 import sys
 from pathlib import Path
 
-from common import (
+SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from bootstrap_session import bootstrap_session  # noqa: E402
+from common import (  # noqa: E402
     check_feature_branch,
     find_feature_dir_by_prefix,
     get_current_branch,
@@ -99,6 +104,7 @@ def _check_dir(path: Path, label: str) -> str:
 
 def main(argv: list[str]) -> int:
     """CLI entrypoint for the check-prerequisites workflow."""
+    bootstrap_session(Path(__file__).resolve().parents[3])
     json_mode, require_tasks, include_tasks, paths_only = _parse_args(argv)
     script_path = Path(__file__)
     paths = _get_feature_paths(script_path)

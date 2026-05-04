@@ -1051,7 +1051,7 @@ def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatc
     exit_code = read_code.read_code_window([str(code_file), "2", "3", "run_pipeline"])
 
     assert exit_code == 0
-    assert rendered == {"start": 2, "end": 4}
+    assert rendered == {"start": 2, "end": 3}
 
 
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:

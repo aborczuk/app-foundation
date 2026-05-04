@@ -184,7 +184,8 @@ uv run python scripts/read_code.py find content "semantic search"
 
    - Use `window` or `context` for bounded reads: `uv run python scripts/read_code.py window <file> 1 100` — reads lines.
 
-   - Use `headings` if you truly need discover structure: `uv run python scripts/read_code.py headings <file>` — lists headings with line numbers. Use sparingly because it can be extra tokens
+   - Use `read_markdown_headings` when you need markdown structure discovery: `uv run python scripts/read_markdown.py --headings <file>` — lists headings with line numbers.
+   - Use `read_markdown_section` when you need an exact heading title: `uv run python scripts/read_markdown.py <file> "<exact heading title>"` — reads one markdown section. Use sparingly because it can be extra tokens.
    
    - This keeps markdown reads bounded and intent-driven, just like code reads.
 
