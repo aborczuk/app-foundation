@@ -161,15 +161,18 @@ def test_load_driver_routes_normalizes_mode_and_emit_contracts(tmp_path: Path) -
 
 
 def test_actual_manifest_specify_uses_canonical_script_path() -> None:
-    """The specify route should advertise its single canonical scaffold entry script."""
+    """The specify route should advertise the deterministic step runner and owned artifacts."""
     repo_root = Path(__file__).resolve().parents[2]
     routes = contracts.load_driver_routes(repo_root / "command-manifest.yaml")
     specify_route = routes["speckit.specify"]
 
-    assert specify_route["mode"] == "generative"
-    assert specify_route["script_path"] == str(
-        (repo_root / ".specify" / "scripts" / "python" / "create_new_feature.py").resolve()
-    )
+    assert specify_route["mode"] == "deterministic"
+    assert specify_route["driver_managed"] is True
+    assert specify_route["script_path"] == str((repo_root / "scripts" / "speckit_specify_step.py").resolve())
+    assert specify_route["emits"] == ["backlog_registered"]
+    assert specify_route["artifacts"][0]["output_path"].endswith("spec.md")
+    assert specify_route["artifacts"][0]["scaffold_script"] == "speckit_specify_step.py"
+    assert specify_route["artifacts"][1]["output_path"].endswith("discovery.md")
 
 
 def test_load_driver_routes_rejects_unknown_driver_mode(tmp_path: Path) -> None:

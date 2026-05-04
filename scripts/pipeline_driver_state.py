@@ -451,6 +451,10 @@ def resolve_phase_state(
                 }
             )
 
+    if event_count == 0:
+        # Empty ledgers bootstrap new features into specify scaffolding first.
+        phase = "specify"
+
     if resolved_feature_dir is not None and last_event in REQUIRED_ARTIFACTS_BY_EVENT:
         for artifact_name in REQUIRED_ARTIFACTS_BY_EVENT[last_event]:
             artifact_path = resolved_feature_dir / artifact_name

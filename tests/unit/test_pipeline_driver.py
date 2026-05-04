@@ -1400,6 +1400,22 @@ def test_resolve_phase_state_reload_spec_routing_after_nonrouting_event(
     assert state["next_phase"] == "solution"
 
 
+def test_resolve_phase_state_bootstraps_empty_ledgers_into_specify(tmp_path: Path) -> None:
+    """Brand-new features with no ledger events should begin in specify."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    ledger_path.write_text("", encoding="utf-8")
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "032-make-tetris",
+        pipeline_state={"phase": "plan", "blocked": False},
+        ledger_path=ledger_path,
+    )
+
+    assert state["phase"] == "specify"
+    assert state["last_event"] is None
+    assert state["ledger_event_count"] == 0
+
+
 def test_resolve_phase_state_falls_back_to_numeric_prefix_for_slug(tmp_path: Path) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
@@ -1613,6 +1629,104 @@ def test_main_passes_context_to_implement_step(monkeypatch) -> None:
         "implement",
         "--correlation-id",
         "run-test:speckit.implement",
+    ]
+
+
+def test_main_passes_context_to_specify_step(monkeypatch) -> None:
+    """The driver should invoke the renamed specify step runner with the deterministic route."""
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "032-make-tetris",
+            "ledger_feature_id": "032",
+            "phase": "specify",
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "build_correlation_id",
+        lambda *args, **kwargs: "run-test:speckit.specify",
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "deterministic",
+            "command_id": "speckit.specify",
+            "route": {
+                "mode": "deterministic",
+                "script_path": "scripts/speckit_specify_step.py",
+                "timeout_seconds": 300,
+            },
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        lambda **kwargs: {"ok": True, "event": "backlog_registered"},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "realize_routing",
+        lambda *args, **kwargs: {
+            "ok": True,
+            "phase_state": {
+                "feature_id": "032-make-tetris",
+                "ledger_feature_id": "032",
+                "phase": "specify",
+                "next_phase": "plan",
+            },
+            "appended_events": [],
+        },
+    )
+
+    observed: dict[str, object] = {}
+
+    def _fake_run_step(command, *, timeout_seconds, correlation_id, **kwargs):  # noqa: ANN001
+        observed["command"] = list(command)
+        observed["timeout_seconds"] = timeout_seconds
+        observed["correlation_id"] = correlation_id
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "generated_artifact": {
+                "path": "specs/032-make-tetris/spec.md",
+                "completion_marker": "## Routing Contract",
+            },
+        }
+
+    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+
+    exit_code = pipeline_driver.main(["--feature-id", "032-make-tetris", "--phase", "specify"])
+
+    assert exit_code == 0
+    assert observed["timeout_seconds"] == 300
+    assert observed["correlation_id"] == "run-test:speckit.specify"
+    assert observed["command"] == [
+        "scripts/speckit_specify_step.py",
+        "--feature-id",
+        "032",
+        "--phase",
+        "specify",
+        "--correlation-id",
+        "run-test:speckit.specify",
     ]
 
 

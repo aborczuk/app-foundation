@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import sys
@@ -50,7 +51,7 @@ TEXT_EXTENSIONS = {
     ".env",
 }
 
-MAX_HELPER_LINES = 125
+MAX_HELPER_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
 
 
 def _emit_deny(reason: str) -> None:

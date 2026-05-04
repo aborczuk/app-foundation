@@ -1029,9 +1029,9 @@ def test_legacy_direct_phase_redirect_or_blocked(monkeypatch, capsys) -> None:
 
 
 def test_resolve_phase_state_skeleton(driver_flow_harness) -> None:
-    state = driver_flow_harness.resolve(feature_id="999", phase_hint="setup")
+    state = driver_flow_harness.resolve(feature_id="999", phase_hint="specify")
     assert state["feature_id"] == "999"
-    assert state["phase"] == "setup"
+    assert state["phase"] == "specify"
     assert state["blocked"] is False
 
 
@@ -1119,9 +1119,10 @@ commands:
   speckit.sketch:
     mode: legacy
   speckit.specify:
-    description: "generative migration path"
+    description: "deterministic migration path"
     driver:
-      mode: generative
+      mode: deterministic
+      script_path: scripts/speckit_specify_step.py
     emits:
       - event: backlog_registered
         required_fields: []
@@ -1144,24 +1145,26 @@ commands:
     assert routes["speckit.sketch"]["driver_managed"] is False
     assert routes["speckit.sketch"]["mode"] == "legacy"
 
-    # Generative command should preserve driver-managed routing contracts
+    # Deterministic command should preserve driver-managed routing contracts
     assert routes["speckit.specify"]["driver_managed"] is True
-    assert routes["speckit.specify"]["mode"] == "generative"
+    assert routes["speckit.specify"]["mode"] == "deterministic"
+    assert routes["speckit.specify"]["script_path"] == str((repo_root / "scripts" / "speckit_specify_step.py").resolve())
     assert routes["speckit.specify"]["emits"] == ["backlog_registered"]
 
     # Uncovered command should have legacy default
     assert routes["speckit.uncovered"]["driver_managed"] is False
 
-    # Resolve the generative route through the driver mapping seam
+    # Resolve the deterministic route through the driver mapping seam
     generative_mapping = pipeline_driver.resolve_step_mapping(
         "specify",
         manifest_path=repo_root / "command-manifest.yaml",
         correlation_id="run_20260410T120000Z_019:speckit.specify",
     )
-    assert generative_mapping["type"] == "generative"
+    assert generative_mapping["type"] == "deterministic"
     assert generative_mapping["command_id"] == "speckit.specify"
-    assert generative_mapping["handoff"]["step_name"] == "speckit.specify"
-    assert generative_mapping["handoff"]["correlation_id"] == "run_20260410T120000Z_019:speckit.specify"
+    assert generative_mapping["route"]["script_path"] == str(
+        (repo_root / "scripts" / "speckit_specify_step.py").resolve()
+    )
 
     # Test 2: Mixed mode coverage validation (NEW in Phase 5)
     # This function is called by gates to detect uncovered command mappings

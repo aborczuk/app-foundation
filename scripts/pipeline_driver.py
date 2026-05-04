@@ -1570,7 +1570,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             step_result = route_legacy_step(mapping, correlation_id=correlation_id)
         else:
             step_command = [str(script_path)]
-            if mapping.get("command_id") in {"speckit.implement", "speckit.solution"}:
+            if mapping.get("command_id") in {"speckit.implement", "speckit.solution", "speckit.specify"}:
                 step_command.extend(
                     [
                         "--feature-id",

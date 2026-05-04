@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
-import scripts.specify_fastpath as fastpath
+import scripts.speckit_specify_step as specify_step
+
+fastpath = specify_step
 
 
 def test_extract_terms_filters_generic_words() -> None:
@@ -32,8 +35,12 @@ def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys
     """The fast path should discover code before it creates the spec."""
     calls: list[str] = []
 
-    monkeypatch.setattr(fastpath, "_build_uv_env", lambda: {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")})
-    monkeypatch.setattr(fastpath, "_extract_terms", lambda _description: ["tetris"])
+    monkeypatch.setattr(
+        specify_step,
+        "_build_uv_env",
+        lambda: {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")},
+    )
+    monkeypatch.setattr(specify_step, "_extract_terms", lambda _description: ["tetris"])
 
     def _run_discovery(terms: list[str], env: dict[str, str]) -> list[dict[str, object]]:
         calls.append(f"discover:{terms[0]}:{env['UV_CACHE_DIR']}")
@@ -49,16 +56,33 @@ def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys
 
     def _create_feature(description: str, short_name: str, env: dict[str, str]) -> dict[str, str]:
         calls.append(f"create:{short_name}:{env['UV_CACHE_DIR']}")
+        feature_dir = tmp_path / "specs" / "028-tetris-game"
+        feature_dir.mkdir(parents=True, exist_ok=True)
+        (feature_dir / "spec.md").write_text(
+            "\n".join(
+                [
+                    "# Feature Specification: [FEATURE NAME]",
+                    "",
+                    "**Feature Branch**: `[###-feature-name]`",
+                    "**Created**: [DATE]",
+                    "**Status**: Draft",
+                    '**Input**: User description: "$ARGUMENTS"',
+                    "",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return {
             "BRANCH_NAME": "028-tetris-game",
             "FEATURE_NUM": "028",
-            "SPEC_FILE": str(tmp_path / "specs" / "028-tetris-game" / "spec.md"),
+            "SPEC_FILE": str(feature_dir / "spec.md"),
         }
 
-    monkeypatch.setattr(fastpath, "_run_discovery", _run_discovery)
-    monkeypatch.setattr(fastpath, "_create_feature", _create_feature)
+    monkeypatch.setattr(specify_step, "_run_discovery", _run_discovery)
+    monkeypatch.setattr(specify_step, "_create_feature", _create_feature)
 
-    exit_code = fastpath.main(["--short-name", "tetris-game", "Build a playable Tetris game in the app."])
+    exit_code = specify_step.main(["--short-name", "tetris-game", "Build a playable Tetris game in the app."])
     capsys.readouterr()
 
     assert exit_code == 0
@@ -69,8 +93,148 @@ def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys
 
     discovery_path = tmp_path / "specs" / "028-tetris-game" / "discovery.md"
     assert discovery_path.exists()
-    assert discovery_path.read_text(encoding="utf-8") == (
-        "# Discovery\n\n"
-        "- Term: tetris\n"
-        "  No content matches found for 'tetris'\n"
+    discovery_text = discovery_path.read_text(encoding="utf-8")
+    assert "# Discovery" in discovery_text
+    assert "- tetris" in discovery_text
+    assert "has_matches: false" in discovery_text
+    assert "No content matches found for 'tetris'" in discovery_text
+    assert '**Input**: User description: "Build a playable Tetris game in the app."' in (
+        tmp_path / "specs" / "028-tetris-game" / "spec.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_main_step_mode_retries_after_validation_failure(monkeypatch, tmp_path: Path, capsys) -> None:
+    """The deterministic specify loop should hand validation failures back to the runner."""
+    feature_dir = tmp_path / "specs" / "032-make-tetris"
+    feature_dir.mkdir(parents=True)
+    spec_file = feature_dir / "spec.md"
+    spec_file.write_text(
+        "\n".join(
+            [
+                "# Feature Specification: Tetris",
+                "",
+                "**Feature Branch**: `[032-make-tetris]`",
+                "**Created**: [DATE]",
+                "**Status**: Draft",
+                '**Input**: User description: "make tetris"',
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
     )
+    discovery_file = feature_dir / "discovery.md"
+    discovery_file.write_text("# Discovery\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        specify_step,
+        "_load_feature_paths",
+        lambda _env: {
+            "FEATURE_DIR": str(feature_dir),
+            "FEATURE_SPEC": str(spec_file),
+        },
+    )
+
+    calls: list[str] = []
+    handoff_results = [
+        {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.specify",
+            "next_phase": "research",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(spec_file),
+                "completion_marker": "## Routing Contract",
+            },
+        },
+        {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-test:speckit.specify",
+            "next_phase": "research",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(spec_file),
+                "completion_marker": "## Routing Contract",
+            },
+        },
+    ]
+    validation_results = [
+        {
+            "mode": "validate_routing",
+            "spec_file": str(spec_file),
+            "routing": None,
+            "risk": None,
+            "reasons": ["missing_routing_contract"],
+            "ok": False,
+            "process_exit_code": 2,
+            "stdout": "{}",
+            "stderr": "",
+        },
+        {
+            "mode": "validate_routing",
+            "spec_file": str(spec_file),
+            "routing": {
+                "research_route": "skip",
+                "plan_profile": "full",
+                "sketch_profile": "core",
+                "tasking_route": "required",
+                "estimate_route": "required_after_tasking",
+                "routing_reason": "good enough",
+                "conditional_sketch_sections": [],
+            },
+            "risk": {
+                "requirement_clarity": "low",
+                "repo_uncertainty": "low",
+                "external_dependency_uncertainty": "low",
+                "state_data_migration_risk": "low",
+                "runtime_side_effect_risk": "low",
+                "human_operator_dependency": "low",
+            },
+            "reasons": [],
+            "ok": True,
+            "process_exit_code": 0,
+            "stdout": "{}",
+            "stderr": "",
+        },
+    ]
+
+    def _run_handoff_round(**kwargs):  # noqa: ANN001
+        calls.append("handoff")
+        return handoff_results.pop(0)
+
+    def _validate_spec_routing(_spec_file: Path, _env: dict[str, str]):
+        calls.append("validate")
+        return validation_results.pop(0)
+
+    monkeypatch.setattr(specify_step, "_run_specify_handoff_round", _run_handoff_round)
+    monkeypatch.setattr(specify_step, "_validate_spec_routing", _validate_spec_routing)
+
+    exit_code = specify_step.main(
+        [
+            "--feature-id",
+            "032-make-tetris",
+            "--phase",
+            "specify",
+            "--correlation-id",
+            "run-test:speckit.specify",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out.strip())
+
+    assert exit_code == 0
+    assert calls == ["handoff", "validate", "handoff", "validate"]
+    assert payload["ok"] is True
+    assert payload["next_phase"] == "plan"
+    assert payload["generated_artifact"]["path"] == str(spec_file)
