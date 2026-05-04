@@ -13,6 +13,7 @@ import pytest
 
 
 def _load_script_module(module_name: str, script_name: str):
+    """Load a helper script module from the local scripts directory."""
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
     script_path = scripts_dir / script_name
     scripts_dir_str = str(scripts_dir)
@@ -40,6 +41,7 @@ def driver_flow_harness(tmp_path: Path):
     locks_dir = tmp_path / "locks"
 
     def make_event(event_name: str, timestamp_utc: str, **fields: Any) -> dict[str, Any]:
+        """Build a synthetic pipeline ledger event for the harness."""
         payload: dict[str, Any] = {
             "event": event_name,
             "feature_id": "019",
@@ -49,10 +51,12 @@ def driver_flow_harness(tmp_path: Path):
         return payload
 
     def seed_ledger(events: list[dict[str, Any]]) -> None:
+        """Write the harness ledger file with the provided events."""
         lines = [json.dumps(event, sort_keys=True) for event in events]
         ledger_path.write_text(("\n".join(lines) + "\n") if lines else "", encoding="utf-8")
 
     def resolve(feature_id: str = "019", phase_hint: str | None = None) -> dict[str, Any]:
+        """Resolve pipeline state for the harness feature directory."""
         state: dict[str, Any] = {"feature_dir": str(feature_dir)}
         if phase_hint is not None:
             state["phase"] = phase_hint
@@ -64,6 +68,7 @@ def driver_flow_harness(tmp_path: Path):
         )
 
     def acquire(feature_id: str = "019", owner: str = "worker-a") -> dict[str, Any]:
+        """Acquire a feature lock in the harness locks directory."""
         return pipeline_driver_state.acquire_feature_lock(
             feature_id,
             owner=owner,
@@ -71,6 +76,7 @@ def driver_flow_harness(tmp_path: Path):
         )
 
     def release(feature_id: str = "019", owner: str = "worker-a") -> dict[str, Any]:
+        """Release a feature lock in the harness locks directory."""
         return pipeline_driver_state.release_feature_lock(
             feature_id,
             owner=owner,

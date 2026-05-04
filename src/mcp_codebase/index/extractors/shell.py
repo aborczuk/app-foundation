@@ -70,6 +70,7 @@ def extract_shell_scripts(
 
 
 def _collect_shell_chunks(lines: list[str], qualified_base: str, script_name: str) -> list[_ShellChunk]:
+    """Collect shell function chunks and top-level blocks in source order."""
     function_spans = _find_shell_function_spans(lines)
     covered = [False] * len(lines)
     chunks: list[_ShellChunk] = []
@@ -126,6 +127,7 @@ def _collect_shell_chunks(lines: list[str], qualified_base: str, script_name: st
 
 
 def _find_shell_function_spans(lines: list[str]) -> list[tuple[int, int, str]]:
+    """Return the line spans for shell function definitions."""
     spans: list[tuple[int, int, str]] = []
     cursor = 0
     while cursor < len(lines):
@@ -143,6 +145,7 @@ def _find_shell_function_spans(lines: list[str]) -> list[tuple[int, int, str]]:
 
 
 def _leading_comment_block_start(lines: list[str], declaration_idx: int) -> int:
+    """Find the start of the leading comment block for a shell function."""
     cursor = declaration_idx - 1
     saw_comment = False
 
@@ -161,6 +164,7 @@ def _leading_comment_block_start(lines: list[str], declaration_idx: int) -> int:
 
 
 def _find_matching_brace_end(lines: list[str], declaration_idx: int) -> int:
+    """Find the closing brace for a shell function declaration."""
     brace_depth = max(1, _brace_delta(lines[declaration_idx]))
     cursor = declaration_idx + 1
     while cursor < len(lines) and brace_depth > 0:
@@ -170,6 +174,7 @@ def _find_matching_brace_end(lines: list[str], declaration_idx: int) -> int:
 
 
 def _brace_delta(line: str) -> int:
+    """Compute brace balance for a single shell source line."""
     stripped = line.split("#", 1)[0]
     stripped = re.sub(r"\$\{[^}]*\}", "", stripped)
     stripped = stripped.replace(r"\{", "").replace(r"\}", "")
@@ -185,6 +190,7 @@ def _build_function_chunk(
     start_idx: int,
     end_idx: int,
 ) -> _ShellChunk:
+    """Build a shell function chunk from its source block."""
     body = "\n".join(block_lines).rstrip("\n")
     docstring = _shell_docstring(block_lines) or f"Shell function {function_name} in {script_name}."
     signature = _shell_function_signature(block_lines, function_name)
@@ -213,6 +219,7 @@ def _build_top_level_chunk(
     start_idx: int,
     end_idx: int,
 ) -> _ShellChunk:
+    """Build a shell top-level chunk from its source block."""
     body = "\n".join(block_lines).rstrip("\n")
     docstring = _shell_docstring(block_lines) or f"Top-level shell block in {script_name}."
     signature = _first_meaningful_line(block_lines) or "shell top-level block"
@@ -234,6 +241,7 @@ def _build_top_level_chunk(
 
 
 def _shell_docstring(lines: list[str]) -> str:
+    """Extract a leading shell comment block as a docstring."""
     comments: list[str] = []
     seen_comment = False
 
@@ -255,6 +263,7 @@ def _shell_docstring(lines: list[str]) -> str:
 
 
 def _shell_function_signature(lines: list[str], function_name: str) -> str:
+    """Return the shell function declaration line for a function."""
     for line in lines:
         match = _SHELL_FUNCTION_RE.match(line)
         if match and match.group("name") == function_name:
@@ -263,6 +272,7 @@ def _shell_function_signature(lines: list[str], function_name: str) -> str:
 
 
 def _first_meaningful_line(lines: list[str]) -> str:
+    """Return the first non-comment, non-empty source line."""
     for line in lines:
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
@@ -275,6 +285,7 @@ def _first_meaningful_line(lines: list[str]) -> str:
 
 
 def _chunk_to_symbol(candidate: Path, chunk: _ShellChunk) -> CodeSymbol:
+    """Convert a shell chunk into an indexable code symbol."""
     return CodeSymbol(
         symbol_name=chunk.symbol_name,
         qualified_name=chunk.qualified_name,

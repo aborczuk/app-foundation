@@ -85,6 +85,7 @@ def extract_markdown_sections(
 
 
 def _section_preview(lines: list[str]) -> str:
+    """Return the first non-empty markdown preview line."""
     for line in lines:
         stripped = line.strip()
         if stripped:

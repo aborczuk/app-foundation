@@ -17,6 +17,7 @@ SCRIPT_PATH = (
 
 
 def _run_check_prereq(repo_dir: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the prerequisite checker script in the given repository."""
     return subprocess.run(
         [sys.executable, str(SCRIPT_PATH), *args],
         cwd=repo_dir,
@@ -28,11 +29,13 @@ def _run_check_prereq(repo_dir: Path, *args: str, env: dict[str, str] | None = N
 
 
 def _init_git_repo(repo_dir: Path, branch: str) -> None:
+    """Initialize a throwaway git repo on the requested branch."""
     subprocess.run(["git", "init", "-q"], cwd=repo_dir, check=True)
     subprocess.run(["git", "checkout", "-b", branch], cwd=repo_dir, check=True, capture_output=True)
 
 
 def test_check_prerequisites_json_include_tasks_contract(tmp_path: Path) -> None:
+    """The JSON contract should expose tasks when include-tasks is set."""
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     _init_git_repo(repo, "123-feature-branch")
@@ -55,6 +58,7 @@ def test_check_prerequisites_json_include_tasks_contract(tmp_path: Path) -> None
 
 
 def test_check_prerequisites_require_tasks_fails_when_missing(tmp_path: Path) -> None:
+    """Requiring tasks should fail when the feature has no tasks file."""
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     _init_git_repo(repo, "124-feature-branch")
@@ -70,6 +74,7 @@ def test_check_prerequisites_require_tasks_fails_when_missing(tmp_path: Path) ->
 
 
 def test_check_prerequisites_paths_only_json_skips_validation(tmp_path: Path) -> None:
+    """The paths-only mode should return paths without validation errors."""
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     _init_git_repo(repo, "125-feature-branch")
@@ -86,6 +91,7 @@ def test_check_prerequisites_paths_only_json_skips_validation(tmp_path: Path) ->
 
 
 def test_check_prerequisites_rejects_non_feature_git_branch(tmp_path: Path) -> None:
+    """The checker should reject repos that are not on a feature branch."""
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)

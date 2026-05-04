@@ -15,11 +15,13 @@ PHASE_HEADER_RE = re.compile(r"^\s*##\s+(?P<title>.+?)\s*$")
 
 
 def _run(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
+    """Run a subprocess and return its exit code plus stripped output."""
     proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, check=False)
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 
 def _json_print(payload: dict[str, Any], as_json: bool) -> None:
+    """Print the payload as JSON or as a compact human summary."""
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return
@@ -29,6 +31,7 @@ def _json_print(payload: dict[str, Any], as_json: bool) -> None:
 
 
 def _find_feature_dir(repo_root: Path, feature_id: str) -> Path:
+    """Return the first specs directory that matches a feature id."""
     matches = sorted((repo_root / "specs").glob(f"{feature_id}-*"))
     if not matches:
         raise ValueError(f"feature directory not found for id {feature_id}")
@@ -41,6 +44,7 @@ def _default_hud_path(feature_dir: Path, task_id: str) -> Path:
 
 
 def _task_context(tasks_file: Path, task_id: str) -> tuple[str, list[str]]:
+    """Extract the task description and acceptance text from tasks.md."""
     lines = tasks_file.read_text(encoding="utf-8").splitlines()
     task_idx = -1
     task_desc = ""
@@ -82,6 +86,7 @@ def _task_context(tasks_file: Path, task_id: str) -> tuple[str, list[str]]:
 
 
 def _extract_quality_guards(hud_path: Path) -> list[str]:
+    """Extract HUD quality guards or fall back to the default guard set."""
     if not hud_path.exists():
         return ["Domain 13", "Domain 14", "Domain 17"]
 
@@ -109,6 +114,7 @@ def _extract_quality_guards(hud_path: Path) -> list[str]:
 
 
 def _extract_primary_file_from_hud(hud_path: Path) -> str | None:
+    """Extract the primary file path from a HUD file if one is declared."""
     if not hud_path.exists():
         return None
     for line in hud_path.read_text(encoding="utf-8").splitlines():
@@ -122,6 +128,7 @@ def _extract_primary_file_from_hud(hud_path: Path) -> str | None:
 
 
 def _changed_files_from_head(repo_root: Path) -> list[str]:
+    """Return the unique file list changed in HEAD."""
     code, out, _ = _run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo_root)
     if code != 0:
         return []
@@ -130,6 +137,7 @@ def _changed_files_from_head(repo_root: Path) -> list[str]:
 
 
 def _latest_test_event(repo_root: Path, feature_id: str, task_id: str) -> dict[str, Any] | None:
+    """Return the latest test result event for a feature task."""
     ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
     if not ledger_path.exists():
         return None
@@ -148,6 +156,7 @@ def _latest_test_event(repo_root: Path, feature_id: str, task_id: str) -> dict[s
 
 
 def _build_test_runs(repo_root: Path, feature_id: str, task_id: str) -> list[dict[str, Any]]:
+    """Build synthetic test-run entries from the latest ledger evidence."""
     latest = _latest_test_event(repo_root, feature_id, task_id)
     if latest is None:
         return [
@@ -169,6 +178,7 @@ def _build_test_runs(repo_root: Path, feature_id: str, task_id: str) -> list[dic
 
 
 def _diff_summary(repo_root: Path) -> str:
+    """Summarize the current HEAD diff for the offline QA payload."""
     code, out, _ = _run(["git", "show", "--stat", "--oneline", "--no-color", "HEAD"], cwd=repo_root)
     if code == 0 and out.strip():
         return out.strip()
