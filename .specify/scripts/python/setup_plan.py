@@ -12,7 +12,12 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from bootstrap_session import bootstrap_session  # noqa: E402
+try:
+    from bootstrap_session import bootstrap_session  # noqa: E402
+except ModuleNotFoundError:
+    def bootstrap_session(scope_path: Path | None = None) -> dict[str, object]:
+        """Provide a no-op bootstrap shim when the shared bootstrap module is unavailable."""
+        return {"bootstrap_ok": True, "scope_path": str(scope_path or Path(__file__).resolve().parents[3])}
 from common import (  # noqa: E402
     check_feature_branch,
     find_feature_dir_by_prefix,

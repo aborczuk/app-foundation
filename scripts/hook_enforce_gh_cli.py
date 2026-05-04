@@ -11,6 +11,7 @@ from typing import Sequence
 SAFE_WRAPPER_MARKERS = (
     "scripts/gh_safe_pr_info.py",
     "scripts/gh_safe_pr_files.py",
+    "scripts/github_guard.py",
 )
 
 HEAVY_PR_VIEW_FIELDS = {
@@ -22,6 +23,7 @@ HEAVY_PR_VIEW_FIELDS = {
 
 
 def _emit_deny(reason: str) -> None:
+    """Emit a structured deny decision for the PreToolUse hook."""
     print(
         json.dumps(
             {
@@ -36,6 +38,7 @@ def _emit_deny(reason: str) -> None:
 
 
 def _tokenize(command: str) -> list[str]:
+    """Split a shell command into tokens, falling back to whitespace splitting."""
     try:
         return shlex.split(command)
     except ValueError:
@@ -43,10 +46,12 @@ def _tokenize(command: str) -> list[str]:
 
 
 def _contains_safe_wrapper(command: str) -> bool:
+    """Return whether the command already routes through an approved wrapper."""
     return any(marker in command for marker in SAFE_WRAPPER_MARKERS)
 
 
 def _gh_args(tokens: Sequence[str]) -> tuple[str, ...]:
+    """Extract gh arguments from a tokenized command."""
     try:
         gh_idx = next(i for i, tok in enumerate(tokens) if tok == "gh" or tok.endswith("/gh"))
     except StopIteration:
@@ -55,6 +60,7 @@ def _gh_args(tokens: Sequence[str]) -> tuple[str, ...]:
 
 
 def _extract_json_fields(tokens: Sequence[str]) -> set[str]:
+    """Collect field names from any gh --json flags in the command."""
     fields: set[str] = set()
     for idx, token in enumerate(tokens):
         if token == "--json" and idx + 1 < len(tokens):
@@ -67,6 +73,7 @@ def _extract_json_fields(tokens: Sequence[str]) -> set[str]:
 
 
 def _is_write_api_call(tokens: Sequence[str]) -> bool:
+    """Return whether the gh api call is a mutating write request."""
     for idx, token in enumerate(tokens):
         if token == "-X" and idx + 1 < len(tokens):
             return tokens[idx + 1].upper() in {"POST", "PATCH", "PUT", "DELETE"}
@@ -124,6 +131,13 @@ def main() -> int:
         _emit_deny(
             "Direct read-style `gh api` calls are blocked to prevent oversized responses. "
             "Use `scripts/gh_safe_pr_info.py <repo> <pr_number>` or `scripts/gh_safe_pr_files.py <repo> <pr_number>`."
+        )
+        return 0
+
+    if primary == "run" and secondary == "view":
+        _emit_deny(
+            "Direct `gh run view` is blocked due to high token payload risk. "
+            "Use `scripts/github_guard.py run -- gh run view ...` and `scripts/github_guard.py show --full`."
         )
         return 0
 
