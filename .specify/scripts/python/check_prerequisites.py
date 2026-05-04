@@ -47,6 +47,7 @@ EXAMPLES:
 
 
 def _parse_args(argv: list[str]) -> tuple[bool, bool, bool, bool]:
+    """Parse prerequisite checker flags from argv."""
     json_mode = False
     require_tasks = False
     include_tasks = False
@@ -72,6 +73,7 @@ def _parse_args(argv: list[str]) -> tuple[bool, bool, bool, bool]:
 
 
 def _get_feature_paths(script_path: Path) -> dict[str, str]:
+    """Build the canonical feature path map for the active branch."""
     repo_root = get_repo_root(script_path)
     branch = get_current_branch(repo_root)
     has_git_repo = has_git(repo_root)
@@ -93,10 +95,12 @@ def _get_feature_paths(script_path: Path) -> dict[str, str]:
 
 
 def _check_file(path: Path, label: str) -> str:
+    """Render a checkmark line for a required file path."""
     return f"  \u2713 {label}" if path.is_file() else f"  \u2717 {label}"
 
 
 def _check_dir(path: Path, label: str) -> str:
+    """Render a checkmark line for a required non-empty directory."""
     if path.is_dir() and any(path.iterdir()):
         return f"  \u2713 {label}"
     return f"  \u2717 {label}"

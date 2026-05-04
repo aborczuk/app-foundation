@@ -25,6 +25,7 @@ from common import (  # noqa: E402
 
 
 def _build_paths(script_path: Path) -> dict[str, str]:
+    """Build the canonical feature path map for setup-plan."""
     repo_root = get_repo_root(script_path)
     branch = get_current_branch(repo_root)
     has_git_repo = common_has_git(repo_root)
@@ -40,6 +41,7 @@ def _build_paths(script_path: Path) -> dict[str, str]:
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse the setup-plan CLI flags."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--json", action="store_true", dest="json_mode")
     parser.add_argument("--help", "-h", action="store_true", dest="help_mode")

@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 def _load_script_module(module_name: str, script_name: str):
+    """Load a helper module from the local scripts directory."""
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
     script_path = scripts_dir / script_name
     scripts_dir_str = str(scripts_dir)
@@ -28,6 +29,7 @@ coverage_validator = _load_script_module(
 
 
 def _write_manifest(path: Path, *, include_plan_scaffold: bool = True) -> None:
+    """Write a minimal command manifest for the coverage validator tests."""
     scaffold_line = "        scaffold_script: setup_plan.py" if include_plan_scaffold else ""
     path.write_text(
         "\n".join(
@@ -54,6 +56,7 @@ def _write_manifest(path: Path, *, include_plan_scaffold: bool = True) -> None:
 
 
 def test_validate_command_script_coverage_passes_with_required_scripts(tmp_path: Path) -> None:
+    """The validator should pass when both required command scripts exist."""
     canonical_manifest = tmp_path / "command-manifest.yaml"
     mirror_manifest = tmp_path / "legacy" / "command-manifest.yaml"
     scaffold_script = tmp_path / ".specify" / "scripts" / "pipeline-scaffold.py"
@@ -93,6 +96,7 @@ def test_speckit_specify_doc_uses_the_driver_next_phase_label() -> None:
 
 
 def test_validate_command_script_coverage_reports_missing_required_reference(tmp_path: Path) -> None:
+    """The validator should report a missing required scaffold reference."""
     canonical_manifest = tmp_path / "command-manifest.yaml"
     mirror_manifest = tmp_path / "legacy" / "command-manifest.yaml"
     scaffold_script = tmp_path / ".specify" / "scripts" / "pipeline-scaffold.py"
