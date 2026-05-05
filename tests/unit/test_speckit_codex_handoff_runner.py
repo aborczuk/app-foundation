@@ -43,6 +43,8 @@ def test_run_codex_handoff_commits_changes(tmp_path: Path, monkeypatch) -> None:
         target.write_text("implemented\n", encoding="utf-8")
         assert resume_session is False
         assert "Implement the next registered task" in prompt
+        assert "not a Speckit command request" in prompt
+        assert "Do not invoke Codex skills" in prompt
         return 0, "codex stdout", "codex stderr", "Implementation complete"
 
     monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
@@ -262,6 +264,47 @@ def test_run_codex_handoff_writes_log_artifact_on_codex_failure(tmp_path: Path, 
     assert runner_log["result"]["error_code"] == "codex_exec_failed"
 
 
+def test_run_codex_handoff_records_codex_model(tmp_path: Path, monkeypatch) -> None:
+    """Codex handoff logs should include the best available model label."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
+    monkeypatch.setenv("CODEX_MODEL", "gpt-5.5")
+
+    def fake_run_codex_exec(prompt, repo_root_param, *, resume_session=False):  # noqa: ANN001
+        del prompt, resume_session
+        target = repo_root_param / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("implemented\n", encoding="utf-8")
+        return 0, "codex stdout", "codex stderr", "Summary complete"
+
+    monkeypatch.setattr(speckit_codex_handoff_runner, "_run_codex_exec", fake_run_codex_exec)
+
+    result = speckit_codex_handoff_runner.run_codex_handoff(
+        {
+            "feature_id": "023",
+            "phase": "implement",
+            "correlation_id": "run-test:speckit.implement.model",
+            "handoff": {
+                "feature_dir": str(repo_root / "specs" / "023-deterministic-phase-orchestration"),
+                "task_id": "T001",
+                "task_attempt": 1,
+                "task_action": "started",
+                "output_template_path": str(
+                    repo_root / "specs" / "023-deterministic-phase-orchestration" / "implementation.md"
+                ),
+                "completion_marker": "## Summary",
+            },
+        },
+        repo_root=repo_root,
+    )
+
+    assert result["ok"] is True
+    assert result["codex_model"] == "gpt-5.5"
+    runner_log = json.loads(Path(result["runner_log_path"]).read_text(encoding="utf-8"))
+    assert runner_log["result"]["codex_model"] == "gpt-5.5"
+
+
 def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) -> None:
     """Codex exec should run against a writable private CODEX_HOME."""
     repo_root = tmp_path / "repo"
@@ -284,7 +327,7 @@ def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) 
         assert codex_home != source_home
         assert codex_home.is_dir()
         assert (codex_home / "auth.json").is_file()
-        assert (codex_home / "config.toml").is_file()
+        assert not (codex_home / "config.toml").exists()
         return subprocess.CompletedProcess(command, 0, stdout="codex stdout", stderr="codex stderr")
 
     monkeypatch.setattr(speckit_codex_handoff_runner.subprocess, "run", fake_run)
@@ -299,5 +342,9 @@ def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) 
     assert stderr == "codex stderr"
     assert last_message == ""
     assert captured["command"][0] == "/usr/bin/codex"
-    assert captured["cwd"] == repo_root
+    assert "--ignore-user-config" in captured["command"]
+    assert "--add-dir" in captured["command"]
+    assert str(repo_root) in captured["command"]
+    assert "--skip-git-repo-check" in captured["command"]
+    assert captured["cwd"] != repo_root
     assert captured["env"]["CODEX_HOME"] != str(source_home)

@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
-SPEC_ROUTING_MARKER = "## Routing Contract"
+SPEC_COMPLETION_MARKER = "## Definition of Done"
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -185,7 +185,7 @@ def _build_specify_instructions(
         "",
         "Use the scaffolded spec and the user description to write the requirements in place.",
         "Replace all placeholders with concrete, user-value-focused content.",
-        "Keep the routing contract vocabulary exact and deterministic.",
+        "Keep the spec limited to feature name, user context, requirements, success criteria, and open questions.",
         "Preserve the section order from the template.",
         "Do not create a git commit.",
         "",
@@ -213,7 +213,7 @@ def _build_specify_handoff_input(
         "step_name": "speckit.specify",
         "task_action": "fill_spec_scaffold",
         "output_template_path": str(spec_file),
-        "completion_marker": SPEC_ROUTING_MARKER,
+        "completion_marker": SPEC_COMPLETION_MARKER,
         "instructions": _build_specify_instructions(
             feature_description=feature_description,
             feature_id=feature_id,
@@ -483,7 +483,7 @@ def _run_step_mode(
         if "generated_artifact" not in handoff_result:
             handoff_result["generated_artifact"] = {
                 "path": str(spec_file),
-                "completion_marker": SPEC_ROUTING_MARKER,
+                "completion_marker": SPEC_COMPLETION_MARKER,
             }
         handoff_result["spec_file"] = str(spec_file)
         return handoff_result
@@ -492,11 +492,11 @@ def _run_step_mode(
         handoff_result.get("generated_artifact")
         or {
             "path": str(spec_file),
-            "completion_marker": SPEC_ROUTING_MARKER,
+            "completion_marker": SPEC_COMPLETION_MARKER,
         }
     )
     generated_artifact["path"] = str(spec_file)
-    generated_artifact["completion_marker"] = SPEC_ROUTING_MARKER
+    generated_artifact["completion_marker"] = SPEC_COMPLETION_MARKER
 
     return {
         **handoff_result,

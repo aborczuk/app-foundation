@@ -128,7 +128,7 @@ def _source_codex_home() -> Path:
 
 
 def _copy_codex_home(source_home: Path, target_home: Path) -> None:
-    """Seed a writable CODEX_HOME with the user's auth files."""
+    """Seed a writable CODEX_HOME with the user's auth and guard config files."""
     target_home.mkdir(parents=True, exist_ok=True)
     for filename in ("auth.json", "config.toml"):
         source_path = source_home / filename
@@ -136,6 +136,15 @@ def _copy_codex_home(source_home: Path, target_home: Path) -> None:
             shutil.copy2(source_path, target_home / filename)
     if not (target_home / "auth.json").exists():
         raise FileNotFoundError(f"missing Codex auth file: {source_home / 'auth.json'}")
+
+
+def _source_codex_model() -> str:
+    """Return the best available Codex model label for logging."""
+    for key in ("CODEX_MODEL", "OPENAI_MODEL", "MODEL"):
+        value = os.environ.get(key)
+        if value and value.strip():
+            return value.strip()
+    return "unknown"
 
 
 def _build_prompt(
@@ -169,6 +178,9 @@ def _build_prompt(
         f"Task action: {task_action}\n"
         f"Feature dir: {feature_dir}\n\n"
         "Make the requested repository change with Codex.\n"
+        "This is an internal handoff execution, not a Speckit command request.\n"
+        "Do not invoke Codex skills, slash commands, pipeline_driver.py, or speckit step scripts.\n"
+        "Edit only the explicit artifact paths from the handoff payload.\n"
     )
     if instructions:
         prompt += f"Requested instructions:\n{instructions}\n\n"
@@ -325,6 +337,7 @@ def run_codex_handoff(
     feature_id = _string(payload.get("feature_id"))
     phase = _string(payload.get("phase"))
     correlation_id = _string(payload.get("correlation_id"))
+    codex_model = _source_codex_model()
     task_id = _string(handoff.get("task_id"))
     task_attempt = _coerce_int(handoff.get("task_attempt"))
     task_action = _string(handoff.get("task_action"))
@@ -370,6 +383,7 @@ def run_codex_handoff(
             "handoff": dict(handoff),
             "qa_feedback": dict(qa_feedback) if isinstance(qa_feedback, Mapping) else None,
             "codex_exit_code": codex_exit_code,
+            "codex_model": codex_model,
             "codex_stdout": codex_stdout,
             "codex_stderr": codex_stderr,
             "last_message": last_message,
@@ -411,6 +425,7 @@ def run_codex_handoff(
                 "runner": "codex-local",
                 "handoff_execution": "codex_exec",
                 "session_mode": "resume" if resume_session else "fresh",
+                "codex_model": codex_model,
                 "reasons": [reason],
                 "error_code": reason,
                 "debug_path": None,
@@ -441,6 +456,7 @@ def run_codex_handoff(
                 "runner": "codex-local",
                 "handoff_execution": "codex_exec",
                 "session_mode": "resume" if resume_session else "fresh",
+                "codex_model": codex_model,
                 "reasons": ["codex_exec_failed"],
                 "error_code": "codex_exec_failed",
                 "debug_path": None,
@@ -478,6 +494,7 @@ def run_codex_handoff(
                 "runner": "codex-local",
                 "handoff_execution": "codex_exec",
                 "session_mode": "resume" if resume_session else "fresh",
+                "codex_model": codex_model,
                 "reasons": [reason],
                 "error_code": reason,
                 "debug_path": None,
@@ -510,6 +527,7 @@ def run_codex_handoff(
             "runner": "codex-local",
             "handoff_execution": "codex_exec",
             "session_mode": "resume" if resume_session else "fresh",
+            "codex_model": codex_model,
             "reasons": [],
             "error_code": None,
             "debug_path": None,

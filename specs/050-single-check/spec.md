@@ -3,7 +3,7 @@
 **Feature Branch**: `[###-feature-name]`
 **Created**: [DATE]
 **Status**: Draft
-**Input**: User description: "$ARGUMENTS"
+**Input**: User description: "make tetris single scaffold check"
 
 ## One-Line Purpose *(mandatory)*
 

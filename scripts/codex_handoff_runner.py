@@ -41,6 +41,15 @@ def _copy_codex_home(source_home: Path, target_home: Path) -> None:
         raise FileNotFoundError(f"missing Codex auth file: {source_home / 'auth.json'}")
 
 
+def _source_codex_model() -> str:
+    """Return the best available Codex model label for logging."""
+    for key in ("CODEX_MODEL", "OPENAI_MODEL", "MODEL"):
+        value = os.environ.get(key)
+        if value and value.strip():
+            return value.strip()
+    return "unknown"
+
+
 def _build_codex_prompt(payload: Mapping[str, Any]) -> str:
     """Ask Codex for a short summary string for the generated artifact."""
     handoff = payload.get("handoff", {})
@@ -53,6 +62,7 @@ def _build_codex_prompt(payload: Mapping[str, Any]) -> str:
         "handoff_id": handoff.get("handoff_id"),
         "step_name": handoff.get("step_name"),
         "completion_marker": handoff.get("completion_marker", "## Summary"),
+        "codex_model": _source_codex_model(),
     }
     return "\n".join(
         [
@@ -172,6 +182,7 @@ def run_handoff(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     repo_root = Path(__file__).resolve().parents[1]
     prompt = _build_codex_prompt(payload)
+    codex_model = _source_codex_model()
 
     with tempfile.TemporaryDirectory(prefix="codex-home-") as codex_home_name, tempfile.TemporaryDirectory(
         prefix="codex-run-"
@@ -220,6 +231,7 @@ def run_handoff(payload: Mapping[str, Any]) -> dict[str, Any]:
         "completion_marker": completion_marker,
         "summary": summary,
         "runner": "codex exec",
+        "codex_model": codex_model,
     }
 
 
