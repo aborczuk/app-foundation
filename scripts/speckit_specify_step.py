@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -470,9 +471,13 @@ def _ensure_discovery_artifact(
 def _run_bootstrap_mode(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
     """Bootstrap a new feature scaffold and persist the discovery artifact."""
     terms = _extract_terms(description)
-    discovery = _run_discovery(terms, env)
 
-    feature = _create_feature(description, short_name, env)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        discovery_future = pool.submit(_run_discovery, terms, env)
+        feature_future = pool.submit(_create_feature, description, short_name, env)
+        discovery = discovery_future.result()
+        feature = feature_future.result()
+
     feature_dir = Path(feature["SPEC_FILE"]).resolve().parent
     spec_file = Path(feature["SPEC_FILE"]).resolve()
     _persist_bootstrap_description(spec_file, description)
@@ -488,6 +493,60 @@ def _run_bootstrap_mode(description: str, short_name: str, env: dict[str, str]) 
         "DISCOVERY": discovery,
         "FEATURE_DESCRIPTION": description,
     }
+
+
+def _build_specify_step_identity(
+    *,
+    feature: Mapping[str, Any],
+    phase: str,
+    feature_description: str,
+) -> tuple[str, str]:
+    """Derive deterministic ids for a specify step run."""
+    feature_id = str(feature.get("FEATURE_NUM") or "").strip()
+    if not feature_id:
+        raise RuntimeError("feature_id_unavailable")
+
+    phase_name = str(phase).strip() or "specify"
+    branch_name = str(feature.get("BRANCH_NAME") or "").strip()
+    seed = "|".join([feature_id, phase_name, branch_name, feature_description.strip()])
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+    correlation_id = f"{feature_id}:{phase_name}:{digest}"
+    return feature_id, correlation_id
+
+
+def _run_bootstrap_then_step_mode(
+    *,
+    description: str,
+    short_name: str,
+    phase: str,
+    env: dict[str, str],
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Bootstrap the scaffold, derive ids, and continue into the deterministic step loop."""
+    bootstrap = _run_bootstrap_mode(description, short_name, env)
+    feature_id, correlation_id = _build_specify_step_identity(
+        feature=bootstrap,
+        phase=phase,
+        feature_description=description,
+    )
+    step_result = _run_step_mode(
+        feature_id=feature_id,
+        phase=phase,
+        correlation_id=correlation_id,
+        env=env,
+        timeout_seconds=timeout_seconds,
+    )
+    step_result.setdefault("feature_id", feature_id)
+    step_result.setdefault("correlation_id", correlation_id)
+    step_result.setdefault("branch_name", str(bootstrap.get("BRANCH_NAME") or ""))
+    step_result.setdefault("feature_num", str(bootstrap.get("FEATURE_NUM") or ""))
+    step_result.setdefault("feature_dir", str(bootstrap.get("FEATURE_DIR") or ""))
+    step_result.setdefault("spec_file", str(bootstrap.get("SPEC_FILE") or step_result.get("spec_file") or ""))
+    step_result.setdefault(
+        "discovery_file",
+        str(bootstrap.get("DISCOVERY_FILE") or step_result.get("discovery_file") or ""),
+    )
+    return step_result
 
 
 def _build_step_failure(
@@ -699,7 +758,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str]) -> int:
-    """Run the bootstrap helper or deterministic specify step."""
+    """Run the deterministic specify step, bootstrapping ids when needed."""
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -713,8 +772,13 @@ def main(argv: list[str]) -> int:
     correlation_id = str(args.correlation_id).strip()
     phase = str(args.phase).strip() or "specify"
 
-    if feature_id and correlation_id:
-        try:
+    description = str(args.feature_description).strip()
+    if not description:
+        print("ERROR: No feature description provided", file=sys.stderr)
+        return 1
+
+    try:
+        if feature_id and correlation_id:
             step_result = _run_step_mode(
                 feature_id=feature_id,
                 phase=phase,
@@ -722,57 +786,20 @@ def main(argv: list[str]) -> int:
                 env=env,
                 timeout_seconds=max(1, int(args.timeout_seconds)),
             )
-        except RuntimeError as exc:
-            debug_path = _write_debug_payload(
-                correlation_id=correlation_id or "unknown",
-                payload={
-                    "stage": "deterministic_step",
-                    "error_code": "specify_step_unhandled_exception",
-                    "exception": str(exc),
-                    "feature_id": feature_id,
-                    "phase": phase,
-                },
+        else:
+            step_result = _run_bootstrap_then_step_mode(
+                description=description,
+                short_name=str(args.short_name).strip(),
+                phase=phase,
+                env=env,
+                timeout_seconds=max(1, int(args.timeout_seconds)),
             )
-            step_result = {
-                "schema_version": "1.0.0",
-                "ok": False,
-                "exit_code": 2,
-                "correlation_id": correlation_id or "unknown",
-                "gate": None,
-                "reasons": ["specify_step_unhandled_exception"],
-                "error_code": "specify_step_unhandled_exception",
-                "next_phase": None,
-                "debug_path": debug_path,
-            }
-
-        print(json.dumps(step_result, separators=(",", ":")))
-        return int(step_result.get("exit_code", 1))
-
-    description = str(args.feature_description).strip()
-    if not description:
-        print("ERROR: No feature description provided", file=sys.stderr)
-        return 1
-
-    try:
-        summary = _run_bootstrap_mode(description, str(args.short_name).strip(), env)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    if args.json:
-        print(json.dumps(summary, separators=(",", ":")))
-        return 0
-
-    print("Discovery")
-    for result in summary["DISCOVERY"]:
-        print(_render_discovery_result(result))
-        print()
-    print()
-    print("Scaffolded")
-    print(f"- spec: {summary['SPEC_FILE']}")
-    print(f"- discovery: {summary['DISCOVERY_FILE']}")
-    print(f"- branch: {summary['BRANCH_NAME']}")
-    return 0
+    print(json.dumps(step_result, separators=(",", ":")))
+    return int(step_result.get("exit_code", 1))
 
 
 if __name__ == "__main__":

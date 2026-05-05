@@ -1552,6 +1552,75 @@ def test_main_allows_requested_phase_rerun(monkeypatch, capsys) -> None:
     assert payload["phase_state"]["phase"] == "implement"
 
 
+def test_main_bootstraps_description_requests(monkeypatch, capsys) -> None:
+    called: dict[str, object] = {}
+    append_called: dict[str, object] = {}
+
+    def _fake_run_step(
+        command,
+        *,
+        timeout_seconds,
+        correlation_id,
+        allow_correlation_mismatch=False,
+        **kwargs,
+    ) -> dict[str, object]:
+        called["command"] = list(command)
+        called["timeout_seconds"] = timeout_seconds
+        called["correlation_id"] = correlation_id
+        called["allow_correlation_mismatch"] = allow_correlation_mismatch
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "bootstrap-result",
+            "feature_id": "028-universal-backlog",
+            "phase": "specify",
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+        }
+
+    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        lambda **kwargs: append_called.update(kwargs) or {"ok": True, "appended": True, "event": "backlog_registered"},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {
+            "feature_id": "028-universal-backlog",
+            "ledger_feature_id": "028",
+            "phase": "specify",
+            "blocked": False,
+            "drift_detected": False,
+            "drift_reasons": [],
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+
+    exit_code = pipeline_driver.main(
+        ["create a universal backlog jsonl for all registered tasks", "--json"]
+    )
+    assert exit_code == 0
+
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["feature_id"] == "028-universal-backlog"
+    assert payload["phase_state"]["phase"] == "specify"
+    assert payload["step_result"]["feature_id"] == "028-universal-backlog"
+    assert payload["step_result"]["pipeline_event"] == "backlog_registered"
+    assert append_called["feature_id"] == "028-universal-backlog"
+    assert append_called["phase"] == "specify"
+    assert append_called["command_id"] == "speckit.specify"
+    assert called["allow_correlation_mismatch"] is True
+    assert called["timeout_seconds"] == 300
+    assert str(called["command"][1]).endswith("speckit_specify_step.py")
+    assert called["command"][-1] == "create a universal backlog jsonl for all registered tasks"
+
+
 def test_main_passes_context_to_implement_step(monkeypatch) -> None:
     monkeypatch.setattr(
         pipeline_driver,

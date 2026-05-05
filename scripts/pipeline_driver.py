@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -775,6 +776,7 @@ def run_step(
     *,
     timeout_seconds: int,
     correlation_id: str,
+    allow_correlation_mismatch: bool = False,
     cwd: str | Path | None = None,
     env_overrides: Mapping[str, str] | None = None,
     input_payload: str | None = None,
@@ -911,7 +913,7 @@ def run_step(
             sidecar_dir=sidecar_dir,
         )
 
-    if parsed["correlation_id"] != correlation_id:
+    if not allow_correlation_mismatch and parsed["correlation_id"] != correlation_id:
         return handle_runtime_failure(
             command,
             correlation_id=correlation_id,
@@ -1261,12 +1263,70 @@ def append_pipeline_success_event(
     }
 
 
+def _looks_like_feature_id(candidate: str) -> bool:
+    """Return True when a request token looks like a concrete feature id."""
+    token = candidate.strip()
+    if not token:
+        return False
+    return token.split("-", 1)[0].isdigit()
+
+
+def _build_bootstrap_correlation_id(feature_request: str, *, phase: str = "specify") -> str:
+    """Build a stable correlation id for description-only bootstrap requests."""
+    normalized_request = " ".join(feature_request.split())
+    digest = hashlib.sha1(normalized_request.encode("utf-8")).hexdigest()[:12]
+    return f"bootstrap:{phase}:{digest}"
+
+
+def _split_feature_request(feature_id: str, feature_request: str) -> tuple[str, str]:
+    """Split the CLI request into an explicit feature id or a bootstrap description."""
+    explicit_feature_id = feature_id.strip()
+    if explicit_feature_id:
+        return explicit_feature_id, ""
+
+    normalized_request = feature_request.strip()
+    if normalized_request and _looks_like_feature_id(normalized_request):
+        return normalized_request, ""
+    return "", normalized_request
+
+
+def _run_specify_bootstrap_step(
+    *,
+    feature_description: str,
+    short_name: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Bootstrap a new feature through the specify step runner."""
+    specify_step = Path(__file__).resolve().with_name("speckit_specify_step.py")
+    command = [sys.executable, str(specify_step)]
+    if short_name.strip():
+        command.extend(["--short-name", short_name.strip()])
+    command.append(feature_description)
+    return run_step(
+        command,
+        timeout_seconds=timeout_seconds,
+        correlation_id=_build_bootstrap_correlation_id(feature_description),
+        allow_correlation_mismatch=True,
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run deterministic pipeline steps")
     parser.add_argument(
+        "feature_request",
+        nargs="?",
+        default="",
+        help="Feature id to run, or a description to bootstrap a new feature",
+    )
+    parser.add_argument(
         "--feature-id",
-        required=True,
+        default="",
         help="Feature slug or id, e.g. 022-codegraph-hardening",
+    )
+    parser.add_argument(
+        "--short-name",
+        default="",
+        help="Optional short name used when bootstrapping a new feature",
     )
     parser.add_argument(
         "--phase",
@@ -1361,8 +1421,14 @@ def validate_coverage_for_migration(
 def main(argv: Sequence[str] | None = None) -> int:
     """Orchestrate deterministic pipeline driver for feature phase execution."""
     args = _build_parser().parse_args(argv)
-    requested_feature_id = args.feature_id.strip() if isinstance(args.feature_id, str) else ""
-    if not requested_feature_id:
+    requested_feature_id, bootstrap_description = _split_feature_request(
+        str(args.feature_id),
+        str(args.feature_request),
+    )
+    if not str(args.feature_id).strip() and requested_feature_id:
+        args.feature_id = requested_feature_id
+    requested_phase = args.phase.strip() if isinstance(args.phase, str) and args.phase.strip() else None
+    if not requested_feature_id and not bootstrap_description:
         correlation_id = build_correlation_id("invalid_feature", "invalid_input")
         step_result = {
             "schema_version": "1.0.0",
@@ -1377,10 +1443,127 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         emit_human_status(step_result)
         if args.output_json:
-            print(json.dumps({"feature_id": args.feature_id, "step_result": step_result}, sort_keys=True))
+            print(
+                json.dumps(
+                    {
+                        "feature_id": requested_feature_id or args.feature_id,
+                        "step_result": step_result,
+                    },
+                    sort_keys=True,
+                )
+            )
         return 1
 
-    requested_phase = args.phase.strip() if isinstance(args.phase, str) and args.phase.strip() else None
+    if bootstrap_description:
+        if requested_phase not in {None, "specify"}:
+            correlation_id = _build_bootstrap_correlation_id(bootstrap_description)
+            step_result = {
+                "schema_version": "1.0.0",
+                "ok": False,
+                "exit_code": 1,
+                "correlation_id": correlation_id,
+                "gate": "invalid_input",
+                "reasons": ["bootstrap_requires_specify_phase"],
+                "error_code": None,
+                "next_phase": None,
+                "debug_path": None,
+            }
+            emit_human_status(step_result)
+            if args.output_json:
+                print(
+                    json.dumps(
+                        {
+                            "feature_id": "",
+                            "feature_request": bootstrap_description,
+                            "step_result": step_result,
+                        },
+                        sort_keys=True,
+                    )
+                )
+            return 1
+
+        step_result = _run_specify_bootstrap_step(
+            feature_description=bootstrap_description,
+            short_name=str(args.short_name),
+            timeout_seconds=300,
+        )
+        bootstrapped_feature_id = str(step_result.get("feature_id") or "").strip()
+        if not bootstrapped_feature_id:
+            step_result = {
+                "schema_version": "1.0.0",
+                "ok": False,
+                "exit_code": 2,
+                "correlation_id": _build_bootstrap_correlation_id(bootstrap_description),
+                "gate": "invalid_input",
+                "reasons": ["bootstrap_feature_id_missing"],
+                "error_code": None,
+                "next_phase": None,
+                "debug_path": None,
+            }
+            emit_human_status(step_result)
+            if args.output_json:
+                print(
+                    json.dumps(
+                        {
+                            "feature_id": "",
+                            "feature_request": bootstrap_description,
+                            "step_result": step_result,
+                        },
+                        sort_keys=True,
+                    )
+                )
+            return 2
+
+        append_result = append_pipeline_success_event(
+            feature_id=bootstrapped_feature_id,
+            phase="specify",
+            command_id="speckit.specify",
+        )
+        if not append_result.get("ok"):
+            step_result = {
+                "schema_version": "1.0.0",
+                "ok": False,
+                "exit_code": 2,
+                "correlation_id": str(step_result.get("correlation_id") or ""),
+                "gate": None,
+                "reasons": ["pipeline_event_append_failed"],
+                "error_code": append_result.get("error_code", "pipeline_event_append_failed"),
+                "next_phase": None,
+                "debug_path": None,
+            }
+            emit_human_status(step_result)
+            if args.output_json:
+                print(
+                    json.dumps(
+                        {
+                            "feature_id": bootstrapped_feature_id,
+                            "feature_request": bootstrap_description,
+                            "step_result": step_result,
+                        },
+                        sort_keys=True,
+                    )
+                )
+            return 2
+
+        phase_state = resolve_phase_state(
+            bootstrapped_feature_id,
+            pipeline_state={"phase": "specify", "dry_run": False},
+        )
+        if append_result.get("appended"):
+            step_result["pipeline_event"] = append_result.get("event")
+        emit_human_status(step_result)
+        if args.output_json:
+            print(
+                json.dumps(
+                    {
+                        "feature_id": bootstrapped_feature_id or bootstrap_description,
+                        "phase_state": phase_state,
+                        "step_result": step_result,
+                    },
+                    sort_keys=True,
+                )
+            )
+        return int(step_result.get("exit_code", 1))
 
     # 1. Resolve ledger-authoritative phase state
     phase_state = resolve_phase_state(

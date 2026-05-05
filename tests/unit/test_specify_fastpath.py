@@ -31,8 +31,8 @@ def test_run_discovery_uses_semantic_context_lookup(monkeypatch, tmp_path: Path)
     assert results[0]["has_matches"] is True
 
 
-def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys) -> None:
-    """The fast path should discover code before it creates the spec."""
+def test_main_bootstraps_then_runs_deterministic_step(monkeypatch, tmp_path: Path, capsys) -> None:
+    """The fast path should bootstrap the scaffold and then continue into step mode."""
     calls: list[str] = []
 
     monkeypatch.setattr(
@@ -79,17 +79,41 @@ def test_main_runs_discovery_before_scaffold(monkeypatch, tmp_path: Path, capsys
             "SPEC_FILE": str(feature_dir / "spec.md"),
         }
 
+    def _run_step_mode(
+        *,
+        feature_id: str,
+        phase: str,
+        correlation_id: str,
+        env: dict[str, str],
+        timeout_seconds: int,
+    ) -> dict[str, object]:
+        calls.append(f"step:{feature_id}:{phase}:{correlation_id}:{timeout_seconds}:{env['UV_CACHE_DIR']}")
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "feature_id": feature_id,
+            "correlation_id": correlation_id,
+            "next_phase": "plan",
+            "generated_artifact": {
+                "path": str(tmp_path / "specs" / "028-tetris-game" / "spec.md"),
+                "completion_marker": "## Routing Contract",
+            },
+        }
+
     monkeypatch.setattr(specify_step, "_run_discovery", _run_discovery)
     monkeypatch.setattr(specify_step, "_create_feature", _create_feature)
+    monkeypatch.setattr(specify_step, "_run_step_mode", _run_step_mode)
 
     exit_code = specify_step.main(["--short-name", "tetris-game", "Build a playable Tetris game in the app."])
     capsys.readouterr()
 
     assert exit_code == 0
-    assert calls == [
+    assert set(calls[:2]) == {
         f"discover:tetris:{tmp_path / '.uv-cache'}",
         f"create:tetris-game:{tmp_path / '.uv-cache'}",
-    ]
+    }
+    assert calls[2].startswith(f"step:028:specify:")
 
     discovery_path = tmp_path / "specs" / "028-tetris-game" / "discovery.md"
     assert discovery_path.exists()
