@@ -16,11 +16,14 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_ROOT = REPO_ROOT / "scripts"
 DISCOVERY_MAX_TERMS = 5
 SPEC_ROUTING_MARKER = "## Routing Contract"
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 
 from pipeline_driver_state import determine_next_phase  # noqa: E402
 
@@ -243,6 +246,11 @@ def _default_handoff_runner(repo_root: Path) -> str:
 
 def _load_feature_paths(env: dict[str, str]) -> dict[str, str]:
     """Resolve the current feature paths from the repo-local prerequisite helper."""
+    feature_dir = str(env.get("FEATURE_DIR") or "").strip()
+    feature_spec = str(env.get("FEATURE_SPEC") or "").strip()
+    if feature_dir and feature_spec:
+        return {"FEATURE_DIR": feature_dir, "FEATURE_SPEC": feature_spec}
+
     proc = _run_uv_command(
         ["python3", ".specify/scripts/python/check_prerequisites.py", "--json", "--paths-only"],
         env=env,
@@ -265,7 +273,6 @@ def _build_specify_instructions(
     feature_id: str,
     feature_dir: Path,
     spec_file: Path,
-    discovery_file: Path,
 ) -> str:
     """Build the Codex instructions used to fill the specify scaffold."""
     template_path = (REPO_ROOT / ".specify" / "templates" / "spec-template.md").resolve()
@@ -275,10 +282,9 @@ def _build_specify_instructions(
         f"Feature id: {feature_id}",
         f"Feature dir: {feature_dir}",
         f"Spec file: {spec_file}",
-        f"Discovery file: {discovery_file}",
         f"Template file: {template_path}",
         "",
-        "Use the scaffolded spec and discovery notes to write the specification in place.",
+        "Use the scaffolded spec and the user description to write the requirements in place.",
         "Replace all placeholders with concrete, user-value-focused content.",
         "Keep the routing contract vocabulary exact and deterministic.",
         "Preserve the section order from the template.",
@@ -296,7 +302,6 @@ def _build_specify_handoff_input(
     correlation_id: str,
     feature_dir: Path,
     spec_file: Path,
-    discovery_file: Path,
     feature_description: str,
     resume_session: bool = False,
     retry_index: int = 0,
@@ -315,7 +320,6 @@ def _build_specify_handoff_input(
             feature_id=feature_id,
             feature_dir=feature_dir,
             spec_file=spec_file,
-            discovery_file=discovery_file,
         ),
         "resume_session": resume_session,
         "retry_index": retry_index,
@@ -469,28 +473,18 @@ def _ensure_discovery_artifact(
 
 
 def _run_bootstrap_mode(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
-    """Bootstrap a new feature scaffold and persist the discovery artifact."""
-    terms = _extract_terms(description)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        discovery_future = pool.submit(_run_discovery, terms, env)
-        feature_future = pool.submit(_create_feature, description, short_name, env)
-        discovery = discovery_future.result()
-        feature = feature_future.result()
+    """Bootstrap a new feature scaffold."""
+    feature = _create_feature(description, short_name, env)
 
     feature_dir = Path(feature["SPEC_FILE"]).resolve().parent
     spec_file = Path(feature["SPEC_FILE"]).resolve()
     _persist_bootstrap_description(spec_file, description)
-    discovery_path = _write_discovery_artifact(feature_dir, discovery)
 
     return {
         "BRANCH_NAME": feature["BRANCH_NAME"],
         "FEATURE_NUM": feature["FEATURE_NUM"],
         "FEATURE_DIR": str(feature_dir),
         "SPEC_FILE": str(spec_file),
-        "DISCOVERY_FILE": str(discovery_path),
-        "DISCOVERY_TERMS": terms,
-        "DISCOVERY": discovery,
         "FEATURE_DESCRIPTION": description,
     }
 
@@ -529,11 +523,14 @@ def _run_bootstrap_then_step_mode(
         phase=phase,
         feature_description=description,
     )
+    step_env = dict(env)
+    step_env["FEATURE_DIR"] = str(bootstrap.get("FEATURE_DIR") or "")
+    step_env["FEATURE_SPEC"] = str(bootstrap.get("SPEC_FILE") or "")
     step_result = _run_step_mode(
         feature_id=feature_id,
         phase=phase,
         correlation_id=correlation_id,
-        env=env,
+        env=step_env,
         timeout_seconds=timeout_seconds,
     )
     step_result.setdefault("feature_id", feature_id)
@@ -542,10 +539,6 @@ def _run_bootstrap_then_step_mode(
     step_result.setdefault("feature_num", str(bootstrap.get("FEATURE_NUM") or ""))
     step_result.setdefault("feature_dir", str(bootstrap.get("FEATURE_DIR") or ""))
     step_result.setdefault("spec_file", str(bootstrap.get("SPEC_FILE") or step_result.get("spec_file") or ""))
-    step_result.setdefault(
-        "discovery_file",
-        str(bootstrap.get("DISCOVERY_FILE") or step_result.get("discovery_file") or ""),
-    )
     return step_result
 
 
@@ -613,7 +606,6 @@ def _run_step_mode(
             },
         )
 
-    discovery_path = _ensure_discovery_artifact(env=env, feature_dir=feature_dir, spec_file=spec_file)
     feature_description = _load_spec_description(spec_file) or feature_dir.name
     handoff_input = _build_specify_handoff_input(
         feature_id=feature_id,
@@ -621,7 +613,6 @@ def _run_step_mode(
         correlation_id=correlation_id,
         feature_dir=feature_dir,
         spec_file=spec_file,
-        discovery_file=discovery_path,
         feature_description=feature_description,
     )
 
@@ -637,7 +628,6 @@ def _run_step_mode(
                 "completion_marker": SPEC_ROUTING_MARKER,
             }
         handoff_result["spec_file"] = str(spec_file)
-        handoff_result["discovery_file"] = str(discovery_path)
         return handoff_result
 
     validation_result = _validate_spec_routing(spec_file, env)
@@ -650,7 +640,6 @@ def _run_step_mode(
             correlation_id=correlation_id,
             feature_dir=feature_dir,
             spec_file=spec_file,
-            discovery_file=discovery_path,
             feature_description=feature_description,
             resume_session=True,
             retry_index=retry_index,
@@ -668,7 +657,6 @@ def _run_step_mode(
                     "completion_marker": SPEC_ROUTING_MARKER,
                 }
             handoff_result["spec_file"] = str(spec_file)
-            handoff_result["discovery_file"] = str(discovery_path)
             return handoff_result
         validation_result = _validate_spec_routing(spec_file, env)
 
@@ -680,7 +668,6 @@ def _run_step_mode(
                 "feature_id": feature_id,
                 "feature_dir": str(feature_dir),
                 "spec_file": str(spec_file),
-                "discovery_file": str(discovery_path),
                 "handoff_result": handoff_result,
                 "validation_result": validation_result,
             },
@@ -702,7 +689,6 @@ def _run_step_mode(
             },
             "validation": validation_result,
             "spec_file": str(spec_file),
-            "discovery_file": str(discovery_path),
         }
 
     generated_artifact = dict(
@@ -721,7 +707,6 @@ def _run_step_mode(
         "generated_artifact": generated_artifact,
         "validation": validation_result,
         "spec_file": str(spec_file),
-        "discovery_file": str(discovery_path),
     }
 
 

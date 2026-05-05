@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-from spec_routing import load_spec_routing_contract
+from spec_routing import load_plan_routing_contract
 
 HEADING_RE = re.compile(r"^\s*(?P<hashes>#{2,6})\s+(?P<title>.+?)\s*$")
 
@@ -24,6 +24,7 @@ RESEARCH_REQUIRED_SECTIONS = (
 PLAN_REQUIRED_SECTIONS = (
     "## Summary",
     "## Plan Routing",
+    "## Routing Contract",
     "## Existing Coverage and Reuse",
     "## Handoff Contract to Sketch",
     "## Plan Completion Summary",
@@ -43,7 +44,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
     research = sub.add_parser(
         "research-prereq",
-        help="Validate research prerequisites, honoring spec-driven routing when provided.",
+        help="Validate research prerequisites before plan begins.",
     )
     research.add_argument("--feature-dir", required=True)
     research.add_argument("--spec-file", default=None)
@@ -94,64 +95,20 @@ def _emit(payload: dict[str, Any], as_json: bool) -> None:
 
 
 def _research_prereq(feature_dir: Path) -> tuple[int, dict[str, Any]]:
-    """Validate research prerequisites without an explicit routing contract."""
+    """Validate that research artifacts exist before plan begins."""
     return _research_prereq_with_spec(feature_dir, None)
 
 
 def _research_prereq_with_spec(
     feature_dir: Path, spec_file: Path | None
 ) -> tuple[int, dict[str, Any]]:
-    """Validate research prerequisites against spec-driven routing when available."""
+    """Validate that the research artifact exists before plan begins."""
     reasons: list[str] = []
     research = feature_dir / "research.md"
     found_sections: list[str] = []
-    routing_contract: dict[str, Any] | None = None
 
-    if spec_file is not None:
-        contract, routing_reasons = load_spec_routing_contract(spec_file)
-        if contract is not None:
-            routing_contract = contract
-        if routing_reasons:
-            reasons.extend(routing_reasons)
-            payload = {
-                "mode": "research_prereq",
-                "feature_dir": str(feature_dir),
-                "spec_file": str(spec_file),
-                "routing_contract": routing_contract,
-                "research_file": str(research),
-                "found_sections": found_sections,
-                "reasons": reasons,
-                "ok": False,
-            }
-            return (2, payload)
-
-    if routing_contract is not None:
-        routing = routing_contract.get("routing", {})
-        if isinstance(routing, dict):
-            if routing.get("plan_profile") == "skip":
-                payload = {
-                    "mode": "research_prereq",
-                    "feature_dir": str(feature_dir),
-                    "spec_file": str(spec_file) if spec_file is not None else None,
-                    "routing_contract": routing_contract,
-                    "research_file": str(research),
-                    "found_sections": [],
-                    "reasons": ["plan_skipped_by_routing"],
-                    "ok": True,
-                }
-                return (0, payload)
-            if routing.get("research_route") == "skip":
-                payload = {
-                    "mode": "research_prereq",
-                    "feature_dir": str(feature_dir),
-                    "spec_file": str(spec_file) if spec_file is not None else None,
-                    "routing_contract": routing_contract,
-                    "research_file": str(research),
-                    "found_sections": [],
-                    "reasons": ["research_skipped_by_routing"],
-                    "ok": True,
-                }
-                return (0, payload)
+    if spec_file is not None and not spec_file.exists():
+        reasons.append("missing_spec_file")
 
     if not research.exists():
         reasons.append("missing_research_md")
@@ -167,7 +124,6 @@ def _research_prereq_with_spec(
         "mode": "research_prereq",
         "feature_dir": str(feature_dir),
         "spec_file": str(spec_file) if spec_file is not None else None,
-        "routing_contract": routing_contract,
         "research_file": str(research),
         "found_sections": found_sections,
         "reasons": reasons,
@@ -275,42 +231,6 @@ def _plan_sections(
     plan_profile = ""
     resolved_spec_file = spec_file.resolve() if spec_file is not None else plan_file.parent / "spec.md"
 
-    if resolved_spec_file.exists():
-        contract, routing_reasons = load_spec_routing_contract(resolved_spec_file)
-        if contract is not None:
-            routing_contract = contract
-            routing = contract.get("routing", {})
-            if isinstance(routing, dict):
-                plan_profile = str(routing.get("plan_profile", "")).strip().lower()
-        if routing_reasons:
-            reasons.extend(routing_reasons)
-            payload = {
-                "mode": "plan_sections",
-                "plan_file": str(plan_file),
-                "spec_file": str(resolved_spec_file),
-                "routing_contract": routing_contract,
-                "plan_profile": plan_profile,
-                "missing_sections": missing_sections,
-                "blank_status_rows": blank_status_rows,
-                "reasons": reasons,
-                "ok": False,
-            }
-            return (2, payload)
-
-    if plan_profile == "skip":
-        payload = {
-            "mode": "plan_sections",
-            "plan_file": str(plan_file),
-            "spec_file": str(resolved_spec_file) if resolved_spec_file.exists() else None,
-            "routing_contract": routing_contract,
-            "plan_profile": plan_profile,
-            "missing_sections": [],
-            "blank_status_rows": [],
-            "reasons": ["plan_skipped_by_routing"],
-            "ok": True,
-        }
-        return (0, payload)
-
     if not plan_file.exists():
         reasons.append("missing_plan_file")
         payload = {
@@ -325,6 +245,41 @@ def _plan_sections(
             "ok": False,
         }
         return (2, payload)
+
+    contract, routing_reasons = load_plan_routing_contract(plan_file)
+    if contract is not None:
+        routing_contract = contract
+        routing = contract.get("routing", {})
+        if isinstance(routing, dict):
+            plan_profile = str(routing.get("plan_profile", "")).strip().lower()
+    if routing_reasons:
+        reasons.extend(routing_reasons)
+        payload = {
+            "mode": "plan_sections",
+            "plan_file": str(plan_file),
+            "spec_file": str(resolved_spec_file) if resolved_spec_file.exists() else None,
+            "routing_contract": routing_contract,
+            "plan_profile": plan_profile,
+            "missing_sections": missing_sections,
+            "blank_status_rows": blank_status_rows,
+            "reasons": reasons,
+            "ok": False,
+        }
+        return (2, payload)
+
+    if plan_profile == "skip":
+        payload = {
+            "mode": "plan_sections",
+            "plan_file": str(plan_file),
+            "spec_file": str(resolved_spec_file) if resolved_spec_file.exists() else None,
+            "routing_contract": routing_contract,
+            "plan_profile": plan_profile,
+            "missing_sections": [],
+            "blank_status_rows": [],
+            "reasons": ["plan_skipped_by_routing"],
+            "ok": True,
+        }
+        return (0, payload)
 
     text = plan_file.read_text(encoding="utf-8")
     for section in PLAN_REQUIRED_SECTIONS:

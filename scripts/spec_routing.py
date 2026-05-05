@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Helpers for parsing spec-driven routing contracts from spec.md and events."""
+"""Helpers for parsing markdown routing contracts and mirrored events."""
 
 from __future__ import annotations
 
@@ -213,17 +213,27 @@ def extract_spec_routing_contract(spec_text: str) -> tuple[dict[str, Any] | None
     return None, ["missing_routing_block"]
 
 
-def load_spec_routing_contract(spec_file: Path) -> tuple[dict[str, Any] | None, list[str]]:
-    """Load and validate the routing contract from a spec file."""
-    if not spec_file.exists():
+def load_markdown_routing_contract(markdown_file: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    """Load and validate the routing contract from a markdown artifact."""
+    if not markdown_file.exists():
         return None, ["missing_spec_file"]
-    contract, parse_reasons = extract_spec_routing_contract(spec_file.read_text(encoding="utf-8"))
+    contract, parse_reasons = extract_spec_routing_contract(markdown_file.read_text(encoding="utf-8"))
     if contract is None:
         return None, parse_reasons
     validation_reasons = validate_spec_routing_contract(contract)
     if validation_reasons:
         return contract, validation_reasons
     return contract, []
+
+
+def load_spec_routing_contract(spec_file: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    """Load and validate the routing contract from a spec file."""
+    return load_markdown_routing_contract(spec_file)
+
+
+def load_plan_routing_contract(plan_file: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    """Load and validate the routing contract from a plan file."""
+    return load_markdown_routing_contract(plan_file)
 
 
 def extract_event_routing_contract(event: Mapping[str, Any]) -> dict[str, Any] | None:

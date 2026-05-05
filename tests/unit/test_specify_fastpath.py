@@ -40,19 +40,6 @@ def test_main_bootstraps_then_runs_deterministic_step(monkeypatch, tmp_path: Pat
         "_build_uv_env",
         lambda: {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")},
     )
-    monkeypatch.setattr(specify_step, "_extract_terms", lambda _description: ["tetris"])
-
-    def _run_discovery(terms: list[str], env: dict[str, str]) -> list[dict[str, object]]:
-        calls.append(f"discover:{terms[0]}:{env['UV_CACHE_DIR']}")
-        return [
-            {
-                "term": terms[0],
-                "returncode": 0,
-                "stdout": "No content matches found for 'tetris'",
-                "stderr": "",
-                "has_matches": False,
-            }
-        ]
 
     def _create_feature(description: str, short_name: str, env: dict[str, str]) -> dict[str, str]:
         calls.append(f"create:{short_name}:{env['UV_CACHE_DIR']}")
@@ -87,7 +74,13 @@ def test_main_bootstraps_then_runs_deterministic_step(monkeypatch, tmp_path: Pat
         env: dict[str, str],
         timeout_seconds: int,
     ) -> dict[str, object]:
-        calls.append(f"step:{feature_id}:{phase}:{correlation_id}:{timeout_seconds}:{env['UV_CACHE_DIR']}")
+        calls.append(
+            "step:"
+            f"{feature_id}:{phase}:{correlation_id}:{timeout_seconds}:"
+            f"{env['UV_CACHE_DIR']}:{env['FEATURE_DIR']}:{env['FEATURE_SPEC']}"
+        )
+        assert env["FEATURE_DIR"] == str(tmp_path / "specs" / "028-tetris-game")
+        assert env["FEATURE_SPEC"] == str(tmp_path / "specs" / "028-tetris-game" / "spec.md")
         return {
             "schema_version": "1.0.0",
             "ok": True,
@@ -101,7 +94,6 @@ def test_main_bootstraps_then_runs_deterministic_step(monkeypatch, tmp_path: Pat
             },
         }
 
-    monkeypatch.setattr(specify_step, "_run_discovery", _run_discovery)
     monkeypatch.setattr(specify_step, "_create_feature", _create_feature)
     monkeypatch.setattr(specify_step, "_run_step_mode", _run_step_mode)
 
@@ -109,19 +101,9 @@ def test_main_bootstraps_then_runs_deterministic_step(monkeypatch, tmp_path: Pat
     capsys.readouterr()
 
     assert exit_code == 0
-    assert set(calls[:2]) == {
-        f"discover:tetris:{tmp_path / '.uv-cache'}",
-        f"create:tetris-game:{tmp_path / '.uv-cache'}",
-    }
-    assert calls[2].startswith(f"step:028:specify:")
-
-    discovery_path = tmp_path / "specs" / "028-tetris-game" / "discovery.md"
-    assert discovery_path.exists()
-    discovery_text = discovery_path.read_text(encoding="utf-8")
-    assert "# Discovery" in discovery_text
-    assert "- tetris" in discovery_text
-    assert "has_matches: false" in discovery_text
-    assert "No content matches found for 'tetris'" in discovery_text
+    assert calls[0] == f"create:tetris-game:{tmp_path / '.uv-cache'}"
+    assert calls[1].startswith("step:028:specify:")
+    assert not (tmp_path / "specs" / "028-tetris-game" / "discovery.md").exists()
     assert '**Input**: User description: "Build a playable Tetris game in the app."' in (
         tmp_path / "specs" / "028-tetris-game" / "spec.md"
     ).read_text(encoding="utf-8")
@@ -247,6 +229,7 @@ def test_main_step_mode_retries_after_validation_failure(monkeypatch, tmp_path: 
 
     exit_code = specify_step.main(
         [
+            "make tetris",
             "--feature-id",
             "032-make-tetris",
             "--phase",

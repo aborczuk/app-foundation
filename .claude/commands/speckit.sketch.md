@@ -26,7 +26,7 @@ This phase owns `sketch.md` only. It is **design-only**.
 ## Inputs
 
 - Approved planning context for the active feature
-- The machine-readable `routing` + `risk` contract from `spec.md`
+- The machine-readable `routing` + `risk` contract from `plan.md`
 - The scaffolded `sketch.md` template
 - Repo and codebase discovery outputs available to this phase
 - Any required gate results for entering sketch
@@ -34,7 +34,7 @@ This phase owns `sketch.md` only. It is **design-only**.
 ## Execution
 
 - Ground the sketch in the approved planning context and repo-discovery outputs.
-- If `spec.md` routes `plan_profile=skip`, ground the sketch directly in the spec routing contract and repo reality rather than waiting on a plan artifact.
+- If `plan.md` routes `plan_profile=skip`, ground the sketch directly in the settled plan contract and repo reality rather than waiting on a deeper plan artifact.
 - Treat `command-manifest.yaml` and `.claude/commands/` as the authoritative command-location source for workflow behavior.
 - Scaffold and complete `sketch.md` for the feature without changing the artifact shape.
 - Capture the implementation surfaces, reuse seams, symbol boundaries, and blast radius needed for downstream tasking.

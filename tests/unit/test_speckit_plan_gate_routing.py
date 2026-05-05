@@ -60,7 +60,7 @@ def _write_spec(spec_file: Path, *, research_route: str, plan_profile: str) -> N
     )
 
 
-def _write_core_plan(plan_file: Path) -> None:
+def _write_core_plan(plan_file: Path, *, plan_profile: str) -> None:
     plan_file.write_text(
         "\n".join(
             [
@@ -69,6 +69,30 @@ def _write_core_plan(plan_file: Path) -> None:
                 "## Summary",
                 "",
                 "## Plan Routing",
+                "",
+                "## Routing Contract",
+                "",
+                "```json",
+                "{",
+                '  "routing": {',
+                '    "research_route": "required",',
+                f'    "plan_profile": "{plan_profile}",',
+                '    "sketch_profile": "core",',
+                '    "tasking_route": "required",',
+                '    "estimate_route": "required_after_tasking",',
+                '    "routing_reason": "Repo-local tasking/HUD behavior change using existing architecture.",',
+                '    "conditional_sketch_sections": []',
+                '  },',
+                '  "risk": {',
+                '    "requirement_clarity": "low",',
+                '    "repo_uncertainty": "low",',
+                '    "external_dependency_uncertainty": "low",',
+                '    "state_data_migration_risk": "low",',
+                '    "runtime_side_effect_risk": "low",',
+                '    "human_operator_dependency": "low"',
+                '  }',
+                "}",
+                "```",
                 "",
                 "## Existing Coverage and Reuse",
                 "",
@@ -81,18 +105,23 @@ def _write_core_plan(plan_file: Path) -> None:
     )
 
 
-def test_research_prereq_skips_when_plan_is_skipped(tmp_path: Path) -> None:
+def test_research_prereq_accepts_research_artifact_even_if_spec_routes_skip(tmp_path: Path) -> None:
     feature_dir = tmp_path / "feature"
     feature_dir.mkdir()
     spec_file = feature_dir / "spec.md"
-    _write_spec(spec_file, research_route="skip", plan_profile="skip")
+    research_file = feature_dir / "research.md"
+    spec_file.write_text("# Spec\n", encoding="utf-8")
+    research_file.write_text(
+        "\n".join(speckit_plan_gate.RESEARCH_REQUIRED_SECTIONS),
+        encoding="utf-8",
+    )
 
     exit_code, payload = speckit_plan_gate._research_prereq_with_spec(feature_dir, spec_file)
 
     assert exit_code == 0
     assert payload["ok"] is True
-    assert payload["reasons"] == ["plan_skipped_by_routing"]
-    assert payload["routing_contract"]["routing"]["plan_profile"] == "skip"
+    assert payload["reasons"] == []
+    assert payload["found_sections"] == list(speckit_plan_gate.RESEARCH_REQUIRED_SECTIONS)
 
 
 def test_research_prereq_requires_research_when_routing_says_required(
@@ -115,8 +144,8 @@ def test_plan_sections_accepts_core_lite_plan(tmp_path: Path) -> None:
     feature_dir.mkdir()
     spec_file = feature_dir / "spec.md"
     plan_file = feature_dir / "plan.md"
-    _write_spec(spec_file, research_route="skip", plan_profile="lite")
-    _write_core_plan(plan_file)
+    spec_file.write_text("# Spec\n", encoding="utf-8")
+    _write_core_plan(plan_file, plan_profile="lite")
 
     exit_code, payload = speckit_plan_gate._plan_sections(plan_file, spec_file)
 
@@ -131,7 +160,8 @@ def test_plan_sections_bypass_when_plan_is_skipped(tmp_path: Path) -> None:
     feature_dir.mkdir()
     spec_file = feature_dir / "spec.md"
     plan_file = feature_dir / "plan.md"
-    _write_spec(spec_file, research_route="skip", plan_profile="skip")
+    spec_file.write_text("# Spec\n", encoding="utf-8")
+    _write_core_plan(plan_file, plan_profile="skip")
 
     exit_code, payload = speckit_plan_gate._plan_sections(plan_file, spec_file)
 

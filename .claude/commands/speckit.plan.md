@@ -1,5 +1,5 @@
 ---
-description: Deterministic plan generation from spec + research. Scaffold plan artifacts first, run gates, then hand off through the existing driver-backed planreview/feasibility flow.
+description: Deterministic plan generation from spec + research. Scaffold plan artifacts first, write the routing contract in plan.md, run gates, then hand off through the existing driver-backed planreview/feasibility flow.
 model: opus
 handoffs:
   - label: Create Checklist
@@ -32,21 +32,19 @@ Run these steps first; only load expanded guidance when a gate fails or the user
     - `uv run python scripts/speckit_plan_gate.py research-prereq --feature-dir "$FEATURE_DIR" --spec-file "$FEATURE_SPEC" --json`
     - `uv run python scripts/speckit_plan_gate.py plan-sections --plan-file "$IMPL_PLAN" --spec-file "$FEATURE_SPEC" --json`
     - `uv run python scripts/speckit_plan_gate.py design-artifacts --feature-dir "$FEATURE_DIR" --json`
-    - Start from the machine-readable routing contract in `spec.md`.
-    - If `plan_profile=skip`, treat both research and plan-section gates as routed bypasses and hand off directly to `/speckit.sketch`.
+    - Start from the machine-readable routing contract in `plan.md`.
+    - `research.md` is required input before plan begins; the research gate should only check the artifact, not decide whether research is needed.
+    - If `plan_profile=skip`, treat plan-section gates as routed bypasses and hand off directly to `/speckit.sketch`.
     - If `plan_profile=lite`, require only the core plan sections plus any conditional sections actually triggered by the plan template.
     - If `plan_profile=full`, require the core plan plus the additional conditional sections the current feature truly needs; do not invent optional sections just to pad the artifact.
+    - Resolve `sketch_profile` in `plan.md` as part of the plan handoff; sketch consumes that decision to determine how deep the repo grounding needs to go.
 3. Scaffold plan artifacts immediately:
     - `uv run python .specify/scripts/pipeline-scaffold.py speckit.plan --feature-dir "$FEATURE_DIR" FEATURE_NAME="[Feature Name]"`
    - This creates `plan.md`, `data-model.md`, and `quickstart.md` from the manifest templates.
-4. Fill the scaffolded artifacts using `spec.md`, the routing contract, `research.md` when required, and repo context with this mandatory read hierarchy:
-    - Start from the machine-readable routing contract in `spec.md`; if it says research is skipped, do not require `research.md` to exist for gating.
-    - First, run the read helpers (entrypoint):
-      - Code: `source scripts/read_code.py && read_code_context <file> <symbol_or_pattern> 80`
-      - Markdown: `source scripts/read_markdown.py && read_markdown_section <file> <section_heading>`
-    - Helper behavior (internal order): semantic lookup first, then exact bounded read.
-    - After the seam is anchored, run discovery checks (`codegraph` caller/callee/import blast radius).
-   - Do not start with broad `codegraph` or grep sweeps unless helper-driven reads fail to locate the target.
+4. Fill the scaffolded artifacts using `spec.md` requirements, `research.md` patterns, and the routing contract written into `plan.md`:
+    - Start from `spec.md` requirements, `research.md` patterns, and the routing contract written into `plan.md`.
+    - Keep the plan focused on sizing, architecture direction, reuse, and sketch handoff decisions.
+    - Defer repo-grounding, touched-file discovery, implementation-seam mapping, and blast-radius detail to `/speckit.sketch`.
 5. Emit `plan_started`, then let the existing driver-backed flow continue to `/speckit.planreview`. If open feasibility questions remain, continue to `/speckit.feasibilityspike`. Emit `plan_approved` only after those sub-processes complete successfully.
 6. On any non-zero gate result, route by reason code using `docs/governance/gate-reason-codes.yaml`.
 

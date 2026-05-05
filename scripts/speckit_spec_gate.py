@@ -10,8 +10,6 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-from spec_routing import load_spec_routing_contract
-
 NEEDS_CLARIFICATION_RE = re.compile(r"\[NEEDS CLARIFICATION:\s*(?P<text>[^\]]+)\]")
 QUESTION_HEADER_RE = re.compile(r"^\s*##\s+Question\s+(?P<num>\d+)\s*:\s*(?P<title>.+?)\s*$")
 
@@ -33,18 +31,6 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     format_check.add_argument("--markdown-file", required=True)
     format_check.add_argument("--json", action="store_true")
 
-    routing_check = sub.add_parser(
-        "validate-routing", help="Validate the machine-readable routing contract in spec.md."
-    )
-    routing_check.add_argument("--spec-file", required=True)
-    routing_check.add_argument("--json", action="store_true")
-
-    realize_routing = sub.add_parser(
-        "realize-routing", help="Project ledger events based on the routing contract in spec.md."
-    )
-    realize_routing.add_argument("--spec-file", required=True)
-    realize_routing.add_argument("--feature-id", required=True)
-    realize_routing.add_argument("--json", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -169,78 +155,6 @@ def _validate_clarification_questions(markdown_file: Path) -> tuple[int, dict[st
     return (0 if payload["ok"] else 2, payload)
 
 
-def _validate_routing(spec_file: Path) -> tuple[int, dict[str, Any]]:
-    """Validate that spec.md contains a parseable routing contract."""
-    contract, reasons = load_spec_routing_contract(spec_file)
-    payload: dict[str, Any] = {
-        "mode": "validate_routing",
-        "spec_file": str(spec_file),
-        "routing": contract.get("routing") if contract is not None else None,
-        "risk": contract.get("risk") if contract is not None else None,
-        "reasons": reasons,
-        "ok": len(reasons) == 0,
-    }
-    return (0 if payload["ok"] else 2, payload)
-
-
-def _realize_routing(spec_file: Path, feature_id: str) -> tuple[int, dict[str, Any]]:
-    """Project ledger events based on the routing contract in spec.md."""
-    import subprocess
-    contract, reasons = load_spec_routing_contract(spec_file)
-    if contract is None or reasons:
-        return 2, {
-            "mode": "realize_routing",
-            "ok": False,
-            "reasons": reasons + ["invalid_routing_contract"],
-        }
-
-    routing = contract.get("routing", {})
-    projected: list[str] = []
-    errors: list[str] = []
-
-    # 1. Project Research Skip
-    if str(routing.get("research_route")).strip().lower() == "skip":
-        cmd = [
-            sys.executable, "scripts/pipeline_ledger.py", "append",
-            "--feature-id", feature_id,
-            "--event", "research_completed",
-            "--details", "Projected by realize-routing (research_route: skip)"
-        ]
-        rc = subprocess.run(cmd, capture_output=True, text=True)
-        if rc.returncode == 0:
-            projected.append("research_completed")
-        else:
-            errors.append(f"research_completed: {rc.stderr.strip()}")
-
-    # 2. Project Plan Skip
-    if str(routing.get("plan_profile")).strip().lower() == "skip":
-        # Need plan_started then plan_approved
-        for event in ["plan_started", "plan_approved"]:
-            cmd = [
-                sys.executable, "scripts/pipeline_ledger.py", "append",
-                "--feature-id", feature_id,
-                "--event", event,
-                "--details", "Projected by realize-routing (plan_profile: skip)"
-            ]
-            if event == "plan_approved":
-                cmd.extend(["--feasibility-required", "false"])
-            
-            rc = subprocess.run(cmd, capture_output=True, text=True)
-            if rc.returncode == 0:
-                projected.append(event)
-            else:
-                errors.append(f"{event}: {rc.stderr.strip()}")
-
-    payload = {
-        "mode": "realize_routing",
-        "feature_id": feature_id,
-        "projected": projected,
-        "errors": errors,
-        "ok": len(errors) == 0,
-    }
-    return (0 if payload["ok"] else 2, payload)
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     """Run selected /speckit.specify deterministic gate check."""
     args = _parse_args(argv if argv is not None else sys.argv[1:])
@@ -249,12 +163,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.subcommand == "validate-clarification-questions":
         exit_code, payload = _validate_clarification_questions(
             Path(args.markdown_file).resolve()
-        )
-    elif args.subcommand == "validate-routing":
-        exit_code, payload = _validate_routing(Path(args.spec_file).resolve())
-    elif args.subcommand == "realize-routing":
-        exit_code, payload = _realize_routing(
-            Path(args.spec_file).resolve(), args.feature_id
         )
     else:
         return 2

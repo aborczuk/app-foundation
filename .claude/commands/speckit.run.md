@@ -9,7 +9,7 @@ $ARGUMENTS
 ## Compact Contract (Load First)
 
 Treat this command as the canonical trigger for deterministic phase orchestration.
-If the request is a new feature description rather than an existing feature id, bootstrap the feature through specify first and then continue with the ledger-driven phase flow.
+If the request is a new feature description rather than an existing feature id, bootstrap the feature through specify requirements first
 Examples:
 - `speckit.run "create a universal backlog jsonl for all registered tasks"`
 - `speckit.run --feature-id 028-universal-backlog`

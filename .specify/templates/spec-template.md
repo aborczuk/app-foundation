@@ -275,44 +275,6 @@ Use this calibration:
 | Tasking | `[Required / Attach to existing feature]` | [Why] |
 | Estimate | `[Required after tasking / Reuse existing estimate]` | [Why] |
 
-### Routing Contract
-
-Fill this block with the same routing and risk decisions above. Downstream automation reads this block.
-Use the exact routing vocabulary from `scripts/spec_routing.py`:
-- `research_route`: `skip` or `required`
-- `plan_profile`: `skip`, `lite`, or `full`
-- `sketch_profile`: `core` or `expanded`
-- `tasking_route`: `required` or `attach_to_existing_feature`
-- `estimate_route`: `required_after_tasking` or `reuse_existing_estimate`
-If conditional sketch sections are needed, use the canonical names from `scripts/spec_routing.py`:
-- `Repo Grounding`
-- `Contract / Artifact / Event Impact`
-- `Runtime / State / Failure Notes`
-- `Human / Operator Boundaries`
-- `Design Gaps and Repo Contradictions`
-- `Decomposition-Ready Design Slices`
-
-```json
-{
-  "routing": {
-    "research_route": "",
-    "plan_profile": "",
-    "sketch_profile": "",
-    "tasking_route": "",
-    "estimate_route": "",
-    "routing_reason": "",
-    "conditional_sketch_sections": []
-  },
-  "risk": {
-    "requirement_clarity": "",
-    "repo_uncertainty": "",
-    "external_dependency_uncertainty": "",
-    "state_data_migration_risk": "",
-    "runtime_side_effect_risk": "",
-    "human_operator_dependency": ""
-  }
-}
-```
 
 ### Existing-Spec Attachment
 
