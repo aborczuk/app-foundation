@@ -4,20 +4,17 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
 import shlex
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
-DISCOVERY_MAX_TERMS = 5
 SPEC_ROUTING_MARKER = "## Routing Contract"
 
 if str(REPO_ROOT) not in sys.path:
@@ -25,33 +22,8 @@ if str(REPO_ROOT) not in sys.path:
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from pipeline_driver import build_correlation_id  # noqa: E402
 from pipeline_driver_state import determine_next_phase  # noqa: E402
-
-STOP_WORDS = {
-    "a",
-    "an",
-    "and",
-    "as",
-    "at",
-    "build",
-    "app",
-    "browser",
-    "feature",
-    "for",
-    "from",
-    "game",
-    "in",
-    "into",
-    "make",
-    "of",
-    "on",
-    "or",
-    "playable",
-    "the",
-    "to",
-    "up",
-    "with",
-}
 
 
 def _build_uv_env() -> dict[str, str]:
@@ -60,23 +32,6 @@ def _build_uv_env() -> dict[str, str]:
 
     os.environ.update(repo_uv_env())
     return os.environ.copy()
-
-
-def _extract_terms(description: str) -> list[str]:
-    """Extract a compact set of discovery terms from the feature description."""
-    terms: list[str] = []
-    seen: set[str] = set()
-    for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", description):
-        normalized = token.strip("-").lower()
-        if len(normalized) < 3 or normalized in STOP_WORDS:
-            continue
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        terms.append(normalized)
-        if len(terms) >= DISCOVERY_MAX_TERMS:
-            break
-    return terms or ["feature"]
 
 
 def _run_uv_command(
@@ -156,52 +111,6 @@ def _load_spec_description(spec_file: Path) -> str:
     return ""
 
 
-def _render_discovery_result(result: dict[str, Any]) -> str:
-    """Render one discovery result block for the terminal and discovery.md."""
-    term = result.get("term", "unknown")
-    has_matches = bool(result.get("has_matches"))
-    stdout = str(result.get("stdout") or "").rstrip()
-    stderr = str(result.get("stderr") or "").rstrip()
-    lines = [f"- {term}", f"  has_matches: {str(has_matches).lower()}"]
-    if stdout:
-        lines.append("  stdout:")
-        lines.extend(f"    {line}" for line in stdout.splitlines())
-    if stderr:
-        lines.append("  stderr:")
-        lines.extend(f"    {line}" for line in stderr.splitlines())
-    return "\n".join(lines)
-
-
-def _run_discovery(terms: Iterable[str], env: dict[str, str]) -> list[dict[str, Any]]:
-    """Run semantic code discovery for each search term in parallel."""
-    term_list = list(terms)
-    if not term_list:
-        return []
-
-    with ThreadPoolExecutor(max_workers=min(len(term_list), 5)) as pool:
-        future_map = {
-            pool.submit(_run_uv_command, ["python3", "scripts/read_code.py", "context", term], env=env): term
-            for term in term_list
-        }
-        results: list[dict[str, Any]] = []
-        for future, term in future_map.items():
-            proc = future.result()
-            stdout = proc.stdout or ""
-            stderr = proc.stderr or ""
-            results.append(
-                {
-                    "term": term,
-                    "returncode": proc.returncode,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "has_matches": proc.returncode == 0 and "ERROR: No match found" not in stdout + stderr,
-                }
-            )
-
-    results.sort(key=lambda item: term_list.index(item["term"]))
-    return results
-
-
 def _create_feature(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
     """Create the feature scaffold and return the parsed JSON payload."""
     cmd = [
@@ -226,16 +135,6 @@ def _create_feature(description: str, short_name: str, env: dict[str, str]) -> d
     return payload
 
 
-def _write_discovery_artifact(feature_dir: Path, discovery: list[dict[str, Any]]) -> Path:
-    """Write the captured discovery output into discovery.md for the feature."""
-    discovery_path = feature_dir / "discovery.md"
-    discovery_path.parent.mkdir(parents=True, exist_ok=True)
-    blocks = ["# Discovery", ""]
-    for result in discovery:
-        blocks.append(_render_discovery_result(result))
-        blocks.append("")
-    discovery_path.write_text("\n".join(blocks).rstrip() + "\n", encoding="utf-8")
-    return discovery_path
 
 
 def _default_handoff_runner(repo_root: Path) -> str:
@@ -433,43 +332,11 @@ def _run_specify_handoff_round(
     payload.setdefault("stderr", stderr)
     payload.setdefault("process_exit_code", proc.returncode)
     payload.setdefault("timed_out", False)
+    if int(payload.get("exit_code") or 0) == 1 and str(payload.get("error_code") or "") == "codex_exec_failed":
+        payload["exit_code"] = 2
+    if not str(payload.get("debug_path") or "").strip():
+        payload["debug_path"] = str(payload.get("runner_log_path") or "")
     return payload
-
-
-def _validate_spec_routing(spec_file: Path, env: dict[str, str]) -> dict[str, Any]:
-    """Validate the routing contract inside the scaffolded spec."""
-    proc = _run_uv_command(
-        ["python3", "scripts/speckit_spec_gate.py", "validate-routing", "--spec-file", str(spec_file), "--json"],
-        env=env,
-    )
-
-    try:
-        payload = json.loads(proc.stdout or "{}")
-    except json.JSONDecodeError:
-        raise RuntimeError("spec routing validation returned invalid JSON")
-    if not isinstance(payload, dict):
-        raise RuntimeError("spec routing validation returned invalid payload")
-    payload["process_exit_code"] = proc.returncode
-    payload["stdout"] = proc.stdout or ""
-    payload["stderr"] = proc.stderr or ""
-    return payload
-
-
-def _ensure_discovery_artifact(
-    *,
-    env: dict[str, str],
-    feature_dir: Path,
-    spec_file: Path,
-) -> Path:
-    """Ensure discovery.md exists, deriving it from the stored spec description when needed."""
-    discovery_path = feature_dir / "discovery.md"
-    if discovery_path.is_file():
-        return discovery_path
-
-    description = _load_spec_description(spec_file)
-    discovery_terms = _extract_terms(description or feature_dir.name)
-    discovery = _run_discovery(discovery_terms, env)
-    return _write_discovery_artifact(feature_dir, discovery)
 
 
 def _run_bootstrap_mode(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
@@ -495,17 +362,11 @@ def _build_specify_step_identity(
     phase: str,
     feature_description: str,
 ) -> tuple[str, str]:
-    """Derive deterministic ids for a specify step run."""
-    feature_id = str(feature.get("FEATURE_NUM") or "").strip()
+    """Derive the step feature id and correlation id from bootstrap output."""
+    feature_id = str(feature.get("BRANCH_NAME") or feature.get("FEATURE_NUM") or "").strip()
     if not feature_id:
-        raise RuntimeError("feature_id_unavailable")
-
-    phase_name = str(phase).strip() or "specify"
-    branch_name = str(feature.get("BRANCH_NAME") or "").strip()
-    seed = "|".join([feature_id, phase_name, branch_name, feature_description.strip()])
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
-    correlation_id = f"{feature_id}:{phase_name}:{digest}"
-    return feature_id, correlation_id
+        raise RuntimeError("bootstrap feature id missing")
+    return feature_id, build_correlation_id(feature_id, phase)
 
 
 def _run_bootstrap_then_step_mode(
@@ -518,11 +379,8 @@ def _run_bootstrap_then_step_mode(
 ) -> dict[str, Any]:
     """Bootstrap the scaffold, derive ids, and continue into the deterministic step loop."""
     bootstrap = _run_bootstrap_mode(description, short_name, env)
-    feature_id, correlation_id = _build_specify_step_identity(
-        feature=bootstrap,
-        phase=phase,
-        feature_description=description,
-    )
+    feature_id = str(bootstrap.get("BRANCH_NAME") or bootstrap.get("FEATURE_NUM") or "").strip()
+    correlation_id = build_correlation_id(feature_id, phase)
     step_env = dict(env)
     step_env["FEATURE_DIR"] = str(bootstrap.get("FEATURE_DIR") or "")
     step_env["FEATURE_SPEC"] = str(bootstrap.get("SPEC_FILE") or "")
@@ -630,67 +488,6 @@ def _run_step_mode(
         handoff_result["spec_file"] = str(spec_file)
         return handoff_result
 
-    validation_result = _validate_spec_routing(spec_file, env)
-    retry_index = 0
-    while not bool(validation_result.get("ok")) and retry_index < 1:
-        retry_index += 1
-        retry_handoff_input = _build_specify_handoff_input(
-            feature_id=feature_id,
-            phase=phase,
-            correlation_id=correlation_id,
-            feature_dir=feature_dir,
-            spec_file=spec_file,
-            feature_description=feature_description,
-            resume_session=True,
-            retry_index=retry_index,
-            qa_feedback=validation_result,
-        )
-        handoff_result = _run_specify_handoff_round(
-            env=env,
-            handoff_input=retry_handoff_input,
-            timeout_seconds=timeout_seconds,
-        )
-        if not handoff_result.get("ok"):
-            if "generated_artifact" not in handoff_result:
-                handoff_result["generated_artifact"] = {
-                    "path": str(spec_file),
-                    "completion_marker": SPEC_ROUTING_MARKER,
-                }
-            handoff_result["spec_file"] = str(spec_file)
-            return handoff_result
-        validation_result = _validate_spec_routing(spec_file, env)
-
-    if not bool(validation_result.get("ok")):
-        debug_path = _write_debug_payload(
-            correlation_id=correlation_id,
-            payload={
-                "stage": "validation",
-                "feature_id": feature_id,
-                "feature_dir": str(feature_dir),
-                "spec_file": str(spec_file),
-                "handoff_result": handoff_result,
-                "validation_result": validation_result,
-            },
-        )
-        return {
-            "schema_version": "1.0.0",
-            "ok": False,
-            "exit_code": 1,
-            "correlation_id": correlation_id,
-            "gate": "spec_validation",
-            "reasons": list(validation_result.get("reasons") or ["routing_contract_invalid"]),
-            "error_code": None,
-            "next_phase": None,
-            "debug_path": debug_path,
-            "generated_artifact": handoff_result.get("generated_artifact")
-            or {
-                "path": str(spec_file),
-                "completion_marker": SPEC_ROUTING_MARKER,
-            },
-            "validation": validation_result,
-            "spec_file": str(spec_file),
-        }
-
     generated_artifact = dict(
         handoff_result.get("generated_artifact")
         or {
@@ -703,9 +500,8 @@ def _run_step_mode(
 
     return {
         **handoff_result,
-        "next_phase": determine_next_phase("specify", routing_contract=validation_result),
+        "next_phase": handoff_result.get("next_phase") or determine_next_phase("specify"),
         "generated_artifact": generated_artifact,
-        "validation": validation_result,
         "spec_file": str(spec_file),
     }
 

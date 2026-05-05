@@ -21,6 +21,7 @@ def _usage() -> str:
         "  1. The speckit.research manifest entry still points at research-template-compact.md.\n"
         "  2. The speckit.research command doc still documents the compact scaffold invocation and no-subagent flow.\n"
         "  3. pipeline-scaffold generates a research.md with all required section headers.\n"
+        "  4. speckit_research_step.py generates discovery.md from the scaffolded spec.\n"
     )
 
 
@@ -57,6 +58,8 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
         "Do not spawn sub-agents",
         "top 3-5 matches",
         "feature_id=XYZ",
+        "scripts/speckit_research_step.py",
+        "discovery.md",
     ]
     missing = [snippet for snippet in required_snippets if snippet not in command_doc]
     if missing:
@@ -74,6 +77,41 @@ def _run_pipeline_scaffold(test_dir: Path) -> None:
             "--feature-dir",
             str(test_dir),
             "FEATURE_NAME=Compact Research Test",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _seed_spec_file(test_dir: Path) -> None:
+    """Create a minimal spec scaffold for the research discovery runner."""
+    spec_path = test_dir / "spec.md"
+    spec_path.write_text(
+        "\n".join(
+            [
+                "# Feature Specification: Compact Research Test",
+                "",
+                '**Input**: User description: "Compact Research Test"',
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _run_research_step(test_dir: Path) -> None:
+    """Generate discovery notes from the scaffolded research spec."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "speckit_research_step.py"
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--feature-dir",
+            str(test_dir),
+            "--spec-file",
+            str(test_dir / "spec.md"),
         ],
         check=True,
         capture_output=True,
@@ -101,6 +139,17 @@ def _assert_research_scaffold(root: Path) -> None:
         raise SystemExit(f"Missing sections: {', '.join(missing)}")
 
 
+def _assert_research_discovery(root: Path) -> None:
+    """Verify the generated discovery artifact content."""
+    discovery_path = root / "discovery.md"
+    if not discovery_path.exists():
+        raise SystemExit(f"Missing discovery artifact: {discovery_path}")
+
+    text = discovery_path.read_text(encoding="utf-8")
+    if "# Discovery" not in text:
+        raise SystemExit("Missing discovery heading")
+
+
 def main(argv: list[str]) -> int:
     """Run the research smoke test."""
     feature_id = _parse_args(argv)
@@ -114,7 +163,10 @@ def main(argv: list[str]) -> int:
     tmp_root = Path(tempfile.mkdtemp(prefix=f"research-{feature_id}-"))
     try:
         _run_pipeline_scaffold(tmp_root)
+        _seed_spec_file(tmp_root)
+        _run_research_step(tmp_root)
         _assert_research_scaffold(tmp_root)
+        _assert_research_discovery(tmp_root)
         print(tmp_root / "research.md")
         return 0
     finally:

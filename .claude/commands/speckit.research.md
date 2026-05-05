@@ -19,7 +19,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Goal
 
 Gather and record information only - no architecture decisions. Output a complete `research.md`
-for the current feature that the `/speckit.plan` architecture agent will use to evaluate options.
+and `discovery.md` for the current feature that the `/speckit.plan` architecture agent will use
+to evaluate options.
 
 ## Outline
 
@@ -34,10 +35,12 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
 
    - This is the first step after setup so the compact scaffold exists before discovery begins.
    - The scaffold uses `.specify/templates/research-template-compact.md`, which is the compact research template for this command.
+   - Then run `scripts/speckit_research_step.py` to fill `discovery.md` from the scaffolded spec.
 
 2. **Run one bounded research pass in the main agent**:
    - Use the cached FR list once for all queries and keep each result set capped.
    - Keep outputs in tables, not prose.
+   - Do not spawn sub-agents; keep discovery and synthesis in the main agent.
 
    ### Code discovery
    - If a GitHub MCP server is configured, use it to search code and read the most relevant source files directly.
@@ -75,6 +78,7 @@ for the current feature that the `/speckit.plan` architecture agent will use to 
    - The compact scaffold already exists from step 1.
    - Fill the existing tables and bullet lists with the capped results from step 2.
    - Keep the content concise and table-driven.
+   - `discovery.md` should capture the bounded discovery output from the research runner.
 
 4. **Completion gate**:
    - Verify `research.md` contains all five required sections with substantive content.

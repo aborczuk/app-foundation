@@ -333,7 +333,7 @@ def emit_human_status(
         blocked_msg = f"{gate}: {reason_str}"
     elif exit_code == 2:
         # Error path: emit error code
-        error_code = step_result.get("error_code", "unknown")
+        error_code = step_result.get("error_code") or step_result.get("gate") or "unknown"
         debug_path = step_result.get("debug_path")
         done_msg = "none"
         next_msg = "none"
@@ -930,7 +930,11 @@ def run_step(
             sidecar_dir=sidecar_dir,
         )
 
-    result = dict(parsed)
+    result = dict(envelope)
+    result.update(parsed)
+    for key, value in envelope.items():
+        if key not in result:
+            result[key] = value
     result["stdout"] = stdout
     result["stderr"] = stderr
     result["process_exit_code"] = exit_code
@@ -1513,6 +1517,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
             return 2
+
+        if int(step_result.get("exit_code", 1)) != 0 and not step_result.get("error_code"):
+            bootstrap_error_code = "bootstrap_step_failed"
+            bootstrap_gate = step_result.get("gate")
+            if isinstance(bootstrap_gate, str) and bootstrap_gate.strip():
+                bootstrap_error_code = bootstrap_gate.strip()
+            bootstrap_reasons = step_result.get("reasons")
+            if isinstance(bootstrap_reasons, list) and bootstrap_reasons:
+                first_reason = str(bootstrap_reasons[0]).strip()
+                if first_reason:
+                    bootstrap_error_code = f"{bootstrap_error_code}:{first_reason}"
+            step_result["error_code"] = bootstrap_error_code
 
         append_result = append_pipeline_success_event(
             feature_id=bootstrapped_feature_id,

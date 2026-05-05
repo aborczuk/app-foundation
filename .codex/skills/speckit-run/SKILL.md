@@ -12,7 +12,7 @@ Use this skill as the Codex-native entrypoint for the repo's `speckit.run` workf
 ## Dispatch
 
 **IMMEDIATELY**:
-1. Run `python3 scripts/pipeline_driver.py "$ARGUMENTS"`.
+1. Run `uv run --no-sync python scripts/pipeline_driver.py "$ARGUMENTS"`.
 2. Load `.claude/commands/speckit.run.md`.
 3. Execute that command doc exactly.
 

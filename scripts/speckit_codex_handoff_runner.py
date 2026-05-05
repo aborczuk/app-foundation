@@ -119,6 +119,25 @@ def _load_payload(stdin_text: str) -> dict[str, Any]:
     return payload
 
 
+def _source_codex_home() -> Path:
+    """Return the Codex home that holds the user's auth material."""
+    codex_home = os.environ.get("CODEX_HOME")
+    if codex_home:
+        return Path(codex_home)
+    return Path.home() / ".codex"
+
+
+def _copy_codex_home(source_home: Path, target_home: Path) -> None:
+    """Seed a writable CODEX_HOME with the user's auth files."""
+    target_home.mkdir(parents=True, exist_ok=True)
+    for filename in ("auth.json", "config.toml"):
+        source_path = source_home / filename
+        if source_path.exists():
+            shutil.copy2(source_path, target_home / filename)
+    if not (target_home / "auth.json").exists():
+        raise FileNotFoundError(f"missing Codex auth file: {source_home / 'auth.json'}")
+
+
 def _build_prompt(
     payload: Mapping[str, Any],
     repo_root: Path,
@@ -190,33 +209,39 @@ def _run_codex_exec(prompt: str, repo_root: Path, *, resume_session: bool = Fals
     with tempfile.NamedTemporaryFile(prefix="speckit-codex-", suffix=".txt", delete=False) as handle:
         last_message_path = Path(handle.name)
 
+    source_home = _source_codex_home()
     try:
-        command = [codex_bin, "exec"]
-        if resume_session:
-            command.extend(["resume", "--last"])
-        command.extend(
-            [
-                "--full-auto",
-                "--cd",
-                str(repo_root),
-                "--output-last-message",
-                str(last_message_path),
-                "-",
-            ]
-        )
-        execution = subprocess.run(
-            command,
-            cwd=repo_root,
-            input=prompt,
-            text=True,
-            capture_output=True,
-            check=False,
-            env=os.environ.copy(),
-        )
-        last_message = ""
-        if last_message_path.exists():
-            last_message = last_message_path.read_text(encoding="utf-8").strip()
-        return execution.returncode, execution.stdout, execution.stderr, last_message
+        with tempfile.TemporaryDirectory(prefix="speckit-codex-home-") as codex_home_raw:
+            codex_home = Path(codex_home_raw)
+            _copy_codex_home(source_home, codex_home)
+            command = [codex_bin, "exec"]
+            if resume_session:
+                command.extend(["resume", "--last"])
+            command.extend(
+                [
+                    "--full-auto",
+                    "--cd",
+                    str(repo_root),
+                    "--output-last-message",
+                    str(last_message_path),
+                    "-",
+                ]
+            )
+            env = os.environ.copy()
+            env["CODEX_HOME"] = str(codex_home)
+            execution = subprocess.run(
+                command,
+                cwd=repo_root,
+                input=prompt,
+                text=True,
+                capture_output=True,
+                check=False,
+                env=env,
+            )
+            last_message = ""
+            if last_message_path.exists():
+                last_message = last_message_path.read_text(encoding="utf-8").strip()
+            return execution.returncode, execution.stdout, execution.stderr, last_message
     finally:
         if last_message_path.exists():
             last_message_path.unlink()

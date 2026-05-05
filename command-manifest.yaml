@@ -1,8 +1,8 @@
 version: 1.1.7
 last_updated: '2026-05-04T00:00:00Z'
 manifest:
-  version: 1.1.7
-  updated_utc: '2026-05-04T00:00:00Z'
+  version: 1.1.8
+  updated_utc: '2026-05-05T00:00:00Z'
   ledger_sync_policy:
     - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
       emitted event contract changes, update this manifest in the same PR.
@@ -28,8 +28,6 @@ commands:
     - output_path: ${FEATURE_DIR}/spec.md
       template: spec-template.md
       scaffold_script: speckit_specify_step.py
-      produced_by: scripts/speckit_specify_step.py
-    - output_path: ${FEATURE_DIR}/discovery.md
       produced_by: scripts/speckit_specify_step.py
     emits:
     - event: backlog_registered
@@ -91,10 +89,13 @@ commands:
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
+    - scripts/speckit_research_step.py
     - scripts/pipeline_ledger.py
     artifacts:
     - output_path: ${FEATURE_DIR}/research.md
       template: research-template-compact.md
+    - output_path: ${FEATURE_DIR}/discovery.md
+      produced_by: scripts/speckit_research_step.py
     emits:
     - event: research_completed
       required_fields: []

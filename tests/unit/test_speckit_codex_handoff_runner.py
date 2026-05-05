@@ -260,3 +260,44 @@ def test_run_codex_handoff_writes_log_artifact_on_codex_failure(tmp_path: Path, 
     assert runner_log["codex_stdout"] == "codex stdout failure"
     assert runner_log["codex_stderr"] == "codex stderr failure"
     assert runner_log["result"]["error_code"] == "codex_exec_failed"
+
+
+def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) -> None:
+    """Codex exec should run against a writable private CODEX_HOME."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    source_home = tmp_path / "codex-home"
+    source_home.mkdir()
+    (source_home / "auth.json").write_text("{\"token\": \"test\"}\n", encoding="utf-8")
+    (source_home / "config.toml").write_text("[default]\n", encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(source_home))
+    monkeypatch.setattr(speckit_codex_handoff_runner.shutil, "which", lambda name: "/usr/bin/codex")
+
+    captured: dict[str, object] = {}
+
+    def fake_run(command, *, cwd, input, text, capture_output, check, env):  # noqa: ANN001
+        del input, text, capture_output, check
+        captured["command"] = command
+        captured["cwd"] = cwd
+        captured["env"] = dict(env)
+        codex_home = Path(env["CODEX_HOME"])
+        assert codex_home != source_home
+        assert codex_home.is_dir()
+        assert (codex_home / "auth.json").is_file()
+        assert (codex_home / "config.toml").is_file()
+        return subprocess.CompletedProcess(command, 0, stdout="codex stdout", stderr="codex stderr")
+
+    monkeypatch.setattr(speckit_codex_handoff_runner.subprocess, "run", fake_run)
+
+    exit_code, stdout, stderr, last_message = speckit_codex_handoff_runner._run_codex_exec(
+        "prompt",
+        repo_root,
+    )
+
+    assert exit_code == 0
+    assert stdout == "codex stdout"
+    assert stderr == "codex stderr"
+    assert last_message == ""
+    assert captured["command"][0] == "/usr/bin/codex"
+    assert captured["cwd"] == repo_root
+    assert captured["env"]["CODEX_HOME"] != str(source_home)
