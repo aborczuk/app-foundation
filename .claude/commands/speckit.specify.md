@@ -1,46 +1,11 @@
----
-description: Create or update the feature specification from a natural language feature description.
-model: opus
-handoffs:
-  - label: Research Prior Art & Integration Options
-    agent: speckit.research
-    prompt: Research patterns, prior art, and integration options for the spec...
----
 
-## User Input
-
-```text
-$ARGUMENTS
-```
-
-You **MUST** consider the user input before proceeding (if not empty).
-
-## Fast Path
-
-1. Run the specify step runner first:
-
-   ```bash
-   python3 scripts/speckit_specify_step.py [--short-name "<name>"] "$ARGUMENTS"
-   ```
-
-   This step runner pins the repo-local UV cache, runs the mandatory codegraph discovery terms in parallel, writes `discovery.md`, and scaffolds `spec.md`.
-2. Use the helper's discovery output and scaffold as the input for the spec-writing pass.
-3. If discovery reports matches, read the matched context before writing the spec. If it reports no matches, say so explicitly in the spec output.
-4. Do not stop after scaffolding: fully populate every required section in `spec.md` and keep iterating until routing validation passes.
-5. In update mode, resolve the current spec paths with:
-
-   ```bash
-   uv run --no-sync python3 .specify/scripts/python/check_prerequisites.py --json --paths-only
-   ```
-
-   Then update the existing `spec.md` in place.
-5. If the description is empty, error with `No feature description provided`.
-6. If the description starts with `--update-current-spec`, treat it as update mode and strip the flag before continuing.
+1. If the description is empty, error with `No feature description provided`.
+2. If the description starts with `--update-current-spec`, treat it as update mode and strip the flag before continuing.
 
 ## Spec Writing
 
-1. Load `.specify/templates/spec-template.md` for the required section order.
-2. Fill the scaffolded `SPEC_FILE` using the feature description and the template structure.
+1. Load the scaffolded `SPEC_FILE` in the feature folder first.
+2. Fill the scaffolded `SPEC_FILE` using the feature description, the `discovery.md` file in the spec folder, and the template structure.
 3. Keep the routing contract values exact:
    - `research_route`: `skip` or `required`
    - `plan_profile`: `skip`, `lite`, or `full`
