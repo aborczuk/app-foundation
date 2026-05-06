@@ -245,7 +245,7 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
     assert appended["command_id"] == "speckit.plan"
 
 
-def test_next_routing_skip_event_selects_research_completion() -> None:
+def test_next_routing_skip_event_does_not_project_research_completion() -> None:
     skip_event = pipeline_driver._next_routing_skip_event(
         {
             "phase": "specify",
@@ -258,10 +258,10 @@ def test_next_routing_skip_event_selects_research_completion() -> None:
         }
     )
 
-    assert skip_event == {"phase": "specify", "event": "research_completed"}
+    assert skip_event is None
 
 
-def test_next_routing_skip_event_selects_plan_start() -> None:
+def test_next_routing_skip_event_noops_for_combined_plan() -> None:
     skip_event = pipeline_driver._next_routing_skip_event(
         {
             "phase": "research",
@@ -274,10 +274,10 @@ def test_next_routing_skip_event_selects_plan_start() -> None:
         }
     )
 
-    assert skip_event == {"phase": "research", "event": "plan_started"}
+    assert skip_event is None
 
 
-def test_next_routing_skip_event_selects_plan_approval_with_override() -> None:
+def test_next_routing_skip_event_does_not_auto_approve_plan() -> None:
     skip_event = pipeline_driver._next_routing_skip_event(
         {
             "phase": "plan",
@@ -291,10 +291,7 @@ def test_next_routing_skip_event_selects_plan_approval_with_override() -> None:
         }
     )
 
-    assert skip_event is not None
-    assert skip_event["phase"] == "plan"
-    assert skip_event["event"] == "plan_approved"
-    assert skip_event["feasibility_required"] is False
+    assert skip_event is None
 
 
 def test_realize_routing_dry_run_is_noop(tmp_path: Path) -> None:
@@ -347,7 +344,7 @@ def test_realize_routing_dry_run_is_noop(tmp_path: Path) -> None:
     assert ledger_path.read_text(encoding="utf-8") == before
 
 
-def test_realize_routing_is_idempotent_on_retry(tmp_path: Path) -> None:
+def test_realize_routing_is_noop_on_combined_plan_retry(tmp_path: Path) -> None:
     spec_dir = _write_skip_routing_spec(tmp_path, research_route="skip", plan_profile="core")
     ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
     _write_ledger_events(
@@ -390,10 +387,8 @@ def test_realize_routing_is_idempotent_on_retry(tmp_path: Path) -> None:
         ledger_path=ledger_path,
     )
     assert first_result["ok"] is True
-    assert first_result["appended"] is True
-    assert first_result["appended_events"] == [
-        {"phase": "specify", "event": "research_completed"}
-    ]
+    assert first_result["appended"] is False
+    assert first_result["appended_events"] == []
 
     snapshot = ledger_path.read_text(encoding="utf-8")
 
@@ -407,7 +402,7 @@ def test_realize_routing_is_idempotent_on_retry(tmp_path: Path) -> None:
     assert ledger_path.read_text(encoding="utf-8") == snapshot
 
 
-def test_realize_routing_appends_plan_approval_with_override(tmp_path: Path) -> None:
+def test_realize_routing_does_not_append_plan_approval_after_combined_plan(tmp_path: Path) -> None:
     spec_dir = _write_skip_routing_spec(tmp_path, research_route="required", plan_profile="skip")
     ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
     _write_ledger_events(
@@ -465,17 +460,11 @@ def test_realize_routing_appends_plan_approval_with_override(tmp_path: Path) -> 
     )
 
     assert result["ok"] is True
-    assert result["appended"] is True
-    assert result["appended_events"] == [
-        {
-            "phase": "plan",
-            "event": "plan_approved",
-            "feasibility_required": False,
-        }
-    ]
+    assert result["appended"] is False
+    assert result["appended_events"] == []
     final_state = result["phase_state"]
     assert final_state["phase"] == "plan"
-    assert final_state["last_event"] == "plan_approved"
+    assert final_state["last_event"] == "feasibility_spike_completed"
 
 
 def test_main_generative_route_blocks_when_artifact_validation_fails(monkeypatch) -> None:
@@ -1228,8 +1217,11 @@ def test_resolve_phase_state_prefers_ledger_authority(tmp_path: Path) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
-        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
-        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+        _ledger_event(
+            "plan_approved",
+            timestamp_utc="2026-04-10T00:01:00Z",
+            feasibility_required=False,
+        ),
     ]
     ledger_path.write_text(
         "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
@@ -1244,7 +1236,7 @@ def test_resolve_phase_state_prefers_ledger_authority(tmp_path: Path) -> None:
     assert state["feature_id"] == "019"
     assert state["ledger_feature_id"] == "019"
     assert state["phase"] == "plan"
-    assert state["last_event"] == "plan_started"
+    assert state["last_event"] == "plan_approved"
     assert state["blocked"] is True
     assert state["drift_detected"] is True
     assert state["drift_reason_codes"] == ["phase_hint_conflicts_with_ledger"]
@@ -1253,7 +1245,7 @@ def test_resolve_phase_state_prefers_ledger_authority(tmp_path: Path) -> None:
             "code": "phase_hint_conflicts_with_ledger",
             "hinted_phase": "setup",
             "derived_phase": "plan",
-            "last_event": "plan_started",
+            "last_event": "plan_approved",
         }
     ]
     assert state["drift_reasons"] == ["phase_hint_conflicts_with_ledger"]
@@ -1263,8 +1255,11 @@ def test_resolve_phase_state_ignores_stale_blocked_flag(tmp_path: Path) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
-        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
-        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
+        _ledger_event(
+            "plan_approved",
+            timestamp_utc="2026-04-10T00:01:00Z",
+            feasibility_required=False,
+        ),
     ]
     ledger_path.write_text(
         "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
@@ -1282,8 +1277,8 @@ def test_resolve_phase_state_ignores_stale_blocked_flag(tmp_path: Path) -> None:
     assert state["drift_reasons"] == []
 
 
-def test_resolve_phase_state_uses_routing_contract_for_skip_path(tmp_path: Path) -> None:
-    """Spec routing should drive the next phase when plan is skipped."""
+def test_resolve_phase_state_uses_plan_first_path(tmp_path: Path) -> None:
+    """Spec routing should no longer skip the combined plan phase."""
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         {
@@ -1322,7 +1317,7 @@ def test_resolve_phase_state_uses_routing_contract_for_skip_path(tmp_path: Path)
     assert state["phase"] == "specify"
     assert state["routing_contract"] is not None
     assert state["routing_contract"]["routing"]["plan_profile"] == "skip"
-    assert state["next_phase"] == "solution"
+    assert state["next_phase"] == "plan"
 
 
 def test_resolve_phase_state_reload_spec_routing_after_nonrouting_event(
@@ -1397,7 +1392,7 @@ def test_resolve_phase_state_reload_spec_routing_after_nonrouting_event(
     assert state["last_event"] == "spec_clarified"
     assert state["routing_contract"] is not None
     assert state["routing_contract"]["routing"]["plan_profile"] == "skip"
-    assert state["next_phase"] == "solution"
+    assert state["next_phase"] == "plan"
 
 
 def test_resolve_phase_state_bootstraps_empty_ledgers_into_specify(tmp_path: Path) -> None:
@@ -1455,23 +1450,9 @@ def test_resolve_phase_state_flags_missing_required_artifact(tmp_path: Path) -> 
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
-        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
-        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
-        _ledger_event(
-            "planreview_completed",
-            timestamp_utc="2026-04-10T00:03:00Z",
-            fq_count=0,
-            questions_asked=0,
-        ),
-        _ledger_event(
-            "feasibility_spike_completed",
-            timestamp_utc="2026-04-10T00:04:00Z",
-            spike_artifact="specs/019-token-efficiency-docs/spike.md",
-            fq_count=0,
-        ),
         _ledger_event(
             "plan_approved",
-            timestamp_utc="2026-04-10T00:05:00Z",
+            timestamp_utc="2026-04-10T00:01:00Z",
             feasibility_required="false",
         ),
     ]
@@ -1617,8 +1598,10 @@ def test_main_bootstraps_description_requests(monkeypatch, capsys) -> None:
     assert append_called["command_id"] == "speckit.specify"
     assert called["allow_correlation_mismatch"] is True
     assert called["timeout_seconds"] == 300
-    assert str(called["command"][1]).endswith("speckit_specify_step.py")
-    assert called["command"][-1] == "create a universal backlog jsonl for all registered tasks"
+    command = called.get("command")
+    assert isinstance(command, list)
+    assert str(command[1]).endswith("speckit_specify_step.py")
+    assert command[-1] == "create a universal backlog jsonl for all registered tasks"
 
 
 def test_main_passes_context_to_implement_step(monkeypatch) -> None:
@@ -1912,37 +1895,34 @@ def test_resolve_phase_state_allows_earlier_hint_without_drift(tmp_path: Path) -
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     events = [
         _ledger_event("backlog_registered", timestamp_utc="2026-04-10T00:00:00Z"),
-        _ledger_event("research_completed", timestamp_utc="2026-04-10T00:01:00Z"),
-        _ledger_event("plan_started", timestamp_utc="2026-04-10T00:02:00Z"),
-        _ledger_event(
-            "planreview_completed",
-            timestamp_utc="2026-04-10T00:03:00Z",
-            fq_count=0,
-            questions_asked=0,
-        ),
-        _ledger_event(
-            "feasibility_spike_completed",
-            timestamp_utc="2026-04-10T00:04:00Z",
-            spike_artifact="specs/023-deterministic-phase-orchestration/spike.md",
-            fq_count=0,
-        ),
         _ledger_event(
             "plan_approved",
-            timestamp_utc="2026-04-10T00:05:00Z",
+            timestamp_utc="2026-04-10T00:01:00Z",
             feasibility_required="false",
         ),
-        _ledger_event("sketch_completed", timestamp_utc="2026-04-10T00:06:00Z"),
         _ledger_event(
-            "solutionreview_completed",
-            timestamp_utc="2026-04-10T00:07:00Z",
-            critical_count=0,
-            high_count=0,
+            "tasking_completed",
+            timestamp_utc="2026-04-10T00:02:00Z",
+            task_count=4,
+            story_count=2,
         ),
-        _ledger_event("estimation_completed", timestamp_utc="2026-04-10T00:08:00Z", estimate_points=8),
-        _ledger_event("tasking_completed", timestamp_utc="2026-04-10T00:09:00Z", task_count=4, story_count=2),
-        _ledger_event("solution_approved", timestamp_utc="2026-04-10T00:10:00Z", task_count=4, story_count=2, estimate_points=8),
-        _ledger_event("analysis_completed", timestamp_utc="2026-04-10T00:11:00Z", critical_count=0),
-        _ledger_event("e2e_generated", timestamp_utc="2026-04-10T00:12:00Z", e2e_artifact="scripts/e2e_023.sh"),
+        _ledger_event(
+            "solution_approved",
+            timestamp_utc="2026-04-10T00:03:00Z",
+            task_count=4,
+            story_count=2,
+            estimate_points=8,
+        ),
+        _ledger_event(
+            "analysis_completed",
+            timestamp_utc="2026-04-10T00:04:00Z",
+            critical_count=0,
+        ),
+        _ledger_event(
+            "e2e_generated",
+            timestamp_utc="2026-04-10T00:05:00Z",
+            e2e_artifact="scripts/e2e_023.sh",
+        ),
     ]
     ledger_path.write_text(
         "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",

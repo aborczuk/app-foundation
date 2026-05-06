@@ -26,16 +26,9 @@ DEFAULT_HUDS = Path(__file__).resolve().parent / "speckit_remake_huds.py"
 DEFAULT_ACCEPTANCE = Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
 DEFAULT_PIPELINE_LEDGER = Path(__file__).resolve().parent / "pipeline_ledger.py"
 
-SKETCH_INSTRUCTIONS = """Update FEATURE_DIR/sketch.md from the approved spec and repo-grounded discovery.
-Keep the sketch concrete and implementation-ready.
-Include the sketch template's core sections, especially Coverage, Current -> Target,
-Primary Seam, Required Edit / Solution, Verification, Constraints / Preserve,
-Implementation Directive, Design-to-Tasking Contract, and Sketch Completion Summary.
-Do not create tasks.md or review/analyze artifacts here."""
-
-TASKING_INSTRUCTIONS = """Decompose the approved sketch.md into tasks.md.
-Anchor every non-[H] task to a concrete file/symbol seam.
-Preserve ordering and dependencies from the sketch contract.
+TASKING_INSTRUCTIONS = """Decompose the approved plan.md design slices into tasks.md.
+Anchor every non-[H] task to a concrete file/symbol seam from the slice.
+Preserve ordering and dependencies from the plan's design-slice contract.
 Keep the task descriptions implementation-usable and ready for estimate/breakdown stabilization.
 Do not run estimate/breakdown, registration, HUD generation, or acceptance scaffolding here."""
 
@@ -389,43 +382,33 @@ def _write_debug_payload(path: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
 
 
+def _validate_plan_design_slices(plan_path: Path) -> None:
+    """Require tasking-ready design slices from the combined plan artifact."""
+    if not plan_path.is_file():
+        raise RuntimeError("plan_artifact_missing")
+    text = plan_path.read_text(encoding="utf-8")
+    if "## Design Slices" not in text:
+        raise RuntimeError("plan_design_slices_missing")
+    if "Implementation Directive" not in text:
+        raise RuntimeError("plan_implementation_directive_missing")
+
+
 def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) -> dict[str, Any]:
-    """Run the solution ladder from sketch through tasking and approval."""
+    """Run the solution ladder from plan design slices through tasking and approval."""
     repo_root = Path(__file__).resolve().parent.parent
     bootstrap_summary = bootstrap_session(repo_root)
     if not bootstrap_summary["bootstrap_ok"]:
         raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
     prereq_payload = _load_prerequisites(repo_root)
     feature_dir = Path(prereq_payload["FEATURE_DIR"])
-    sketch_path = feature_dir / "sketch.md"
+    plan_path = feature_dir / "plan.md"
     tasks_path = feature_dir / "tasks.md"
     estimates_path = feature_dir / "estimates.md"
     debug_path = repo_root / ".speckit" / "runtime" / "solution" / f"{correlation_id}.json"
 
     stages: list[dict[str, Any]] = []
 
-    sketch_result = _run_codex_action(
-        repo_root=repo_root,
-        feature_id=feature_id,
-        phase="sketch",
-        correlation_id=f"{correlation_id}:sketch",
-        task_action="sketch",
-        feature_dir=feature_dir,
-        instructions=SKETCH_INSTRUCTIONS,
-        output_template_path=sketch_path,
-        completion_marker="Sketch Completion Summary",
-    )
-    stages.append({"stage": "sketch", "result": sketch_result})
-    if not bool(sketch_result.get("ok", False)):
-        raise RuntimeError("sketch_generation_failed")
-    if not sketch_path.exists():
-        raise RuntimeError("sketch_artifact_missing")
-    _append_pipeline_event(
-        repo_root=repo_root,
-        feature_id=feature_id,
-        phase="sketch",
-        event="sketch_completed",
-    )
+    _validate_plan_design_slices(plan_path)
 
     tasking_result = _run_codex_action(
         repo_root=repo_root,
@@ -501,7 +484,7 @@ def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) ->
         "error_code": None,
         "debug_path": str(debug_path),
         "feature_dir": str(feature_dir),
-        "sketch_artifact": str(sketch_path),
+        "plan_artifact": str(plan_path),
         "tasks_artifact": str(tasks_path),
         "task_count": task_count,
         "story_count": story_count,

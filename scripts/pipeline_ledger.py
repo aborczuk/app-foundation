@@ -63,6 +63,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
         # Fallback to hardcoded values
         valid = {
             "backlog_registered",
+            "duplicate_marked",
             "spec_clarified",
             "research_completed",
             "plan_started",
@@ -119,6 +120,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
         # Return hardcoded fallback values
         valid = {
             "backlog_registered",
+            "duplicate_marked",
             "spec_clarified",
             "research_completed",
             "plan_started",
@@ -152,21 +154,33 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
 VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT = _load_manifest_events()
 
 # Ordered pipeline phases — each event is a valid "next" from one or more predecessors.
-# Solution-phase sequence is sketch -> tasking -> solution_approved, with estimate/breakdown
+# Solution-phase sequence is tasking -> solution_approved, with estimate/breakdown
 # stabilized inside tasking rather than as a separate phase gate.
 ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "backlog_registered": {None},
+    "duplicate_marked": {"backlog_registered", "spec_clarified"},
     "spec_clarified": {"backlog_registered", "spec_clarified"},
     "research_completed": {"backlog_registered", "spec_clarified"},
     "plan_started": {"research_completed"},
     "planreview_completed": {"plan_started", "planreview_completed"},
     "feasibility_spike_completed": {"planreview_completed"},
     "feasibility_spike_failed": {"planreview_completed", "feasibility_spike_failed"},
-    "plan_approved": {"planreview_completed", "feasibility_spike_completed"},
+    "plan_approved": {
+        "backlog_registered",
+        "spec_clarified",
+        "research_completed",
+        "planreview_completed",
+        "feasibility_spike_completed",
+    },
     "sketch_completed": {"plan_approved", "sketch_completed", "solutionreview_completed"},
     "solutionreview_completed": {"sketch_completed", "solutionreview_completed"},
     "estimation_completed": {"solutionreview_completed", "estimation_completed", "tasking_completed"},
-    "tasking_completed": {"sketch_completed", "estimation_completed", "tasking_completed"},
+    "tasking_completed": {
+        "plan_approved",
+        "sketch_completed",
+        "estimation_completed",
+        "tasking_completed",
+    },
     "solution_approved": {"tasking_completed"},
     "analysis_completed": {"solution_approved"},
     "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
@@ -360,6 +374,18 @@ def validate_sequence(
     return errors, feature_states
 
 
+def _coerce_json_field(value: Any, *, field_name: str) -> Any:
+    """Return a mapping/list JSON field from direct or CLI-provided input."""
+    if value is None or isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as exc:
+            fail(f"Invalid JSON for {field_name}: {exc}")
+    return None
+
+
 def cmd_append(args: argparse.Namespace) -> None:
     """Append one validated immutable pipeline event to the ledger."""
     ledger_path = Path(args.file)
@@ -395,6 +421,9 @@ def cmd_append(args: argparse.Namespace) -> None:
         "critical_count": args.critical_count,
         "high_count": args.high_count,
         "e2e_artifact": args.e2e_artifact,
+        "routing": _coerce_json_field(getattr(args, "routing", None), field_name="routing"),
+        "risk": _coerce_json_field(getattr(args, "risk", None), field_name="risk"),
+        "triage": _coerce_json_field(getattr(args, "triage", None), field_name="triage"),
         "details": args.details,
     }
     for key, value in optional_values.items():
@@ -615,6 +644,9 @@ def build_parser() -> argparse.ArgumentParser:
     append_p.add_argument("--critical-count", type=int, help="Critical findings count.")
     append_p.add_argument("--high-count", type=int, help="High severity findings count.")
     append_p.add_argument("--e2e-artifact", help="Path to e2e.md (e2e_generated).")
+    append_p.add_argument("--routing", help="JSON routing metadata for traceability.")
+    append_p.add_argument("--risk", help="JSON risk metadata for traceability.")
+    append_p.add_argument("--triage", help="JSON triage metadata for traceability.")
     append_p.add_argument("--details", help="Free-text details for traceability.")
     append_p.set_defaults(func=cmd_append)
 

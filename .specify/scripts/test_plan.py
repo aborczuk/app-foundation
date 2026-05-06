@@ -18,9 +18,9 @@ def _usage() -> str:
         "Usage:\n"
         "  .specify/scripts/test_plan.py feature_id=XYZ\n\n"
         "What it checks:\n"
-        "  1. The speckit.plan manifest entry still points at plan-template.md, data-model-template.md, and quickstart-template.md.\n"
-        "  2. The speckit.plan command doc still documents the compact, deterministic, driver-backed flow.\n"
-        "  3. pipeline-scaffold generates plan.md, data-model.md, and quickstart.md with the expected section headers.\n"
+        "  1. The speckit.plan manifest entry points at the combined plan step and plan-template.md.\n"
+        "  2. The speckit.plan command doc documents triage-first combined planning.\n"
+        "  3. pipeline-scaffold generates plan.md with the expected combined section headers.\n"
     )
 
 
@@ -47,26 +47,24 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     artifacts = manifest["commands"]["speckit.plan"]["artifacts"]
     templates = [artifact["template"] for artifact in artifacts]
-    expected_templates = ["plan-template.md", "data-model-template.md", "quickstart-template.md"]
+    expected_templates = ["plan-template.md"]
     if templates != expected_templates:
         raise SystemExit(
             "Manifest template mismatch: expected "
             f"{expected_templates}, found {templates}"
         )
+    script_path = manifest["commands"]["speckit.plan"]["driver"].get("script_path")
+    if script_path != "scripts/speckit_plan_step.py":
+        raise SystemExit(f"Plan script mismatch: expected scripts/speckit_plan_step.py, found {script_path}")
 
     command_doc = command_doc_path.read_text(encoding="utf-8")
     required_snippets = [
-        "Compact Contract (Load First)",
-        "setup_plan.py --json",
-        "speckit_gate_status.py --mode plan",
-        "speckit_plan_gate.py spec-core-action",
-        "speckit_plan_gate.py research-prereq",
-        "speckit_plan_gate.py plan-sections",
-        "speckit_plan_gate.py design-artifacts",
-        "pipeline-scaffold.py speckit.plan",
-        "driver already owns",
-        "planreview",
-        "feasibilityspike",
+        "Compact Contract",
+        "speckit_plan_step.py",
+        "duplicate_marked",
+        "plan_approved",
+        "Do not infer t-shirt size from the number of discovery matches",
+        "Do not create `discovery.md`, `research.md`, `sketch.md`",
     ]
     missing = [snippet for snippet in required_snippets if snippet not in command_doc]
     if missing:
@@ -105,28 +103,17 @@ def _run_pipeline_scaffold(test_dir: Path) -> None:
 
 def _assert_scaffold_output(root: Path) -> None:
     """Verify the plan scaffolded artifacts and section coverage."""
-    required_files = [
-        root / "plan.md",
-        root / "data-model.md",
-        root / "quickstart.md",
-    ]
+    required_files = [root / "plan.md"]
     missing = [str(path) for path in required_files if not path.exists()]
     if missing:
         raise SystemExit(f"Missing scaffolded artifacts: {', '.join(missing)}")
 
     plan_text = (root / "plan.md").read_text(encoding="utf-8")
     required_sections = [
-        "## Summary",
-        "## Technical Context",
-        "## Repeated Architectural Unit Recognition",
-        "## Reuse-First Architecture Decision",
-        "## Pipeline Architecture Model",
-        "## Artifact / Event Contract Architecture",
-        "## Architecture Flow",
-        "## External Ingress + Runtime Readiness Gate",
-        "## State / Storage / Reliability Model",
-        "## Open Feasibility Questions",
-        "## Handoff Contract to Sketch",
+        "## Triage",
+        "## Routing Contract",
+        "## Internal Discovery",
+        "## Plan Completion Summary",
     ]
     missing_sections = [section for section in required_sections if section not in plan_text]
     if missing_sections:

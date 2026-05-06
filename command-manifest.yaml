@@ -1,8 +1,8 @@
-version: 1.1.7
-last_updated: '2026-05-04T00:00:00Z'
+version: 1.1.8
+last_updated: '2026-05-06T00:00:00Z'
 manifest:
-  version: 1.1.8
-  updated_utc: '2026-05-05T00:00:00Z'
+  version: 1.1.9
+  updated_utc: '2026-05-06T00:00:00Z'
   ledger_sync_policy:
     - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
       emitted event contract changes, update this manifest in the same PR.
@@ -82,10 +82,8 @@ commands:
       template: checklist-template.md
     emits: []
   speckit.research:
-    description: Assemble prior art, patterns, and integration options for the feature
-    driver:
-      mode: generative
-      timeout_seconds: 240
+    description: Legacy research command retained for compatibility; combined planning now folds research into speckit.plan
+    mode: legacy
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
@@ -100,32 +98,28 @@ commands:
     - event: research_completed
       required_fields: []
   speckit.plan:
-    description: Create architecture, technology selection, data flow, and implementation
-      strategy
+    description: Triage a spec, choose proportional research/plan/design depth, and produce one combined plan artifact
     driver:
-      mode: generative
+      mode: deterministic
+      script_path: scripts/speckit_plan_step.py
       timeout_seconds: 300
+      canonical_trigger: speckit.run
     scripts:
-    - .specify/scripts/python/setup_plan.py
-    - .specify/scripts/python/update_agent_context.py
     - .specify/scripts/pipeline-scaffold.py
-    - scripts/speckit_gate_status.py
+    - scripts/read_code.py
+    - scripts/speckit_plan_step.py
+    - scripts/speckit_codex_handoff_runner.py
     - scripts/speckit_plan_gate.py
     - scripts/pipeline_ledger.py
     artifacts:
     - output_path: ${FEATURE_DIR}/plan.md
       template: plan-template.md
-      scaffold_script: setup_plan.py
       consumed_by:
-      - speckit.planreview
-      - speckit.feasibilityspike
-      - speckit.sketch
-    - output_path: ${FEATURE_DIR}/data-model.md
-      template: data-model-template.md
-    - output_path: ${FEATURE_DIR}/quickstart.md
-      template: quickstart-template.md
+      - speckit.solution
+      - speckit.tasking
+      produced_by: scripts/speckit_plan_step.py
     emits:
-    - event: plan_started
+    - event: duplicate_marked
       required_fields: []
     - event: plan_approved
       required_fields:
@@ -171,7 +165,7 @@ commands:
       required_fields:
       - failed_fq
   speckit.tasking:
-    description: Decompose an approved sketch.md into tasks.md, register the tasks in the
+    description: Decompose approved plan.md design slices into tasks.md, register the tasks in the
       task ledger, then use Codex-backed estimate/breakdown runners to stabilize the task graph and
       generate HUDs + acceptance tests with one warm session per mode
     driver:
@@ -218,11 +212,8 @@ commands:
       template: hud-runbook-template.md
     emits: []
   speckit.sketch:
-    description: Generate the feature sketch artifact from approved plan context and
-      repository-grounded discovery
-    driver:
-      mode: generative
-      timeout_seconds: 180
+    description: Legacy sketch command retained for compatibility; design slices now live in plan.md
+    mode: legacy
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
@@ -293,7 +284,7 @@ commands:
       - critical_count
       - high_count
   speckit.solution:
-    description: Deterministically orchestrate sketch -> tasking -> solution approval
+    description: Deterministically orchestrate plan design slices -> tasking -> solution approval
     driver:
       mode: deterministic
       script_path: scripts/speckit_solution_step.py
@@ -312,8 +303,6 @@ commands:
     - .specify/scripts/acceptance-test-scaffold.py
     - scripts/pipeline_ledger.py
     artifacts:
-    - output_path: ${FEATURE_DIR}/sketch.md
-      produced_by: scripts/speckit_solution_step.py
     - output_path: ${FEATURE_DIR}/tasks.md
       produced_by: scripts/speckit_solution_step.py
     emits:

@@ -16,6 +16,7 @@ from spec_routing import extract_event_routing_contract, load_spec_routing_contr
 
 EVENT_TO_PHASE: dict[str, str] = {
     "backlog_registered": "specify",
+    "duplicate_marked": "closed",
     "spec_clarified": "specify",
     "research_completed": "research",
     "plan_started": "plan",
@@ -34,7 +35,7 @@ EVENT_TO_PHASE: dict[str, str] = {
 }
 
 PHASE_TRANSITIONS: dict[str, str] = {
-    "specify": "research",
+    "specify": "plan",
     "research": "plan",
     "plan": "solution",
     "solution": "implement",
@@ -52,24 +53,11 @@ def advance_phase(current_phase: str) -> str:
 def determine_next_phase(
     current_phase: str, *, routing_contract: Mapping[str, Any] | None = None
 ) -> str:
-    """Return the next phase, honoring spec-driven routing when present."""
-    routing = routing_contract.get("routing", {}) if routing_contract else {}
-    if isinstance(routing, Mapping):
-        plan_profile = str(routing.get("plan_profile", "")).strip().lower()
-        research_route = str(routing.get("research_route", "")).strip().lower()
-    else:
-        plan_profile = ""
-        research_route = ""
-
+    """Return the next phase for the combined plan-first pipeline."""
+    _ = routing_contract
     if current_phase == "specify":
-        if plan_profile == "skip":
-            return "solution"
-        if research_route == "skip":
-            return "plan"
-        return "research"
+        return "plan"
     if current_phase == "research":
-        if plan_profile == "skip":
-            return "solution"
         return "plan"
     return advance_phase(current_phase)
 
@@ -137,6 +125,7 @@ def _hint_exceeds_derived_phase(*, hinted_phase: str, derived_phase: str) -> boo
 
 
 REQUIRED_ARTIFACTS_BY_EVENT: dict[str, tuple[str, ...]] = {
+    "duplicate_marked": ("plan.md",),
     "plan_approved": ("plan.md",),
     "solution_approved": ("tasks.md", "estimates.md"),
     "analysis_completed": ("analysis.md",),

@@ -1,4 +1,4 @@
-"""Pipeline ledger transition tests for sketch-first solution sequencing."""
+"""Pipeline ledger transition tests for plan-slice solution sequencing."""
 
 from __future__ import annotations
 
@@ -40,21 +40,12 @@ def _event(name: str, *, timestamp: str = "2026-04-10T00:00:00Z", **fields: Any)
 def _base_prefix() -> list[dict[str, Any]]:
     return [
         _event("backlog_registered"),
-        _event("research_completed"),
-        _event("plan_started"),
-        _event("planreview_completed", fq_count=0, questions_asked=0),
-        _event(
-            "feasibility_spike_completed",
-            spike_artifact="specs/019-token-efficiency-docs/spike.md",
-            fq_count=0,
-        ),
-        _event("plan_approved", feasibility_required="true"),
+        _event("plan_approved", feasibility_required="false"),
     ]
 
 
 def _new_solution_chain() -> list[dict[str, Any]]:
     return [
-        _event("sketch_completed"),
         _event("tasking_completed", task_count=12, story_count=3),
         _event("solution_approved", task_count=12, story_count=3, estimate_points=21),
     ]

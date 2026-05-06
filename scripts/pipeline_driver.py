@@ -145,37 +145,8 @@ def validate_generated_artifact(
 
 
 def _next_routing_skip_event(phase_state: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Return the next synthetic routing-skip event implied by the current phase state."""
-    current_phase = str(phase_state.get("phase") or "").strip()
-    routing_contract = phase_state.get("routing_contract")
-    if not current_phase or not isinstance(routing_contract, Mapping):
-        return None
-
-    routing = routing_contract.get("routing", {})
-    if not isinstance(routing, Mapping):
-        return None
-
-    research_route = str(routing.get("research_route", "")).strip().lower()
-    plan_profile = str(routing.get("plan_profile", "")).strip().lower()
-    last_event = str(phase_state.get("last_event") or "").strip()
-
-    if current_phase == "specify" and research_route == "skip":
-        return {"phase": current_phase, "event": "research_completed"}
-
-    if current_phase == "research" and plan_profile == "skip":
-        return {"phase": current_phase, "event": "plan_started"}
-
-    if (
-        current_phase == "plan"
-        and plan_profile == "skip"
-        and last_event in {"planreview_completed", "feasibility_spike_completed"}
-    ):
-        return {
-            "phase": current_phase,
-            "event": "plan_approved",
-            "feasibility_required": False,
-        }
-
+    """Return no synthetic skip events for the combined plan-first pipeline."""
+    _ = phase_state
     return None
 
 
@@ -1267,6 +1238,90 @@ def append_pipeline_success_event(
     }
 
 
+def append_requested_pipeline_event(
+    *,
+    feature_id: str,
+    phase: str,
+    event_request: Mapping[str, Any],
+    actor: str = "pipeline_driver",
+    ledger_path: str | Path = ".speckit/pipeline-ledger.jsonl",
+) -> dict[str, Any]:
+    """Append a deterministic step's explicitly requested pipeline event."""
+    event_name = str(event_request.get("event") or "").strip()
+    if not event_name:
+        return {"ok": False, "error_code": "missing_requested_event"}
+    fields_raw = event_request.get("fields", {})
+    fields = dict(fields_raw) if isinstance(fields_raw, Mapping) else {}
+
+    from pipeline_ledger import cmd_append, read_events
+
+    ledger_file = Path(ledger_path)
+    existing_events = read_events(ledger_file)
+    if any(
+        str(existing_event.get("feature_id", "")).strip() == feature_id
+        and str(existing_event.get("phase", "")).strip() == phase
+        and str(existing_event.get("event", "")).strip() == event_name
+        for existing_event in existing_events
+    ):
+        return {
+            "ok": True,
+            "appended": False,
+            "event": event_name,
+            "reason": "event_already_recorded",
+        }
+
+    append_args = argparse.Namespace(
+        file=str(ledger_file),
+        feature_id=feature_id,
+        phase=phase,
+        event=event_name,
+        actor=actor,
+        timestamp_utc=None,
+        fq_count=fields.get("fq_count"),
+        questions_asked=fields.get("questions_asked"),
+        spike_artifact=fields.get("spike_artifact"),
+        failed_fq=fields.get("failed_fq"),
+        feasibility_required=fields.get("feasibility_required"),
+        task_count=fields.get("task_count"),
+        story_count=fields.get("story_count"),
+        estimate_points=fields.get("estimate_points"),
+        tasks_sketched=fields.get("tasks_sketched"),
+        acceptance_tests_written=fields.get("acceptance_tests_written"),
+        critical_count=fields.get("critical_count"),
+        high_count=fields.get("high_count"),
+        e2e_artifact=fields.get("e2e_artifact"),
+        routing=fields.get("routing"),
+        risk=fields.get("risk"),
+        triage=fields.get("triage"),
+        details=fields.get("details"),
+    )
+    output_buffer = io.StringIO()
+    error_buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(error_buffer):
+            cmd_append(append_args)
+    except SystemExit as exc:
+        exit_code = exc.code if isinstance(exc.code, int) else 1
+        return {
+            "ok": False,
+            "appended": False,
+            "event": event_name,
+            "error_code": "pipeline_event_append_failed",
+            "stdout": output_buffer.getvalue(),
+            "stderr": error_buffer.getvalue(),
+            "process_exit_code": exit_code,
+        }
+
+    return {
+        "ok": True,
+        "appended": True,
+        "event": event_name,
+        "stdout": output_buffer.getvalue(),
+        "stderr": error_buffer.getvalue(),
+        "process_exit_code": 0,
+    }
+
+
 def _looks_like_feature_id(candidate: str) -> bool:
     """Return True when a request token looks like a concrete feature id."""
     token = candidate.strip()
@@ -1769,7 +1824,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             step_result = route_legacy_step(mapping, correlation_id=correlation_id)
         else:
             step_command = [str(script_path)]
-            if mapping.get("command_id") in {"speckit.implement", "speckit.solution", "speckit.specify"}:
+            if mapping.get("command_id") in {
+                "speckit.implement",
+                "speckit.plan",
+                "speckit.solution",
+                "speckit.specify",
+            }:
                 step_command.extend(
                     [
                         "--feature-id",
@@ -1787,6 +1847,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                 timeout_seconds=timeout,
                 correlation_id=correlation_id,
             )
+            event_request = step_result.get("pipeline_event_request")
+            if int(step_result.get("exit_code", 1)) == 0 and isinstance(event_request, Mapping):
+                append_result = append_requested_pipeline_event(
+                    feature_id=resolved_feature_id,
+                    phase=effective_phase,
+                    event_request=event_request,
+                )
+                if not append_result.get("ok"):
+                    step_result = {
+                        "schema_version": "1.0.0",
+                        "ok": False,
+                        "exit_code": 2,
+                        "correlation_id": correlation_id,
+                        "gate": None,
+                        "reasons": ["pipeline_event_append_failed"],
+                        "error_code": append_result.get(
+                            "error_code",
+                            "pipeline_event_append_failed",
+                        ),
+                        "next_phase": None,
+                        "debug_path": str(Path(".speckit/pipeline-ledger.jsonl")),
+                        "pipeline_event_append": append_result,
+                    }
+                else:
+                    phase_state = resolve_phase_state(
+                        resolved_feature_id,
+                        pipeline_state={"phase": effective_phase, "dry_run": False},
+                    )
+                    step_result["pipeline_event"] = append_result.get("event")
+                    step_result["pipeline_event_append"] = append_result
+                    step_result["next_phase"] = phase_state.get("next_phase") or step_result.get(
+                        "next_phase"
+                    )
 
     elif mapping_type == "generative":
         handoff = mapping["handoff"]

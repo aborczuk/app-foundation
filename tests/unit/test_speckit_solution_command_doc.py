@@ -37,14 +37,14 @@ def test_speckit_solution_doc_exposes_compact_and_expanded_headings() -> None:
     assert any("## Expanded Guidance (Load On Demand)" in line for line in expanded_section)
 
 
-def test_speckit_solution_doc_removes_direct_ledger_append_ownership() -> None:
-    """The solution doc should stay sketch-first and stop after tasking approval."""
+def test_speckit_solution_doc_consumes_plan_design_slices() -> None:
+    """The solution doc should consume plan slices instead of sketch artifacts."""
     doc_path = Path(__file__).resolve().parents[2] / ".claude" / "commands" / "speckit.solution.md"
     doc_text = doc_path.read_text(encoding="utf-8")
 
-    assert "pipeline-ledger.jsonl" not in doc_text
-    assert "Auto-invoke `/speckit.sketch`" in doc_text
+    assert "Do not generate `sketch.md`" in doc_text
+    assert "plan.md` design slices" in doc_text
+    assert "Auto-invoke `/speckit.sketch`" not in doc_text
     assert "Auto-invoke `/speckit.tasking`" in doc_text
     assert "Auto-invoke `/speckit.solutionreview`" not in doc_text
     assert "Auto-invoke `/speckit.analyze`" not in doc_text
-    assert "The command doc describes the `solution_approved` payload only" in doc_text
