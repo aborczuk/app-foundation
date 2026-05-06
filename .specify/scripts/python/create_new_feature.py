@@ -11,6 +11,17 @@ import sys
 from pathlib import Path
 
 
+def _trace(message: str) -> None:
+    """Emit a temporary stderr trace when SPECKIT_TRACE is enabled."""
+    if not os.environ.get("SPECKIT_TRACE"):
+        return
+    print(
+        f"[create-new-feature-trace pid={os.getpid()} ppid={os.getppid()}] {message}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _usage(program: str) -> str:
     return "\n".join(
         [
@@ -314,6 +325,11 @@ def main(argv: list[str]) -> int:
     """Create a feature spec scaffold on main with deterministic readiness checks."""
     program = Path(sys.argv[0]).name
     json_mode, short_name, branch_number, _base_branch, feature_description = _parse_args(argv, program)
+    _trace(
+        "main start "
+        f"json_mode={json_mode!r} short_name={short_name!r} branch_number={branch_number!r} "
+        f"feature_description={feature_description!r}"
+    )
 
     script_dir = Path(__file__).resolve().parent
     repo_root, has_git = _get_repo_root(script_dir)
@@ -332,6 +348,7 @@ def main(argv: list[str]) -> int:
             branch_number = str(_check_existing_branches(specs_dir, repo_root))
         else:
             branch_number = str(_get_highest_from_specs(specs_dir) + 1)
+    _trace(f"allocated branch_number={branch_number!r}")
 
     try:
         feature_num = f"{int(branch_number, 10):03d}"
@@ -369,6 +386,11 @@ def main(argv: list[str]) -> int:
         spec_file.touch()
 
     os.environ["SPECIFY_FEATURE"] = branch_name
+    _trace(
+        "main done "
+        f"branch_name={branch_name!r} feature_num={feature_num!r} "
+        f"spec_file={str(spec_file)!r}"
+    )
 
     if json_mode:
         print(

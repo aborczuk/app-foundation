@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate and persist research discovery notes for speckit.research."""
+"""Generate and persist research triage and discovery notes for speckit.research."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DISCOVERY_MAX_TERMS = 5
+FILE_PATH_RE = re.compile(r"^file_path:\s*(?P<path>.+)$", re.MULTILINE)
 STOP_WORDS = {
     "a",
     "an",
@@ -81,6 +82,45 @@ def _extract_terms(description: str) -> list[str]:
     return terms or ["feature"]
 
 
+def _classify_tshirt_size(match_count: int, duplicate: bool) -> str:
+    """Map research signal breadth to a t-shirt size."""
+    if duplicate:
+        return "xs"
+    if match_count == 0:
+        return "xl"
+    if match_count == 1:
+        return "l"
+    if match_count <= 3:
+        return "m"
+    return "s"
+
+
+def _extract_file_paths(output: str) -> list[str]:
+    """Pull file paths out of read_code context output."""
+    return [match.group("path").strip() for match in FILE_PATH_RE.finditer(output)]
+
+
+def _build_triage(discovery: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize duplicate risk and rough LOE from discovery results."""
+    matching_results = [result for result in discovery if bool(result.get("has_matches"))]
+    duplicate_hits: list[dict[str, str]] = []
+    for result in matching_results:
+        term = str(result.get("term") or "unknown")
+        output = "\n".join([str(result.get("stdout") or ""), str(result.get("stderr") or "")])
+        for file_path in _extract_file_paths(output):
+            if "/specs/" in file_path or file_path.endswith("spec.md"):
+                duplicate_hits.append({"term": term, "file_path": file_path})
+
+    duplicate = bool(duplicate_hits)
+    tshirt_size = _classify_tshirt_size(len(matching_results), duplicate)
+    return {
+        "duplicate": duplicate,
+        "tshirt_size": tshirt_size,
+        "matching_terms": len(matching_results),
+        "duplicate_hits": duplicate_hits[:5],
+    }
+
+
 def _run_uv_command(cmd: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """Run a repo-local command with the uv environment."""
     return subprocess.run(
@@ -105,6 +145,23 @@ def _render_discovery_result(result: dict[str, Any]) -> str:
     if stderr:
         lines.append("  stderr:")
         lines.extend(f"    {line}" for line in stderr.splitlines())
+    return "\n".join(lines)
+
+
+def _render_triage_result(triage: dict[str, Any]) -> str:
+    """Render the triage summary block for discovery.md."""
+    lines = [
+        "## Triage",
+        "",
+        f"- duplicate: {str(bool(triage.get('duplicate'))).lower()}",
+        f"- tshirt_size: {triage.get('tshirt_size', 'unknown')}",
+        f"- matching_terms: {int(triage.get('matching_terms', 0))}",
+    ]
+    duplicate_hits = triage.get("duplicate_hits") or []
+    if duplicate_hits:
+        lines.append("- duplicate_hits:")
+        for hit in duplicate_hits:
+            lines.append(f"  - {hit.get('term', 'unknown')}: {hit.get('file_path', 'unknown')}")
     return "\n".join(lines)
 
 
@@ -140,7 +197,8 @@ def _run_discovery(terms: Iterable[str], env: dict[str, str]) -> list[dict[str, 
 
 def _write_discovery_artifact(feature_dir: Path, discovery: list[dict[str, Any]]) -> Path:
     """Write discovery.md for the feature."""
-    lines = ["# Discovery", ""]
+    triage = _build_triage(discovery)
+    lines = ["# Discovery", "", _render_triage_result(triage), "", "## Code Discovery", ""]
     for result in discovery:
         lines.append(_render_discovery_result(result))
         lines.append("")
@@ -181,6 +239,7 @@ def main(argv: list[str]) -> int:
     description = _load_spec_description(spec_file)
     terms = _extract_terms(description or feature_dir.name)
     discovery = _run_discovery(terms, env)
+    triage = _build_triage(discovery)
     _write_discovery_artifact(feature_dir, discovery)
 
     payload = {
@@ -191,6 +250,7 @@ def main(argv: list[str]) -> int:
         "spec_file": str(spec_file),
         "discovery_file": str(discovery_path),
         "term_count": len(discovery),
+        "triage": triage,
     }
     if args.json:
         print(json.dumps(payload, sort_keys=True))

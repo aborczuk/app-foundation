@@ -100,15 +100,13 @@ commands:
   speckit.plan:
     description: Triage a spec, choose proportional research/plan/design depth, and produce one combined plan artifact
     driver:
-      mode: deterministic
-      script_path: scripts/speckit_plan_step.py
+      mode: generative
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/pipeline-scaffold.py
     - scripts/read_code.py
     - scripts/speckit_plan_step.py
-    - scripts/speckit_codex_handoff_runner.py
     - scripts/speckit_plan_gate.py
     - scripts/pipeline_ledger.py
     artifacts:

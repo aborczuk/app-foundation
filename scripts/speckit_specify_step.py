@@ -26,6 +26,17 @@ from pipeline_driver import build_correlation_id  # noqa: E402
 from pipeline_driver_state import determine_next_phase  # noqa: E402
 
 
+def _trace(message: str) -> None:
+    """Emit a temporary stderr trace when SPECKIT_TRACE is enabled."""
+    if not os.environ.get("SPECKIT_TRACE"):
+        return
+    print(
+        f"[specify-trace pid={os.getpid()} ppid={os.getppid()}] {message}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _build_uv_env() -> dict[str, str]:
     """Return the repo-local environment for specify workflows."""
     from uv_env import repo_uv_env
@@ -113,6 +124,7 @@ def _load_spec_description(spec_file: Path) -> str:
 
 def _create_feature(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
     """Create the feature scaffold and return the parsed JSON payload."""
+    _trace(f"_create_feature start short_name={short_name!r} description={description!r}")
     cmd = [
         "python3",
         ".specify/scripts/python/create_new_feature.py",
@@ -132,6 +144,11 @@ def _create_feature(description: str, short_name: str, env: dict[str, str]) -> d
         raise RuntimeError("feature scaffold returned invalid JSON") from exc
     if not isinstance(payload, dict):
         raise RuntimeError("feature scaffold returned invalid payload")
+    _trace(
+        "_create_feature done "
+        f"branch_name={payload.get('BRANCH_NAME')!r} feature_num={payload.get('FEATURE_NUM')!r} "
+        f"spec_file={payload.get('SPEC_FILE')!r}"
+    )
     return payload
 
 
@@ -341,11 +358,17 @@ def _run_specify_handoff_round(
 
 def _run_bootstrap_mode(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
     """Bootstrap a new feature scaffold."""
+    _trace(f"_run_bootstrap_mode start short_name={short_name!r} description={description!r}")
     feature = _create_feature(description, short_name, env)
 
     feature_dir = Path(feature["SPEC_FILE"]).resolve().parent
     spec_file = Path(feature["SPEC_FILE"]).resolve()
     _persist_bootstrap_description(spec_file, description)
+    _trace(
+        "_run_bootstrap_mode done "
+        f"branch_name={feature.get('BRANCH_NAME')!r} feature_num={feature.get('FEATURE_NUM')!r} "
+        f"feature_dir={feature_dir} spec_file={spec_file}"
+    )
 
     return {
         "BRANCH_NAME": feature["BRANCH_NAME"],
@@ -369,35 +392,38 @@ def _build_specify_step_identity(
     return feature_id, build_correlation_id(feature_id, phase)
 
 
-def _run_bootstrap_then_step_mode(
+def _run_bootstrap_only_mode(
     *,
     description: str,
     short_name: str,
-    phase: str,
     env: dict[str, str],
-    timeout_seconds: int,
 ) -> dict[str, Any]:
-    """Bootstrap the scaffold, derive ids, and continue into the deterministic step loop."""
+    """Bootstrap the scaffold and return the metadata needed for manual spec writing."""
+    _trace(f"_run_bootstrap_only_mode start description={description!r} short_name={short_name!r}")
     bootstrap = _run_bootstrap_mode(description, short_name, env)
     feature_id = str(bootstrap.get("BRANCH_NAME") or bootstrap.get("FEATURE_NUM") or "").strip()
-    correlation_id = build_correlation_id(feature_id, phase)
-    step_env = dict(env)
-    step_env["FEATURE_DIR"] = str(bootstrap.get("FEATURE_DIR") or "")
-    step_env["FEATURE_SPEC"] = str(bootstrap.get("SPEC_FILE") or "")
-    step_result = _run_step_mode(
-        feature_id=feature_id,
-        phase=phase,
-        correlation_id=correlation_id,
-        env=step_env,
-        timeout_seconds=timeout_seconds,
+    result = {
+        "schema_version": "1.0.0",
+        "ok": True,
+        "exit_code": 0,
+        "phase": "specify",
+        "feature_id": feature_id,
+        "branch_name": str(bootstrap.get("BRANCH_NAME") or ""),
+        "feature_num": str(bootstrap.get("FEATURE_NUM") or ""),
+        "feature_dir": str(bootstrap.get("FEATURE_DIR") or ""),
+        "spec_file": str(bootstrap.get("SPEC_FILE") or ""),
+        "generated_artifact": {
+            "path": str(bootstrap.get("SPEC_FILE") or ""),
+            "completion_marker": SPEC_COMPLETION_MARKER,
+        },
+        "next_step": "fill_spec_scaffold",
+    }
+    _trace(
+        "_run_bootstrap_only_mode done "
+        f"feature_id={feature_id!r} branch_name={result['branch_name']!r} "
+        f"spec_file={result['spec_file']!r}"
     )
-    step_result.setdefault("feature_id", feature_id)
-    step_result.setdefault("correlation_id", correlation_id)
-    step_result.setdefault("branch_name", str(bootstrap.get("BRANCH_NAME") or ""))
-    step_result.setdefault("feature_num", str(bootstrap.get("FEATURE_NUM") or ""))
-    step_result.setdefault("feature_dir", str(bootstrap.get("FEATURE_DIR") or ""))
-    step_result.setdefault("spec_file", str(bootstrap.get("SPEC_FILE") or step_result.get("spec_file") or ""))
-    return step_result
+    return result
 
 
 def _build_step_failure(
@@ -439,6 +465,7 @@ def _run_step_mode(
     timeout_seconds: int,
 ) -> dict[str, Any]:
     """Run the deterministic specify fill/validation loop."""
+    _trace(f"_run_step_mode start feature_id={feature_id!r} phase={phase!r} correlation_id={correlation_id!r}")
     try:
         paths = _load_feature_paths(env)
     except RuntimeError as exc:
@@ -479,6 +506,11 @@ def _run_step_mode(
         handoff_input=handoff_input,
         timeout_seconds=timeout_seconds,
     )
+    _trace(
+        "_run_step_mode handoff complete "
+        f"feature_id={feature_id!r} ok={handoff_result.get('ok')!r} "
+        f"spec_file={str(spec_file)!r}"
+    )
     if not handoff_result.get("ok"):
         if "generated_artifact" not in handoff_result:
             handoff_result["generated_artifact"] = {
@@ -507,28 +539,10 @@ def _run_step_mode(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for both bootstrap and deterministic step modes."""
+    """Build the CLI parser for bootstrap-only specify runs."""
     parser = argparse.ArgumentParser(description="Specify bootstrap and deterministic step runner")
     parser.add_argument("--json", action="store_true", help="Emit JSON summary output")
     parser.add_argument("--short-name", default="", help="Optional short name for the feature")
-    parser.add_argument("--feature-id", default="", help="Feature id for deterministic step mode")
-    parser.add_argument("--phase", default="specify", help="Pipeline phase for deterministic step mode")
-    parser.add_argument(
-        "--correlation-id",
-        default="",
-        help="Correlation id for deterministic step mode",
-    )
-    parser.add_argument(
-        "--timeout-seconds",
-        type=int,
-        default=300,
-        help="Timeout for the Codex handoff runner in deterministic step mode",
-    )
-    parser.add_argument(
-        "--handoff-runner",
-        default="",
-        help="Optional command used to execute the Codex handoff runner",
-    )
     parser.add_argument(
         "feature_description",
         nargs="?",
@@ -539,7 +553,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str]) -> int:
-    """Run the deterministic specify step, bootstrapping ids when needed."""
+    """Bootstrap the scaffold and return its metadata for manual spec completion."""
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -549,9 +563,7 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    feature_id = str(args.feature_id).strip()
-    correlation_id = str(args.correlation_id).strip()
-    phase = str(args.phase).strip() or "specify"
+    _trace(f"main start short_name={str(args.short_name).strip()!r}")
 
     description = str(args.feature_description).strip()
     if not description:
@@ -559,26 +571,20 @@ def main(argv: list[str]) -> int:
         return 1
 
     try:
-        if feature_id and correlation_id:
-            step_result = _run_step_mode(
-                feature_id=feature_id,
-                phase=phase,
-                correlation_id=correlation_id,
-                env=env,
-                timeout_seconds=max(1, int(args.timeout_seconds)),
-            )
-        else:
-            step_result = _run_bootstrap_then_step_mode(
-                description=description,
-                short_name=str(args.short_name).strip(),
-                phase=phase,
-                env=env,
-                timeout_seconds=max(1, int(args.timeout_seconds)),
-            )
+        step_result = _run_bootstrap_only_mode(
+            description=description,
+            short_name=str(args.short_name).strip(),
+            env=env,
+        )
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
+    _trace(
+        "main done "
+        f"ok={step_result.get('ok')!r} feature_id={step_result.get('feature_id')!r} "
+        f"branch_name={step_result.get('branch_name')!r}"
+    )
     print(json.dumps(step_result, separators=(",", ":")))
     return int(step_result.get("exit_code", 1))
 

@@ -6,10 +6,10 @@ from pathlib import Path
 import scripts.speckit_specify_step as specify_step
 
 
-def test_main_bootstraps_then_runs_deterministic_step(
+def test_main_bootstraps_scaffold_without_handoff(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
-    """The fast path should bootstrap the scaffold and continue into step mode."""
+    """The fast path should bootstrap the scaffold and stop before handoff."""
     calls: list[str] = []
 
     monkeypatch.setattr(
@@ -18,11 +18,14 @@ def test_main_bootstraps_then_runs_deterministic_step(
         lambda: {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")},
     )
 
-    def _create_feature(description: str, short_name: str, env: dict[str, str]) -> dict[str, str]:
+    def _create_feature(
+        description: str, short_name: str, env: dict[str, str]
+    ) -> dict[str, str]:
         calls.append(f"create:{short_name}:{env['UV_CACHE_DIR']}")
         feature_dir = tmp_path / "specs" / "028-tetris-game"
         feature_dir.mkdir(parents=True, exist_ok=True)
-        (feature_dir / "spec.md").write_text(
+        spec_path = feature_dir / "spec.md"
+        spec_path.write_text(
             "\n".join(
                 [
                     "# Feature Specification: [FEATURE NAME]",
@@ -40,162 +43,96 @@ def test_main_bootstraps_then_runs_deterministic_step(
         return {
             "BRANCH_NAME": "028-tetris-game",
             "FEATURE_NUM": "028",
-            "SPEC_FILE": str(feature_dir / "spec.md"),
+            "SPEC_FILE": str(spec_path),
         }
 
-    def _run_step_mode(
-        *,
-        feature_id: str,
-        phase: str,
-        correlation_id: str,
-        env: dict[str, str],
-        timeout_seconds: int,
-    ) -> dict[str, object]:
-        calls.append(
-            "step:"
-            f"{feature_id}:{phase}:{correlation_id}:{timeout_seconds}:"
-            f"{env['UV_CACHE_DIR']}:{env['FEATURE_DIR']}:{env['FEATURE_SPEC']}"
-        )
-        assert env["FEATURE_DIR"] == str(tmp_path / "specs" / "028-tetris-game")
-        assert env["FEATURE_SPEC"] == str(tmp_path / "specs" / "028-tetris-game" / "spec.md")
-        return {
-            "schema_version": "1.0.0",
-            "ok": True,
-            "exit_code": 0,
-            "feature_id": feature_id,
-            "correlation_id": correlation_id,
-            "next_phase": "plan",
-            "generated_artifact": {
-                "path": str(tmp_path / "specs" / "028-tetris-game" / "spec.md"),
-                "completion_marker": "## Routing Contract",
-            },
-        }
+    def _run_step_mode(**_kwargs):  # noqa: ANN001
+        raise AssertionError("handoff should not run during bootstrap-only specify")
 
     monkeypatch.setattr(specify_step, "_create_feature", _create_feature)
     monkeypatch.setattr(specify_step, "_run_step_mode", _run_step_mode)
 
-    exit_code = specify_step.main(["--short-name", "tetris-game", "Build a playable Tetris game in the app."])
-    capsys.readouterr()
+    exit_code = specify_step.main(
+        ["--short-name", "tetris-game", "Build a playable Tetris game in the app."]
+    )
+    payload = json.loads(capsys.readouterr().out.strip())
 
     assert exit_code == 0
-
-
-def test_specify_handoff_normalizes_codex_failure_debug_path(monkeypatch, tmp_path: Path) -> None:
-    """Codex handoff failures should expose a parseable debug path."""
-    runner_log_path = tmp_path / ".speckit" / "runtime" / "specify" / "runner.json"
-    payload = {
-        "schema_version": "1.0.0",
-        "ok": False,
-        "exit_code": 1,
-        "correlation_id": "run-test:specify.failure",
-        "feature_id": "028-tetris-game",
-        "error_code": "codex_exec_failed",
-        "reasons": ["codex_exec_failed"],
-        "gate": None,
-        "next_phase": None,
-        "debug_path": None,
-        "runner_log_path": str(runner_log_path),
-    }
-
-    def fake_run_uv_command(command, *, env, input_payload, timeout_seconds):  # noqa: ANN001
-        del command, env, timeout_seconds
-        assert json.loads(input_payload)["feature_id"] == "028-tetris-game"
-
-        class FakeProcess:
-            returncode = 1
-            stdout = json.dumps(payload)
-            stderr = "codex stderr"
-
-        return FakeProcess()
-
-    monkeypatch.setattr(specify_step, "_run_uv_command", fake_run_uv_command)
-
-    result = specify_step._run_specify_handoff_round(
-        env={},
-        handoff_input={
-            "feature_id": "028-tetris-game",
-            "phase": "specify",
-            "correlation_id": "run-test:specify.failure",
-            "handoff": {},
-        },
-        timeout_seconds=30,
+    assert calls == [f"create:tetris-game:{tmp_path / '.uv-cache'}"]
+    assert payload["ok"] is True
+    assert payload["exit_code"] == 0
+    assert payload["branch_name"] == "028-tetris-game"
+    assert payload["feature_num"] == "028"
+    assert payload["spec_file"] == str(tmp_path / "specs" / "028-tetris-game" / "spec.md")
+    assert payload["generated_artifact"]["path"] == str(
+        tmp_path / "specs" / "028-tetris-game" / "spec.md"
     )
-
-    assert result["exit_code"] == 2
-    assert result["debug_path"] == str(runner_log_path)
-    assert result["error_code"] == "codex_exec_failed"
+    assert payload["next_step"] == "fill_spec_scaffold"
 
 
-def test_main_step_mode_returns_handoff_result(monkeypatch, tmp_path: Path, capsys) -> None:
-    """The deterministic specify loop should return the handoff result directly."""
-    feature_dir = tmp_path / "specs" / "032-make-tetris"
-    feature_dir.mkdir(parents=True)
-    spec_file = feature_dir / "spec.md"
-    spec_file.write_text(
-        "\n".join(
-            [
-                "# Feature Specification: Tetris",
-                "",
-                "**Feature Branch**: `[032-make-tetris]`",
-                "**Created**: [DATE]",
-                "**Status**: Draft",
-                '**Input**: User description: "make tetris"',
-                "",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+def test_main_bootstraps_with_short_name_only(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """Bootstrap-only specify should still create a scaffold when only the short name is present."""
+    calls: list[str] = []
+
     monkeypatch.setattr(
         specify_step,
-        "_load_feature_paths",
-        lambda _env: {
-            "FEATURE_DIR": str(feature_dir),
-            "FEATURE_SPEC": str(spec_file),
-        },
+        "_build_uv_env",
+        lambda: {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")},
     )
 
-    calls: list[str] = []
-    handoff_results = [
-        {
-            "schema_version": "1.0.0",
-            "ok": True,
-            "exit_code": 0,
-            "correlation_id": "run-test:speckit.specify",
-            "next_phase": "research",
-            "gate": None,
-            "reasons": [],
-            "error_code": None,
-            "debug_path": None,
-            "handoff_execution": "executed",
-            "generated_artifact": {
-                "path": str(spec_file),
-                "completion_marker": "## Routing Contract",
-            },
-        },
-    ]
+    feature_dir = tmp_path / "specs" / "032-make-tetris"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    spec_file = feature_dir / "spec.md"
 
-    def _run_handoff_round(**kwargs):  # noqa: ANN001
-        calls.append("handoff")
-        return handoff_results.pop(0)
+    def _create_feature(
+        description: str, short_name: str, env: dict[str, str]
+    ) -> dict[str, str]:
+        calls.append(f"create:{short_name}:{env['UV_CACHE_DIR']}")
+        spec_file.write_text(
+            "\n".join(
+                [
+                    "# Feature Specification: Tetris",
+                    "",
+                    "**Feature Branch**: `[032-make-tetris]`",
+                    "**Created**: [DATE]",
+                    "**Status**: Draft",
+                    '**Input**: User description: "make tetris"',
+                    "",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return {
+            "BRANCH_NAME": "032-make-tetris",
+            "FEATURE_NUM": "032",
+            "SPEC_FILE": str(spec_file),
+        }
 
-    monkeypatch.setattr(specify_step, "_run_specify_handoff_round", _run_handoff_round)
+    def _run_step_mode(**_kwargs):  # noqa: ANN001
+        raise AssertionError("handoff should not run during bootstrap-only specify")
+
+    monkeypatch.setattr(specify_step, "_create_feature", _create_feature)
+    monkeypatch.setattr(specify_step, "_run_step_mode", _run_step_mode)
 
     exit_code = specify_step.main(
         [
             "make tetris",
-            "--feature-id",
-            "032-make-tetris",
-            "--phase",
-            "specify",
-            "--correlation-id",
-            "run-test:speckit.specify",
+            "--short-name",
+            "make-tetris",
         ]
     )
     payload = json.loads(capsys.readouterr().out.strip())
 
     assert exit_code == 0
-    assert calls == ["handoff"]
+    assert calls == [f"create:make-tetris:{tmp_path / '.uv-cache'}"]
     assert payload["ok"] is True
-    assert payload["next_phase"] == "research"
+    assert payload["exit_code"] == 0
+    assert payload["branch_name"] == "032-make-tetris"
+    assert payload["feature_num"] == "032"
+    assert payload["feature_id"] == "032-make-tetris"
+    assert payload["spec_file"] == str(spec_file)
     assert payload["generated_artifact"]["path"] == str(spec_file)
+    assert payload["next_step"] == "fill_spec_scaffold"

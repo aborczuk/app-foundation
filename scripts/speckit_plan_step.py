@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Combined speckit plan step with triage, research, plan, and design slices."""
+"""Scaffold and validate the combined speckit.plan workflow."""
 
 from __future__ import annotations
 
@@ -20,13 +20,34 @@ if str(REPO_ROOT / "scripts") not in sys.path:
 
 from bootstrap_session import bootstrap_session  # noqa: E402
 
-DEFAULT_RUNNER = Path(__file__).resolve().parent / "speckit_codex_handoff_runner.py"
 DEFAULT_SCAFFOLD = REPO_ROOT / ".specify" / "scripts" / "pipeline-scaffold.py"
-PLAN_COMPLETION_MARKER = "Plan Completion Summary"
+PLAN_COMPLETION_MARKER = "## Plan Completion Summary"
+BASE_TEMPLATE_SECTIONS = ("Triage", "Strategy Contract", "Internal Discovery")
 DISCOVERY_MAX_TERMS = 5
 FILE_PATH_RE = re.compile(r"^file_path:\s*(?P<path>.+)$", re.MULTILINE)
 JSON_FENCE_RE = re.compile(r"```json\s*(?P<body>.*?)```", re.IGNORECASE | re.DOTALL)
 ALLOWED_TSHIRT_SIZES = {"xs", "s", "m", "l", "xl"}
+ALLOWED_RISK_LEVELS = {"low", "medium", "high"}
+CANONICAL_DOMAINS = (
+    "api integration",
+    "data modeling",
+    "storage",
+    "caching",
+    "client/UI",
+    "edge delivery",
+    "compute",
+    "networking",
+    "environment",
+    "observability",
+    "resilience",
+    "testing",
+    "identity",
+    "security",
+    "build pipeline",
+    "ops governance",
+    "code patterns",
+)
+DOMAIN_ALIAS_MAP = {domain.lower(): domain for domain in CANONICAL_DOMAINS}
 STOP_WORDS = {
     "a",
     "an",
@@ -53,14 +74,214 @@ STOP_WORDS = {
 }
 
 
+def _plan_template_path() -> Path:
+    """Return the combined-plan template that documents all possible sections."""
+    return REPO_ROOT / ".specify" / "templates" / "plan-template.md"
+
+
+def _default_contract() -> dict[str, Any]:
+    """Return the empty strategy contract used before generative triage fills it."""
+    return {
+        "triage": {
+            "duplicate": False,
+            "duplicate_reason": "",
+            "duplicate_matches": [],
+            "tshirt_size": "",
+            "risk_level": "",
+        },
+        "domains": {
+            "relevant": [],
+            "reasoning": {},
+        },
+        "strategy": {
+            "external_research": False,
+            "architecture_strategy": False,
+            "architecture_diagram": False,
+            "expanded_design_notes": False,
+            "strategy_reason": "",
+        },
+        "risk": {
+            "overall": "",
+            "requirement_clarity": "",
+            "repo_uncertainty": "",
+            "external_dependency_uncertainty": "",
+            "state_data_migration_risk": "",
+            "runtime_side_effect_risk": "",
+            "human_operator_dependency": "",
+        },
+    }
+
+
+def _normalize_risk_level(value: Any) -> str:
+    """Normalize a low/medium/high risk label or return an empty string."""
+    normalized = str(value or "").strip().lower()
+    if normalized and normalized not in ALLOWED_RISK_LEVELS:
+        raise RuntimeError(f"invalid_risk_level:{normalized}")
+    return normalized
+
+
+def _normalize_domain_name(value: Any) -> str:
+    """Normalize one constitution domain label to its canonical spelling."""
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    normalized = DOMAIN_ALIAS_MAP.get(candidate.lower())
+    if normalized is None:
+        raise RuntimeError(f"invalid_domain:{candidate}")
+    return normalized
+
+
+def _compat_strategy_from_legacy_routing(routing: Mapping[str, Any]) -> dict[str, Any]:
+    """Map the legacy level-based routing contract into the strategy shape."""
+    plan_level = str(routing.get("plan_level") or "").strip().lower()
+    sketch_level = str(routing.get("sketch_level") or "").strip().lower()
+    return {
+        "external_research": bool(routing.get("external_research", False)),
+        "architecture_strategy": bool(routing.get("architecture_diagram", False))
+        or plan_level == "comprehensive",
+        "architecture_diagram": bool(routing.get("architecture_diagram", False))
+        or plan_level == "comprehensive",
+        "expanded_design_notes": sketch_level == "expanded",
+        "strategy_reason": str(routing.get("routing_reason") or "").strip(),
+    }
+
+
+def _ledger_routing_view(contract: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a ledger-compatible routing payload derived from the strategy contract."""
+    strategy = contract.get("strategy", {})
+    domains = contract.get("domains", {})
+    triage = contract.get("triage", {})
+    risk = contract.get("risk", {})
+    relevant_domains = list(domains.get("relevant") or [])
+    architecture_strategy = bool(strategy.get("architecture_strategy", False))
+    architecture_diagram = bool(strategy.get("architecture_diagram", False))
+    expanded_notes = bool(strategy.get("expanded_design_notes", False))
+    overall_risk = str(risk.get("overall") or triage.get("risk_level") or "").strip().lower()
+    size = str(triage.get("tshirt_size") or "").strip().lower()
+    if size in {"l", "xl"}:
+        plan_level = "comprehensive"
+    elif architecture_strategy or len(relevant_domains) > 1 or overall_risk in {"medium", "high"}:
+        plan_level = "core"
+    else:
+        plan_level = "simple"
+    if expanded_notes:
+        sketch_level = "expanded"
+    elif relevant_domains:
+        sketch_level = "core"
+    else:
+        sketch_level = "compact"
+    return {
+        "plan_level": plan_level,
+        "sketch_level": sketch_level,
+        "external_research": bool(strategy.get("external_research", False)),
+        "architecture_diagram": architecture_diagram,
+        "routing_reason": str(strategy.get("strategy_reason") or "").strip(),
+        "relevant_domains": relevant_domains,
+    }
+
+
+def _render_plan_template(*, feature_id: str, feature_dir: Path, spec_file: Path) -> str:
+    """Load the documented template and fill its feature metadata placeholders."""
+    return (
+        _plan_template_path()
+        .read_text(encoding="utf-8")
+        .replace("[FEATURE_NAME]", feature_dir.name)
+        .replace("[FEATURE_ID]", feature_id)
+        .replace("[SPEC_FILE_NAME]", spec_file.name)
+    )
+
+
+def _split_markdown_sections(text: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """Split a markdown artifact into its preamble and second-level sections."""
+    preamble: list[str] = []
+    sections: list[tuple[str, str]] = []
+    current_heading: str | None = None
+    current_body: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if current_heading is not None:
+                sections.append((current_heading, "\n".join(current_body).strip()))
+            current_heading = line[3:].strip()
+            current_body = []
+            continue
+        if current_heading is None:
+            preamble.append(line)
+        else:
+            current_body.append(line)
+    if current_heading is not None:
+        sections.append((current_heading, "\n".join(current_body).strip()))
+    return preamble, sections
+
+
+def _render_markdown_sections(
+    preamble: list[str], sections: list[tuple[str, str]]
+) -> str:
+    """Render a markdown artifact from a preamble and ordered section bodies."""
+    lines = list(preamble)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines:
+        lines.append("")
+    for heading, body in sections:
+        lines.extend([f"## {heading}", ""])
+        if body:
+            lines.extend(body.splitlines())
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_template_subset(
+    *,
+    template_text: str,
+    keep_sections: list[str],
+    overrides: Mapping[str, str],
+) -> str:
+    """Prune the documented template to the requested headings and body overrides."""
+    preamble, sections = _split_markdown_sections(template_text)
+    rendered_sections: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    keep_set = set(keep_sections)
+    for heading, body in sections:
+        if heading not in keep_set:
+            continue
+        rendered_sections.append((heading, overrides.get(heading, body)))
+        seen.add(heading)
+    missing = [heading for heading in keep_sections if heading not in seen]
+    if missing:
+        raise RuntimeError(f"plan_template_missing_sections:{','.join(missing)}")
+    return _render_markdown_sections(preamble, rendered_sections)
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for the combined plan step."""
+    """Build the CLI parser for the combined plan helper."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
-    parser.add_argument("--phase", default="plan", help="Phase label for the top-level run")
-    parser.add_argument("--correlation-id", required=True, help="Run-scoped correlation id")
-    parser.add_argument("--handoff-runner", default=None, help="Optional Codex handoff runner path")
-    parser.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prepare = subparsers.add_parser(
+        "prepare-triage",
+        help="Scaffold the minimal triage-first plan shell with internal discovery.",
+    )
+    prepare.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+
+    rewrite = subparsers.add_parser(
+        "apply-strategy",
+        aliases=["apply-routing"],
+        help="Rewrite plan.md with only the sections selected by triage strategy.",
+    )
+    rewrite.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+
+    finalize = subparsers.add_parser(
+        "finalize",
+        help="Validate the completed plan and emit the driver event request payload.",
+    )
+    finalize.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+    finalize.add_argument("--phase", default="plan", help="Phase label for the finalized plan")
+    finalize.add_argument(
+        "--correlation-id",
+        required=True,
+        help="Run-scoped correlation id used for the runtime result envelope",
+    )
+
     return parser
 
 
@@ -109,37 +330,43 @@ def _load_spec_description(spec_file: Path) -> str:
     return spec_file.read_text(encoding="utf-8").strip()
 
 
-def _extract_terms(description: str) -> list[str]:
-    """Derive compact code-discovery terms from the spec text."""
+def _extract_terms(text: str) -> list[str]:
+    """Extract a small set of repo-search terms from the spec text."""
+    words = re.findall(r"[A-Za-z0-9_-]+", text.lower())
     terms: list[str] = []
-    seen: set[str] = set()
-    for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9-]*", description):
-        normalized = token.strip("-").lower()
-        if len(normalized) < 3 or normalized in STOP_WORDS:
+    for word in words:
+        if word in STOP_WORDS or len(word) < 3:
             continue
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        terms.append(normalized)
+        if word not in terms:
+            terms.append(word)
         if len(terms) >= DISCOVERY_MAX_TERMS:
             break
     return terms or ["feature"]
 
 
-def _run_uv_command(command: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Run a repo-local command with captured output."""
+def _run_uv_command(
+    args: list[str],
+    *,
+    env: dict[str, str],
+    input_payload: str | None = None,
+    timeout_seconds: int | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run one repo-local uv command with bounded captured output."""
     return subprocess.run(
-        command,
+        args,
         cwd=REPO_ROOT,
-        check=False,
+        input=input_payload,
         capture_output=True,
         text=True,
+        check=False,
         env=env,
+        timeout=timeout_seconds,
     )
 
 
 def _run_discovery(terms: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
     """Run bounded internal discovery through read_code context lookups."""
+
     def lookup(term: str) -> dict[str, Any]:
         completed = _run_uv_command(
             ["uv", "run", "python", "scripts/read_code.py", "context", term],
@@ -187,7 +414,7 @@ def _render_discovery_result(result: Mapping[str, Any]) -> str:
 
 
 def _scaffold_manifest_plan(feature_dir: Path) -> None:
-    """Create the manifest-declared plan artifact before plan filling begins."""
+    """Create the manifest-declared plan artifact before triage writing begins."""
     completed = _run_uv_command(
         [
             "uv",
@@ -222,69 +449,42 @@ def _write_triage_scaffold(
     plan_file: Path,
     discovery: list[dict[str, Any]],
 ) -> None:
-    """Write the initial combined plan scaffold used for generative triage."""
+    """Write the initial triage-only scaffold used by the plan command."""
     discovery_body = "\n\n".join(_render_discovery_result(result) for result in discovery)
+    template_text = _render_plan_template(
+        feature_id=feature_id,
+        feature_dir=feature_dir,
+        spec_file=spec_file,
+    )
     plan_file.write_text(
-        "\n".join(
-            [
-                f"# Combined Plan - {feature_dir.name}",
-                "",
-                f"_Feature: `{feature_id}`_",
-                f"_Source Spec: `{spec_file.name}`_",
-                "_Artifact: `plan.md`_",
-                "",
-                "## Triage",
-                "",
-                "- duplicate: [true/false]",
-                "- t_shirt_size: [xs/s/m/l/xl]",
-                "- risk_level: [low/medium/high]",
-                "- reason: [Generative decision based on spec and discovery.]",
-                "",
-                "## Routing Contract",
-                "",
-                "```json",
-                json.dumps(
-                    {
-                        "triage": {
-                            "duplicate": False,
-                            "duplicate_reason": "",
-                            "duplicate_matches": [],
-                            "tshirt_size": "",
-                            "risk_level": "",
-                        },
-                        "routing": {
-                            "plan_level": "",
-                            "sketch_level": "",
-                            "external_research": False,
-                            "architecture_diagram": False,
-                            "routing_reason": "",
-                        },
-                        "risk": {
-                            "requirement_clarity": "",
-                            "repo_uncertainty": "",
-                            "external_dependency_uncertainty": "",
-                            "state_data_migration_risk": "",
-                            "runtime_side_effect_risk": "",
-                            "human_operator_dependency": "",
-                        },
-                    },
-                    indent=2,
-                    sort_keys=True,
+        _render_template_subset(
+            template_text=template_text,
+            keep_sections=list(BASE_TEMPLATE_SECTIONS),
+            overrides={
+                "Triage": "\n".join(
+                    [
+                        "- duplicate: [true/false]",
+                        "- t_shirt_size: [xs/s/m/l/xl]",
+                        "- risk_level: [low/medium/high]",
+                        "- reason: [Generative decision based on spec and discovery.]",
+                    ]
                 ),
-                "```",
-                "",
-                "## Internal Discovery",
-                "",
-                discovery_body or "- No internal discovery results recorded.",
-                "",
-            ]
+                "Strategy Contract": "\n".join(
+                    [
+                        "```json",
+                        _render_contract(_default_contract()),
+                        "```",
+                    ]
+                ),
+                "Internal Discovery": discovery_body or "- No internal discovery results recorded.",
+            },
         ),
         encoding="utf-8",
     )
 
 
 def _extract_contract(plan_file: Path) -> dict[str, Any]:
-    """Load the combined routing contract from plan.md."""
+    """Load the combined strategy contract from plan.md."""
     text = plan_file.read_text(encoding="utf-8")
     for match in JSON_FENCE_RE.finditer(text):
         try:
@@ -297,48 +497,89 @@ def _extract_contract(plan_file: Path) -> dict[str, Any]:
 
 
 def _normalize_contract(contract: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize the generative triage contract into stable values."""
+    """Normalize the triage contract into stable strategy, domain, and risk values."""
     triage_raw = contract.get("triage", {})
-    routing_raw = contract.get("routing", {})
+    strategy_raw = contract.get("strategy", {})
+    legacy_routing_raw = contract.get("routing", {})
+    domains_raw = contract.get("domains", {})
     risk_raw = contract.get("risk", {})
     triage = dict(triage_raw) if isinstance(triage_raw, Mapping) else {}
-    routing = dict(routing_raw) if isinstance(routing_raw, Mapping) else {}
+    strategy = dict(strategy_raw) if isinstance(strategy_raw, Mapping) else {}
+    legacy_routing = dict(legacy_routing_raw) if isinstance(legacy_routing_raw, Mapping) else {}
+    if not strategy and legacy_routing:
+        strategy = _compat_strategy_from_legacy_routing(legacy_routing)
+    domains = dict(domains_raw) if isinstance(domains_raw, Mapping) else {}
     risk = dict(risk_raw) if isinstance(risk_raw, Mapping) else {}
     tshirt_size = str(triage.get("tshirt_size") or "").strip().lower()
     if tshirt_size and tshirt_size not in ALLOWED_TSHIRT_SIZES:
         raise RuntimeError(f"invalid_tshirt_size:{tshirt_size}")
+    relevant_domains = [
+        domain
+        for domain in (_normalize_domain_name(value) for value in list(domains.get("relevant") or []))
+        if domain
+    ]
+    domain_reasoning_raw = domains.get("reasoning", {})
+    domain_reasoning_input = (
+        dict(domain_reasoning_raw) if isinstance(domain_reasoning_raw, Mapping) else {}
+    )
+    domain_reasoning: dict[str, str] = {}
+    for key, value in domain_reasoning_input.items():
+        normalized_domain = _normalize_domain_name(key)
+        if not normalized_domain:
+            continue
+        domain_reasoning[normalized_domain] = str(value or "").strip()
     return {
         "triage": {
             "duplicate": bool(triage.get("duplicate", False)),
             "duplicate_reason": str(triage.get("duplicate_reason") or "").strip(),
             "duplicate_matches": list(triage.get("duplicate_matches") or []),
             "tshirt_size": tshirt_size,
-            "risk_level": str(triage.get("risk_level") or "").strip().lower(),
+            "risk_level": _normalize_risk_level(triage.get("risk_level") or risk.get("overall")),
         },
-        "routing": {
-            "plan_level": str(routing.get("plan_level") or "").strip().lower(),
-            "sketch_level": str(routing.get("sketch_level") or "").strip().lower(),
-            "external_research": bool(routing.get("external_research", False)),
-            "architecture_diagram": bool(routing.get("architecture_diagram", False)),
-            "routing_reason": str(routing.get("routing_reason") or "").strip(),
+        "domains": {
+            "relevant": list(dict.fromkeys(relevant_domains)),
+            "reasoning": domain_reasoning,
         },
-        "risk": {str(key): str(value).strip().lower() for key, value in risk.items()},
+        "strategy": {
+            "external_research": bool(strategy.get("external_research", False)),
+            "architecture_strategy": bool(strategy.get("architecture_strategy", False)),
+            "architecture_diagram": bool(strategy.get("architecture_diagram", False)),
+            "expanded_design_notes": bool(strategy.get("expanded_design_notes", False)),
+            "strategy_reason": str(strategy.get("strategy_reason") or "").strip(),
+        },
+        "risk": {
+            "overall": _normalize_risk_level(risk.get("overall") or triage.get("risk_level")),
+            "requirement_clarity": _normalize_risk_level(risk.get("requirement_clarity")),
+            "repo_uncertainty": _normalize_risk_level(risk.get("repo_uncertainty")),
+            "external_dependency_uncertainty": _normalize_risk_level(
+                risk.get("external_dependency_uncertainty")
+            ),
+            "state_data_migration_risk": _normalize_risk_level(risk.get("state_data_migration_risk")),
+            "runtime_side_effect_risk": _normalize_risk_level(risk.get("runtime_side_effect_risk")),
+            "human_operator_dependency": _normalize_risk_level(risk.get("human_operator_dependency")),
+        },
     }
 
 
 def _selected_sections(contract: Mapping[str, Any]) -> list[str]:
-    """Return the plan sections required by the triage routing decision."""
-    routing = contract.get("routing", {})
-    triage = contract.get("triage", {})
-    plan_level = str(routing.get("plan_level") or "").strip().lower()
-    sketch_level = str(routing.get("sketch_level") or "").strip().lower()
-    sections = ["Summary", "Internal Research", "Design Slices", "Plan Completion Summary"]
-    if bool(routing.get("external_research")) or plan_level == "comprehensive":
-        sections.insert(2, "External Research")
-    if bool(routing.get("architecture_diagram")) or plan_level == "comprehensive":
-        insert_at = sections.index("Design Slices")
-        sections[insert_at:insert_at] = ["Architecture Plan", "Architecture Diagram"]
-    if sketch_level == "expanded" or str(triage.get("risk_level") or "") == "high":
+    """Return the plan sections required by the triage strategy decision."""
+    strategy = contract.get("strategy", {})
+    sections = [
+        "Summary",
+        "Relevant Domains",
+        "Internal Research",
+        "Design Slices",
+        "Plan Completion Summary",
+    ]
+    if bool(strategy.get("external_research", False)):
+        sections.insert(sections.index("Design Slices"), "External Research")
+    if bool(strategy.get("architecture_strategy", False)) or bool(
+        strategy.get("architecture_diagram", False)
+    ):
+        sections.insert(sections.index("Design Slices"), "Architecture Strategy")
+    if bool(strategy.get("architecture_diagram", False)):
+        sections.insert(sections.index("Design Slices"), "Architecture Diagram")
+    if bool(strategy.get("expanded_design_notes", False)):
         sections.insert(sections.index("Design Slices"), "Expanded Design Notes")
     return list(dict.fromkeys(sections))
 
@@ -348,181 +589,73 @@ def _render_contract(contract: Mapping[str, Any]) -> str:
     return json.dumps(dict(contract), indent=2, sort_keys=True)
 
 
+def _extract_section_body(plan_file: Path, heading: str) -> str:
+    """Extract one markdown section body from the current plan artifact."""
+    lines = plan_file.read_text(encoding="utf-8").splitlines()
+    heading_line = f"## {heading}"
+    in_section = False
+    body: list[str] = []
+    for line in lines:
+        if line == heading_line:
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if in_section:
+            body.append(line)
+    return "\n".join(body).strip()
+
+
 def _write_selected_scaffold(
     *,
     feature_id: str,
     feature_dir: Path,
     spec_file: Path,
     plan_file: Path,
-    discovery: list[dict[str, Any]],
+    discovery_body: str,
     contract: Mapping[str, Any],
-) -> None:
+) -> list[str]:
     """Rewrite plan.md with only the sections selected by triage."""
     sections = _selected_sections(contract)
     triage = contract.get("triage", {})
-    discovery_body = "\n\n".join(_render_discovery_result(result) for result in discovery)
-    body = [
-        f"# Combined Plan - {feature_dir.name}",
-        "",
-        f"_Feature: `{feature_id}`_",
-        f"_Source Spec: `{spec_file.name}`_",
-        "_Artifact: `plan.md`_",
-        "",
-        "## Triage",
-        "",
-        f"- duplicate: {str(bool(triage.get('duplicate'))).lower()}",
-        f"- t_shirt_size: {triage.get('tshirt_size') or ''}",
-        f"- risk_level: {triage.get('risk_level') or ''}",
-        f"- reason: {triage.get('duplicate_reason') or contract.get('routing', {}).get('routing_reason') or ''}",
-        "",
-        "## Routing Contract",
-        "",
-        "```json",
-        _render_contract(contract),
-        "```",
-        "",
-        "## Internal Discovery",
-        "",
-        discovery_body or "- No internal discovery results recorded.",
-        "",
-    ]
-    for section in sections:
-        body.extend([f"## {section}", "", "[Fill this section from the spec, discovery, and triage contract.]", ""])
-    plan_file.write_text("\n".join(body), encoding="utf-8")
-
-
-def _build_triage_instructions(spec_text: str, discovery: list[dict[str, Any]]) -> str:
-    """Build the generative instructions for duplicate, LOE, and risk triage."""
-    discovery_summary = json.dumps(discovery, indent=2, sort_keys=True)
-    return f"""
-You are executing the first half of speckit.plan.
-
-Edit only FEATURE_DIR/plan.md.
-First decide whether the requested spec already exists in this codebase.
-If it is a duplicate, mark triage.duplicate=true, cite the matching spec or code paths, and do not add plan/design sections.
-If it is not a duplicate, assign t-shirt size generatively from the requested behavior, repo discovery, likely blast radius, risk, and uncertainty.
-Do not infer t-shirt size from the number of discovery matches.
-
-Fill only:
-- ## Triage
-- ## Routing Contract
-
-Use these t-shirt values only: xs, s, m, l, xl.
-Use these plan levels only: simple, internal, comprehensive.
-Use sketch_level core for simple/internal and expanded for broad or high-risk work.
-Set external_research=true only when current repo context is insufficient or external packages/protocols/APIs are material.
-Set architecture_diagram=true only when the plan needs cross-component architecture.
-
-Spec:
-```text
-{spec_text[:12000]}
-```
-
-Internal discovery:
-```json
-{discovery_summary[:20000]}
-```
-""".strip()
-
-
-def _build_fill_instructions(spec_text: str, contract: Mapping[str, Any]) -> str:
-    """Build the generative instructions for filling selected plan sections."""
-    return f"""
-You are executing the second half of speckit.plan.
-
-Edit only FEATURE_DIR/plan.md.
-The triage-selected section scaffold is already present. Fill only those sections.
-Do not create discovery.md, research.md, sketch.md, data-model.md, quickstart.md, or tasks.md.
-Do not add extra sections beyond the scaffold unless a blocking contradiction must be recorded.
-
-Every non-duplicate plan must include at least one decomposition-ready design slice in ## Design Slices.
-The first design slice must be tasking-ready and include:
-- objective
-- estimated LOE
-- primary seam
-- touched files
-- touched symbols
-- likely net-new files
-- reuse / modify / create classification
-- constraints and invariants
-- dependency relationship
-- verification concern
-- implementation directive
-
-For the simplest low-risk feature, make exactly one low-estimated design slice.
-For comprehensive or high-risk work, include enough slices, architecture detail, and research detail for tasking to avoid inventing architecture.
-If architecture_diagram=true, include a Mermaid diagram in ## Architecture Diagram.
-
-Routing contract:
-```json
-{_render_contract(contract)}
-```
-
-Spec:
-```text
-{spec_text[:12000]}
-```
-""".strip()
-
-
-def _run_codex_action(
-    *,
-    repo_root: Path,
-    runner: Path,
-    feature_id: str,
-    phase: str,
-    correlation_id: str,
-    task_action: str,
-    feature_dir: Path,
-    instructions: str,
-    output_template_path: Path,
-    resume_session: bool = False,
-    retry_index: int = 0,
-) -> dict[str, Any]:
-    """Run the generic Codex action runner for one combined-plan substep."""
-    payload = {
-        "feature_id": feature_id,
-        "phase": phase,
-        "correlation_id": correlation_id,
-        "handoff": {
-            "feature_dir": str(feature_dir),
-            "repo_root": str(repo_root),
-            "step_name": "speckit.plan",
-            "task_action": task_action,
-            "output_template_path": str(output_template_path),
-            "completion_marker": PLAN_COMPLETION_MARKER,
-            "instructions": instructions,
-            "resume_session": resume_session,
-            "retry_index": retry_index,
-        },
-    }
-    completed = subprocess.run(
-        [sys.executable, str(runner)],
-        cwd=repo_root,
-        input=json.dumps(payload, sort_keys=True),
-        text=True,
-        capture_output=True,
-        check=False,
-        env=os.environ.copy(),
+    strategy = contract.get("strategy", {})
+    template_text = _render_plan_template(
+        feature_id=feature_id,
+        feature_dir=feature_dir,
+        spec_file=spec_file,
     )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            json.dumps(
-                {
-                    "error": "codex_plan_action_failed",
-                    "exit_code": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
-                },
-                sort_keys=True,
-            )
-        )
-    if not completed.stdout.strip():
-        raise RuntimeError("codex_plan_action_missing_result")
-    parsed = json.loads(completed.stdout)
-    if not isinstance(parsed, dict):
-        raise RuntimeError("codex_plan_action_result_not_object")
-    return parsed
+    plan_file.write_text(
+        _render_template_subset(
+            template_text=template_text,
+            keep_sections=[*BASE_TEMPLATE_SECTIONS, *sections],
+            overrides={
+                "Triage": "\n".join(
+                    [
+                        f"- duplicate: {str(bool(triage.get('duplicate'))).lower()}",
+                        f"- t_shirt_size: {triage.get('tshirt_size') or ''}",
+                        f"- risk_level: {triage.get('risk_level') or ''}",
+                        f"- reason: {triage.get('duplicate_reason') or strategy.get('strategy_reason') or ''}",
+                    ]
+                ),
+                "Strategy Contract": "\n".join(
+                    [
+                        "```json",
+                        _render_contract(contract),
+                        "```",
+                    ]
+                ),
+                "Internal Discovery": discovery_body or "- No internal discovery results recorded.",
+            },
+        ),
+        encoding="utf-8",
+    )
+    return sections
+
+
+def _validate_plan_completion(plan_file: Path) -> None:
+    """Require the final plan artifact to include the completion summary heading."""
+    if PLAN_COMPLETION_MARKER not in plan_file.read_text(encoding="utf-8"):
+        raise RuntimeError("plan_completion_summary_missing")
 
 
 def _validate_design_slices(plan_file: Path) -> None:
@@ -540,25 +673,31 @@ def _feasibility_required(contract: Mapping[str, Any]) -> bool:
     """Return whether plan approval should record feasibility pressure."""
     triage = contract.get("triage", {})
     risk = contract.get("risk", {})
-    routing = contract.get("routing", {})
+    strategy = contract.get("strategy", {})
     if str(triage.get("risk_level") or "").strip().lower() == "high":
         return True
-    if str(routing.get("plan_level") or "").strip().lower() == "comprehensive":
+    if str(triage.get("tshirt_size") or "").strip().lower() in {"l", "xl"}:
+        return True
+    if bool(strategy.get("external_research", False)) or bool(
+        strategy.get("architecture_strategy", False)
+    ):
         return True
     return any(str(value).strip().lower() == "high" for value in risk.values())
 
 
 def _event_request(event: str, *, contract: Mapping[str, Any]) -> dict[str, Any]:
     """Build the driver-owned pipeline event request for this plan outcome."""
+    ledger_routing = _ledger_routing_view(contract)
     fields: dict[str, Any] = {
         "details": json.dumps(
             {
                 "triage": contract.get("triage", {}),
-                "routing": contract.get("routing", {}),
+                "domains": contract.get("domains", {}),
+                "strategy": contract.get("strategy", {}),
             },
             sort_keys=True,
         ),
-        "routing": dict(contract.get("routing", {})),
+        "routing": ledger_routing,
         "risk": dict(contract.get("risk", {})),
         "triage": dict(contract.get("triage", {})),
     }
@@ -567,32 +706,28 @@ def _event_request(event: str, *, contract: Mapping[str, Any]) -> dict[str, Any]
     return {"event": event, "fields": fields}
 
 
+def _runtime_result_path(phase: str, correlation_id: str) -> Path:
+    """Return the runtime result path for a finalized combined plan step."""
+    return REPO_ROOT / ".speckit" / "runtime" / phase / f"{correlation_id}.json"
+
+
 def _write_debug_payload(path: Path, payload: Mapping[str, Any]) -> None:
-    """Write a plan-run debug payload to disk."""
+    """Write a plan-run runtime payload to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(dict(payload), indent=2, sort_keys=True), encoding="utf-8")
 
 
-def orchestrate_plan(
-    feature_id: str,
-    correlation_id: str,
-    *,
-    phase: str,
-    handoff_runner: str | None = None,
-) -> dict[str, Any]:
-    """Run the combined plan workflow from triage through design slices."""
+def prepare_triage(feature_id: str) -> dict[str, Any]:
+    """Scaffold the triage-first plan shell and embed bounded internal discovery."""
     bootstrap_summary = bootstrap_session(REPO_ROOT)
     if not bootstrap_summary["bootstrap_ok"]:
-        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
+        raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session_bootstrap_failed")
 
     feature_dir, spec_file, plan_file = _resolve_feature_paths(feature_id)
-    debug_path = REPO_ROOT / ".speckit" / "runtime" / "plan" / f"{correlation_id}.json"
-    runner = Path(handoff_runner).resolve() if handoff_runner else DEFAULT_RUNNER
-
     spec_text = _load_spec_description(spec_file)
     env = _build_uv_env()
-    discovery = _run_discovery(_extract_terms(spec_text or feature_dir.name), env)
-
+    terms = _extract_terms(spec_text or feature_dir.name)
+    discovery = _run_discovery(terms, env)
     _scaffold_manifest_plan(feature_dir)
     _write_triage_scaffold(
         feature_id=feature_id,
@@ -601,21 +736,73 @@ def orchestrate_plan(
         plan_file=plan_file,
         discovery=discovery,
     )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": True,
+        "command": "prepare-triage",
+        "feature_id": feature_id,
+        "feature_dir": str(feature_dir),
+        "plan_artifact": str(plan_file),
+        "discovery_terms": terms,
+        "discovery_count": len(discovery),
+        "completion_marker": PLAN_COMPLETION_MARKER,
+    }
 
-    stages: list[dict[str, Any]] = []
-    triage_result = _run_codex_action(
-        repo_root=REPO_ROOT,
-        runner=runner,
-        feature_id=feature_id,
-        phase=phase,
-        correlation_id=f"{correlation_id}:triage",
-        task_action="triage_combined_plan",
-        feature_dir=feature_dir,
-        instructions=_build_triage_instructions(spec_text, discovery),
-        output_template_path=plan_file,
-    )
-    stages.append({"stage": "triage", "result": triage_result})
+
+def apply_strategy(feature_id: str) -> dict[str, Any]:
+    """Rewrite plan.md so it contains only the sections selected by triage strategy."""
+    feature_dir, spec_file, plan_file = _resolve_feature_paths(feature_id)
     contract = _normalize_contract(_extract_contract(plan_file))
+    if bool(contract["triage"]["duplicate"]):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "ok": True,
+            "command": "apply-strategy",
+            "feature_id": feature_id,
+            "feature_dir": str(feature_dir),
+            "plan_artifact": str(plan_file),
+            "duplicate": True,
+            "rewritten": False,
+            "selected_sections": [],
+        }
+
+    discovery_body = _extract_section_body(plan_file, "Internal Discovery")
+    sections = _write_selected_scaffold(
+        feature_id=feature_id,
+        feature_dir=feature_dir,
+        spec_file=spec_file,
+        plan_file=plan_file,
+        discovery_body=discovery_body,
+        contract=contract,
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": True,
+        "command": "apply-strategy",
+        "feature_id": feature_id,
+        "feature_dir": str(feature_dir),
+        "plan_artifact": str(plan_file),
+        "duplicate": False,
+        "rewritten": True,
+        "selected_sections": sections,
+        "domains": contract["domains"],
+        "strategy": contract["strategy"],
+        "triage": contract["triage"],
+        "risk": contract["risk"],
+    }
+
+
+def apply_routing(feature_id: str) -> dict[str, Any]:
+    """Preserve backward compatibility for older callers using apply-routing."""
+    return apply_strategy(feature_id)
+
+
+def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") -> dict[str, Any]:
+    """Validate the final plan artifact and emit the driver event request envelope."""
+    feature_dir, _, plan_file = _resolve_feature_paths(feature_id)
+    contract = _normalize_contract(_extract_contract(plan_file))
+    _validate_plan_completion(plan_file)
+    debug_path = _runtime_result_path(phase, correlation_id)
 
     if bool(contract["triage"]["duplicate"]):
         result = {
@@ -631,39 +818,15 @@ def orchestrate_plan(
             "feature_dir": str(feature_dir),
             "plan_artifact": str(plan_file),
             "triage": contract["triage"],
-            "routing": contract["routing"],
+            "domains": contract["domains"],
+            "strategy": contract["strategy"],
             "risk": contract["risk"],
             "pipeline_event_request": _event_request("duplicate_marked", contract=contract),
-            "stages": stages,
         }
         _write_debug_payload(debug_path, result)
         return result
 
-    _write_selected_scaffold(
-        feature_id=feature_id,
-        feature_dir=feature_dir,
-        spec_file=spec_file,
-        plan_file=plan_file,
-        discovery=discovery,
-        contract=contract,
-    )
-    fill_result = _run_codex_action(
-        repo_root=REPO_ROOT,
-        runner=runner,
-        feature_id=feature_id,
-        phase=phase,
-        correlation_id=f"{correlation_id}:fill",
-        task_action="fill_combined_plan",
-        feature_dir=feature_dir,
-        instructions=_build_fill_instructions(spec_text, contract),
-        output_template_path=plan_file,
-        resume_session=True,
-        retry_index=1,
-    )
-    stages.append({"stage": "fill", "result": fill_result})
-    contract = _normalize_contract(_extract_contract(plan_file))
     _validate_design_slices(plan_file)
-
     result = {
         "schema_version": SCHEMA_VERSION,
         "ok": True,
@@ -677,39 +840,51 @@ def orchestrate_plan(
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_file),
         "triage": contract["triage"],
-        "routing": contract["routing"],
+        "domains": contract["domains"],
+        "strategy": contract["strategy"],
         "risk": contract["risk"],
         "pipeline_event_request": _event_request("plan_approved", contract=contract),
-        "stages": stages,
     }
     _write_debug_payload(debug_path, result)
     return result
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for combined deterministic plan orchestration."""
+    """Dispatch the combined plan helper subcommands."""
     args = _build_parser().parse_args(argv)
     try:
-        result = orchestrate_plan(
-            args.feature_id,
-            args.correlation_id,
-            phase=args.phase,
-            handoff_runner=args.handoff_runner,
-        )
+        if args.command == "prepare-triage":
+            result = prepare_triage(args.feature_id)
+        elif args.command in {"apply-strategy", "apply-routing"}:
+            result = apply_strategy(args.feature_id)
+        elif args.command == "finalize":
+            result = finalize_plan(
+                args.feature_id,
+                args.correlation_id,
+                phase=args.phase,
+            )
+        else:
+            raise RuntimeError(f"unsupported_plan_command:{args.command}")
     except Exception as exc:  # noqa: BLE001
-        debug_path = REPO_ROOT / ".speckit" / "runtime" / "plan" / f"{args.correlation_id}.json"
+        debug_path = None
+        correlation_id = getattr(args, "correlation_id", None)
+        phase = getattr(args, "phase", "plan")
+        if isinstance(correlation_id, str) and correlation_id:
+            debug_path = _runtime_result_path(phase, correlation_id)
         failure = {
             "schema_version": SCHEMA_VERSION,
             "ok": False,
             "exit_code": 2,
-            "correlation_id": args.correlation_id,
-            "gate": "plan_orchestration",
-            "reasons": [str(exc) or "plan_orchestration_failed"],
-            "error_code": "plan_orchestration_failed",
+            "command": args.command,
+            "correlation_id": correlation_id or "",
+            "gate": "plan_helper",
+            "reasons": [str(exc) or "plan_helper_failed"],
+            "error_code": "plan_helper_failed",
             "next_phase": None,
-            "debug_path": str(debug_path),
+            "debug_path": str(debug_path) if debug_path is not None else None,
         }
-        _write_debug_payload(debug_path, failure)
+        if debug_path is not None:
+            _write_debug_payload(debug_path, failure)
         print(json.dumps(failure, sort_keys=True))
         return 2
 

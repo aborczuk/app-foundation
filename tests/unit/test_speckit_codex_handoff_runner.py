@@ -305,8 +305,8 @@ def test_run_codex_handoff_records_codex_model(tmp_path: Path, monkeypatch) -> N
     assert runner_log["result"]["codex_model"] == "gpt-5.5"
 
 
-def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) -> None:
-    """Codex exec should run against a writable private CODEX_HOME."""
+def test_run_codex_exec_seeds_a_private_codex_home_with_guard_config(tmp_path: Path, monkeypatch) -> None:
+    """Codex exec should use a writable CODEX_HOME while preserving guard config."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     source_home = tmp_path / "codex-home"
@@ -327,7 +327,7 @@ def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) 
         assert codex_home != source_home
         assert codex_home.is_dir()
         assert (codex_home / "auth.json").is_file()
-        assert not (codex_home / "config.toml").exists()
+        assert (codex_home / "config.toml").is_file()
         return subprocess.CompletedProcess(command, 0, stdout="codex stdout", stderr="codex stderr")
 
     monkeypatch.setattr(speckit_codex_handoff_runner.subprocess, "run", fake_run)
@@ -342,9 +342,9 @@ def test_run_codex_exec_seeds_a_private_codex_home(tmp_path: Path, monkeypatch) 
     assert stderr == "codex stderr"
     assert last_message == ""
     assert captured["command"][0] == "/usr/bin/codex"
-    assert "--ignore-user-config" in captured["command"]
-    assert "--add-dir" in captured["command"]
+    assert "--ignore-user-config" not in captured["command"]
+    assert "--add-dir" not in captured["command"]
     assert str(repo_root) in captured["command"]
-    assert "--skip-git-repo-check" in captured["command"]
-    assert captured["cwd"] != repo_root
+    assert "--skip-git-repo-check" not in captured["command"]
+    assert captured["cwd"] == repo_root
     assert captured["env"]["CODEX_HOME"] != str(source_home)

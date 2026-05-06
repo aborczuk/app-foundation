@@ -18,8 +18,8 @@ def _usage() -> str:
         "Usage:\n"
         "  .specify/scripts/test_plan.py feature_id=XYZ\n\n"
         "What it checks:\n"
-        "  1. The speckit.plan manifest entry points at the combined plan step and plan-template.md.\n"
-        "  2. The speckit.plan command doc documents triage-first combined planning.\n"
+        "  1. The speckit.plan manifest entry declares a generative combined-plan route and plan-template.md.\n"
+        "  2. The speckit.plan command doc documents triage-first combined planning without a nested runner.\n"
         "  3. pipeline-scaffold generates plan.md with the expected combined section headers.\n"
     )
 
@@ -43,6 +43,7 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
     """Verify the manifest and command-doc snippets for speckit.plan."""
     manifest_path = repo_root / ".specify" / "command-manifest.yaml"
     command_doc_path = repo_root / ".claude" / "commands" / "speckit.plan.md"
+    template_path = repo_root / ".specify" / "templates" / "plan-template.md"
 
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     artifacts = manifest["commands"]["speckit.plan"]["artifacts"]
@@ -53,18 +54,34 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
             "Manifest template mismatch: expected "
             f"{expected_templates}, found {templates}"
         )
-    script_path = manifest["commands"]["speckit.plan"]["driver"].get("script_path")
-    if script_path != "scripts/speckit_plan_step.py":
-        raise SystemExit(f"Plan script mismatch: expected scripts/speckit_plan_step.py, found {script_path}")
+    driver = manifest["commands"]["speckit.plan"]["driver"]
+    if driver.get("mode") != "generative":
+        raise SystemExit(
+            "Plan driver mismatch: expected mode=generative, "
+            f"found {driver.get('mode')}"
+        )
+    scripts = manifest["commands"]["speckit.plan"]["scripts"]
+    if "scripts/speckit_plan_step.py" not in scripts:
+        raise SystemExit(
+            "Plan helper script missing from manifest scripts: scripts/speckit_plan_step.py"
+        )
+    if "scripts/speckit_codex_handoff_runner.py" in scripts:
+        raise SystemExit("Plan manifest still declares the nested Codex handoff runner")
 
     command_doc = command_doc_path.read_text(encoding="utf-8")
     required_snippets = [
         "Compact Contract",
-        "speckit_plan_step.py",
+        "prepare-triage",
+        "apply-strategy",
+        "finalize",
         "duplicate_marked",
         "plan_approved",
+        "The full documented section set lives in",
+        "## Strategy",
+        "Relevant Domains",
         "Do not infer t-shirt size from the number of discovery matches",
         "Do not create `discovery.md`, `research.md`, `sketch.md`",
+        "Do not call `scripts/speckit_codex_handoff_runner.py`",
     ]
     missing = [snippet for snippet in required_snippets if snippet not in command_doc]
     if missing:
@@ -81,6 +98,29 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
     present = [snippet for snippet in forbidden_snippets if snippet in command_doc]
     if present:
         raise SystemExit(f"Command doc still contains forbidden snippets: {', '.join(present)}")
+
+    template_text = template_path.read_text(encoding="utf-8")
+    required_template_headings = [
+        "## Triage",
+        "## Strategy Contract",
+        "## Internal Discovery",
+        "## Relevant Domains",
+        "## Summary",
+        "## Internal Research",
+        "## External Research",
+        "## Architecture Strategy",
+        "## Architecture Diagram",
+        "## Expanded Design Notes",
+        "## Design Slices",
+        "## Plan Completion Summary",
+    ]
+    missing_headings = [
+        heading for heading in required_template_headings if heading not in template_text
+    ]
+    if missing_headings:
+        raise SystemExit(
+            "Plan template missing documented sections: " + ", ".join(missing_headings)
+        )
 
 
 def _run_pipeline_scaffold(test_dir: Path) -> None:
@@ -111,7 +151,7 @@ def _assert_scaffold_output(root: Path) -> None:
     plan_text = (root / "plan.md").read_text(encoding="utf-8")
     required_sections = [
         "## Triage",
-        "## Routing Contract",
+        "## Strategy Contract",
         "## Internal Discovery",
         "## Plan Completion Summary",
     ]

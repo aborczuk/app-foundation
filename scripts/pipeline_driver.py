@@ -20,6 +20,7 @@ from typing import Any, Mapping, Sequence
 from pipeline_driver_contracts import parse_step_result, render_status_lines
 from pipeline_driver_state import advance_phase, resolve_phase_state
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 VALID_PIPELINE_PHASE_SEQUENCE = ("specify", "research", "plan", "solution", "implement", "closed")
 VALID_PIPELINE_PHASES = set(VALID_PIPELINE_PHASE_SEQUENCE)
 PHASE_INDEX = {phase: index for index, phase in enumerate(VALID_PIPELINE_PHASE_SEQUENCE)}
@@ -142,6 +143,77 @@ def validate_generated_artifact(
 
     # Validation passed
     return {"ok": True}
+
+
+def _feature_dir_candidates(feature_id: str) -> list[Path]:
+    """Return candidate spec directories for a numeric or exact feature id."""
+    specs_dir = REPO_ROOT / "specs"
+    if not specs_dir.is_dir():
+        return []
+
+    exact = specs_dir / feature_id
+    if exact.is_dir():
+        return [exact.resolve()]
+
+    prefix_match = re.match(r"^(?P<prefix>\d+)", feature_id.strip())
+    if not prefix_match:
+        return []
+    prefix = prefix_match.group("prefix")
+    candidates = [
+        path.resolve()
+        for path in specs_dir.iterdir()
+        if path.is_dir() and (path.name == prefix or path.name.startswith(f"{prefix}-"))
+    ]
+    return sorted(candidates, key=lambda path: path.name)
+
+
+def _resolve_feature_dir(feature_id: str) -> Path | None:
+    """Resolve the canonical feature directory for a handoff-aware phase."""
+    candidates = _feature_dir_candidates(feature_id)
+    return candidates[0] if candidates else None
+
+
+def _prepare_generative_handoff(
+    handoff: Mapping[str, Any],
+    *,
+    command_id: str | None,
+    feature_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Populate known artifact paths for command-doc driven generative phases."""
+    prepared = dict(handoff)
+    if command_id != "speckit.plan":
+        return prepared
+
+    feature_dir = _resolve_feature_dir(feature_id)
+    if feature_dir is None:
+        return prepared
+
+    required_inputs = [
+        str(feature_dir / "spec.md"),
+        str(feature_dir / "plan.md"),
+        str(REPO_ROOT / ".claude" / "commands" / "speckit.plan.md"),
+        str(REPO_ROOT / "scripts" / "speckit_plan_step.py"),
+    ]
+    prepared["required_inputs"] = required_inputs
+    prepared["output_template_path"] = str(feature_dir / "plan.md")
+    prepared["completion_marker"] = "## Plan Completion Summary"
+    prepared["correlation_id"] = correlation_id
+    return prepared
+
+
+def load_generated_step_result(*, phase: str, correlation_id: str) -> dict[str, Any] | None:
+    """Load an optional runtime result envelope emitted by a generative phase helper."""
+    if not phase or not correlation_id:
+        return None
+    result_path = REPO_ROOT / ".speckit" / "runtime" / phase / f"{correlation_id}.json"
+    if not result_path.is_file():
+        return None
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _next_routing_skip_event(phase_state: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -1882,7 +1954,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
 
     elif mapping_type == "generative":
-        handoff = mapping["handoff"]
+        handoff = _prepare_generative_handoff(
+            mapping["handoff"],
+            command_id=mapping.get("command_id"),
+            feature_id=resolved_feature_id,
+            correlation_id=correlation_id,
+        )
         step_result = run_generative_handoff(
             handoff,
             feature_id=resolved_feature_id,
@@ -1923,63 +2000,143 @@ def main(argv: Sequence[str] | None = None) -> int:
                 validation_result["generated_artifact"] = generated_artifact
                 step_result = validation_result
             else:
-                append_result = append_pipeline_success_event(
-                    feature_id=resolved_feature_id,
+                generated_step_result = load_generated_step_result(
                     phase=effective_phase,
-                    command_id=mapping.get("command_id"),
+                    correlation_id=correlation_id,
                 )
-                if not append_result.get("ok"):
+                if isinstance(generated_step_result, Mapping):
+                    merged_result = dict(generated_step_result)
+                    merged_result["handoff"] = dict(handoff)
+                    merged_result["handoff_execution"] = step_result.get("handoff_execution")
+                    merged_result["generated_artifact"] = generated_artifact
+                    step_result = merged_result
+
+                event_request = (
+                    step_result.get("pipeline_event_request")
+                    if isinstance(step_result, Mapping)
+                    else None
+                )
+                if int(step_result.get("exit_code", 1)) != 0 or not bool(step_result.get("ok", False)):
+                    step_result["artifact_validation"] = {
+                        "ok": True,
+                        "artifact_path": str(artifact_path),
+                    }
+                elif isinstance(event_request, Mapping):
+                    append_result = append_requested_pipeline_event(
+                        feature_id=resolved_feature_id,
+                        phase=effective_phase,
+                        event_request=event_request,
+                    )
+                    if not append_result.get("ok"):
+                        step_result = {
+                            "schema_version": "1.0.0",
+                            "ok": False,
+                            "exit_code": 2,
+                            "correlation_id": correlation_id,
+                            "gate": None,
+                            "reasons": ["pipeline_event_append_failed"],
+                            "error_code": append_result.get(
+                                "error_code",
+                                "pipeline_event_append_failed",
+                            ),
+                            "next_phase": None,
+                            "debug_path": str(Path(".speckit/pipeline-ledger.jsonl")),
+                            "pipeline_event_append": append_result,
+                        }
+                    else:
+                        phase_state = resolve_phase_state(
+                            resolved_feature_id,
+                            pipeline_state={"phase": effective_phase, "dry_run": False},
+                        )
+                        step_result["pipeline_event"] = append_result.get("event")
+                        step_result["pipeline_event_append"] = append_result
+                        step_result["next_phase"] = phase_state.get("next_phase") or step_result.get(
+                            "next_phase"
+                        )
+                    step_result["artifact_validation"] = {
+                        "ok": True,
+                        "artifact_path": str(artifact_path),
+                    }
+                elif mapping.get("command_id") == "speckit.plan":
                     step_result = {
                         "schema_version": "1.0.0",
                         "ok": False,
                         "exit_code": 2,
                         "correlation_id": correlation_id,
-                        "gate": None,
-                        "reasons": ["pipeline_event_append_failed"],
-                        "error_code": append_result.get("error_code", "pipeline_event_append_failed"),
+                        "gate": "plan_event_request",
+                        "reasons": ["plan_event_request_missing"],
+                        "error_code": "plan_event_request_missing",
                         "next_phase": None,
                         "debug_path": None,
+                        "artifact_validation": {
+                            "ok": True,
+                            "artifact_path": str(artifact_path),
+                        },
                     }
                 else:
-                    phase_state = resolve_phase_state(
-                        resolved_feature_id,
-                        pipeline_state={"phase": effective_phase, "dry_run": False},
+                    append_result = append_pipeline_success_event(
+                        feature_id=resolved_feature_id,
+                        phase=effective_phase,
+                        command_id=mapping.get("command_id"),
                     )
-                    routing_result = realize_routing(
-                        resolved_feature_id,
-                        phase_state,
-                    )
-                    if not routing_result.get("ok"):
-                        step_result.update(
-                            {
-                                "ok": False,
-                                "exit_code": 2,
-                                "reasons": ["routing_realization_failed"],
-                                "error_code": routing_result.get(
-                                    "error_code",
-                                    "routing_realization_failed",
-                                ),
-                                "next_phase": None,
-                                "debug_path": routing_result.get("debug_path") or str(
-                                    Path(".speckit/pipeline-ledger.jsonl")
-                                ),
-                            }
-                        )
+                    if not append_result.get("ok"):
+                        step_result = {
+                            "schema_version": "1.0.0",
+                            "ok": False,
+                            "exit_code": 2,
+                            "correlation_id": correlation_id,
+                            "gate": None,
+                            "reasons": ["pipeline_event_append_failed"],
+                            "error_code": append_result.get(
+                                "error_code",
+                                "pipeline_event_append_failed",
+                            ),
+                            "next_phase": None,
+                            "debug_path": None,
+                        }
                     else:
-                        phase_state = routing_result.get("phase_state", phase_state)
-                        resolved_current_phase = phase_state.get("phase")
-                        if not isinstance(resolved_current_phase, str) or not resolved_current_phase:
-                            resolved_current_phase = effective_phase
-                        step_result["next_phase"] = phase_state.get("next_phase") or advance_phase(
-                            resolved_current_phase
+                        phase_state = resolve_phase_state(
+                            resolved_feature_id,
+                            pipeline_state={"phase": effective_phase, "dry_run": False},
                         )
-                        if routing_result.get("appended_events"):
-                            step_result["routing_realization"] = routing_result["appended_events"]
-                    step_result["pipeline_event"] = append_result.get("event")
-                step_result["artifact_validation"] = {
-                    "ok": True,
-                    "artifact_path": str(artifact_path),
-                }
+                        routing_result = realize_routing(
+                            resolved_feature_id,
+                            phase_state,
+                        )
+                        if not routing_result.get("ok"):
+                            step_result.update(
+                                {
+                                    "ok": False,
+                                    "exit_code": 2,
+                                    "reasons": ["routing_realization_failed"],
+                                    "error_code": routing_result.get(
+                                        "error_code",
+                                        "routing_realization_failed",
+                                    ),
+                                    "next_phase": None,
+                                    "debug_path": routing_result.get("debug_path") or str(
+                                        Path(".speckit/pipeline-ledger.jsonl")
+                                    ),
+                                }
+                            )
+                        else:
+                            phase_state = routing_result.get("phase_state", phase_state)
+                            resolved_current_phase = phase_state.get("phase")
+                            if (
+                                not isinstance(resolved_current_phase, str)
+                                or not resolved_current_phase
+                            ):
+                                resolved_current_phase = effective_phase
+                            step_result["next_phase"] = phase_state.get("next_phase") or advance_phase(
+                                resolved_current_phase
+                            )
+                            if routing_result.get("appended_events"):
+                                step_result["routing_realization"] = routing_result["appended_events"]
+                        step_result["pipeline_event"] = append_result.get("event")
+                    step_result["artifact_validation"] = {
+                        "ok": True,
+                        "artifact_path": str(artifact_path),
+                    }
 
     else:
         # legacy or unknown — route_legacy_step returns a blocked result

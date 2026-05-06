@@ -62,14 +62,22 @@ This repository implements a high-fidelity "Natural Loop" for feature developmen
 For small features (XS/S), the system automatically handles the "Linear Ledger Conflict" (where the auditor requires prerequisite events even when skipped).
 
 1. **Specify**: Run `/speckit.specify`. The Agent performs an **Implicit Sketch** via `read_code`.
-2. **Realize Routing**: Specify automatically projects the skipped phases (Research, Plan) into the ledger.
+2. **Record Strategy**: Specify automatically projects the skipped phases (Research, Plan) into the ledger.
 3. **Tasking**: You enter the `solution` phase immediately. Run `edit_code task --add` to materialize HUDs, and the tasking step registers those tasks in `.speckit/task-ledger.jsonl`.
 4. **Implement**: The tasking step registers tasks, the implement step hands the next registered task to `scripts/speckit_codex_handoff_runner.py`, and the local Codex session stays warm across queued tasks and QA feedback until the task gate says the queue is empty. The runner writes a full JSON trace under `.speckit/runtime/implement/runner/` for the prompt, Codex streams, and final result.
 5. **QA Handoff**: Run `edit_code sync --handoff` for deterministic + generative verification. The runner keeps the same session alive until QA approves and the current task closes, then the warm session is reused for the next open task. The task gate reads the task ledger and points to the next open task when more work remains.
 6. **Say hooray!**: Celebrate the completed feature and handoff.
 
+### Combined Plan (`/speckit.plan`)
+For work that needs explicit planning, `/speckit.plan` now runs a duplicate-first triage and writes one `plan.md` artifact from a documented template.
+
+1. `prepare-triage` scaffolds only `## Triage`, `## Strategy Contract`, and `## Internal Discovery`.
+2. Triage records `duplicate`, `t-shirt size`, `risk`, and the relevant constitution domains.
+3. `apply-strategy` prunes the documented template to only the sections required by the domains and strategy, such as `Relevant Domains`, `Internal Research`, `Architecture Strategy`, `Architecture Diagram`, `Expanded Design Notes`, and `Design Slices`.
+4. `finalize` validates the artifact and returns a single driver-owned event request for `duplicate_marked` or `plan_approved`.
+
 ### M/L/XL Full-Track
-For larger features, the pipeline enforces manual gates for Research, Planning, and Sketching to manage architectural risk.
+For larger features, the pipeline uses `/speckit.plan` plus the remaining gates to manage architectural risk with a domain-driven plan strategy.
 
 ## Codebase Vector Index
 

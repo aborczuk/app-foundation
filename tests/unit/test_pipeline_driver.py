@@ -141,12 +141,19 @@ def test_main_uses_ledger_feature_id_for_correlation_id(monkeypatch, capsys) -> 
     assert payload["step_result"]["correlation_id"] == "022:plan"
 
 
-def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
+def test_main_generative_route_executes_handoff_adapter(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(
         pipeline_driver,
         "resolve_phase_state",
         lambda *args, **kwargs: {"phase": "plan", "blocked": False},
     )
+    feature_dir = tmp_path / "specs" / "019-token-efficiency-docs"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    (feature_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    (feature_dir / "plan.md").write_text("## Plan Completion Summary\n", encoding="utf-8")
+    monkeypatch.setattr(pipeline_driver, "_resolve_feature_dir", lambda feature_id: feature_dir)
     monkeypatch.setattr(
         pipeline_driver,
         "resolve_step_mapping",
@@ -158,13 +165,13 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
                 "step_name": "speckit.plan",
                 "required_inputs": [],
                 "output_template_path": "specs/019-token-efficiency-docs/plan.md",
-                "completion_marker": "## Summary",
+                "completion_marker": "ignored-by-plan",
                 "correlation_id": "run-test:speckit.plan",
             },
         },
     )
 
-    called: dict[str, str] = {}
+    called: dict[str, object] = {}
 
     def _fake_handoff_runner(
         handoff,
@@ -178,6 +185,7 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
         called["feature_id"] = feature_id
         called["phase"] = phase
         called["correlation_id"] = correlation_id
+        called["handoff"] = dict(handoff)
         return {
             "schema_version": "1.0.0",
             "ok": True,
@@ -191,15 +199,34 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
             "handoff": dict(handoff),
             "handoff_execution": "executed",
             "generated_artifact": {
-                "path": "specs/019-token-efficiency-docs/plan.md",
+                "path": str(feature_dir / "plan.md"),
                 "exists": True,
                 "size_bytes": 100,
                 "line_count": 5,
-                "completion_marker": "## Summary",
+                "completion_marker": "## Plan Completion Summary",
             },
         }
 
     monkeypatch.setattr(pipeline_driver, "run_generative_handoff", _fake_handoff_runner)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "load_generated_step_result",
+        lambda **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": kwargs["correlation_id"],
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "pipeline_event_request": {
+                "event": "plan_approved",
+                "fields": {"routing": {"plan_level": "simple"}},
+            },
+        },
+    )
     validation_called: dict[str, str] = {}
 
     def _fake_validate_generated_artifact(
@@ -218,31 +245,131 @@ def test_main_generative_route_executes_handoff_adapter(monkeypatch) -> None:
         "validate_generated_artifact",
         _fake_validate_generated_artifact,
     )
-    appended: dict[str, str] = {}
+    appended: dict[str, object] = {}
 
-    def _fake_append_pipeline_success_event(*, feature_id, phase, command_id, **kwargs):
+    def _fake_append_requested_pipeline_event(*, feature_id, phase, event_request, **kwargs):
         appended["feature_id"] = feature_id
         appended["phase"] = phase
-        appended["command_id"] = str(command_id)
-        return {"ok": True, "appended": True, "event": "plan_started"}
+        appended["event_request"] = dict(event_request)
+        return {"ok": True, "appended": True, "event": "plan_approved"}
 
     monkeypatch.setattr(
         pipeline_driver,
+        "append_requested_pipeline_event",
+        _fake_append_requested_pipeline_event,
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
         "append_pipeline_success_event",
-        _fake_append_pipeline_success_event,
+        lambda **kwargs: pytest.fail("plan route should not use generic success append"),
     )
 
     exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
     assert exit_code == 0
     assert called["feature_id"] == "019"
     assert called["phase"] == "plan"
+    assert isinstance(called["correlation_id"], str)
     assert called["correlation_id"].endswith(":plan")
-    assert validation_called["artifact_path"] == "specs/019-token-efficiency-docs/plan.md"
+    assert isinstance(called["handoff"], dict)
+    assert called["handoff"]["required_inputs"] == [
+        str(feature_dir / "spec.md"),
+        str(feature_dir / "plan.md"),
+        str(pipeline_driver.REPO_ROOT / ".claude" / "commands" / "speckit.plan.md"),
+        str(pipeline_driver.REPO_ROOT / "scripts" / "speckit_plan_step.py"),
+    ]
+    assert called["handoff"]["output_template_path"] == str(feature_dir / "plan.md")
+    assert called["handoff"]["completion_marker"] == "## Plan Completion Summary"
+    assert validation_called["artifact_path"] == str(feature_dir / "plan.md")
     assert validation_called["correlation_id"].endswith(":plan")
-    assert validation_called["completion_marker"] == "## Summary"
+    assert validation_called["completion_marker"] == "## Plan Completion Summary"
     assert appended["feature_id"] == "019"
     assert appended["phase"] == "plan"
-    assert appended["command_id"] == "speckit.plan"
+    assert appended["event_request"] == {
+        "event": "plan_approved",
+        "fields": {"routing": {"plan_level": "simple"}},
+    }
+
+
+def test_main_generative_plan_requires_explicit_event_request(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "plan", "blocked": False},
+    )
+    feature_dir = tmp_path / "specs" / "019-token-efficiency-docs"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    (feature_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    (feature_dir / "plan.md").write_text("## Plan Completion Summary\n", encoding="utf-8")
+    monkeypatch.setattr(pipeline_driver, "_resolve_feature_dir", lambda feature_id: feature_dir)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.plan",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.plan",
+                "required_inputs": [],
+                "output_template_path": "ignored",
+                "completion_marker": "ignored",
+                "correlation_id": "run-test:speckit.plan",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": kwargs["correlation_id"],
+            "next_phase": "plan",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(feature_dir / "plan.md"),
+                "exists": True,
+                "size_bytes": 10,
+                "line_count": 1,
+                "completion_marker": "## Plan Completion Summary",
+            },
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "load_generated_step_result", lambda **kwargs: None)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_requested_pipeline_event",
+        lambda **kwargs: pytest.fail("missing event request should not append"),
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        lambda **kwargs: pytest.fail("plan route should not fallback to generic append"),
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        pipeline_driver,
+        "emit_human_status",
+        lambda result: captured.update(result),
+    )
+
+    exit_code = pipeline_driver.main(["--feature-id", "019", "--phase", "plan"])
+    assert exit_code == 2
+    assert captured["gate"] == "plan_event_request"
+    assert captured["error_code"] == "plan_event_request_missing"
+    assert captured["reasons"] == ["plan_event_request_missing"]
 
 
 def test_next_routing_skip_event_does_not_project_research_completion() -> None:
@@ -1953,10 +2080,12 @@ def test_handoff_contract_requires_all_fields() -> None:
         "step_name": "speckit.plan",
         "required_inputs": [
             "specs/019-token-efficiency-docs/spec.md",
-            "specs/019-token-efficiency-docs/research.md",
+            "specs/019-token-efficiency-docs/plan.md",
+            ".claude/commands/speckit.plan.md",
+            "scripts/speckit_plan_step.py",
         ],
         "output_template_path": "specs/019-token-efficiency-docs/plan.md",
-        "completion_marker": "## Summary",
+        "completion_marker": "## Plan Completion Summary",
         "correlation_id": correlation_id,
     }
 

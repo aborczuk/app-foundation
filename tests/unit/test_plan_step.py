@@ -1,25 +1,104 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import scripts.speckit_plan_step as plan_step
 
 
-def _write_feature(tmp_path: Path) -> Path:
-    """Create a minimal feature directory for plan-step tests."""
+def _write_plan_template(repo_root: Path) -> None:
+    """Create the documented superset plan template used by the scaffold helper."""
+    template_file = repo_root / ".specify" / "templates" / "plan-template.md"
+    template_file.parent.mkdir(parents=True, exist_ok=True)
+    template_file.write_text(
+        "\n".join(
+            [
+                "# Combined Plan - [FEATURE_NAME]",
+                "",
+                "_Feature: `[FEATURE_ID]`_",
+                "_Source Spec: `[SPEC_FILE_NAME]`_",
+                "_Artifact: `plan.md`_",
+                "",
+                "## Triage",
+                "",
+                "- duplicate: [true/false]",
+                "",
+                "## Strategy Contract",
+                "",
+                "```json",
+                "{}",
+                "```",
+                "",
+                "## Internal Discovery",
+                "",
+                "[internal discovery]",
+                "",
+                "## Relevant Domains",
+                "",
+                "[relevant domains]",
+                "",
+                "## Summary",
+                "",
+                "[summary]",
+                "",
+                "## Internal Research",
+                "",
+                "[internal research]",
+                "",
+                "## External Research",
+                "",
+                "[external research]",
+                "",
+                "## Architecture Strategy",
+                "",
+                "[architecture strategy]",
+                "",
+                "## Architecture Diagram",
+                "",
+                "[architecture diagram]",
+                "",
+                "## Expanded Design Notes",
+                "",
+                "[expanded design notes]",
+                "",
+                "## Design Slices",
+                "",
+                "[design slices]",
+                "",
+                "## Plan Completion Summary",
+                "",
+                "[completion summary]",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_feature(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a minimal feature directory and return the feature and plan paths."""
     feature_dir = tmp_path / "specs" / "123-test-feature"
     feature_dir.mkdir(parents=True)
     (feature_dir / "spec.md").write_text(
         "# Feature\n\nBuild a playable Tetris game in the app.\n",
         encoding="utf-8",
     )
-    return feature_dir
+    return feature_dir, feature_dir / "plan.md"
 
 
-def _write_contract(plan_file: Path, *, duplicate: bool) -> None:
-    """Write a combined plan contract into plan.md."""
+def _write_contract(
+    plan_file: Path,
+    *,
+    duplicate: bool,
+    relevant_domains: list[str] | None = None,
+    architecture_strategy: bool = False,
+    external_research: bool = False,
+    architecture_diagram: bool = False,
+    expanded_design_notes: bool = False,
+    risk_level: str = "low",
+) -> None:
+    """Write a combined strategy contract into plan.md."""
+    domains = list(relevant_domains or [])
     plan_file.write_text(
         "\n".join(
             [
@@ -29,26 +108,34 @@ def _write_contract(plan_file: Path, *, duplicate: bool) -> None:
                 "",
                 f"- duplicate: {str(duplicate).lower()}",
                 "",
-                "## Routing Contract",
+                "## Strategy Contract",
                 "",
                 "```json",
                 json.dumps(
                     {
+                        "domains": {
+                            "relevant": domains,
+                            "reasoning": {
+                                domain: f"{domain} requires explicit planning treatment."
+                                for domain in domains
+                            },
+                        },
                         "triage": {
                             "duplicate": duplicate,
                             "duplicate_reason": "Existing feature covers this." if duplicate else "",
                             "duplicate_matches": ["specs/001-existing/spec.md"] if duplicate else [],
-                            "risk_level": "low",
+                            "risk_level": risk_level,
                             "tshirt_size": "xs" if duplicate else "s",
                         },
-                        "routing": {
-                            "architecture_diagram": False,
-                            "external_research": False,
-                            "plan_level": "simple",
-                            "routing_reason": "Small repo-local change.",
-                            "sketch_level": "core",
+                        "strategy": {
+                            "architecture_diagram": architecture_diagram,
+                            "architecture_strategy": architecture_strategy,
+                            "expanded_design_notes": expanded_design_notes,
+                            "external_research": external_research,
+                            "strategy_reason": "Plan only the sections justified by domains, size, and risk.",
                         },
                         "risk": {
+                            "overall": risk_level,
                             "requirement_clarity": "low",
                             "repo_uncertainty": "low",
                             "external_dependency_uncertainty": "low",
@@ -61,8 +148,16 @@ def _write_contract(plan_file: Path, *, duplicate: bool) -> None:
                 ),
                 "```",
                 "",
+                "## Internal Discovery",
+                "",
+                "### Term: tetris",
+                "",
+                "- matches: true",
+                "- exit_code: 0",
+                "",
             ]
-        ),
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -72,103 +167,177 @@ def test_extract_terms_filters_generic_words() -> None:
     assert plan_step._extract_terms("Build a playable Tetris game in the app.") == ["tetris"]
 
 
-def test_run_discovery_uses_semantic_context_lookup(monkeypatch, tmp_path: Path) -> None:
+def test_run_discovery_uses_semantic_context_lookup(monkeypatch) -> None:
     """Discovery should call the semantic read helper, not a structural content search."""
     calls: list[tuple[tuple[str, ...], dict[str, str]]] = []
 
-    def fake_run_uv_command(args: list[str], *, env: dict[str, str]):
+    def fake_run_uv_command(args: list[str], *, env: dict[str, str], **_: object):
         calls.append((tuple(args), env))
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout="file_path: /repo/item.py", stderr="")
+
+        class Result:
+            returncode = 0
+            stdout = "file_path: /repo/src/example.py"
+            stderr = ""
+
+        return Result()
 
     monkeypatch.setattr(plan_step, "_run_uv_command", fake_run_uv_command)
 
-    results = plan_step._run_discovery(["tetris"], {"UV_CACHE_DIR": str(tmp_path / ".uv-cache")})
+    results = plan_step._run_discovery(["tetris"], {"TEST_ENV": "1"})
 
-    assert len(calls) == 1
-    assert calls[0][0][-3:] == ("scripts/read_code.py", "context", "tetris")
     assert results[0]["has_matches"] is True
+    assert calls == [
+        (
+            ("uv", "run", "python", "scripts/read_code.py", "context", "tetris"),
+            {"TEST_ENV": "1"},
+        )
+    ]
 
 
-def test_triage_instructions_require_generative_tshirt_logic() -> None:
-    """The prompt should force LOE judgment to be generative, not count-based."""
-    prompt = plan_step._build_triage_instructions(
-        "# Spec",
-        [{"term": "tetris", "has_matches": True, "stdout": "file_path: x.py", "stderr": ""}],
-    )
-
-    assert "Do not infer t-shirt size from the number of discovery matches." in prompt
-    assert "likely blast radius, risk, and uncertainty" in prompt
-
-
-def test_orchestrate_plan_marks_duplicate_without_fill(monkeypatch, tmp_path: Path) -> None:
-    """A duplicate triage should request duplicate_marked and skip design filling."""
-    feature_dir = _write_feature(tmp_path)
-    calls: list[str] = []
+def test_prepare_triage_scaffolds_only_minimal_sections(monkeypatch, tmp_path: Path) -> None:
+    """Triage preparation should write only the triage-first scaffold."""
+    feature_dir, plan_file = _write_feature(tmp_path)
+    _write_plan_template(tmp_path)
 
     monkeypatch.setattr(plan_step, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(plan_step, "DEFAULT_SCAFFOLD", tmp_path / ".specify/scripts/pipeline-scaffold.py")
     monkeypatch.setattr(plan_step, "bootstrap_session", lambda _: {"bootstrap_ok": True})
-    monkeypatch.setattr(plan_step, "_build_uv_env", lambda: {})
+    monkeypatch.setattr(
+        plan_step,
+        "_resolve_feature_paths",
+        lambda feature_id: (feature_dir, feature_dir / "spec.md", plan_file),
+    )
+    monkeypatch.setattr(plan_step, "_build_uv_env", lambda: {"TEST_ENV": "1"})
     monkeypatch.setattr(
         plan_step,
         "_run_discovery",
-        lambda terms, env: [{"term": "tetris", "has_matches": True, "stdout": "file_path: specs/001-existing/spec.md", "stderr": ""}],
+        lambda terms, env: [
+            {
+                "term": terms[0],
+                "exit_code": 0,
+                "stdout": "file_path: /repo/src/example.py",
+                "stderr": "",
+                "has_matches": True,
+            }
+        ],
     )
-    monkeypatch.setattr(plan_step, "_scaffold_manifest_plan", lambda feature_dir: None)
+    monkeypatch.setattr(plan_step, "_scaffold_manifest_plan", lambda _: None)
 
-    def fake_codex_action(**kwargs):
-        calls.append(kwargs["task_action"])
-        _write_contract(feature_dir / "plan.md", duplicate=True)
-        return {"ok": True}
+    result = plan_step.prepare_triage("123")
 
-    monkeypatch.setattr(plan_step, "_run_codex_action", fake_codex_action)
+    text = plan_file.read_text(encoding="utf-8")
+    assert result["command"] == "prepare-triage"
+    assert "## Triage" in text
+    assert "## Strategy Contract" in text
+    assert "## Internal Discovery" in text
+    assert "## Relevant Domains" not in text
+    assert "## Summary" not in text
+    assert "## Design Slices" not in text
 
-    result = plan_step.orchestrate_plan("123", "corr", phase="plan")
 
-    assert calls == ["triage_combined_plan"]
+def test_apply_strategy_rewrites_only_selected_sections(monkeypatch, tmp_path: Path) -> None:
+    """Strategy rewrite should add only the sections justified by triage."""
+    feature_dir, plan_file = _write_feature(tmp_path)
+    _write_plan_template(tmp_path)
+    monkeypatch.setattr(plan_step, "REPO_ROOT", tmp_path)
+    _write_contract(
+        plan_file,
+        duplicate=False,
+        relevant_domains=["api integration", "storage"],
+        architecture_strategy=True,
+        external_research=True,
+        architecture_diagram=True,
+        expanded_design_notes=True,
+        risk_level="high",
+    )
+    monkeypatch.setattr(
+        plan_step,
+        "_resolve_feature_paths",
+        lambda feature_id: (feature_dir, feature_dir / "spec.md", plan_file),
+    )
+
+    result = plan_step.apply_strategy("123")
+
+    text = plan_file.read_text(encoding="utf-8")
+    assert result["rewritten"] is True
+    assert result["selected_sections"] == [
+        "Summary",
+        "Relevant Domains",
+        "Internal Research",
+        "External Research",
+        "Architecture Strategy",
+        "Architecture Diagram",
+        "Expanded Design Notes",
+        "Design Slices",
+        "Plan Completion Summary",
+    ]
+    assert "## Relevant Domains" in text
+    assert "## External Research" in text
+    assert "## Architecture Diagram" in text
+    assert "## Expanded Design Notes" in text
+    assert "## Plan Completion Summary" in text
+
+
+def test_finalize_duplicate_requests_duplicate_marked(monkeypatch, tmp_path: Path) -> None:
+    """Duplicate finalization should emit one duplicate-marked driver request."""
+    feature_dir, plan_file = _write_feature(tmp_path)
+    _write_contract(plan_file, duplicate=True)
+    plan_file.write_text(
+        plan_file.read_text(encoding="utf-8") + "## Plan Completion Summary\n\nDuplicate.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan_step, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        plan_step,
+        "_resolve_feature_paths",
+        lambda feature_id: (feature_dir, feature_dir / "spec.md", plan_file),
+    )
+
+    result = plan_step.finalize_plan("123", "run-123:plan")
+
     assert result["next_phase"] == "closed"
     assert result["pipeline_event_request"]["event"] == "duplicate_marked"
-    assert result["triage"]["duplicate"] is True
+    assert result["feature_dir"] == str(feature_dir)
+    assert result["plan_artifact"] == str(plan_file)
 
 
-def test_orchestrate_plan_fills_nonduplicate_design_slice(monkeypatch, tmp_path: Path) -> None:
-    """A non-duplicate triage should scaffold selected sections and request plan approval."""
-    feature_dir = _write_feature(tmp_path)
-    calls: list[str] = []
-
+def test_finalize_nonduplicate_requires_design_slice_and_requests_plan_approved(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Non-duplicate finalization should require one tasking-ready design slice."""
+    feature_dir, plan_file = _write_feature(tmp_path)
+    _write_contract(plan_file, duplicate=False)
+    plan_file.write_text(
+        plan_file.read_text(encoding="utf-8")
+        + "\n".join(
+            [
+                "## Design Slices",
+                "",
+                "### Slice PL-01 - Initial gameplay loop",
+                "",
+                "- LOE: low",
+                "- Goal: Implement the smallest playable loop.",
+                "- Files / seams: `src/app.py`",
+                "- Implementation Directive: Build the first end-to-end slice before adding polish.",
+                "",
+                "## Plan Completion Summary",
+                "",
+                "One low-estimated slice is enough for tasking.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(plan_step, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(plan_step, "DEFAULT_SCAFFOLD", tmp_path / ".specify/scripts/pipeline-scaffold.py")
-    monkeypatch.setattr(plan_step, "bootstrap_session", lambda _: {"bootstrap_ok": True})
-    monkeypatch.setattr(plan_step, "_build_uv_env", lambda: {})
     monkeypatch.setattr(
         plan_step,
-        "_run_discovery",
-        lambda terms, env: [{"term": "tetris", "has_matches": True, "stdout": "file_path: src/game.py", "stderr": ""}],
+        "_resolve_feature_paths",
+        lambda feature_id: (feature_dir, feature_dir / "spec.md", plan_file),
     )
-    monkeypatch.setattr(plan_step, "_scaffold_manifest_plan", lambda feature_dir: None)
 
-    def fake_codex_action(**kwargs):
-        calls.append(kwargs["task_action"])
-        plan_file = feature_dir / "plan.md"
-        if kwargs["task_action"] == "triage_combined_plan":
-            _write_contract(plan_file, duplicate=False)
-        else:
-            text = plan_file.read_text(encoding="utf-8")
-            plan_file.write_text(
-                text.replace(
-                    "[Fill this section from the spec, discovery, and triage contract.]",
-                    "Slice PL-01\n\nEstimated LOE: low\n\nImplementation Directive: edit src/game.py.",
-                ),
-                encoding="utf-8",
-            )
-        return {"ok": True}
+    result = plan_step.finalize_plan("123", "run-123:plan")
 
-    monkeypatch.setattr(plan_step, "_run_codex_action", fake_codex_action)
-
-    result = plan_step.orchestrate_plan("123", "corr", phase="plan")
-
-    assert calls == ["triage_combined_plan", "fill_combined_plan"]
     assert result["next_phase"] == "solution"
     assert result["pipeline_event_request"]["event"] == "plan_approved"
-    assert result["pipeline_event_request"]["fields"]["feasibility_required"] is False
-    assert "## Design Slices" in (feature_dir / "plan.md").read_text(encoding="utf-8")
+    assert result["pipeline_event_request"]["fields"]["routing"]["plan_level"] == "simple"
+    assert result["pipeline_event_request"]["fields"]["triage"]["tshirt_size"] == "s"
