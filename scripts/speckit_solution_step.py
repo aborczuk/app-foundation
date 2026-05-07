@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic solution orchestrator for sketch -> tasking -> approval."""
+"""Scaffold and finalize the generative solution phase from plan design slices."""
 
 from __future__ import annotations
 
@@ -16,28 +16,45 @@ from bootstrap_session import bootstrap_session
 from task_ledger import parse_task_definitions
 
 SCHEMA_VERSION = "1.0.0"
-DEFAULT_RUNNER = Path(__file__).resolve().parent / "speckit_codex_handoff_runner.py"
-DEFAULT_PREREQUISITES = Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "python" / "check_prerequisites.py"
 DEFAULT_TASKING_CHAIN = Path(__file__).resolve().parent / "speckit_tasking_chain.py"
 DEFAULT_TASKING_RUNNER = Path(__file__).resolve().parent / "speckit_tasking_codex_runner.py"
 DEFAULT_TASKS_GATE = Path(__file__).resolve().parent / "speckit_tasks_gate.py"
 DEFAULT_TASK_LEDGER = Path(__file__).resolve().parent / "task_ledger.py"
 DEFAULT_HUDS = Path(__file__).resolve().parent / "speckit_remake_huds.py"
-DEFAULT_ACCEPTANCE = Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
-DEFAULT_PIPELINE_LEDGER = Path(__file__).resolve().parent / "pipeline_ledger.py"
-
-TASKING_INSTRUCTIONS = """Decompose the approved plan.md design slices into tasks.md.
-Anchor every non-[H] task to a concrete file/symbol seam from the slice.
-Preserve ordering and dependencies from the plan's design-slice contract.
-Keep the task descriptions implementation-usable and ready for estimate/breakdown stabilization.
-Do not run estimate/breakdown, registration, HUD generation, or acceptance scaffolding here."""
+DEFAULT_ACCEPTANCE = (
+    Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
+)
+DEFAULT_TASKS_TEMPLATE = Path(__file__).resolve().parent.parent / ".specify" / "templates" / "tasks-template.md"
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for the solution orchestrator."""
+def _build_command_parser() -> argparse.ArgumentParser:
+    """Build the subcommand parser for scaffold and finalize operations."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prepare = subparsers.add_parser(
+        "prepare-tasking",
+        help="Validate plan.md and scaffold tasks.md for the generative solution command",
+    )
+    prepare.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+    prepare.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
+
+    finalize = subparsers.add_parser(
+        "finalize",
+        help="Validate tasks.md, run deterministic stabilization, and emit the event request envelope",
+    )
+    finalize.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+    finalize.add_argument("--phase", default="solution", help="Phase label for runtime result storage")
+    finalize.add_argument("--correlation-id", required=True, help="Run-scoped correlation id")
+    finalize.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
+    return parser
+
+
+def _build_legacy_parser() -> argparse.ArgumentParser:
+    """Preserve the legacy finalize-style CLI for direct callers and older tests."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
-    parser.add_argument("--phase", default="solution", help="Phase label for the top-level run")
+    parser.add_argument("--phase", default="solution", help="Phase label for runtime result storage")
     parser.add_argument("--correlation-id", required=True, help="Run-scoped correlation id")
     parser.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
     return parser
@@ -61,138 +78,107 @@ def _run_command(
     )
 
 
-def _run_json_command(
-    command: list[str],
-    *,
-    cwd: Path,
-    input_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Run a command that emits JSON and return the parsed payload."""
-    payload_text = json.dumps(input_payload, sort_keys=True) if input_payload is not None else None
-    completed = _run_command(command, cwd=cwd, input_payload=payload_text)
-    stdout = completed.stdout.strip()
-    if completed.returncode != 0:
-        raise RuntimeError(
-            json.dumps(
-                {
-                    "command": command,
-                    "exit_code": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
-                },
-                sort_keys=True,
-            )
-        )
-    if not stdout:
-        return {}
-    parsed = json.loads(stdout)
-    if not isinstance(parsed, dict):
-        raise RuntimeError("expected JSON object result")
-    return parsed
+def _resolve_feature_dir(repo_root: Path, feature_id: str) -> Path:
+    """Resolve the feature directory directly from specs/ without branch gating."""
+    matches = sorted((repo_root / "specs").glob(f"{feature_id}-*"))
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise RuntimeError(f"feature_dir_missing:{feature_id}")
+    raise RuntimeError(f"feature_dir_ambiguous:{feature_id}")
 
 
-def _load_prerequisites(repo_root: Path) -> dict[str, Any]:
-    """Load the repo's feature workspace paths from the prerequisites helper."""
-    completed = _run_command([sys.executable, str(DEFAULT_PREREQUISITES), "--json"], cwd=repo_root)
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or "check_prerequisites_failed")
-    payload = json.loads(completed.stdout or "{}")
-    if not isinstance(payload, dict):
-        raise RuntimeError("invalid prerequisites payload")
-    return payload
+def _resolve_solution_paths(feature_id: str) -> tuple[Path, Path, Path]:
+    """Resolve repo, feature, and artifact paths for the requested feature id."""
+    repo_root = Path(__file__).resolve().parent.parent
+    feature_dir = _resolve_feature_dir(repo_root, feature_id)
+    return repo_root, feature_dir, feature_dir / "plan.md"
 
 
-def _run_codex_action(
-    *,
-    repo_root: Path,
-    feature_id: str,
-    phase: str,
-    correlation_id: str,
-    task_action: str,
-    feature_dir: Path,
-    instructions: str,
-    output_template_path: Path,
-    completion_marker: str = "",
-    resume_session: bool = False,
-    retry_index: int = 0,
-    qa_feedback: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Run the generic Codex action runner for one solution substep."""
-    payload = {
-        "feature_id": feature_id,
-        "phase": phase,
-        "correlation_id": correlation_id,
-        "handoff": {
-            "feature_dir": str(feature_dir),
-            "repo_root": str(repo_root),
-            "step_name": f"speckit.{phase}",
-            "task_action": task_action,
-            "output_template_path": str(output_template_path),
-            "completion_marker": completion_marker,
-            "instructions": instructions,
-            "resume_session": resume_session,
-            "retry_index": retry_index,
-            "qa_feedback": dict(qa_feedback) if qa_feedback else None,
-        },
-    }
-    completed = _run_command(
-        [sys.executable, str(DEFAULT_RUNNER)],
-        cwd=repo_root,
-        input_payload=json.dumps(payload, sort_keys=True),
+def _runtime_result_path(phase: str, correlation_id: str) -> Path:
+    """Return the runtime result path for a finalized solution run."""
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / ".speckit" / "runtime" / phase / f"{correlation_id}.json"
+
+
+def _write_debug_payload(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write the solution-run debug payload to disk."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+
+
+def _validate_plan_design_slices(plan_path: Path) -> None:
+    """Require tasking-ready design slices from the combined plan artifact."""
+    if not plan_path.is_file():
+        raise RuntimeError("plan_artifact_missing")
+    text = plan_path.read_text(encoding="utf-8")
+    if "## Design Slices" not in text:
+        raise RuntimeError("plan_design_slices_missing")
+    if "Implementation Directive" not in text:
+        raise RuntimeError("plan_implementation_directive_missing")
+
+
+def _extract_design_slice_labels(plan_path: Path) -> list[str]:
+    """Extract design-slice labels to seed the tasks scaffold with plan context."""
+    text = plan_path.read_text(encoding="utf-8")
+    match = re.search(
+        r"^## Design Slices\s*$([\s\S]*?)(?=^##\s|\Z)",
+        text,
+        re.MULTILINE,
     )
-    stdout = completed.stdout.strip()
-    if completed.returncode != 0:
-        raise RuntimeError(
-            json.dumps(
-                {
-                    "command": [sys.executable, str(DEFAULT_RUNNER)],
-                    "phase": phase,
-                    "exit_code": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
-                },
-                sort_keys=True,
-            )
-        )
-    if not stdout:
-        raise RuntimeError("codex runner produced no JSON result")
-    parsed = json.loads(stdout)
-    if not isinstance(parsed, dict):
-        raise RuntimeError("codex runner result must be a JSON object")
-    return parsed
+    if not match:
+        return []
+    section = match.group(1)
+    labels = re.findall(r"^###\s+(.+?)\s*$", section, re.MULTILINE)
+    return [label.strip() for label in labels if label.strip()]
 
 
-def _append_pipeline_event(
-    *,
-    repo_root: Path,
-    feature_id: str,
-    phase: str,
-    event: str,
-    fields: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Append a pipeline event through the ledger CLI and return the parsed result."""
-    command = [
-        sys.executable,
-        str(DEFAULT_PIPELINE_LEDGER),
-        "append",
-        "--feature-id",
-        feature_id,
-        "--phase",
-        phase,
-        "--event",
-        event,
-        "--actor",
-        "solution_step",
-    ]
-    for key, value in (fields or {}).items():
-        if value is None:
-            continue
-        option = f"--{key.replace('_', '-')}"
-        command.extend([option, str(value)])
-    completed = _run_command(command, cwd=repo_root)
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or f"pipeline append failed for {event}")
-    return {"ok": True, "stdout": completed.stdout, "stderr": completed.stderr}
+def _feature_display_name(feature_dir: Path) -> str:
+    """Convert the feature directory name into a human-readable feature title."""
+    slug = feature_dir.name.split("-", 1)[1] if "-" in feature_dir.name else feature_dir.name
+    return slug.replace("-", " ")
+
+
+def _render_tasks_scaffold(feature_dir: Path, plan_path: Path) -> str:
+    """Render the initial tasks.md scaffold from the documented template."""
+    template = DEFAULT_TASKS_TEMPLATE.read_text(encoding="utf-8")
+    feature_name = _feature_display_name(feature_dir)
+    feature_slug = feature_dir.name
+    rendered = template.replace("[FEATURE NAME]", feature_name)
+    rendered = rendered.replace("/specs/[###-feature-name]/", f"/specs/{feature_slug}/")
+    rendered = rendered.replace(
+        "plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/",
+        "plan.md (required), spec.md (required for user stories)",
+    )
+    rendered = rendered.replace(
+        "Generate `tasks.md` from an approved `sketch.md`",
+        "Generate `tasks.md` from an approved `plan.md` design-slice set",
+    )
+    slice_labels = _extract_design_slice_labels(plan_path)
+    if not slice_labels:
+        return rendered
+    slice_block = "\n".join(f"- {label}" for label in slice_labels)
+    return (
+        f"{rendered}\n\n## Plan Design Slice Index\n\n"
+        "Use these plan slices as the authoritative tasking inputs:\n\n"
+        f"{slice_block}\n"
+    )
+
+
+def prepare_tasking(feature_id: str) -> dict[str, Any]:
+    """Validate the plan artifact and scaffold tasks.md for generative completion."""
+    repo_root, feature_dir, plan_path = _resolve_solution_paths(feature_id)
+    tasks_path = feature_dir / "tasks.md"
+    _validate_plan_design_slices(plan_path)
+    tasks_path.write_text(_render_tasks_scaffold(feature_dir, plan_path), encoding="utf-8")
+    return {
+        "ok": True,
+        "feature_dir": str(feature_dir),
+        "plan_artifact": str(plan_path),
+        "tasks_artifact": str(tasks_path),
+        "scaffolded_from_template": str(DEFAULT_TASKS_TEMPLATE),
+        "repo_root": str(repo_root),
+    }
 
 
 def _run_tasking_stabilization(
@@ -325,108 +311,39 @@ def _estimate_points(estimates_file: Path) -> int:
     return row_total
 
 
-def _stage_and_commit(repo_root: Path, commit_message: str) -> dict[str, Any]:
-    """Commit all pending solution-step changes with a deterministic Git identity."""
-    env = os.environ.copy()
-    env.setdefault("GIT_AUTHOR_NAME", "speckit")
-    env.setdefault("GIT_AUTHOR_EMAIL", "speckit@example.com")
-    env.setdefault("GIT_COMMITTER_NAME", env["GIT_AUTHOR_NAME"])
-    env.setdefault("GIT_COMMITTER_EMAIL", env["GIT_AUTHOR_EMAIL"])
-
-    add_run = subprocess.run(["git", "add", "-A"], cwd=repo_root, text=True, capture_output=True, check=False, env=env)
-    if add_run.returncode != 0:
-        raise RuntimeError(add_run.stderr.strip() or "git_add_failed")
-
-    diff_run = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-        env=env,
-    )
-    if diff_run.returncode != 0:
-        raise RuntimeError(diff_run.stderr.strip() or "git_diff_failed")
-
-    changed_files = [line.strip() for line in diff_run.stdout.splitlines() if line.strip()]
-    if not changed_files:
-        return {"commit_sha": None, "changed_files": []}
-
-    commit_run = subprocess.run(
-        ["git", "commit", "-m", commit_message],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-        env=env,
-    )
-    if commit_run.returncode != 0:
-        raise RuntimeError(commit_run.stderr.strip() or "git_commit_failed")
-
-    sha_run = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-        env=env,
-    )
-    if sha_run.returncode != 0:
-        raise RuntimeError(sha_run.stderr.strip() or "git_rev_parse_failed")
-    return {"commit_sha": sha_run.stdout.strip(), "changed_files": changed_files}
+def _validate_tasks_artifact(tasks_path: Path) -> None:
+    """Require a tasks artifact before deterministic stabilization can begin."""
+    if not tasks_path.is_file():
+        raise RuntimeError("tasks_artifact_missing")
 
 
-def _write_debug_payload(path: Path, payload: Mapping[str, Any]) -> None:
-    """Write the solution-run debug payload to disk."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+def _event_request(*, task_count: int, story_count: int, estimate_points: int) -> dict[str, Any]:
+    """Build the driver-owned solution event request payload."""
+    return {
+        "event": "solution_approved",
+        "fields": {
+            "task_count": task_count,
+            "story_count": story_count,
+            "estimate_points": estimate_points,
+        },
+    }
 
 
-def _validate_plan_design_slices(plan_path: Path) -> None:
-    """Require tasking-ready design slices from the combined plan artifact."""
-    if not plan_path.is_file():
-        raise RuntimeError("plan_artifact_missing")
-    text = plan_path.read_text(encoding="utf-8")
-    if "## Design Slices" not in text:
-        raise RuntimeError("plan_design_slices_missing")
-    if "Implementation Directive" not in text:
-        raise RuntimeError("plan_implementation_directive_missing")
-
-
-def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) -> dict[str, Any]:
-    """Run the solution ladder from plan design slices through tasking and approval."""
-    repo_root = Path(__file__).resolve().parent.parent
+def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "solution") -> dict[str, Any]:
+    """Validate, stabilize, and finalize the generative solution artifact set."""
+    repo_root, feature_dir, plan_path = _resolve_solution_paths(feature_id)
     bootstrap_summary = bootstrap_session(repo_root)
     if not bootstrap_summary["bootstrap_ok"]:
         raise RuntimeError(bootstrap_summary["codegraph_detail"] or "session bootstrap failed")
-    prereq_payload = _load_prerequisites(repo_root)
-    feature_dir = Path(prereq_payload["FEATURE_DIR"])
-    plan_path = feature_dir / "plan.md"
+
     tasks_path = feature_dir / "tasks.md"
     estimates_path = feature_dir / "estimates.md"
-    debug_path = repo_root / ".speckit" / "runtime" / "solution" / f"{correlation_id}.json"
-
-    stages: list[dict[str, Any]] = []
+    debug_path = _runtime_result_path(phase, correlation_id)
 
     _validate_plan_design_slices(plan_path)
+    _validate_tasks_artifact(tasks_path)
 
-    tasking_result = _run_codex_action(
-        repo_root=repo_root,
-        feature_id=feature_id,
-        phase="tasking",
-        correlation_id=f"{correlation_id}:tasking",
-        task_action="decompose_tasks",
-        feature_dir=feature_dir,
-        instructions=TASKING_INSTRUCTIONS,
-        output_template_path=tasks_path,
-        resume_session=True,
-        retry_index=1,
-    )
-    stages.append({"stage": "tasking", "result": tasking_result})
-    if not bool(tasking_result.get("ok", False)):
-        raise RuntimeError("tasking_decomposition_failed")
-    if not tasks_path.exists():
-        raise RuntimeError("tasks_artifact_missing")
+    stages: list[dict[str, Any]] = []
 
     tasking_chain = _run_tasking_stabilization(repo_root=repo_root, feature_dir=feature_dir)
     stages.append({"stage": "tasking_chain", "result": tasking_chain})
@@ -451,28 +368,6 @@ def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) ->
     story_count = _count_stories(tasks_path)
     estimate_points = _estimate_points(estimates_path) if estimates_path.exists() else 0
 
-    _append_pipeline_event(
-        repo_root=repo_root,
-        feature_id=feature_id,
-        phase="tasking",
-        event="tasking_completed",
-        fields={"task_count": task_count, "story_count": story_count},
-    )
-    _append_pipeline_event(
-        repo_root=repo_root,
-        feature_id=feature_id,
-        phase="solution",
-        event="solution_approved",
-        fields={
-            "task_count": task_count,
-            "story_count": story_count,
-            "estimate_points": estimate_points,
-        },
-    )
-
-    commit_result = _stage_and_commit(repo_root, f"speckit.solution {feature_id}")
-    stages.append({"stage": "commit", "result": commit_result})
-
     result = {
         "schema_version": SCHEMA_VERSION,
         "ok": True,
@@ -490,37 +385,39 @@ def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) ->
         "story_count": story_count,
         "estimate_points": estimate_points,
         "stages": stages,
-        "commit_sha": commit_result.get("commit_sha"),
+        "pipeline_event_request": _event_request(
+            task_count=task_count,
+            story_count=story_count,
+            estimate_points=estimate_points,
+        ),
     }
     _write_debug_payload(debug_path, result)
     return result
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for deterministic solution orchestration."""
-    args = _build_parser().parse_args(argv)
-    try:
-        result = orchestrate_solution(args.feature_id, args.correlation_id, phase=args.phase)
-    except Exception as exc:  # noqa: BLE001
-        repo_root = Path(__file__).resolve().parent.parent
-        debug_path = repo_root / ".speckit" / "runtime" / "solution" / f"{args.correlation_id}.json"
-        failure = {
-            "schema_version": SCHEMA_VERSION,
-            "ok": False,
-            "exit_code": 2,
-            "correlation_id": args.correlation_id,
-            "gate": "solution_orchestration",
-            "reasons": [str(exc) or "solution_orchestration_failed"],
-            "error_code": "solution_orchestration_failed",
-            "next_phase": None,
-            "debug_path": str(debug_path),
-        }
-        _write_debug_payload(debug_path, failure)
-        print(json.dumps(failure, sort_keys=True))
-        return 2
+def orchestrate_solution(feature_id: str, correlation_id: str, *, phase: str) -> dict[str, Any]:
+    """Preserve the legacy entrypoint name while delegating to finalize_solution."""
+    return finalize_solution(feature_id, correlation_id, phase=phase)
 
-    print(json.dumps(result, sort_keys=True))
-    return 0
+
+def main(argv: list[str] | None = None) -> int:
+    """Dispatch scaffold/finalize subcommands and preserve the legacy finalize CLI."""
+    args_list = list(argv) if argv is not None else sys.argv[1:]
+    if args_list and args_list[0] in {"prepare-tasking", "finalize"}:
+        args = _build_command_parser().parse_args(args_list)
+        if args.command == "prepare-tasking":
+            result = prepare_tasking(args.feature_id)
+        else:
+            result = finalize_solution(args.feature_id, args.correlation_id, phase=args.phase)
+        if args.json:
+            print(json.dumps(result, sort_keys=True))
+        return 0
+
+    args = _build_legacy_parser().parse_args(args_list)
+    result = finalize_solution(args.feature_id, args.correlation_id, phase=args.phase)
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+    return int(result.get("exit_code", 1))
 
 
 if __name__ == "__main__":

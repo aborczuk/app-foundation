@@ -2057,15 +2057,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "ok": True,
                         "artifact_path": str(artifact_path),
                     }
-                elif mapping.get("command_id") == "speckit.plan":
+                elif mapping.get("command_id") in {"speckit.plan", "speckit.solution"}:
+                    missing_request_code = f"{effective_phase}_event_request_missing"
                     step_result = {
                         "schema_version": "1.0.0",
                         "ok": False,
                         "exit_code": 2,
                         "correlation_id": correlation_id,
-                        "gate": "plan_event_request",
-                        "reasons": ["plan_event_request_missing"],
-                        "error_code": "plan_event_request_missing",
+                        "gate": f"{effective_phase}_event_request",
+                        "reasons": [missing_request_code],
+                        "error_code": missing_request_code,
                         "next_phase": None,
                         "debug_path": None,
                         "artifact_validation": {

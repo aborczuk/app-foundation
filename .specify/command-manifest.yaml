@@ -282,16 +282,15 @@ commands:
       - critical_count
       - high_count
   speckit.solution:
-    description: Deterministically orchestrate plan design slices -> tasking -> solution approval
+    description: Generate tasks from plan design slices and finalize solution approval without a Codex subrunner
     driver:
-      mode: deterministic
+      mode: generative
       script_path: scripts/speckit_solution_step.py
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - scripts/speckit_solution_step.py
-    - scripts/speckit_codex_handoff_runner.py
     - scripts/speckit_tasking_chain.py
     - scripts/speckit_tasking_codex_runner.py
     - scripts/speckit_tasks_gate.py

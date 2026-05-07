@@ -1909,7 +1909,7 @@ def test_main_passes_context_to_specify_step(monkeypatch) -> None:
     ]
 
 
-def test_main_passes_context_to_solution_step(monkeypatch) -> None:
+def test_main_passes_context_to_solution_handoff(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         pipeline_driver,
         "resolve_phase_state",
@@ -1931,12 +1931,15 @@ def test_main_passes_context_to_solution_step(monkeypatch) -> None:
         pipeline_driver,
         "resolve_step_mapping",
         lambda *args, **kwargs: {
-            "type": "deterministic",
+            "type": "generative",
             "command_id": "speckit.solution",
-            "route": {
-                "mode": "deterministic",
-                "script_path": "scripts/speckit_solution_step.py",
-                "timeout_seconds": 300,
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.solution",
+                "required_inputs": [],
+                "output_template_path": "specs/023-deterministic-phase-orchestration/tasks.md",
+                "completion_marker": "ignored-by-solution",
+                "correlation_id": "run-test:speckit.solution",
             },
         },
     )
@@ -1950,12 +1953,16 @@ def test_main_passes_context_to_solution_step(monkeypatch) -> None:
         },
     )
     monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+    feature_dir = tmp_path / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    (feature_dir / "tasks.md").write_text("# Tasks\n", encoding="utf-8")
+    monkeypatch.setattr(pipeline_driver, "_resolve_feature_dir", lambda feature_id: feature_dir)
 
     observed: dict[str, object] = {}
 
-    def _fake_run_step(command, *, timeout_seconds, correlation_id, **kwargs):  # noqa: ANN001
-        observed["command"] = list(command)
-        observed["timeout_seconds"] = timeout_seconds
+    def _fake_run_handoff(handoff, *, feature_id, phase, correlation_id, **kwargs):  # noqa: ANN001
+        observed["feature_id"] = feature_id
+        observed["phase"] = phase
         observed["correlation_id"] = correlation_id
         return {
             "schema_version": "1.0.0",
@@ -1967,26 +1974,141 @@ def test_main_passes_context_to_solution_step(monkeypatch) -> None:
             "reasons": [],
             "error_code": None,
             "debug_path": None,
+            "handoff": dict(handoff),
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(feature_dir / "tasks.md"),
+                "exists": True,
+                "size_bytes": 20,
+                "line_count": 1,
+                "completion_marker": "ignored-by-solution",
+            },
         }
 
-    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
+    monkeypatch.setattr(pipeline_driver, "run_generative_handoff", _fake_run_handoff)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "load_generated_step_result",
+        lambda **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": kwargs["correlation_id"],
+            "next_phase": "implement",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "pipeline_event_request": {
+                "event": "solution_approved",
+                "fields": {
+                    "task_count": 4,
+                    "story_count": 2,
+                    "estimate_points": 13,
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_requested_pipeline_event",
+        lambda **kwargs: {"ok": True, "event": "solution_approved", "appended": True},
+    )
 
     exit_code = pipeline_driver.main(
         ["--feature-id", "023-deterministic-phase-orchestration", "--phase", "solution"]
     )
 
     assert exit_code == 0
-    assert observed["timeout_seconds"] == 300
+    assert observed["feature_id"] == "023"
+    assert observed["phase"] == "solution"
     assert observed["correlation_id"] == "run-test:speckit.solution"
-    assert observed["command"] == [
-        "scripts/speckit_solution_step.py",
-        "--feature-id",
-        "023",
-        "--phase",
-        "solution",
-        "--correlation-id",
-        "run-test:speckit.solution",
-    ]
+ 
+
+def test_main_generative_solution_requires_explicit_event_request(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_phase_state",
+        lambda *args, **kwargs: {"phase": "solution", "blocked": False},
+    )
+    feature_dir = tmp_path / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    (feature_dir / "tasks.md").write_text("# Tasks\n", encoding="utf-8")
+    monkeypatch.setattr(pipeline_driver, "_resolve_feature_dir", lambda feature_id: feature_dir)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "resolve_step_mapping",
+        lambda *args, **kwargs: {
+            "type": "generative",
+            "command_id": "speckit.solution",
+            "handoff": {
+                "handoff_id": "handoff-test",
+                "step_name": "speckit.solution",
+                "required_inputs": [],
+                "output_template_path": "ignored",
+                "completion_marker": "ignored",
+                "correlation_id": "run-test:speckit.solution",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "run_generative_handoff",
+        lambda *args, **kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": kwargs["correlation_id"],
+            "next_phase": "implement",
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "handoff_execution": "executed",
+            "generated_artifact": {
+                "path": str(feature_dir / "tasks.md"),
+                "exists": True,
+                "size_bytes": 10,
+                "line_count": 1,
+                "completion_marker": "ignored",
+            },
+        },
+    )
+    monkeypatch.setattr(pipeline_driver, "load_generated_step_result", lambda **kwargs: None)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "validate_generated_artifact",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_requested_pipeline_event",
+        lambda **kwargs: pytest.fail("missing event request should not append"),
+    )
+    monkeypatch.setattr(
+        pipeline_driver,
+        "append_pipeline_success_event",
+        lambda **kwargs: pytest.fail("solution route should not fallback to generic append"),
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        pipeline_driver,
+        "emit_human_status",
+        lambda result: captured.update(result),
+    )
+
+    exit_code = pipeline_driver.main(["--feature-id", "023", "--phase", "solution"])
+    assert exit_code == 2
+    assert captured["gate"] == "solution_event_request"
+    assert captured["error_code"] == "solution_event_request_missing"
+    assert captured["reasons"] == ["solution_event_request_missing"]
 
 
 def test_main_rejects_invalid_phase_input(monkeypatch, capsys) -> None:
@@ -2404,6 +2526,7 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
         "plan",
         "planreview",
         "sketch",
+        "solution",
     ]
     for phase in generative_commands:
         result = pipeline_driver.resolve_step_mapping(
@@ -2421,7 +2544,7 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
     assert routes["speckit.run"]["script_path"]
     assert routes["speckit.tasking"]["mode"] != "legacy"
     assert routes["speckit.implement"]["mode"] != "legacy"
-    assert routes["speckit.solution"]["mode"] == "deterministic"
+    assert routes["speckit.solution"]["mode"] == "generative"
     assert routes["speckit.solution"]["script_path"] == str(
         (manifest_path.parent / "scripts" / "speckit_solution_step.py").resolve()
     )

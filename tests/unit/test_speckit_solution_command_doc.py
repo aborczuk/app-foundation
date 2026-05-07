@@ -44,7 +44,9 @@ def test_speckit_solution_doc_consumes_plan_design_slices() -> None:
 
     assert "Do not generate `sketch.md`" in doc_text
     assert "plan.md` design slices" in doc_text
+    assert "Do not call `scripts/speckit_codex_handoff_runner.py`" in doc_text
+    assert "Do not call `/speckit.tasking`" in doc_text
     assert "Auto-invoke `/speckit.sketch`" not in doc_text
-    assert "Auto-invoke `/speckit.tasking`" in doc_text
+    assert "Auto-invoke `/speckit.tasking`" not in doc_text
     assert "Auto-invoke `/speckit.solutionreview`" not in doc_text
     assert "Auto-invoke `/speckit.analyze`" not in doc_text

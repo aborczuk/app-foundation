@@ -5,8 +5,6 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from types import SimpleNamespace
-from typing import TypedDict
 
 
 def _load_script_module(module_name: str, script_name: str):
@@ -28,127 +26,140 @@ def _load_script_module(module_name: str, script_name: str):
 speckit_solution_step = _load_script_module("speckit_solution_step", "speckit_solution_step.py")
 
 
-class CallRecord(TypedDict):
-    """Record one Codex action call from the solution orchestrator."""
-
-    phase: str
-    task_action: str
-    instructions: str
-    output_template_path: Path
-    resume_session: bool
-
-
-def test_orchestrate_solution_runs_linear_solution_ladder(tmp_path: Path, monkeypatch) -> None:
-    """Solution orchestration should ladder sketch into tasking, then approval."""
+def test_prepare_tasking_scaffolds_tasks_from_plan(tmp_path: Path, monkeypatch) -> None:
+    """The scaffold helper should validate plan slices and seed tasks.md from the template."""
     repo_root = tmp_path / "repo"
-    repo_root.mkdir()
     feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
     feature_dir.mkdir(parents=True)
-    (feature_dir / "tasks.md").write_text("## User Story 1\n", encoding="utf-8")
-    (feature_dir / "estimates.md").write_text("**Total Points**: 21\n", encoding="utf-8")
+    plan_path = feature_dir / "plan.md"
+    plan_path.write_text(
+        "\n".join(
+            [
+                "# Plan",
+                "",
+                "## Design Slices",
+                "",
+                "### PL-01 Runtime Surface",
+                "",
+                "Implementation Directive: Add runtime route.",
+                "",
+                "### PL-02 Browser Shell",
+                "",
+                "Implementation Directive: Build browser UI seam.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    template_path = repo_root / ".specify" / "templates" / "tasks-template.md"
+    template_path.parent.mkdir(parents=True)
+    template_path.write_text(
+        "# Tasks: [FEATURE NAME]\n\n**Input**: Design documents from `/specs/[###-feature-name]/`\n",
+        encoding="utf-8",
+    )
 
-    calls: list[CallRecord] = []
-    events: list[tuple[str, str, dict[str, object] | None]] = []
-    bootstrap_calls: list[Path] = []
+    monkeypatch.setattr(speckit_solution_step, "DEFAULT_TASKS_TEMPLATE", template_path)
+    monkeypatch.setattr(
+        speckit_solution_step,
+        "_resolve_solution_paths",
+        lambda feature_id: (repo_root, feature_dir, plan_path),
+    )
+
+    result = speckit_solution_step.prepare_tasking("023")
+
+    assert result["ok"] is True
+    tasks_text = (feature_dir / "tasks.md").read_text(encoding="utf-8")
+    assert "# Tasks: deterministic phase orchestration" in tasks_text
+    assert "/specs/023-deterministic-phase-orchestration/" in tasks_text
+    assert "## Plan Design Slice Index" in tasks_text
+    assert "- PL-01 Runtime Surface" in tasks_text
+    assert "- PL-02 Browser Shell" in tasks_text
+
+
+def test_finalize_solution_runs_stabilization_and_emits_event_request(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Finalize should run deterministic post-processing and return one driver event request."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    plan_path = feature_dir / "plan.md"
+    plan_path.write_text(
+        "\n".join(
+            [
+                "# Plan",
+                "",
+                "## Design Slices",
+                "",
+                "### PL-01 Runtime Surface",
+                "",
+                "Implementation Directive: Add runtime route.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tasks_path = feature_dir / "tasks.md"
+    tasks_path.write_text(
+        "\n".join(
+            [
+                "# Tasks",
+                "",
+                "## User Story 1",
+                "",
+                "- [ ] T001 Build runtime route in src/app.py",
+                "- [ ] T002 Add browser page in src/ui.py",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (feature_dir / "estimates.md").write_text("**Total Points**: 13\n", encoding="utf-8")
 
     monkeypatch.setattr(
         speckit_solution_step,
         "bootstrap_session",
-        lambda repo_root: bootstrap_calls.append(Path(repo_root)) or {"bootstrap_ok": True},
+        lambda _repo_root: {"bootstrap_ok": True},
     )
     monkeypatch.setattr(
         speckit_solution_step,
-        "_load_prerequisites",
-        lambda _repo_root: {"FEATURE_DIR": str(feature_dir), "AVAILABLE_DOCS": []},
+        "_resolve_solution_paths",
+        lambda feature_id: (repo_root, feature_dir, plan_path),
     )
-
-    def fake_run_codex_action(**kwargs):  # noqa: ANN001
-        phase = str(kwargs["phase"])
-        task_action = str(kwargs["task_action"])
-        instructions = str(kwargs["instructions"])
-        output_template_path = Path(kwargs["output_template_path"])
-        calls.append(
-            {
-                "phase": phase,
-                "task_action": task_action,
-                "instructions": instructions,
-                "output_template_path": output_template_path,
-                "resume_session": bool(kwargs.get("resume_session", False)),
-            }
-        )
-        output_template_path.parent.mkdir(parents=True, exist_ok=True)
-        if phase == "sketch":
-            output_template_path.write_text(
-                "\n".join(
-                    [
-                        "## Coverage",
-                        "## Current -> Target",
-                        "## Primary Seam",
-                        "## Required Edit / Solution",
-                        "## Verification",
-                        "## Constraints / Preserve",
-                        "## Implementation Directive",
-                        "## Design-to-Tasking Contract",
-                        "## Sketch Completion Summary",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-        elif phase == "tasking":
-            output_template_path.write_text("## User Story 1\n", encoding="utf-8")
-        return {"ok": True, "phase": phase}
-
-    monkeypatch.setattr(speckit_solution_step, "_run_codex_action", fake_run_codex_action)
+    monkeypatch.setattr(
+        speckit_solution_step,
+        "_runtime_result_path",
+        lambda phase, correlation_id: repo_root / ".speckit" / "runtime" / phase / f"{correlation_id}.json",
+    )
     monkeypatch.setattr(
         speckit_solution_step,
         "_run_tasking_stabilization",
-        lambda **kwargs: {"ok": True, "rounds": 1},
+        lambda **kwargs: {"ok": True, "stabilized": True},
     )
     monkeypatch.setattr(
         speckit_solution_step,
         "_run_tasks_gate",
-        lambda **kwargs: {"ok": True, "checked": True},
+        lambda **kwargs: {"ok": True, "gate": "passed"},
     )
     monkeypatch.setattr(
         speckit_solution_step,
         "_register_tasks",
-        lambda **kwargs: {"newly_registered_task_ids": ["T001"], "next_task_id": "T001"},
+        lambda **kwargs: {"ok": True, "registered": 2},
     )
     monkeypatch.setattr(
         speckit_solution_step,
         "_generate_huds",
-        lambda **kwargs: {"stdout": "", "stderr": ""},
+        lambda **kwargs: {"stdout": "hud", "stderr": ""},
     )
     monkeypatch.setattr(
         speckit_solution_step,
         "_generate_acceptance_tests",
-        lambda **kwargs: {"stdout": "", "stderr": ""},
-    )
-
-    def fake_append_pipeline_event(**kwargs):  # noqa: ANN001
-        events.append((str(kwargs["phase"]), str(kwargs["event"]), kwargs.get("fields")))
-        return {"ok": True}
-
-    monkeypatch.setattr(speckit_solution_step, "_append_pipeline_event", fake_append_pipeline_event)
-    monkeypatch.setattr(
-        speckit_solution_step,
-        "_stage_and_commit",
-        lambda repo_root, commit_message: {
-            "commit_sha": "abc123",
-            "changed_files": [
-                "specs/023-deterministic-phase-orchestration/sketch.md",
-                "specs/023-deterministic-phase-orchestration/tasks.md",
-            ],
-        },
+        lambda **kwargs: {"stdout": "acceptance", "stderr": ""},
     )
     monkeypatch.setattr(
         speckit_solution_step,
         "parse_task_definitions",
-        lambda tasks_path: [SimpleNamespace(task_id="T001")],
+        lambda path: [{"id": "T001"}, {"id": "T002"}],
     )
 
-    result = speckit_solution_step.orchestrate_solution(
+    result = speckit_solution_step.finalize_solution(
         "023",
         "run-test:speckit.solution",
         phase="solution",
@@ -156,27 +167,21 @@ def test_orchestrate_solution_runs_linear_solution_ladder(tmp_path: Path, monkey
 
     assert result["ok"] is True
     assert result["next_phase"] == "implement"
-    assert result["task_count"] == 1
+    assert result["task_count"] == 2
     assert result["story_count"] == 1
-    assert result["estimate_points"] == 21
-    assert result["commit_sha"] == "abc123"
-    assert Path(result["debug_path"]).is_file()
-    assert [call["phase"] for call in calls] == ["sketch", "tasking"]
-    assert calls[0]["task_action"] == "sketch"
-    assert calls[0]["instructions"].startswith("Update FEATURE_DIR/sketch.md")
-    assert calls[0]["resume_session"] is False
-    assert calls[1]["task_action"] == "decompose_tasks"
-    assert calls[1]["instructions"].startswith("Decompose the approved sketch.md")
-    assert calls[1]["phase"] == "tasking"
-    assert calls[1]["output_template_path"].name == "tasks.md"
-    assert calls[1]["resume_session"] is True
-    assert bootstrap_calls == [Path(speckit_solution_step.__file__).resolve().parent.parent]
-    assert events == [
-        ("sketch", "sketch_completed", None),
-        ("tasking", "tasking_completed", {"task_count": 1, "story_count": 1}),
-        (
-            "solution",
-            "solution_approved",
-            {"task_count": 1, "story_count": 1, "estimate_points": 21},
-        ),
+    assert result["estimate_points"] == 13
+    assert result["pipeline_event_request"] == {
+        "event": "solution_approved",
+        "fields": {
+            "task_count": 2,
+            "story_count": 1,
+            "estimate_points": 13,
+        },
+    }
+    assert [stage["stage"] for stage in result["stages"]] == [
+        "tasking_chain",
+        "tasks_gate",
+        "task_registration",
+        "huds",
+        "acceptance",
     ]
