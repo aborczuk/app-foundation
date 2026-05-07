@@ -42,7 +42,7 @@ Run `.specify/scripts/python/check_prerequisites.py --json --require-tasks --inc
 
 Read the routing contract from `spec.md` immediately after resolving paths.
 
-Abort with an error message if any required file is missing (instruct the user to run missing prerequisite command). `plan.md` is only a required prerequisite when the routing contract keeps the plan phase enabled.
+Abort with an error message if any required file is missing (instruct the user to run the missing prerequisite command). `plan.md` is only a required prerequisite when the routing contract keeps the plan phase enabled.
 Use shell quoting per CLAUDE.md "Shell Script Compatibility".
 
 Immediately scaffold the traceable analysis artifact:
@@ -53,16 +53,7 @@ UV_CACHE_DIR="${TMPDIR:-/tmp}/app-foundation-uv-cache" uv run python .specify/sc
 
 This creates `FEATURE_DIR/analysis.md` from `.specify/templates/analysis-template.md` before the report is filled in.
 
-### 1a. Checklist Readiness Gate (MANDATORY — hard block)
-
-- Check whether `FEATURE_DIR/checklists/requirements.md` exists.
-- If `FEATURE_DIR/checklists/` exists, scan all checklist files and count incomplete items (`- [ ]`).
-- **If `requirements.md` is missing OR any checklist item is incomplete**: **STOP immediately** and report checklist status (including incomplete counts) with this guidance:
-  - `"/speckit.analyze cannot proceed until specification checklists are complete."`
-  - `"Complete all checklist items in FEATURE_DIR/checklists/ (including requirements.md), then re-run /speckit.analyze."`
-- Do **not** continue to artifact analysis while this gate fails.
-
-### 1b. External Ingress + Runtime Readiness Gate (MANDATORY when ingress applies)
+### 1a. External Ingress + Runtime Readiness Gate (MANDATORY when ingress applies)
 
 - If `plan.md` exists, inspect `## External Ingress and Runtime Readiness`.
 - Detect whether ingress/webhook/callback/public endpoint behavior is in scope using `spec.md`, `plan.md` when present, `sketch.md`, and `tasks.md`.

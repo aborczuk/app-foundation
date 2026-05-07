@@ -162,7 +162,7 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "spec_clarified": {"backlog_registered", "spec_clarified"},
     "research_completed": {"backlog_registered", "spec_clarified"},
     "plan_started": {"research_completed"},
-    "planreview_completed": {"plan_started", "planreview_completed"},
+    "planreview_completed": {"research_completed", "plan_started", "planreview_completed"},
     "feasibility_spike_completed": {"planreview_completed"},
     "feasibility_spike_failed": {"planreview_completed", "feasibility_spike_failed"},
     "plan_approved": {
@@ -181,7 +181,7 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
         "estimation_completed",
         "tasking_completed",
     },
-    "solution_approved": {"tasking_completed"},
+    "solution_approved": {"plan_approved", "tasking_completed"},
     "analysis_completed": {"solution_approved"},
     "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
     "implementation_completed": {"e2e_generated"},
@@ -424,6 +424,12 @@ def cmd_append(args: argparse.Namespace) -> None:
         "routing": _coerce_json_field(getattr(args, "routing", None), field_name="routing"),
         "risk": _coerce_json_field(getattr(args, "risk", None), field_name="risk"),
         "triage": _coerce_json_field(getattr(args, "triage", None), field_name="triage"),
+        "domains": _coerce_json_field(getattr(args, "domains", None), field_name="domains"),
+        "strategy": _coerce_json_field(getattr(args, "strategy", None), field_name="strategy"),
+        "design_slices": _coerce_json_field(
+            getattr(args, "design_slices", None), field_name="design_slices"
+        ),
+        "routing_json_path": args.routing_json_path,
         "details": args.details,
     }
     for key, value in optional_values.items():
@@ -647,6 +653,10 @@ def build_parser() -> argparse.ArgumentParser:
     append_p.add_argument("--routing", help="JSON routing metadata for traceability.")
     append_p.add_argument("--risk", help="JSON risk metadata for traceability.")
     append_p.add_argument("--triage", help="JSON triage metadata for traceability.")
+    append_p.add_argument("--domains", help="JSON domain metadata for traceability.")
+    append_p.add_argument("--strategy", help="JSON strategy metadata for traceability.")
+    append_p.add_argument("--design-slices", help="JSON design-slice metadata for traceability.")
+    append_p.add_argument("--routing-json-path", help="Stable routing.json artifact path.")
     append_p.add_argument("--details", help="Free-text details for traceability.")
     append_p.set_defaults(func=cmd_append)
 

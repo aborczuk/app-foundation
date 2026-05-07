@@ -1365,6 +1365,10 @@ def append_requested_pipeline_event(
         routing=fields.get("routing"),
         risk=fields.get("risk"),
         triage=fields.get("triage"),
+        domains=fields.get("domains"),
+        strategy=fields.get("strategy"),
+        design_slices=fields.get("design_slices"),
+        routing_json_path=fields.get("routing_json_path"),
         details=fields.get("details"),
     )
     output_buffer = io.StringIO()

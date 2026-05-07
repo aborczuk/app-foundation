@@ -19,6 +19,23 @@ Template rules:
 
 [EXAMPLE: Ensure a generative driver route without runner configuration fails before execution and cannot emit a completion event.]
 
+## Relevant Domains
+
+- Inherit from `plan.md` `Strategy Contract` and keep only the domains that materially affect this task.
+- `[FILL: constitution domain]` — [FILL: why this domain is relevant to the task.]
+- `[FILL: constitution domain]` — [FILL: why this domain is relevant to the task.]
+
+[EXAMPLE: `edge delivery` — route or delivery behavior changes at the runtime boundary.]
+[EXAMPLE: `client/UI` — user-visible browser behavior and restart affordance must change.]
+
+## Candidate Design Slices
+
+- `[FILL: slice id]` — [FILL: why this slice appears relevant to the task, with confidence or basis.]
+- `[FILL: slice id]` — [FILL: include only when more than one slice legitimately applies.]
+
+[EXAMPLE: `PL-01` — route/runtime seam overlap from `app.py` and router work; high confidence.]
+[EXAMPLE: `PL-03` — browser shell file overlap from template/static assets; high confidence.]
+
 ## Current Repo Behavior
 
 [FILL: Describe the current behavior verified from bounded repo reads. Include the observed file/symbol/branch/contract when possible.]
@@ -40,6 +57,15 @@ If current behavior was not verified, write exactly:
 **File:Symbol**: `[FILL: primary file:symbol from tasks.md or bounded symbol discovery]`
 
 [EXAMPLE: `scripts/pipeline_driver.py:run_generative_handoff`]
+
+## Reuse Candidates
+
+- Only list reuse candidates that were validated from repo reads. Do not claim reuse speculatively.
+- `[FILL: existing file:symbol or file path]` — [FILL: how it can be reused.]
+- `None validated from repo reads.` [FILL: use only when no concrete reuse candidate was verified.]
+
+[EXAMPLE: `src/app/router.py:existing_handler` — preserve route registration and extend the restart path in place.]
+[EXAMPLE: `None validated from repo reads.`]
 
 ## Required Edits
 
@@ -138,6 +164,17 @@ Then assert:
 [EXAMPLE: No event emission before deterministic validation.]
 [EXAMPLE: No fallback from generative to legacy on missing runner.]
 [EXAMPLE: Preserve append-only ledger semantics.]
+
+## Implementation Checklist
+
+- Carry forward concrete checklist work from the matched design slice(s), story acceptance scenarios, and declared test ownership.
+- [ ] [FILL: concrete implementation step]
+- [ ] [FILL: concrete implementation step]
+- [ ] [FILL: concrete implementation step]
+
+[EXAMPLE: Add the restart route handler and ensure ended sessions cannot mutate before restart.]
+[EXAMPLE: Reset board state and score through the authoritative engine path.]
+[EXAMPLE: Update the browser control to invoke restart and rerender the fresh session.]
 
 ## Dependencies
 

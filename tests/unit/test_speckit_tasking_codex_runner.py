@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _load_script_module(module_name: str, script_name: str):
@@ -171,3 +172,38 @@ def test_tasking_runner_clears_both_session_states(tmp_path: Path) -> None:
     assert removed_paths == [str(estimate_state), str(breakdown_state)]
     assert not estimate_state.exists()
     assert not breakdown_state.exists()
+
+
+def test_run_codex_exec_omits_cd_for_resume(monkeypatch, tmp_path: Path) -> None:
+    """Resume mode should not pass --cd to the Codex CLI."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    captured_command: list[str] = []
+    captured_cwd: Path | None = None
+
+    monkeypatch.setattr(tasking_runner.shutil, "which", lambda name: "/usr/bin/codex")
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        nonlocal captured_cwd
+        captured_command[:] = list(command)
+        captured_cwd = kwargs.get("cwd")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(tasking_runner.subprocess, "run", fake_run)
+
+    result = tasking_runner._run_codex_exec(
+        "resume prompt",
+        repo_root,
+        session_id="estimate-session-123",
+    )
+
+    assert result.exit_code == 0
+    assert captured_cwd == repo_root
+    assert captured_command[:4] == [
+        "/usr/bin/codex",
+        "exec",
+        "resume",
+        "estimate-session-123",
+    ]
+    assert "--cd" not in captured_command

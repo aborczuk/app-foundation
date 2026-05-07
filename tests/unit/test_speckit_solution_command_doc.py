@@ -44,6 +44,8 @@ def test_speckit_solution_doc_consumes_plan_design_slices() -> None:
 
     assert "Do not generate `sketch.md`" in doc_text
     assert "plan.md` design slices" in doc_text
+    assert "routing.json" in doc_text
+    assert "speckit_remake_huds.py prepare" in doc_text
     assert "Do not call `scripts/speckit_codex_handoff_runner.py`" in doc_text
     assert "Do not call `/speckit.tasking`" in doc_text
     assert "Auto-invoke `/speckit.sketch`" not in doc_text

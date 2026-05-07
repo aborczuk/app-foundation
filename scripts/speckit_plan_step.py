@@ -23,6 +23,7 @@ from bootstrap_session import bootstrap_session  # noqa: E402
 DEFAULT_SCAFFOLD = REPO_ROOT / ".specify" / "scripts" / "pipeline-scaffold.py"
 PLAN_COMPLETION_MARKER = "## Plan Completion Summary"
 BASE_TEMPLATE_SECTIONS = ("Triage", "Strategy Contract", "Internal Discovery")
+ROUTING_ARTIFACT_NAME = "routing.json"
 DISCOVERY_MAX_TERMS = 5
 FILE_PATH_RE = re.compile(r"^file_path:\s*(?P<path>.+)$", re.MULTILINE)
 JSON_FENCE_RE = re.compile(r"```json\s*(?P<body>.*?)```", re.IGNORECASE | re.DOTALL)
@@ -589,6 +590,85 @@ def _render_contract(contract: Mapping[str, Any]) -> str:
     return json.dumps(dict(contract), indent=2, sort_keys=True)
 
 
+def _match_markdown_value(block: str, label: str) -> str:
+    """Extract a `- Label: value` field from one markdown slice block."""
+    match = re.search(rf"- {re.escape(label)}:\s*(?P<value>.+)", block)
+    return match.group("value").strip() if match else ""
+
+
+def _extract_code_spans(text: str) -> list[str]:
+    """Return code spans from one markdown line or paragraph."""
+    return [match.group(1).strip() for match in re.finditer(r"`([^`]+)`", text)]
+
+
+def _parse_design_slices(plan_file: Path) -> list[dict[str, Any]]:
+    """Parse plan design slices into a machine-readable tasking contract."""
+    text = plan_file.read_text(encoding="utf-8")
+    match = re.search(r"^## Design Slices\s*$([\s\S]*?)(?=^##\s|\Z)", text, re.MULTILINE)
+    if not match:
+        return []
+    section = match.group(1)
+    blocks = re.split(r"^###\s+", section, flags=re.MULTILINE)
+    slices: list[dict[str, Any]] = []
+    for block in blocks:
+        stripped = block.strip()
+        if not stripped:
+            continue
+        lines = stripped.splitlines()
+        heading = lines[0].strip()
+        body = "\n".join(lines[1:])
+        heading_match = re.match(r"(?:Slice\s+)?(?P<slice_id>PL-\d+)\s*-\s*(?P<title>.+)", heading)
+        if not heading_match:
+            continue
+        seams_text = _match_markdown_value(body, "File/Symbol Seams") or _match_markdown_value(
+            body, "Files / seams"
+        )
+        slices.append(
+            {
+                "slice_id": heading_match.group("slice_id").strip(),
+                "title": heading_match.group("title").strip(),
+                "estimate": _match_markdown_value(body, "Estimate")
+                or _match_markdown_value(body, "LOE"),
+                "why": _match_markdown_value(body, "Why this slice exists")
+                or _match_markdown_value(body, "Goal"),
+                "file_symbol_seams": _extract_code_spans(seams_text) or ([seams_text] if seams_text else []),
+                "file_symbol_seams_raw": seams_text,
+                "implementation_directive": _match_markdown_value(body, "Implementation Directive"),
+            }
+        )
+    return slices
+
+
+def _routing_artifact_path(feature_dir: Path) -> Path:
+    """Return the stable machine-readable routing artifact path for one feature."""
+    return feature_dir / ROUTING_ARTIFACT_NAME
+
+
+def _write_routing_artifact(*, feature_id: str, feature_dir: Path, contract: Mapping[str, Any], plan_file: Path) -> Path:
+    """Persist the normalized plan/tasking contract for downstream agents."""
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "feature_id": feature_id,
+        "routing": _ledger_routing_view(contract),
+        "triage": dict(contract.get("triage", {})),
+        "risk": dict(contract.get("risk", {})),
+        "domains": dict(contract.get("domains", {})),
+        "strategy": dict(contract.get("strategy", {})),
+        "design_slices": _parse_design_slices(plan_file),
+        "artifacts": {
+            "plan_md": str(plan_file),
+        },
+        "tasking": {
+            "mode": "generative",
+            "hud_generation": "generative",
+            "task_detail_source": "command_fill",
+        },
+    }
+    artifact_path = _routing_artifact_path(feature_dir)
+    artifact_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return artifact_path
+
+
 def _extract_section_body(plan_file: Path, heading: str) -> str:
     """Extract one markdown section body from the current plan artifact."""
     lines = plan_file.read_text(encoding="utf-8").splitlines()
@@ -688,6 +768,7 @@ def _feasibility_required(contract: Mapping[str, Any]) -> bool:
 def _event_request(event: str, *, contract: Mapping[str, Any]) -> dict[str, Any]:
     """Build the driver-owned pipeline event request for this plan outcome."""
     ledger_routing = _ledger_routing_view(contract)
+    design_slices = list(contract.get("design_slices", []))
     fields: dict[str, Any] = {
         "details": json.dumps(
             {
@@ -700,6 +781,9 @@ def _event_request(event: str, *, contract: Mapping[str, Any]) -> dict[str, Any]
         "routing": ledger_routing,
         "risk": dict(contract.get("risk", {})),
         "triage": dict(contract.get("triage", {})),
+        "domains": dict(contract.get("domains", {})),
+        "strategy": dict(contract.get("strategy", {})),
+        "design_slices": design_slices,
     }
     if event == "plan_approved":
         fields["feasibility_required"] = _feasibility_required(contract)
@@ -803,6 +887,14 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
     contract = _normalize_contract(_extract_contract(plan_file))
     _validate_plan_completion(plan_file)
     debug_path = _runtime_result_path(phase, correlation_id)
+    design_slices = _parse_design_slices(plan_file)
+    contract_with_slices = {**contract, "design_slices": design_slices}
+    routing_artifact = _write_routing_artifact(
+        feature_id=feature_id,
+        feature_dir=feature_dir,
+        contract=contract_with_slices,
+        plan_file=plan_file,
+    )
 
     if bool(contract["triage"]["duplicate"]):
         result = {
@@ -817,12 +909,15 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
             "debug_path": str(debug_path),
             "feature_dir": str(feature_dir),
             "plan_artifact": str(plan_file),
+            "routing_artifact": str(routing_artifact),
             "triage": contract["triage"],
             "domains": contract["domains"],
             "strategy": contract["strategy"],
             "risk": contract["risk"],
-            "pipeline_event_request": _event_request("duplicate_marked", contract=contract),
+            "design_slices": design_slices,
+            "pipeline_event_request": _event_request("duplicate_marked", contract=contract_with_slices),
         }
+        result["pipeline_event_request"]["fields"]["routing_json_path"] = str(routing_artifact)
         _write_debug_payload(debug_path, result)
         return result
 
@@ -839,12 +934,15 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
         "debug_path": str(debug_path),
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_file),
+        "routing_artifact": str(routing_artifact),
         "triage": contract["triage"],
         "domains": contract["domains"],
         "strategy": contract["strategy"],
         "risk": contract["risk"],
-        "pipeline_event_request": _event_request("plan_approved", contract=contract),
+        "design_slices": design_slices,
+        "pipeline_event_request": _event_request("plan_approved", contract=contract_with_slices),
     }
+    result["pipeline_event_request"]["fields"]["routing_json_path"] = str(routing_artifact)
     _write_debug_payload(debug_path, result)
     return result
 

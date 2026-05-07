@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -115,6 +116,7 @@ def _load_tasking_runner_module():
     if spec is None or spec.loader is None:
         raise ValueError("missing_tasking_runner_module")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

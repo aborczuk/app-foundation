@@ -8,19 +8,15 @@ $ARGUMENTS
 
 ## Compact Contract (Load First)
 
-Generate `tasks.md` from an approved `sketch.md` and stabilize the downstream task graph with deterministic script-owned checks.
+Generate `tasks.md` and task HUDs from an approved `plan.md` / `routing.json` contract, then stabilize the downstream task graph with deterministic checks.
 
-Respect the spec routing contract throughout this command:
-
-- `plan.md` is required only when `plan_profile != skip`.
-- The core sketch sections are sufficient when `sketch_profile = core`.
-
-1. Decompose `sketch.md` into `tasks.md` (authoritative source: the routed sketch design contract, including slices only when present).
-2. Register the generated tasks in `.speckit/task-ledger.jsonl`.
-3. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
-4. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
-5. Generate/hydrate HUDs via scaffold + `scripts/speckit_remake_huds.py`.
-6. Generate acceptance tests from the settled task graph.
+1. Decompose `plan.md` design slices into `tasks.md`.
+2. Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"` to scaffold per-task HUD tickets.
+3. Fill every non-`[H]` HUD concretely from repo reads plus `routing.json`, `plan.md`, `spec.md`, and `tasks.md`.
+4. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
+5. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
+6. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
+7. Register tasks and generate acceptance tests from the settled task graph.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -30,51 +26,33 @@ Respect the spec routing contract throughout this command:
    - `.specify/scripts/python/check_prerequisites.py --json`
 2. Resolve:
    - `FEATURE_DIR`
-   - `AVAILABLE_DOCS`
 3. Require:
-   - `FEATURE_DIR/sketch.md`
+   - `FEATURE_DIR/plan.md`
+   - `FEATURE_DIR/routing.json`
 4. If any hard-block condition fails, stop.
 
 ### 2. Authoritative context loading
 
 Required:
-- `sketch.md`
+- `plan.md`
+- `routing.json`
 - `spec.md`
-
-Optional:
-- `plan.md` when `plan_profile != skip`
-- `research.md`
-- `catalog.yaml`
-- `command-manifest.yaml`
-
-When deriving tasks, treat the current sketch template's core sections as authoritative:
-- `Coverage`
-- `Current → Target`
-- `Primary Seam`
-- `Required Edit / Solution`
-- `Verification`
-- `Constraints / Preserve`
-- `Implementation Directive`
-- `Design-to-Tasking Contract`
-- `Sketch Completion Summary`
-
-Treat conditional sketch sections as authoritative only when they are present or explicitly enabled by `conditional_sketch_sections`.
+- `tasks.md` after initial generation
 
 ### 3. Task derivation rules (required)
 
-- Read the routing contract from `spec.md` first; use `sketch_profile` and `conditional_sketch_sections` to decide how much of the sketch must be turned into tasks and HUDs.
-- Do not require `plan.md` or omitted conditional sketch sections when the routing contract intentionally selected the smaller path.
-- Use `tasking_route` to decide whether each non-`[H]` task needs a fresh HUD or attaches to an existing feature stream.
-- Derive tasks from sketch contracts first; do not invent major architecture not present in sketch.
+- Read `routing.json` first; it is the machine-readable plan/tasking contract.
+- Use the routing contract, design slices, domains, risk, and tasking metadata from `routing.json` to decide how much task detail each task needs.
+- Derive tasks from plan contracts first; do not invent major architecture not present in plan.
 - Preserve execution order and dependency rules from sketch + tasks graph.
 - Add `[H]` tasks only where sketch/operator boundaries explicitly require human action.
 - Keep each task anchored to actionable file/symbol seams.
 - Preserve command/script/template/manifest work as explicit tasks when present in sketch.
 - Keep task descriptions deterministic and implementation-usable (no vague placeholders).
-- Treat each sketch slice's `Implementation Directive` as required source material for task/HUD generation.
+- Treat each design slice's `Implementation Directive` as required source material for task/HUD generation.
 - Do not emit a non-`[H]` task unless the associated HUD can be filled with current behavior, target behavior, concrete required edits, touched symbols, tests, constraints, dependencies, and done criteria.
 - Task descriptions may remain concise, but the corresponding HUD must contain the implementation-ready ticket detail.
-- If a task cannot be hydrated into a concrete HUD from `sketch.md` plus bounded repo reads, mark that HUD `BLOCKED: insufficient implementation directive` and stop before acceptance generation.
+- If a task cannot be hydrated into a concrete HUD from `routing.json` / `plan.md` plus bounded repo reads, mark that HUD `BLOCKED: insufficient implementation directive` and stop before acceptance generation.
 
 ### 3b. HUD / implementation-ticket requirements (required)
 
@@ -116,7 +94,7 @@ Valid required edits identify:
 - side effects that are forbidden
 - reason codes, fields, event names, payload keys, assertion values, or command outputs where applicable
 
-If the exact implementation cannot be determined from `sketch.md` and bounded repo reads, write `BLOCKED: insufficient implementation directive` in the HUD and stop before acceptance generation.
+If the exact implementation cannot be determined from `routing.json` / `plan.md` and bounded repo reads, write `BLOCKED: insufficient implementation directive` in the HUD and stop before acceptance generation.
 
 #### HUD placeholder gate
 
@@ -165,12 +143,15 @@ Treat non-zero as hard-block. The tasking step owns `task_registered` events; im
 
 ### 7. HUD + acceptance generation (post-stabilization only)
 
-Generate and hydrate HUD implementation tickets only after task stabilization + format gate pass:
-- `.specify/scripts/pipeline-scaffold.py` for `speckit.tasking.hud-code`
-- `.specify/scripts/pipeline-scaffold.py` for `speckit.tasking.hud-runbook`
-- `uv run --no-sync python scripts/speckit_remake_huds.py --feature-dir "$FEATURE_DIR"`
+Scaffold HUD implementation tickets after `tasks.md` is complete:
+- `uv run --no-sync python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"`
 
-After HUD generation, verify every non-`[H]` HUD satisfies the HUD / implementation-ticket requirements above. Do not continue to acceptance generation while any HUD contains unresolved placeholders, example text, or insufficient implementation directives.
+Then fill every non-`[H]` HUD generatively before stabilization continues.
+
+After HUD fill, verify every non-`[H]` HUD satisfies the HUD / implementation-ticket requirements above:
+- `uv run --no-sync python scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`
+
+Do not continue to acceptance generation while any HUD contains unresolved placeholders, example text, or insufficient implementation directives.
 
 Generate acceptance tests:
 - `.specify/scripts/acceptance-test-scaffold.py`
@@ -189,7 +170,7 @@ Report at end:
 
 ## Behavior rules
 
-- Do not treat `sketch.md` as optional inspiration; it is the tasking contract.
+- Do not treat `routing.json` as optional inspiration; it is the machine-readable tasking contract.
 - Do not skip `speckit_tasking_chain.py`; tasking must include estimate/breakdown stabilization logic.
-- Do not generate HUDs before task format gate passes.
+- Do not let deterministic scaffolds stand in for final HUD content on code tasks.
 - Do not append completion events before deterministic checks pass.

@@ -194,11 +194,11 @@ def _run_codex_exec(prompt: str, repo_root: Path, *, session_id: str | None = No
         ]
         if session_id:
             command.extend(["resume", session_id])
+        command.append("--full-auto")
+        if session_id is None:
+            command.extend(["--cd", str(repo_root)])
         command.extend(
             [
-                "--full-auto",
-                "--cd",
-                str(repo_root),
                 "--output-last-message",
                 str(last_message_path),
                 "-",

@@ -38,7 +38,19 @@ uv run python scripts/speckit_solution_step.py prepare-tasking --feature-id "$FE
    - Preserve slice ordering and dependencies from `plan.md`.
    - Produce the actual number of tasks required by the plan; do not leave template placeholder content behind.
 
-4. Run finalize and return the exact JSON it prints:
+4. Scaffold HUDs deterministically, then complete them generatively:
+
+```bash
+uv run python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing
+```
+
+5. Fill every non-`[H]` `huds/TXXX.md` directly.
+   - Load `routing.json` first; it is the machine-readable plan contract for tasking.
+   - Treat the scaffold as deterministic seed data only.
+   - Replace every `[FILL: ...]` marker with repo-grounded, seam-specific implementation detail.
+   - The final HUD must be concrete enough that a smaller implement model can execute the task without re-inventing design.
+
+6. Run finalize and return the exact JSON it prints:
 
 ```bash
 uv run python scripts/speckit_solution_step.py finalize --feature-id "$FEATURE_ID" --phase solution --correlation-id "$CORRELATION_ID"
@@ -49,6 +61,7 @@ uv run python scripts/speckit_solution_step.py finalize --feature-id "$FEATURE_I
 ### 1. Setup
 
 The helper script resolves the feature workspace, validates that `plan.md` exists, requires `## Design Slices`, and scaffolds `tasks.md` from the documented tasks template.
+It also expects `routing.json` from `/speckit.plan` to be present as the stable machine-readable tasking contract.
 
 ### 2. Hard-block gate
 
@@ -63,19 +76,26 @@ The helper script resolves the feature workspace, validates that `plan.md` exist
 - Preserve slice ordering and dependencies from the plan.
 - Do not call `/speckit.tasking` as a nested command.
 
-### 4. Deterministic Finalize
+### 4. HUD Scaffold + Generative Fill
+
+- Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing` after `tasks.md` is complete.
+- That helper only scaffolds HUDs and classifies which tasks need repo-search/generative fill.
+- The command must then fill every non-`[H]` HUD concretely using bounded repo reads plus `routing.json`, `plan.md`, `spec.md`, and `tasks.md`.
+- Do not leave scaffold placeholders in any final HUD.
+
+### 5. Deterministic Finalize
 
 `finalize` owns the deterministic post-generation chain:
 
 - estimate/breakdown stabilization
 - tasks format gate
+- HUD validation
 - task registration
-- HUD regeneration
 - acceptance-test scaffolding
 
 `finalize` must be the only place where the command produces the pipeline event request envelope.
 
-### 5. Produce `solution_approved`
+### 6. Produce `solution_approved`
 
 The command ends by running `finalize`. The final response from this command must be the exact JSON emitted by `finalize`, with no extra prose around it. That payload is what the pipeline driver uses to append `solution_approved`.
 
@@ -83,7 +103,7 @@ The command ends by running `finalize`. The final response from this command mus
 {"event":"solution_approved","feature_id":"NNN","phase":"solution","task_count":N,"story_count":N,"estimate_points":N,"actor":"<agent-id>","timestamp_utc":"..."}
 ```
 
-### 6. Report
+### 7. Report
 
 - "Solution phase complete."
 - List generated artifacts: `tasks.md`, `estimates.md`, HUDs, acceptance tests.
@@ -94,5 +114,6 @@ The command ends by running `finalize`. The final response from this command mus
 - Do not generate `sketch.md`.
 - Do not require `sketch.md`.
 - Do not re-decide architecture already settled in `plan.md`.
+- Do not treat `scripts/speckit_remake_huds.py` output as the final HUD content for code tasks.
 - Do not call `/speckit.tasking`.
 - Do not emit `solution_approved` before `finalize` completes.

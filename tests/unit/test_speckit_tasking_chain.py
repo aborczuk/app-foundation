@@ -10,6 +10,9 @@ from pathlib import Path
 def _load_script_module(module_name: str, script_name: str):
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
     script_path = scripts_dir / script_name
+    scripts_dir_str = str(scripts_dir)
+    if scripts_dir_str not in sys.path:
+        sys.path.insert(0, scripts_dir_str)
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     assert spec is not None
     assert spec.loader is not None
@@ -100,3 +103,10 @@ def test_chain_fails_without_estimate_command_and_artifact(tmp_path: Path) -> No
     assert payload["ok"] is False
     assert "missing_estimate_command" in payload["reasons"]
     assert "missing_estimates_file" in payload["reasons"]
+
+
+def test_load_tasking_runner_module_registers_sys_modules() -> None:
+    """The tasking-runner import helper should register the module before execution."""
+    module = tasking_chain._load_tasking_runner_module()
+    assert module.__name__ in sys.modules
+    assert sys.modules[module.__name__] is module

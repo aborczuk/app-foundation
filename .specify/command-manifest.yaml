@@ -116,6 +116,12 @@ commands:
       - speckit.solution
       - speckit.tasking
       produced_by: scripts/speckit_plan_step.py
+    - output_path: ${FEATURE_DIR}/routing.json
+      consumed_by:
+      - speckit.solution
+      - speckit.tasking
+      - speckit.implement
+      produced_by: scripts/speckit_plan_step.py
     emits:
     - event: duplicate_marked
       required_fields: []
@@ -163,9 +169,8 @@ commands:
       required_fields:
       - failed_fq
   speckit.tasking:
-    description: Decompose approved plan.md design slices into tasks.md, register the tasks in the
-      task ledger, then use Codex-backed estimate/breakdown runners to stabilize the task graph and
-      generate HUDs + acceptance tests with one warm session per mode
+    description: Decompose approved plan.md design slices into tasks.md, scaffold HUD tickets
+      deterministically, fill them generatively, then stabilize the task graph and acceptance artifacts
     driver:
       mode: generative
       timeout_seconds: 300
@@ -370,6 +375,8 @@ commands:
     artifacts: []
     emits: []
 manual_events:
+  plan_started:
+    required_fields: []
   feature_closed:
     required_fields: []
   e2e_generated:

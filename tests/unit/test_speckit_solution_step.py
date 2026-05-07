@@ -56,6 +56,7 @@ def test_prepare_tasking_scaffolds_tasks_from_plan(tmp_path: Path, monkeypatch) 
         "# Tasks: [FEATURE NAME]\n\n**Input**: Design documents from `/specs/[###-feature-name]/`\n",
         encoding="utf-8",
     )
+    (feature_dir / "routing.json").write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(speckit_solution_step, "DEFAULT_TASKS_TEMPLATE", template_path)
     monkeypatch.setattr(
@@ -67,6 +68,7 @@ def test_prepare_tasking_scaffolds_tasks_from_plan(tmp_path: Path, monkeypatch) 
     result = speckit_solution_step.prepare_tasking("023")
 
     assert result["ok"] is True
+    assert result["routing_artifact"] == str(feature_dir / "routing.json")
     tasks_text = (feature_dir / "tasks.md").read_text(encoding="utf-8")
     assert "# Tasks: deterministic phase orchestration" in tasks_text
     assert "/specs/023-deterministic-phase-orchestration/" in tasks_text
@@ -112,6 +114,10 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
         encoding="utf-8",
     )
     (feature_dir / "estimates.md").write_text("**Total Points**: 13\n", encoding="utf-8")
+    (feature_dir / "routing.json").write_text(
+        '{"routing":{"plan_level":"simple"},"triage":{"tshirt_size":"s"},"risk":{"overall":"low"},"domains":{"relevant":["testing"],"reasoning":{}},"strategy":{"architecture_strategy":false},"design_slices":[]}',
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(
         speckit_solution_step,
@@ -145,8 +151,8 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
     )
     monkeypatch.setattr(
         speckit_solution_step,
-        "_generate_huds",
-        lambda **kwargs: {"stdout": "hud", "stderr": ""},
+        "_validate_huds",
+        lambda **kwargs: {"ok": True, "error_count": 0, "errors": []},
     )
     monkeypatch.setattr(
         speckit_solution_step,
@@ -176,12 +182,19 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
             "task_count": 2,
             "story_count": 1,
             "estimate_points": 13,
+            "routing": {"plan_level": "simple"},
+            "triage": {"tshirt_size": "s"},
+            "risk": {"overall": "low"},
+            "domains": {"relevant": ["testing"], "reasoning": {}},
+            "strategy": {"architecture_strategy": False},
+            "design_slices": [],
+            "routing_json_path": str(feature_dir / "routing.json"),
         },
     }
     assert [stage["stage"] for stage in result["stages"]] == [
         "tasking_chain",
         "tasks_gate",
+        "huds_validate",
         "task_registration",
-        "huds",
         "acceptance",
     ]

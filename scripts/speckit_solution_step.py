@@ -25,6 +25,7 @@ DEFAULT_ACCEPTANCE = (
     Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
 )
 DEFAULT_TASKS_TEMPLATE = Path(__file__).resolve().parent.parent / ".specify" / "templates" / "tasks-template.md"
+DEFAULT_ROUTING_ARTIFACT = "routing.json"
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -93,6 +94,11 @@ def _resolve_solution_paths(feature_id: str) -> tuple[Path, Path, Path]:
     repo_root = Path(__file__).resolve().parent.parent
     feature_dir = _resolve_feature_dir(repo_root, feature_id)
     return repo_root, feature_dir, feature_dir / "plan.md"
+
+
+def _resolve_routing_artifact(feature_dir: Path) -> Path:
+    """Return the stable plan-produced routing artifact path."""
+    return feature_dir / DEFAULT_ROUTING_ARTIFACT
 
 
 def _runtime_result_path(phase: str, correlation_id: str) -> Path:
@@ -169,12 +175,16 @@ def prepare_tasking(feature_id: str) -> dict[str, Any]:
     """Validate the plan artifact and scaffold tasks.md for generative completion."""
     repo_root, feature_dir, plan_path = _resolve_solution_paths(feature_id)
     tasks_path = feature_dir / "tasks.md"
+    routing_path = _resolve_routing_artifact(feature_dir)
     _validate_plan_design_slices(plan_path)
+    if not routing_path.is_file():
+        raise RuntimeError("routing_artifact_missing")
     tasks_path.write_text(_render_tasks_scaffold(feature_dir, plan_path), encoding="utf-8")
     return {
         "ok": True,
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_path),
+        "routing_artifact": str(routing_path),
         "tasks_artifact": str(tasks_path),
         "scaffolded_from_template": str(DEFAULT_TASKS_TEMPLATE),
         "repo_root": str(repo_root),
@@ -255,18 +265,23 @@ def _register_tasks(*, repo_root: Path, feature_dir: Path, feature_id: str) -> d
     return parsed
 
 
-def _generate_huds(*, repo_root: Path, feature_dir: Path) -> dict[str, Any]:
-    """Generate or refresh task HUD artifacts from the settled task graph."""
+def _validate_huds(*, repo_root: Path, feature_dir: Path) -> dict[str, Any]:
+    """Validate completed task HUD artifacts before task registration handoff."""
     command = [
         sys.executable,
         str(DEFAULT_HUDS),
+        "validate",
         "--feature-dir",
         str(feature_dir),
+        "--json",
     ]
     completed = _run_command(command, cwd=repo_root)
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or "hud_generation_failed")
-    return {"stdout": completed.stdout, "stderr": completed.stderr}
+        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "hud_validation_failed")
+    parsed = json.loads(completed.stdout or "{}")
+    if not isinstance(parsed, dict):
+        raise RuntimeError("hud validation must return JSON")
+    return parsed
 
 
 def _generate_acceptance_tests(*, repo_root: Path, feature_dir: Path) -> dict[str, Any]:
@@ -329,6 +344,15 @@ def _event_request(*, task_count: int, story_count: int, estimate_points: int) -
     }
 
 
+def _load_routing_contract(feature_dir: Path) -> dict[str, Any]:
+    """Load the stable routing.json artifact produced by the plan phase."""
+    routing_path = _resolve_routing_artifact(feature_dir)
+    if not routing_path.is_file():
+        return {}
+    payload = json.loads(routing_path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
+
+
 def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "solution") -> dict[str, Any]:
     """Validate, stabilize, and finalize the generative solution artifact set."""
     repo_root, feature_dir, plan_path = _resolve_solution_paths(feature_id)
@@ -355,11 +379,13 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     if not bool(tasks_gate.get("ok", False)):
         raise RuntimeError("tasks_format_gate_failed")
 
+    huds = _validate_huds(repo_root=repo_root, feature_dir=feature_dir)
+    stages.append({"stage": "huds_validate", "result": huds})
+    if not bool(huds.get("ok", False)):
+        raise RuntimeError("hud_validation_failed")
+
     registration = _register_tasks(repo_root=repo_root, feature_dir=feature_dir, feature_id=feature_id)
     stages.append({"stage": "task_registration", "result": registration})
-
-    huds = _generate_huds(repo_root=repo_root, feature_dir=feature_dir)
-    stages.append({"stage": "huds", "result": huds})
 
     acceptance = _generate_acceptance_tests(repo_root=repo_root, feature_dir=feature_dir)
     stages.append({"stage": "acceptance", "result": acceptance})
@@ -367,6 +393,7 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     task_count = len(parse_task_definitions(tasks_path))
     story_count = _count_stories(tasks_path)
     estimate_points = _estimate_points(estimates_path) if estimates_path.exists() else 0
+    routing_contract = _load_routing_contract(feature_dir)
 
     result = {
         "schema_version": SCHEMA_VERSION,
@@ -380,6 +407,7 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
         "debug_path": str(debug_path),
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_path),
+        "routing_artifact": str(_resolve_routing_artifact(feature_dir)),
         "tasks_artifact": str(tasks_path),
         "task_count": task_count,
         "story_count": story_count,
@@ -391,6 +419,17 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
             estimate_points=estimate_points,
         ),
     }
+    result["pipeline_event_request"]["fields"].update(
+        {
+            "routing": dict(routing_contract.get("routing", {})),
+            "triage": dict(routing_contract.get("triage", {})),
+            "risk": dict(routing_contract.get("risk", {})),
+            "domains": dict(routing_contract.get("domains", {})),
+            "strategy": dict(routing_contract.get("strategy", {})),
+            "design_slices": list(routing_contract.get("design_slices", [])),
+            "routing_json_path": str(_resolve_routing_artifact(feature_dir)),
+        }
+    )
     _write_debug_payload(debug_path, result)
     return result
 

@@ -96,6 +96,13 @@ def test_append_rejects_invalid_order_before_mutation(tmp_path: Path) -> None:
         critical_count=None,
         high_count=None,
         e2e_artifact=None,
+        routing=None,
+        risk=None,
+        triage=None,
+        domains=None,
+        strategy=None,
+        design_slices=None,
+        routing_json_path=None,
         details=None,
     )
 
@@ -136,6 +143,13 @@ def test_append_rejects_partial_write_and_preserves_state(tmp_path: Path) -> Non
         critical_count=None,
         high_count=None,
         e2e_artifact=None,
+        routing=None,
+        risk=None,
+        triage=None,
+        domains=None,
+        strategy=None,
+        design_slices=None,
+        routing_json_path=None,
         details=None,
     )
 
