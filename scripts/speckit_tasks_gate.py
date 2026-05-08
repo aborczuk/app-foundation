@@ -13,6 +13,7 @@ from typing import Any, Sequence
 
 PHASE_HEADER_RE = re.compile(r"^\s*##\s+Phase\s+\d+:\s+(?P<title>.+?)\s*$")
 TASK_PREFIX_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*T\d{3}\b")
+TASKISH_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(?P<token>T\S+)")
 TASK_LINE_RE = re.compile(
     r"^\s*-\s*\[(?P<checked>[xX ])\]\s+"
     r"(?P<task_id>T\d{3})"
@@ -91,6 +92,20 @@ def _validate(tasks_file: Path) -> tuple[int, dict[str, Any]]:
         if phase_match:
             phase_title = phase_match.group("title").strip()
             phase_kind = _phase_type(phase_title)
+            continue
+
+        taskish_match = TASKISH_LINE_RE.match(raw)
+        if taskish_match and not TASK_LINE_RE.match(raw):
+            errors.append(
+                {
+                    "line": line_no,
+                    "code": "invalid_task_line",
+                    "message": (
+                        "Task-like checklist line must use canonical `TNNN` format with valid markers "
+                        "and description ordering."
+                    ),
+                }
+            )
             continue
 
         if not TASK_PREFIX_RE.match(raw):

@@ -139,6 +139,7 @@ def test_prepare_scaffolds_huds_with_classification(tmp_path: Path, monkeypatch)
     assert 'classification: "needs_generative_fill"' in content
     assert "## Candidate Design Slices" in content
     assert "## Proposed Solution" in content
+    assert "## Acceptance Criteria" in content
     assert "[FILL: describe current repo behavior" in content
     assert "## Quality Guards" not in content
     assert "Resolve during implement discovery" not in content
@@ -156,6 +157,7 @@ def test_prepare_keeps_doc_task_deterministic(tmp_path: Path, monkeypatch) -> No
 
     content = (feature_dir / "huds/T016.md").read_text(encoding="utf-8")
     assert 'classification: "deterministic_only"' in content
+    assert "## Acceptance Criteria" in content
     assert "[FILL:" not in content
 
 

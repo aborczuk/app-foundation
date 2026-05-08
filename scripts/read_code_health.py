@@ -1077,7 +1077,9 @@ def _vector_stale_warning_message(
     *,
     verbose: bool,
 ) -> str:
-    """Format the stale-index warning for terse or verbose output."""
+    """Format the stale-index warning for reads that actually overlap stale scope."""
+    if overlap is False:
+        return ""
     overlap_label = (
         "yes"
         if overlap is True
@@ -1205,10 +1207,12 @@ def vector_refresh_by_state(scope_path: Path | None = None, *, verbose: bool = F
 
     overlap = _scope_needs_vector_refresh(path, probe.stale_drift_paths)
     refresh_paths = vector_scoped_refresh_paths(path, probe)
-    _emit_session_warning_once(
-        key=f"vector-stale:{_scope_cache_key(path)}:{probe.stale_reason_class or 'none'}:{overlap}",
-        message=_vector_stale_warning_message(path, probe, overlap, verbose=verbose),
-    )
+    stale_warning = _vector_stale_warning_message(path, probe, overlap, verbose=verbose)
+    if stale_warning:
+        _emit_session_warning_once(
+            key=f"vector-stale:{_scope_cache_key(path)}:{probe.stale_reason_class or 'none'}:{overlap}",
+            message=stale_warning,
+        )
     return _dispatch_refresh_by_state(
         status=status,
         overlap=overlap,

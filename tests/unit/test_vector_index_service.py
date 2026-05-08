@@ -433,7 +433,7 @@ def test_store_write_snapshot_batches_upserts(tmp_path: Path, monkeypatch: pytes
 
     assert upsert_batch_sizes == [2, 2, 1]
     assert activated_paths
-    assert Path(refreshed.snapshot_path) == activated_paths[0]
+    assert Path(refreshed.snapshot_path) == store._active_collection_path
 
 
 def test_refresh_changed_snapshot_clones_and_patches_changed_paths(
@@ -545,8 +545,8 @@ def test_refresh_changed_snapshot_clones_and_patches_changed_paths(
     assert upsert_batches == [["new-alpha"]]
     assert activated_paths
     assert refreshed.collection_name == "active-collection"
-    assert Path(refreshed.snapshot_path) == activated_paths[0]
-    assert (Path(refreshed.snapshot_path) / "marker.txt").read_text(encoding="utf-8") == "active"
+    assert Path(refreshed.snapshot_path) == store._active_collection_path
+    assert (activated_paths[0] / "marker.txt").read_text(encoding="utf-8") == "active"
     assert Path(refreshed.snapshot_path) != active_snapshot
 
 

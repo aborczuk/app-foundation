@@ -36,7 +36,13 @@ def test_tasking_runner_estimate_mode_success(tmp_path: Path, monkeypatch) -> No
 
     calls: list[str | None] = []
 
-    def fake_run(prompt: str, repo_root: Path, session_id: str | None = None):
+    def fake_run(
+        prompt: str,
+        repo_root: Path,
+        *,
+        codex_home: Path,
+        session_id: str | None = None,
+    ):
         calls.append(session_id)
         return tasking_runner.CommandResult(
             exit_code=0,
@@ -103,7 +109,13 @@ def test_tasking_runner_breakdown_mode_failure(tmp_path: Path, monkeypatch) -> N
 
     calls: list[str | None] = []
 
-    def fake_run(prompt: str, repo_root: Path, session_id: str | None = None):
+    def fake_run(
+        prompt: str,
+        repo_root: Path,
+        *,
+        codex_home: Path,
+        session_id: str | None = None,
+    ):
         calls.append(session_id)
         return tasking_runner.CommandResult(
             exit_code=1,
@@ -181,6 +193,7 @@ def test_run_codex_exec_omits_cd_for_resume(monkeypatch, tmp_path: Path) -> None
 
     captured_command: list[str] = []
     captured_cwd: Path | None = None
+    captured_env: dict[str, str] = {}
 
     monkeypatch.setattr(tasking_runner.shutil, "which", lambda name: "/usr/bin/codex")
 
@@ -188,6 +201,8 @@ def test_run_codex_exec_omits_cd_for_resume(monkeypatch, tmp_path: Path) -> None
         nonlocal captured_cwd
         captured_command[:] = list(command)
         captured_cwd = kwargs.get("cwd")
+        captured_env.clear()
+        captured_env.update(kwargs.get("env", {}))
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(tasking_runner.subprocess, "run", fake_run)
@@ -195,6 +210,7 @@ def test_run_codex_exec_omits_cd_for_resume(monkeypatch, tmp_path: Path) -> None
     result = tasking_runner._run_codex_exec(
         "resume prompt",
         repo_root,
+        codex_home=(repo_root / ".speckit" / "runtime" / "tasking" / "codex-home").resolve(),
         session_id="estimate-session-123",
     )
 
@@ -207,3 +223,6 @@ def test_run_codex_exec_omits_cd_for_resume(monkeypatch, tmp_path: Path) -> None
         "estimate-session-123",
     ]
     assert "--cd" not in captured_command
+    assert captured_env["CODEX_HOME"] == str(
+        (repo_root / ".speckit" / "runtime" / "tasking" / "codex-home").resolve()
+    )

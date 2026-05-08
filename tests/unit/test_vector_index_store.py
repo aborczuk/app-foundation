@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
+
+import pytest
 
 from src.mcp_codebase.index import CodeSymbol, IndexConfig
 from src.mcp_codebase.index.store import chroma as chroma_store
@@ -112,3 +115,60 @@ def test_upsert_chunks_logs_batch_progress(monkeypatch, tmp_path, caplog) -> Non
     assert "vector-index: upserting 3 chunks in batches of 2" in caplog.text
     assert "vector-index: upserted 2/3 chunks" in caplog.text
     assert "vector-index: upserted 3/3 chunks" in caplog.text
+
+
+def test_activate_snapshot_promotes_active_and_previous(tmp_path: Path) -> None:
+    """Activation should move staging into active and rotate the former active into previous."""
+    config = IndexConfig(repo_root=tmp_path, db_path=tmp_path / "vector-index", embedding_model="local")
+    store = chroma_store.ChromaIndexStore(config)
+    store._db_root.mkdir(parents=True, exist_ok=True)
+
+    previous_dir = store._previous_collection_path
+    previous_dir.mkdir(parents=True, exist_ok=True)
+    (previous_dir / "marker.txt").write_text("old-previous", encoding="utf-8")
+
+    active_dir = store._active_collection_path
+    active_dir.mkdir(parents=True, exist_ok=True)
+    (active_dir / "marker.txt").write_text("old-active", encoding="utf-8")
+
+    staging_dir = store._staging_root / "incoming"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    (staging_dir / "marker.txt").write_text("new-active", encoding="utf-8")
+
+    store._activate_snapshot(staging_dir)
+
+    assert not staging_dir.exists()
+    assert (store._active_collection_path / "marker.txt").read_text(encoding="utf-8") == "new-active"
+    assert (store._previous_collection_path / "marker.txt").read_text(encoding="utf-8") == "old-active"
+
+
+def test_apply_staging_guardrails_prunes_oldest_dirs(tmp_path: Path, monkeypatch) -> None:
+    """Guardrails should keep only the configured number of orphaned staging dirs."""
+    config = IndexConfig(repo_root=tmp_path, db_path=tmp_path / "vector-index", embedding_model="local")
+    store = chroma_store.ChromaIndexStore(config)
+    store._staging_root.mkdir(parents=True, exist_ok=True)
+
+    for index in range(chroma_store._MAX_STAGING_DIRS + 3):
+        stage_dir = store._staging_root / f"stage-{index:02d}"
+        stage_dir.mkdir()
+        (stage_dir / "marker.txt").write_text(str(index), encoding="utf-8")
+        mtime = index + 1
+        os.utime(stage_dir, (mtime, mtime))
+
+    monkeypatch.setattr(store, "_available_free_bytes", lambda: chroma_store._MIN_FREE_BYTES + 1)
+
+    store._apply_staging_guardrails()
+
+    remaining = sorted(path.name for path in store._staging_root.iterdir() if path.is_dir())
+    assert len(remaining) == chroma_store._MAX_STAGING_DIRS
+    assert remaining == [f"stage-{index:02d}" for index in range(3, chroma_store._MAX_STAGING_DIRS + 3)]
+
+
+def test_apply_staging_guardrails_raises_on_low_disk(tmp_path: Path, monkeypatch) -> None:
+    """Guardrails should fail loudly before staging when free space is critically low."""
+    config = IndexConfig(repo_root=tmp_path, db_path=tmp_path / "vector-index", embedding_model="local")
+    store = chroma_store.ChromaIndexStore(config)
+    monkeypatch.setattr(store, "_available_free_bytes", lambda: chroma_store._MIN_FREE_BYTES - 1)
+
+    with pytest.raises(RuntimeError, match="staging capacity critically low"):
+        store._apply_staging_guardrails()

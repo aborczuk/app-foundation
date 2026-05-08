@@ -6,6 +6,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -117,6 +118,27 @@ def test_validate_sequence_rejects_task_registered_after_task_started() -> None:
     errors, _ = task_ledger.validate_sequence(events)
 
     assert any("cannot register already started task T001" in error for error in errors)
+
+
+def test_cmd_validate_counts_registered_tasks_as_open(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The validator summary should count registered-not-closed tasks as open work."""
+    ledger_path = tmp_path / ".speckit" / "task-ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(
+        "\n".join(
+            [
+                json.dumps(_task_event("task_registered"), sort_keys=True),
+                json.dumps(_task_event("task_registered", task_id="T002"), sort_keys=True),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    task_ledger.cmd_validate(SimpleNamespace(file=str(ledger_path)))
+
+    output = capsys.readouterr().out
+    assert "feature 023: closed=0 open=2 active=none" in output
 
 
 def test_assert_can_start_task_rejects_open_prior_task(tmp_path: Path) -> None:

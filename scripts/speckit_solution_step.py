@@ -17,7 +17,6 @@ from task_ledger import parse_task_definitions
 
 SCHEMA_VERSION = "1.0.0"
 DEFAULT_TASKING_CHAIN = Path(__file__).resolve().parent / "speckit_tasking_chain.py"
-DEFAULT_TASKING_RUNNER = Path(__file__).resolve().parent / "speckit_tasking_codex_runner.py"
 DEFAULT_TASKS_GATE = Path(__file__).resolve().parent / "speckit_tasks_gate.py"
 DEFAULT_TASK_LEDGER = Path(__file__).resolve().parent / "task_ledger.py"
 DEFAULT_HUDS = Path(__file__).resolve().parent / "speckit_remake_huds.py"
@@ -201,22 +200,12 @@ def _run_tasking_stabilization(
     feature_dir: Path,
     json_mode: bool = True,
 ) -> dict[str, Any]:
-    """Run the tasking estimate/breakdown stabilization chain."""
-    estimate_command = (
-        f"{sys.executable} {DEFAULT_TASKING_RUNNER} --mode estimate --feature-dir {feature_dir!s} --json"
-    )
-    breakdown_command = (
-        f"{sys.executable} {DEFAULT_TASKING_RUNNER} --mode breakdown --feature-dir {feature_dir!s} --json"
-    )
+    """Validate that estimate/breakdown stabilization already settled the task graph."""
     command = [
         sys.executable,
         str(DEFAULT_TASKING_CHAIN),
         "--feature-dir",
         str(feature_dir),
-        "--estimate-command",
-        estimate_command,
-        "--breakdown-command",
-        breakdown_command,
     ]
     if json_mode:
         command.append("--json")
@@ -374,9 +363,9 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     stages: list[dict[str, Any]] = []
 
     tasking_chain = _run_tasking_stabilization(repo_root=repo_root, feature_dir=feature_dir)
-    stages.append({"stage": "tasking_chain", "result": tasking_chain})
+    stages.append({"stage": "tasking_chain_validate", "result": tasking_chain})
     if not bool(tasking_chain.get("ok", False)):
-        raise RuntimeError("tasking_stabilization_failed")
+        raise RuntimeError("tasking_stabilization_incomplete")
 
     tasks_gate = _run_tasks_gate(repo_root=repo_root, feature_dir=feature_dir)
     stages.append({"stage": "tasks_gate", "result": tasks_gate})

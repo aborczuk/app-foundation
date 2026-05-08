@@ -192,9 +192,44 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
         },
     }
     assert [stage["stage"] for stage in result["stages"]] == [
-        "tasking_chain",
+        "tasking_chain_validate",
         "tasks_gate",
         "huds_validate",
         "task_registration",
         "acceptance",
     ]
+
+
+def test_run_tasking_stabilization_uses_validation_only_chain(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Finalize should validate settled estimates without passing runner commands."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+
+    captured_command: list[str] = []
+
+    class Completed:
+        """Tiny subprocess completion stub."""
+
+        returncode = 0
+        stdout = '{"ok": true, "high_point_tasks": [], "command_results": []}'
+        stderr = ""
+
+    def fake_run_command(command, *, cwd, input_payload=None):
+        captured_command[:] = command
+        assert cwd == repo_root
+        assert input_payload is None
+        return Completed()
+
+    monkeypatch.setattr(speckit_solution_step, "_run_command", fake_run_command)
+
+    payload = speckit_solution_step._run_tasking_stabilization(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+    )
+
+    assert payload["ok"] is True
+    assert "--estimate-command" not in captured_command
+    assert "--breakdown-command" not in captured_command

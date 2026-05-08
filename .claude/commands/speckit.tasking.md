@@ -11,12 +11,13 @@ $ARGUMENTS
 Generate `tasks.md` and task HUDs from an approved `plan.md` / `spec.json` summary, then stabilize the downstream task graph with deterministic checks.
 
 1. Decompose `plan.md` design slices into `tasks.md`.
-2. Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"` to scaffold per-task HUD tickets.
-3. Fill every non-`[H]` HUD concretely from repo reads plus `spec.json`, `plan.md`, `spec.md`, and `tasks.md`.
-4. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
-5. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
-6. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
-7. Register tasks and generate acceptance tests from the settled task graph.
+2. Derive a per-task HUD contract JSON from `.specify/templates/task-hud-contract-template.json`.
+3. Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"` to scaffold per-task HUD tickets from that contract.
+4. Fill every non-`[H]` HUD concretely from repo reads plus `spec.json`, `plan.md`, `spec.md`, `tasks.md`, and the per-task HUD contract JSON.
+5. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
+6. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
+7. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
+8. Register tasks and generate acceptance tests from the settled task graph.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -42,7 +43,10 @@ Required:
 ### 3. Task derivation rules (required)
 
 - Read `spec.json` first; it holds the machine-readable key details of the approved plan/spec contract.
+- Derive a per-task HUD contract JSON next; it is the machine-readable selector for which HUD sections are required and what can be prefilled.
 - Use the spec details, design slices, domains, risk, and tasking metadata from `spec.json` to decide how much task detail each task needs.
+- Use the task HUD contract JSON to decide section presence, acceptance requirements, reuse-evaluation status, and deterministic vs generative fill expectations.
+- Use the matched slice directives to derive task-specific obligations; the HUD must attach and specialize those directives rather than merely reference slice IDs.
 - Derive tasks from plan contracts first; do not invent major architecture not present in plan.
 - Preserve execution order and dependency rules from sketch + tasks graph.
 - Add `[H]` tasks only where sketch/operator boundaries explicitly require human action.
@@ -54,6 +58,7 @@ Required:
 - Put the solved slice-local implementation approach into the corresponding tasks and HUDs.
 - Do not emit a non-`[H]` task unless the associated HUD can be filled with current behavior, target behavior, concrete required edits, touched symbols, tests, constraints, dependencies, and done criteria.
 - Task descriptions may remain concise, but the corresponding HUD must contain the implementation-ready ticket detail.
+- Treat the HUD as the only document implement will read for that task. If the task-local acceptance, symbols, seams, reuse determination, tests, or constraints are not in the HUD, they do not exist for implement.
 - If a task cannot be hydrated into a concrete HUD from `spec.json` / `plan.md` plus bounded repo reads, mark that HUD `BLOCKED: insufficient implementation directive` and stop before acceptance generation.
 
 ### 3b. HUD / implementation-ticket requirements (required)
@@ -76,13 +81,15 @@ Each code HUD must include:
 8. Required edits
 9. Touched symbols
 10. Tests to add or update
-11. Done criteria
-12. Constraints and invariants
-13. Dependencies
+11. Acceptance criteria
+12. Done criteria
+13. Constraints and invariants
+14. Dependencies
 
 #### Required Edits quality bar
 
 The `Required Edits` section must describe actual implementation changes, not restate intent.
+Each bullet should be traceable back to a matched slice directive, but specialized for this exact task seam.
 
 Invalid required edits:
 - "Harden runtime behavior."
@@ -90,6 +97,7 @@ Invalid required edits:
 - "Update docs."
 - "Add tests."
 - "Wire implementation."
+- "Honor PL-02."
 
 Valid required edits identify:
 - the branch, condition, function, parser, schema, return envelope, manifest field, command-doc section, or test fixture to change

@@ -93,9 +93,11 @@ def _write_session_state(session_state_path: Path, payload: Mapping[str, Any]) -
     session_state_path.write_text(json.dumps(dict(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _codex_home() -> Path:
-    """Return the Codex home directory used by the current shell."""
-    return Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser().resolve()
+def _codex_home(repo_root: Path) -> Path:
+    """Return the writable Codex home directory for this repo."""
+    if "CODEX_HOME" in os.environ:
+        return Path(os.environ["CODEX_HOME"]).expanduser().resolve()
+    return (repo_root / ".speckit" / "runtime" / "tasking" / "codex-home").resolve()
 
 
 def _discover_latest_session_record(codex_home: Path) -> dict[str, Any] | None:
@@ -178,7 +180,13 @@ def _build_prompt(
     return "\n".join(base)
 
 
-def _run_codex_exec(prompt: str, repo_root: Path, *, session_id: str | None = None) -> CommandResult:
+def _run_codex_exec(
+    prompt: str,
+    repo_root: Path,
+    *,
+    codex_home: Path,
+    session_id: str | None = None,
+) -> CommandResult:
     """Run Codex in the selected repository root and capture its output."""
     codex_bin = shutil.which("codex")
     if not codex_bin:
@@ -195,8 +203,6 @@ def _run_codex_exec(prompt: str, repo_root: Path, *, session_id: str | None = No
         if session_id:
             command.extend(["resume", session_id])
         command.append("--full-auto")
-        if session_id is None:
-            command.extend(["--cd", str(repo_root)])
         command.extend(
             [
                 "--output-last-message",
@@ -211,7 +217,7 @@ def _run_codex_exec(prompt: str, repo_root: Path, *, session_id: str | None = No
             text=True,
             capture_output=True,
             check=False,
-            env=os.environ.copy(),
+            env={**os.environ, "CODEX_HOME": str(codex_home)},
         )
         last_message = ""
         if last_message_path.exists():
@@ -433,11 +439,12 @@ def run_tasking_codex(args: argparse.Namespace, *, repo_root: Path | None = None
     repo_root = (repo_root or Path(__file__).resolve().parents[1]).resolve()
     feature_dir, tasks_file, estimates_file = _resolve_paths(args, repo_root)
     mode = str(args.mode)
-    codex_home = _codex_home()
+    codex_home = _codex_home(repo_root)
+    codex_home.mkdir(parents=True, exist_ok=True)
     session_state_path = _session_state_path(repo_root, feature_dir, mode)
     existing_session_state = _load_session_state(session_state_path)
     session_id: str | None = None
-    if existing_session_state is not None:
+    if existing_session_state is not None and existing_session_state.get("codex_home") == str(codex_home):
         stored_session_id = existing_session_state.get("session_id")
         if isinstance(stored_session_id, str) and stored_session_id.strip():
             session_id = stored_session_id
@@ -483,7 +490,7 @@ def run_tasking_codex(args: argparse.Namespace, *, repo_root: Path | None = None
     if mode == "estimate" and not estimates_file.exists():
         estimates_file.parent.mkdir(parents=True, exist_ok=True)
     try:
-        codex_result = _run_codex_exec(prompt, repo_root, session_id=session_id)
+        codex_result = _run_codex_exec(prompt, repo_root, codex_home=codex_home, session_id=session_id)
     except ValueError as exc:
         reason = str(exc) or "codex_exec_failed"
         return _failure_result(

@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Per-task HUD contract emitted by solution/tasking before HUD scaffold and generative fill.",
+  "task_id": "T000",
+  "story_id": "US1",
+  "classification": "needs_generative_fill",
+  "implement_reads_only_this_hud": true,
+  "sources": {
+    "spec_md": "specs/NNN-feature/spec.md",
+    "plan_md": "specs/NNN-feature/plan.md",
+    "spec_json": "specs/NNN-feature/spec.json",
+    "tasks_md": "specs/NNN-feature/tasks.md"
+  },
+  "task_summary": {
+    "title": "[FILL: task title from tasks.md]",
+    "description": "[FILL: full task line meaning without the task id marker]",
+    "primary_ref": "[FILL: file:symbol from tasks.md or bounded repo discovery]",
+    "related_paths": [
+      "[FILL: path]",
+      "[FILL: path]"
+    ],
+    "dependencies": [
+      "[FILL: TNNN]"
+    ],
+    "related_test_tasks": [
+      "[FILL: TNNN]"
+    ]
+  },
+  "domains": {
+    "relevant": [
+      {
+        "name": "[FILL: constitution domain]",
+        "reason": "[FILL: why this domain materially applies to the task]"
+      }
+    ]
+  },
+  "design_slices": {
+    "candidate": [
+      {
+        "slice_id": "[FILL: PL-XX]",
+        "title": "[FILL: slice title]",
+        "directive": "[FILL: exact implementation directive from the matched slice]",
+        "basis": "[FILL: seam overlap or directive overlap]",
+        "confidence": "high"
+      }
+    ],
+    "solved_slice_local_solution": "[FILL: task-local solution derived from the matched slice(s)]",
+    "task_specific_obligations": [
+      {
+        "slice_id": "[FILL: PL-XX]",
+        "obligation": "[FILL: task-specific obligation derived from that slice directive]"
+      }
+    ]
+  },
+  "repo_findings": {
+    "current_behavior_verified": false,
+    "reuse_evaluation": {
+      "status": "requires_repo_confirmation",
+      "candidates": [
+        {
+          "ref": "[FILL: file:symbol]",
+          "reuse_reason": "[FILL: why this can be reused]"
+        }
+      ],
+      "none_validated_reason": "[FILL: why no reuse candidate was validated if applicable]"
+    }
+  },
+  "acceptance": {
+    "task_local_acceptance_criteria": [
+      "[FILL: externally visible or contract-level behavior required for this task]",
+      "[FILL: externally visible or contract-level behavior required for this task]"
+    ],
+    "done_criteria": [
+      "[FILL: targeted proof or command that must pass]",
+      "[FILL: deterministic completion condition]"
+    ],
+    "constraints_and_invariants": [
+      "[FILL: invariant]",
+      "[FILL: invariant]"
+    ]
+  },
+  "tests": {
+    "required": [
+      {
+        "file": "[FILL: test file path]",
+        "name": "[FILL: test name]",
+        "given": [
+          "[FILL: setup]"
+        ],
+        "when": [
+          "[FILL: action]"
+        ],
+        "then": [
+          "[FILL: assertion]"
+        ]
+      }
+    ]
+  },
+  "sections": {
+    "objective": {
+      "required": true,
+      "prefill_source": "task_summary"
+    },
+    "relevant_domains": {
+      "required": true,
+      "prefill_source": "domains.relevant"
+    },
+    "candidate_design_slices": {
+      "required": true,
+      "prefill_source": "design_slices.candidate"
+    },
+    "proposed_solution": {
+      "required": true,
+      "prefill_source": "design_slices.solved_slice_local_solution"
+    },
+    "current_repo_behavior": {
+      "required": true,
+      "prefill_source": "repo_findings.current_behavior_verified",
+      "blocked_allowed": true
+    },
+    "target_behavior": {
+      "required": true,
+      "prefill_source": "acceptance.task_local_acceptance_criteria"
+    },
+    "primary_edit_seam": {
+      "required": true,
+      "prefill_source": "task_summary.primary_ref"
+    },
+    "reuse_candidates": {
+      "required": true,
+      "prefill_source": "repo_findings.reuse_evaluation",
+      "validated_repo_only": true
+    },
+    "required_edits": {
+      "required": true,
+      "prefill_source": "design_slices.task_specific_obligations",
+      "specialization_required": true
+    },
+    "touched_symbols": {
+      "required": true,
+      "prefill_source": "task_summary.related_paths"
+    },
+    "tests_to_add_or_update": {
+      "required": true,
+      "prefill_source": "tests.required"
+    },
+    "acceptance_criteria": {
+      "required": true,
+      "prefill_source": "acceptance.task_local_acceptance_criteria"
+    },
+    "done_criteria": {
+      "required": true,
+      "prefill_source": "acceptance.done_criteria"
+    },
+    "constraints_and_invariants": {
+      "required": true,
+      "prefill_source": "acceptance.constraints_and_invariants"
+    },
+    "implementation_checklist": {
+      "required": true,
+      "prefill_source": "design_slices.task_specific_obligations",
+      "specialization_required": true
+    },
+    "dependencies": {
+      "required": true,
+      "prefill_source": "task_summary.dependencies"
+    }
+  }
+}

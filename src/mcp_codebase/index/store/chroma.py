@@ -22,9 +22,11 @@ from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope,
 
 try:  # pragma: no cover - exercised in integration/runtime verification
     import chromadb  # type: ignore[import-not-found]
+    from chromadb.api.client import SharedSystemClient  # type: ignore[import-not-found]
     from chromadb.config import Settings  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover - handled with a clear runtime error
     chromadb = None
+    SharedSystemClient = None
     Settings = None
 
 try:  # pragma: no cover - exercised in integration/runtime verification
@@ -40,6 +42,10 @@ _HIGH_CONFIDENCE_QUERY_SCORE = 0.8
 _MARKDOWN_COMMAND_DOC_PENALTY = 0.25
 _UPSERT_BATCH_SIZE_FALLBACK = 1000
 _EMBED_BATCH_SIZE = 256
+_MAX_STAGING_DIRS = 16
+_STAGING_ALERT_DIR_COUNT = 32
+_STAGING_ALERT_BYTES = 8 * 1024**3
+_MIN_FREE_BYTES = 5 * 1024**3
 logger = logging.getLogger(__name__)
 
 
@@ -127,6 +133,7 @@ class ChromaIndexStore:
         metadata: IndexMetadata,
     ) -> IndexMetadata:
         """Stage a snapshot and atomically swap it into place."""
+        self._apply_staging_guardrails()
         staging_run_dir = self._staging_root / uuid.uuid4().hex
         self._db_root.mkdir(parents=True, exist_ok=True)
         staging_run_dir.mkdir(parents=True, exist_ok=False)
@@ -149,17 +156,21 @@ class ChromaIndexStore:
                 upsert_start = monotonic()
                 logger.info("vector-index: upserting %d chunks", len(chunks))
                 self._upsert_chunks_in_batches(collection, chunks)
-                del collection
-                gc.collect()
                 logger.info(
                     "vector-index: upsert complete in %.2fs",
                     monotonic() - upsert_start,
                 )
+            self._close_collection(collection)
+            del collection
+            gc.collect()
 
             activate_start = monotonic()
             logger.info("vector-index: activating snapshot")
             self._activate_snapshot(staging_run_dir)
-            self._write_manifest(metadata.model_copy(update={"snapshot_path": str(staging_run_dir)}))
+            active_metadata = metadata.model_copy(
+                update={"snapshot_path": str(self._active_collection_path)}
+            )
+            self._write_manifest(active_metadata)
             logger.info(
                 "vector-index: snapshot activated in %.2fs",
                 monotonic() - activate_start,
@@ -172,7 +183,7 @@ class ChromaIndexStore:
             "vector-index: staged snapshot complete in %.2fs",
             monotonic() - start,
         )
-        return metadata.model_copy(update={"snapshot_path": str(staging_run_dir)})
+        return active_metadata
 
     def refresh_snapshot(
         self,
@@ -194,6 +205,7 @@ class ChromaIndexStore:
         if active_metadata is None:
             return self.write_snapshot(changed_units, metadata)
 
+        self._apply_staging_guardrails()
         active_snapshot_path = Path(active_metadata.snapshot_path)
         changed_path_set = {
             _normalize_index_path(path, self._config.repo_root)
@@ -240,6 +252,7 @@ class ChromaIndexStore:
                     "vector-index: changed chunk upsert complete in %.2fs",
                     monotonic() - upsert_start,
                 )
+            self._close_collection(collection)
             del collection
             gc.collect()
 
@@ -248,7 +261,7 @@ class ChromaIndexStore:
             self._activate_snapshot(staging_run_dir)
             next_metadata = metadata.model_copy(
                 update={
-                    "snapshot_path": str(staging_run_dir),
+                    "snapshot_path": str(self._active_collection_path),
                     "collection_name": active_metadata.collection_name,
                 }
             )
@@ -291,7 +304,12 @@ class ChromaIndexStore:
             return None
 
         collection = self._open_collection(snapshot_path, metadata.collection_name, create=False)
-        payload = collection.get(include=["metadatas", "documents"])
+        try:
+            payload = collection.get(include=["metadatas", "documents"])
+        finally:
+            self._close_collection(collection)
+            del collection
+            gc.collect()
         metadatas = payload.get("metadatas") or []
         documents = payload.get("documents") or []
         if not metadatas:
@@ -327,25 +345,30 @@ class ChromaIndexStore:
 
         metadata, _ = snapshot
         collection = self._open_collection(Path(metadata.snapshot_path), metadata.collection_name, create=False)
-        query_embedding = self._embed_texts([query_text])[0]
-        where_filters: list[dict[str, object]] = []
-        if scope is not None:
-            where_filters.append({"scope": scope.value})
-        if file_path is not None:
-            where_filters.append({"file_path": _normalize_index_path(file_path, self._config.repo_root)})
-        if len(where_filters) > 1:
-            where: dict[str, object] | None = {"$and": where_filters}
-        elif where_filters:
-            where = where_filters[0]
-        else:
-            where = None
-        candidate_count = max(top_k * 4, top_k)
-        result = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=candidate_count,
-            where=where,
-            include=["distances", "metadatas", "documents"],
-        )
+        try:
+            query_embedding = self._embed_texts([query_text])[0]
+            where_filters: list[dict[str, object]] = []
+            if scope is not None:
+                where_filters.append({"scope": scope.value})
+            if file_path is not None:
+                where_filters.append({"file_path": _normalize_index_path(file_path, self._config.repo_root)})
+            if len(where_filters) > 1:
+                where: dict[str, object] | None = {"$and": where_filters}
+            elif where_filters:
+                where = where_filters[0]
+            else:
+                where = None
+            candidate_count = max(top_k * 4, top_k)
+            result = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=candidate_count,
+                where=where,
+                include=["distances", "metadatas", "documents"],
+            )
+        finally:
+            self._close_collection(collection)
+            del collection
+            gc.collect()
 
         metadatas = (result.get("metadatas") or [[]])[0]
         distances = (result.get("distances") or [[]])[0]
@@ -383,16 +406,21 @@ class ChromaIndexStore:
             metadata.collection_name,
             create=False,
         )
-        payload = collection.get(
-            where={
-                "$and": [
-                    {"scope": IndexScope.CODE.value},
-                    {"record_type": "code"},
-                    {"file_path": normalized_file},
-                ]
-            },
-            include=["metadatas"],
-        )
+        try:
+            payload = collection.get(
+                where={
+                    "$and": [
+                        {"scope": IndexScope.CODE.value},
+                        {"record_type": "code"},
+                        {"file_path": normalized_file},
+                    ]
+                },
+                include=["metadatas"],
+            )
+        finally:
+            self._close_collection(collection)
+            del collection
+            gc.collect()
         metadatas = _payload_sequence(payload, "metadatas")
 
         symbols: list[CodeSymbol] = []
@@ -484,6 +512,16 @@ class ChromaIndexStore:
         except Exception as exc:  # pragma: no cover - safety net for partially initialized collections
             raise RuntimeError(f"Vector index collection is not available at {collection_dir}") from exc
 
+    def _close_collection(self, collection: Any) -> None:
+        """Best-effort shutdown for the Chroma client behind a collection handle."""
+        client = getattr(collection, "_client", None)
+        system = getattr(client, "_system", None)
+        stop = getattr(system, "stop", None)
+        if callable(stop):
+            stop()
+        if SharedSystemClient is not None:
+            SharedSystemClient.clear_system_cache()
+
     def _collection_batch_size(self, collection: Any) -> int:
         """Return the largest safe per-call mutation batch size for the active Chroma client."""
         for candidate in (
@@ -527,7 +565,68 @@ class ChromaIndexStore:
             )
 
     def _activate_snapshot(self, staging_run_dir: Path) -> None:
-        return None
+        """Promote a completed staging snapshot into active/previous collection paths."""
+        self._staging_root.mkdir(parents=True, exist_ok=True)
+        if self._previous_collection_path.exists():
+            shutil.rmtree(self._previous_collection_path, ignore_errors=True)
+        if self._active_collection_path.exists():
+            shutil.move(str(self._active_collection_path), str(self._previous_collection_path))
+        shutil.move(str(staging_run_dir), str(self._active_collection_path))
+
+    def _apply_staging_guardrails(self) -> None:
+        """Prune orphaned staging snapshots and fail fast when disk headroom is too low."""
+        self._staging_root.mkdir(parents=True, exist_ok=True)
+        self._prune_orphaned_staging_dirs()
+        staging_dirs = self._list_staging_dirs()
+        staging_bytes = sum(self._dir_size_bytes(path) for path in staging_dirs)
+        if len(staging_dirs) >= _STAGING_ALERT_DIR_COUNT or staging_bytes >= _STAGING_ALERT_BYTES:
+            logger.warning(
+                "vector-index: excessive staging retention count=%d bytes=%d root=%s",
+                len(staging_dirs),
+                staging_bytes,
+                self._staging_root,
+            )
+        free_bytes = self._available_free_bytes()
+        if free_bytes < _MIN_FREE_BYTES:
+            raise RuntimeError(
+                "vector-index staging capacity critically low: "
+                f"free_bytes={free_bytes} staging_root={self._staging_root}"
+            )
+
+    def _prune_orphaned_staging_dirs(self) -> None:
+        """Keep only a bounded number of orphaned staging snapshots on disk."""
+        staging_dirs = self._list_staging_dirs()
+        stale_dirs = staging_dirs[:-_MAX_STAGING_DIRS]
+        if not stale_dirs:
+            return
+        for stale_dir in stale_dirs:
+            shutil.rmtree(stale_dir, ignore_errors=True)
+        logger.warning(
+            "vector-index: pruned %d orphaned staging snapshots under %s",
+            len(stale_dirs),
+            self._staging_root,
+        )
+
+    def _list_staging_dirs(self) -> list[Path]:
+        """Return staging directories ordered from oldest to newest."""
+        if not self._staging_root.exists():
+            return []
+        return sorted(
+            (path for path in self._staging_root.iterdir() if path.is_dir()),
+            key=lambda path: path.stat().st_mtime,
+        )
+
+    def _available_free_bytes(self) -> int:
+        """Return available free bytes for the vector-index filesystem."""
+        return shutil.disk_usage(self._db_root).free
+
+    def _dir_size_bytes(self, directory: Path) -> int:
+        """Return the recursive size of a directory for staging telemetry."""
+        total = 0
+        for child in directory.rglob("*"):
+            if child.is_file():
+                total += child.stat().st_size
+        return total
 
     def _write_manifest(self, metadata: IndexMetadata) -> None:
         if self._active_manifest_path.exists():

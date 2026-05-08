@@ -1,0 +1,110 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/030-vector-db-observability/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [
+        "src/mcp_codebase/health.py",
+        "src/mcp_codebase/doctor.py"
+      ],
+      "file_symbol_seams_raw": "`src/mcp_codebase/health.py`, `src/mcp_codebase/doctor.py`, shared health and reporting adapters that currently consume graph health",
+      "implementation_directive": "Introduce a shared health result that preserves current graph-health semantics while adding a clearly separated vector-health payload with machine-readable status, reason, and recovery data.",
+      "slice_id": "PL-01",
+      "title": "Shared Health Contract Extension",
+      "why": "The repo already has a graph-health contract, but vector observability must appear in the same top-level pathway without breaking existing `cgc` behavior."
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [
+        "src/mcp_codebase/index/store/chroma.py"
+      ],
+      "file_symbol_seams_raw": "`src/mcp_codebase/index/store/chroma.py`, vector-index manifest and status metadata readers",
+      "implementation_directive": "Derive vector health from active and previous snapshot references, staging population, threshold crossings, invalid manifests, and preserved failure state without reintroducing direct filesystem forensics as the supported operator workflow.",
+      "slice_id": "PL-02",
+      "title": "Vector Lifecycle Status Derivation",
+      "why": "The truth about vector state already lives in the vector store lifecycle, but it is not surfaced as an operator-facing health model."
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [
+        "repo health dashboard and status pathway, repo alert emission pathway, any runtime surface that currently renders or dispatches adjacent health signals"
+      ],
+      "file_symbol_seams_raw": "repo health dashboard and status pathway, repo alert emission pathway, any runtime surface that currently renders or dispatches adjacent health signals",
+      "implementation_directive": "Route vector warning and blocking states through the same dashboard and alert pathways used for related repo health signals, carrying current measurements, thresholds, and next-action guidance.",
+      "slice_id": "PL-03",
+      "title": "Shared Dashboard And Alert Routing",
+      "why": "The feature is incomplete if warnings only exist as backend logs; shared dashboards and alerts are the actual operator surface requested by the spec."
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [
+        "unit tests for shared health classification, integration and runtime tests for vector write, refresh, warning, and failure scenarios"
+      ],
+      "file_symbol_seams_raw": "unit tests for shared health classification, integration and runtime tests for vector write, refresh, warning, and failure scenarios",
+      "implementation_directive": "Add deterministic coverage for healthy, stale, capacity, and failure classifications plus live-backed lifecycle verification that confirms active, previous, staging, and preserved-state reporting remain truthful.",
+      "slice_id": "PL-04",
+      "title": "Verification Of Healthy, Warning, And Failure States",
+      "why": "This feature changes operator trust. It needs proof that the surfaced health state matches actual lifecycle behavior, including preserved last-good state after failure."
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "code patterns": "It must extend the existing cgc and shared health seams rather than creating a parallel ad hoc contract.",
+      "observability": "The feature is primarily about exposing actionable shared health, dashboard, and alert signals for the vector index.",
+      "ops governance": "Warnings, blocking conditions, and next actions become operational control surfaces for maintainers and agents.",
+      "testing": "The feature requires deterministic health-path verification plus live-ish lifecycle checks for write, refresh, warning, and failure states."
+    },
+    "relevant": [
+      "observability",
+      "code patterns",
+      "testing",
+      "ops governance"
+    ]
+  },
+  "feature_id": "030-vector-db-observability",
+  "risk": {
+    "external_dependency_uncertainty": "low",
+    "human_operator_dependency": "medium",
+    "overall": "high",
+    "repo_uncertainty": "medium",
+    "requirement_clarity": "low",
+    "runtime_side_effect_risk": "medium",
+    "state_data_migration_risk": "low"
+  },
+  "routing": {
+    "architecture_diagram": false,
+    "external_research": false,
+    "plan_level": "core",
+    "relevant_domains": [
+      "observability",
+      "code patterns",
+      "testing",
+      "ops governance"
+    ],
+    "routing_reason": "The repo already has the core seams locally, so external research is unnecessary. The plan does need explicit shared-health architecture and detailed design notes because the change must join cgc doctor/health, vector-index lifecycle status, and shared dashboard/alert pathways without creating a separate contract.",
+    "sketch_level": "expanded"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": false,
+    "architecture_strategy": true,
+    "expanded_design_notes": true,
+    "external_research": false,
+    "strategy_reason": "The repo already has the core seams locally, so external research is unnecessary. The plan does need explicit shared-health architecture and detailed design notes because the change must join cgc doctor/health, vector-index lifecycle status, and shared dashboard/alert pathways without creating a separate contract."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [],
+    "duplicate_reason": "No existing feature provides vector DB observability through the same shared cgc dashboard and alert pathway.",
+    "risk_level": "high",
+    "tshirt_size": "m"
+  }
+}

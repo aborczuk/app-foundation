@@ -30,11 +30,11 @@ Template rules:
 
 ## Candidate Design Slices
 
-- `[FILL: slice id]` — [FILL: why this slice appears relevant to the task, with confidence or basis.]
+- `[FILL: slice id]` — [FILL: exact slice title], [FILL: exact slice directive], [FILL: why this slice appears relevant to the task, with confidence or basis.]
 - `[FILL: slice id]` — [FILL: include only when more than one slice legitimately applies.]
 
-[EXAMPLE: `PL-01` — route/runtime seam overlap from `app.py` and router work; high confidence.]
-[EXAMPLE: `PL-03` — browser shell file overlap from template/static assets; high confidence.]
+[EXAMPLE: `PL-01` — Tetris Runtime Surface, "Extend the FastAPI runtime with an isolated Tetris route and supporting delivery helpers without perturbing existing control-plane endpoints.", route/runtime seam overlap from `app.py` and router work; high confidence.]
+[EXAMPLE: `PL-03` — Playable Browser Shell, "Build the thinnest browser shell that can render board state, collect keyboard input, display score/game-over state, and synchronize with the authoritative gameplay flow.", browser shell file overlap from template/static assets; high confidence.]
 
 ## Proposed Solution
 
@@ -80,14 +80,17 @@ If current behavior was not verified, write exactly:
 
 [FILL: Replace this section with concrete implementation bullets. Each bullet must identify the exact behavior, branch, condition, return contract, field, side effect, or invariant being changed.]
 
+Every required edit bullet must attach to at least one matched design slice and specialize that slice into a task-specific obligation. Do not merely cite `PL-01`/`PL-02`; explain what that slice requires in this exact task.
+
 Required edits are invalid if they only restate intent, such as:
 - [EXAMPLE INVALID: Harden runtime behavior.]
 - [EXAMPLE INVALID: Normalize the envelope.]
 - [EXAMPLE INVALID: Add tests.]
+- [EXAMPLE INVALID: Honor PL-02.]
 
 Required edits should look like:
-- [EXAMPLE: In `run_generative_handoff`, detect when the resolved route has `mode: generative` but no runner command/config is available.]
-- [EXAMPLE: Return a deterministic blocked/error envelope before command execution.]
+- [EXAMPLE: From `PL-02`'s deterministic state-transition directive, reject ended-session move/tick input in `TetrisSessionService` instead of letting the router branch on game-over state.]
+- [EXAMPLE: From `PL-01`'s runtime-surface directive, add `restart_tetris_session()` in `router.py` without introducing a second payload shape.]
 - [EXAMPLE: Use reason code `missing_generative_runner`.]
 - [EXAMPLE: Ensure this path does not call `append_pipeline_success_event`.]
 - [EXAMPLE: Preserve current behavior for configured generative runners.]
@@ -154,8 +157,19 @@ Then assert:
 - ledger file remains unchanged
 ]
 
+## Acceptance Criteria
+
+- This section is mandatory because `/speckit.implement` must be able to execute the task using this HUD alone.
+- Carry forward the task-local acceptance criteria from `spec.md`, `spec.json`, matched design slices, and bounded repo reads.
+- `[FILL: externally observable or contract-level behavior that must be true when this task is complete.]`
+- `[FILL: externally observable or contract-level behavior that must be true when this task is complete.]`
+
+[EXAMPLE: When the session is over, the restart affordance is visible and active controls no longer mutate the ended board.]
+[EXAMPLE: When restart is triggered, the next rendered state is a fresh playable session with reset score and reset board state.]
+
 ## Done Criteria
 
+- Done criteria are the proof-of-completion checks for implement. Acceptance criteria describe required behavior; done criteria describe the evidence that the task is complete.
 - [FILL: Targeted command that must pass.]
 - [FILL: Regression command, contract check, or acceptance check that must pass.]
 - [FILL: Deterministic artifact/event/side-effect condition that must be true.]

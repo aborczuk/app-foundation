@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -47,9 +48,33 @@ def test_speckit_solution_doc_consumes_plan_design_slices() -> None:
     assert "spec.json" in doc_text
     assert "Solve each design slice" in doc_text
     assert "speckit_remake_huds.py prepare" in doc_text
+    assert "estimate` subagent on `gpt-5.4-mini`" in doc_text
+    assert "breakdown` subagent on `gpt-5.4-mini`" in doc_text
+    assert "speckit_tasking_chain.py --feature-dir" in doc_text
+    assert "Write explicit task-local acceptance criteria into the HUD." in doc_text
+    assert "Assume `/speckit.implement` will read only this HUD for the task." in doc_text
+    assert ".specify/templates/task-hud-contract-template.json" in doc_text
+    assert "per-task HUD contract JSON" in doc_text
+    assert "Attach each matched design slice to the task by translating the slice directive into task-specific obligations." in doc_text
+    assert "matched slice directives attached and specialized into task-specific required edits" in doc_text
+    assert "Do not call `scripts/speckit_tasking_codex_runner.py` from `solution`." in doc_text
     assert "Do not call `scripts/speckit_codex_handoff_runner.py`" in doc_text
     assert "Do not call `/speckit.tasking`" in doc_text
     assert "Auto-invoke `/speckit.sketch`" not in doc_text
     assert "Auto-invoke `/speckit.tasking`" not in doc_text
     assert "Auto-invoke `/speckit.solutionreview`" not in doc_text
     assert "Auto-invoke `/speckit.analyze`" not in doc_text
+
+
+def test_task_hud_contract_template_covers_required_sections() -> None:
+    """The HUD contract template should enumerate the required HUD sections."""
+    template_path = Path(__file__).resolve().parents[2] / ".specify" / "templates" / "task-hud-contract-template.json"
+    payload = json.loads(template_path.read_text(encoding="utf-8"))
+
+    assert payload["implement_reads_only_this_hud"] is True
+    section_keys = set(payload["sections"])
+    assert "acceptance_criteria" in section_keys
+    assert "done_criteria" in section_keys
+    assert "reuse_candidates" in section_keys
+    assert "relevant_domains" in section_keys
+    assert "proposed_solution" in section_keys

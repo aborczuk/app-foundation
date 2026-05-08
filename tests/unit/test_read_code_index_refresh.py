@@ -370,8 +370,7 @@ def test_vector_refresh_if_needed_launches_background_refresh_for_unaffected_sco
         "refresh",
         str(tmp_path / "docs" / "guide.md"),
     )
-    assert "overlap=no" in captured.err
-    assert "launching async stale-scope refresh" in captured.err
+    assert captured.err == ""
     assert "cause=git-path-drift" not in captured.err
 
 

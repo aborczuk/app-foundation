@@ -946,7 +946,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     for feature_id in sorted(feature_states):
         feature = feature_states[feature_id]
         closed = [tid for tid, st in feature.tasks.items() if st.closed]
-        open_tasks = [tid for tid, st in feature.tasks.items() if st.started and not st.closed]
+        open_tasks = [tid for tid, st in feature.tasks.items() if st.registered and not st.closed]
         active_pairs = sorted(
             feature.active_tasks_by_actor.items(),
             key=lambda pair: pair[0],
