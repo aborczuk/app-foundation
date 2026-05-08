@@ -35,6 +35,7 @@ _Artifact: `plan.md`_
     "architecture_strategy": false,
     "expanded_design_notes": false,
     "external_research": false,
+    "net_new_surface": false,
     "strategy_reason": ""
   },
   "triage": {

@@ -88,16 +88,6 @@ class SliceRecord:
 
 
 @dataclass(frozen=True)
-class SliceMatch:
-    """Candidate task-to-slice match exported in scaffold frontmatter."""
-
-    slice_id: str
-    title: str
-    basis: str
-    confidence: str
-
-
-@dataclass(frozen=True)
 class FeatureContext:
     """Combined feature artifacts that seed HUD scaffolding."""
 
@@ -151,8 +141,8 @@ def _feature_id_from_dir(feature_dir: Path) -> str:
     return match.group("id") if match else "000"
 
 
-def _extract_summary_and_ref(description: str) -> tuple[str, str]:
-    """Split a task description into summary text and file:symbol reference."""
+def _extract_summary_and_ref(description: str) -> tuple[str, str | None]:
+    """Split a task description into summary text and an explicitly declared file:symbol reference."""
     for separator in (" — ", " - "):
         if separator in description:
             summary, tail = description.rsplit(separator, 1)
@@ -164,7 +154,7 @@ def _extract_summary_and_ref(description: str) -> tuple[str, str]:
         ref = inline.group(1)
         summary = description.replace(inline.group(0), "").strip(" -")
         return summary, ref
-    return description.strip(), "[resolve from tasks.md annotation]"
+    return description.strip(), None
 
 
 def _iter_tasks(tasks_file: Path) -> Iterable[TaskRecord]:
@@ -349,273 +339,96 @@ def _load_feature_context(feature_dir: Path) -> FeatureContext:
     )
 
 
-def _related_paths(task: TaskRecord, primary_ref: str) -> tuple[str, ...]:
+def _related_paths(task: TaskRecord, primary_ref: str | None) -> tuple[str, ...]:
     """Return concrete file paths referenced by the task line."""
     paths: list[str] = []
     for item in CODE_SPAN_RE.findall(task.description):
         file_path = item.split(":", 1)[0]
         if "/" in file_path and file_path not in paths:
             paths.append(file_path)
-    primary_path = primary_ref.split(":", 1)[0] if ":" in primary_ref else primary_ref
-    if primary_path not in paths:
+    primary_path = None
+    if primary_ref:
+        primary_path = primary_ref.split(":", 1)[0] if ":" in primary_ref else primary_ref
+    if primary_path and primary_path not in paths:
         paths.insert(0, primary_path)
     return tuple(paths)
 
 
-def _related_test_tasks(task: TaskRecord, context: FeatureContext) -> tuple[TaskRecord, ...]:
-    """Return same-story test tasks relevant to the current task."""
-    if not task.story:
-        return ()
-    return tuple(
-        record
-        for record in context.task_records
-        if record.story == task.story and "tests/" in record.description
-    )
-
-
-def _classify_task(task: TaskRecord, paths: tuple[str, ...]) -> str:
-    """Return the deterministic/generative classification for one task."""
-    if task.is_human:
-        return "human_runbook"
-    if paths and all(path.startswith("specs/") for path in paths):
-        return "deterministic_only"
-    if paths and all(path.startswith("tests/") for path in paths):
-        return "needs_repo_search"
-    return "needs_generative_fill"
-
-
-def _slice_matches(task: TaskRecord, context: FeatureContext, paths: tuple[str, ...]) -> tuple[SliceMatch, ...]:
-    """Return candidate task-to-slice matches with deterministic basis labels."""
-    text = f"{task.description} {' '.join(paths)}".lower()
-    matches: list[SliceMatch] = []
-    for slice_record in context.slices:
-        slice_text = f"{slice_record.title} {slice_record.directive} {' '.join(slice_record.seams)}".lower()
-        if any(path in slice_text for path in paths if path):
-            matches.append(
-                SliceMatch(
-                    slice_id=slice_record.slice_id,
-                    title=slice_record.title,
-                    basis="explicit seam overlap from task file ownership",
-                    confidence="high",
-                )
-            )
-            continue
-        if "restart" in text and "restart" in f"{slice_record.title} {slice_record.directive}".lower():
-            matches.append(
-                SliceMatch(
-                    slice_id=slice_record.slice_id,
-                    title=slice_record.title,
-                    basis="task summary overlaps slice directive language",
-                    confidence="medium",
-                )
-            )
-            continue
-        if "tests/" in text and "verification" in slice_record.title.lower():
-            matches.append(
-                SliceMatch(
-                    slice_id=slice_record.slice_id,
-                    title=slice_record.title,
-                    basis="test ownership overlaps verification slice",
-                    confidence="high",
-                )
-            )
-    return tuple(matches[:3])
-
-
-def _candidate_slice_contract_lines(
-    matches: tuple[SliceMatch, ...],
-    slices: tuple[SliceRecord, ...],
-) -> list[str]:
-    """Return raw slice contract lines without semantic synthesis."""
-    slice_map = {slice_record.slice_id: slice_record for slice_record in slices}
-    lines: list[str] = []
-    for match in matches:
-        slice_record = slice_map.get(match.slice_id)
-        if not slice_record:
-            continue
-        seam_text = ", ".join(slice_record.seams) if slice_record.seams else "none recorded"
-        lines.append(
-            f"- `{match.slice_id}` | title: `{slice_record.title}` | directive: `{slice_record.directive}` | seams: `{seam_text}`"
-        )
-    return lines
-
-
-def _render_proposed_solution(
-    primary_ref: str,
-    matches: tuple[SliceMatch, ...],
-    slices: tuple[SliceRecord, ...],
-    *,
-    classification: str,
-) -> list[str]:
-    """Seed the per-task solution section from candidate design slices."""
-    if classification == "deterministic_only":
-        return [f"- Keep the work inside `{primary_ref}` and make the task outcome traceable to the approved plan/spec details."]
-    return [
-        f"- [FILL: solve the applicable design slice(s) for `{primary_ref}` and attach the exact matched slice directive(s) as task-specific obligations.]",
-        "- [FILL: name the exact symbols, branches, or contracts this task will change.]",
-    ]
-
-
-def _render_test_blocks(task: TaskRecord, story: StoryRecord | None, related_tests: tuple[TaskRecord, ...]) -> list[str]:
-    """Render deterministic test scaffolds or concrete doc-review checks."""
-    if not related_tests and not task.story:
-        return [
-            "### Test 1",
-            "",
-            f"**File**: `{_extract_summary_and_ref(task.description)[1].split(':', 1)[0]}`  ",
-            "**Name**: `tasking_review`",
-            "",
-            "Given:",
-            "- the task artifact is updated",
-            "",
-            "When:",
-            "- reviewing the task output for clarity and traceability",
-            "",
-            "Then assert:",
-            "- the task artifact references the plan/spec seam it claims to implement",
-            "- no placeholder or generic filler remains in the generated task detail",
-        ]
-    lines: list[str] = []
-    for index, test_task in enumerate(related_tests, start=1):
-        _, test_ref = _extract_summary_and_ref(test_task.description)
-        test_file, _, test_name = test_ref.partition(":")
-        lines.extend(
-            [
-                f"### Test {index}",
-                "",
-                f"**File**: `{test_file}`  ",
-                f"**Name**: `{test_name or test_task.task_id}`",
-                "",
-                "Given:",
-                f"- {story.acceptance[0] if story and story.acceptance else 'story preconditions are satisfied'}",
-                f"- {story.acceptance[-1] if story and len(story.acceptance) > 1 else 'task preconditions are satisfied'}",
-                "",
-                "When:",
-                f"- exercise the implementation seam for `{task.task_id}`",
-                "",
-                "Then assert:",
-                f"- `{test_task.task_id}` passes for this task",
-                f"- `{task.task_id}` behavior is covered at `{test_ref}`",
-                "",
-            ]
-        )
-    while lines and not lines[-1]:
-        lines.pop()
-    return lines
-
-
 def _render_code_scaffold(task: TaskRecord, context: FeatureContext) -> str:
-    """Render a code-task HUD scaffold with deterministic seeds and explicit fill markers."""
+    """Render a code-task HUD scaffold from explicit task facts only."""
     summary, primary_ref = _extract_summary_and_ref(task.description)
     paths = _related_paths(task, primary_ref)
-    story = context.story_map.get(task.story or "")
-    related_tests = _related_test_tasks(task, context)
-    classification = _classify_task(task, paths)
-    slice_matches = _slice_matches(task, context, paths)
-    needs_generative_fill = classification != "deterministic_only"
+    seam_label = primary_ref or "[FILL: no explicit file:symbol seam was declared in tasks.md. Identify the primary seam during HUD completion.]"
+    objective_scope = "declared seam" if primary_ref else "task scope"
     lines = [
         "---",
         f'feature_id: "{context.feature_id}"',
         f'task_id: "{task.task_id}"',
-        f'classification: "{classification}"',
-        f"needs_repo_search: {str(classification in {'needs_repo_search', 'needs_generative_fill'}).lower()}",
-        f"needs_generative_fill: {str(needs_generative_fill).lower()}",
-        f"candidate_design_slices: {json.dumps([match.slice_id for match in slice_matches])}",
+        f'task_summary: "{summary}"',
+    ]
+    if task.story:
+        lines.append(f'story_id: "{task.story}"')
+    lines.extend(
+        [
+            f'primary_edit_seam: "{primary_ref}"' if primary_ref else "primary_edit_seam: null",
+            f"related_paths: {json.dumps(list(paths))}",
+        ]
+    )
+    lines.extend(
+        [
         "---",
         "",
         f"# HUD: {task.task_id} - {summary}",
         "",
         "## Objective",
         "",
-        f"Deliver `{task.task_id}` so the declared seam satisfies: {summary}.",
+        f"Deliver `{task.task_id}` so the {objective_scope} satisfies: {summary}.",
         "",
         "## Relevant Domains",
         "",
+        "- [FILL: list only the materially relevant domains for this task and explain why each applies.]",
+        "",
+        "## Candidate Design Slices",
+        "",
+        "- [FILL: attach the exact design slice title(s), directive(s), and seam(s) that apply to this task.]",
+        "",
+        "## Proposed Solution",
+        "",
+        f"- [FILL: write the actual task-local solution for `{seam_label}`.]",
+        "- [FILL: name the exact symbols, contracts, or branches this task will change.]",
+        "",
+        "## Current Repo Behavior",
+        "",
+        "[FILL: describe current repo behavior from bounded repo reads, or write exact `BLOCKED: current behavior not validated from repo reads.`]",
+        "",
+        "## Target Behavior",
+        "",
+        "- [FILL: carry forward the exact story outcome this task must preserve or enable.]",
+        "- [FILL: carry forward the exact story-level proof or independent test this task must keep true.]",
+        "- [FILL: attach the matched slice directive as a task-specific target behavior obligation.]",
+        f"- [FILL: describe the exact task-seam behavior expected at `{seam_label}`.]",
     ]
-    if classification == "deterministic_only":
-        lines.extend([f"- `{domain}` - {reason}" for domain, reason in context.domains.items()] or ["- None."])
-    else:
-        lines.extend(
-            [
-                "- [FILL: select the materially relevant domains from the task HUD contract JSON and explain why each applies to this task.]",
-                "- [FILL: include only domains that materially affect the task seam.]",
-            ]
-        )
-    lines.extend(
-        [
-            "",
-            "## Candidate Design Slices",
-            "",
-        ]
     )
-    if slice_matches:
-        lines.extend(_candidate_slice_contract_lines(slice_matches, context.slices))
-    elif classification == "deterministic_only":
-        lines.append("- `None` - no additional design-slice narrowing is required beyond the declared documentation seam.")
-    else:
-        lines.append("- [FILL: attach the exact matched slice title, directive, and seams from the task HUD contract JSON.]")
-    lines.extend(
-        [
-            "",
-            "## Proposed Solution",
-            "",
-            *_render_proposed_solution(primary_ref, slice_matches, context.slices, classification=classification),
-            "",
-            "## Current Repo Behavior",
-            "",
-        ]
-    )
-    if classification == "deterministic_only":
-        lines.append(
-            f"Verified `{paths[0]}` is the file-scoped seam for this task. No runtime symbol discovery is required before updating the documentation artifact."
-        )
-    else:
-        lines.append("[FILL: describe current repo behavior from bounded repo reads, or write exact `BLOCKED: current behavior not validated from repo reads.`]")
-    lines.extend(
-        [
-            "",
-            "## Target Behavior",
-            "",
-        ]
-    )
-    if classification == "deterministic_only":
-        lines.append(f"- The updated artifact must satisfy the declared seam for `{task.task_id}` without widening scope.")
-    else:
-        lines.extend(
-            [
-                "- [FILL: carry forward the exact story outcome this task must preserve or enable.]",
-                "- [FILL: carry forward the exact story-level proof or independent test this task must keep true.]",
-                "- [FILL: attach the matched slice directive as a task-specific target behavior obligation.]",
-                f"- [FILL: describe the exact task-seam behavior expected at `{primary_ref}`.]",
-            ]
-        )
     lines.extend(
         [
             "",
             "## Primary Edit Seam",
             "",
-            f"**File:Symbol**: `{primary_ref}`",
+            f"**File:Symbol**: `{primary_ref}`" if primary_ref else "**File:Symbol**: [FILL: no explicit file:symbol seam was declared in tasks.md. Set the primary seam here.]",
             "",
             "## Reuse Candidates",
             "",
-        ]
-    )
-    if classification == "deterministic_only":
-        lines.append(f"- `{primary_ref}` - keep the change inside the declared documentation seam.")
-    else:
-        lines.append("- [FILL: concrete reuse candidate from repo reads, or `None validated from repo reads.`]")
-    lines.extend(
-        [
+            "- [FILL: concrete reuse candidate from repo reads, or `None validated from repo reads.`]",
             "",
             "## Required Edits",
             "",
         ]
     )
-    if classification == "deterministic_only":
-        lines.append(f"- Update `{primary_ref}` so the task output is traceable to the plan and acceptance sources without widening the seam.")
-    else:
+    if paths:
         for path in paths:
             lines.append(f"- [FILL: concrete change required in `{path}`.]")
+    else:
+        lines.append("- [FILL: concrete change required in the confirmed primary seam.]")
     lines.extend(
         [
             "",
@@ -625,11 +438,11 @@ def _render_code_scaffold(task: TaskRecord, context: FeatureContext) -> str:
             "",
         ]
     )
-    for path in paths:
-        if classification == "deterministic_only":
-            lines.append(f"- `{path}` - documentation-only seam update for this task.")
-        else:
+    if paths:
+        for path in paths:
             lines.append(f"- `{path}` - [FILL: specific intended change.]")
+    else:
+        lines.append("- [FILL: exact file:symbol to modify once the primary seam is confirmed.]")
     lines.extend(
         [
             "",
@@ -644,83 +457,38 @@ def _render_code_scaffold(task: TaskRecord, context: FeatureContext) -> str:
             "",
             "## Tests To Add Or Update",
             "",
-            *_render_test_blocks(task, story, related_tests),
+            "- [FILL: name the exact test file, selector, or verification command for this task.]",
             "",
             "## Acceptance Criteria",
             "",
-        ]
-    )
-    if classification == "deterministic_only" and story and story.acceptance:
-        lines.extend(f"- {item}" for item in story.acceptance[:2])
-    elif classification == "deterministic_only" and context.edge_cases:
-        lines.extend(f"- {item}" for item in context.edge_cases[:2])
-    else:
-        lines.extend(
-            [
-                "- [FILL: copy the exact task-local acceptance criteria from the task HUD contract JSON or source artifacts.]",
-                "- [FILL: include only externally visible or contract-level behavior required for this task.]",
-            ]
-        )
-    lines.extend(
-        [
+            "- [FILL: write the exact task-local acceptance criteria from the approved source artifacts.]",
+            "- [FILL: include only externally visible or contract-level behavior required for this task.]",
             "",
             "## Done Criteria",
             "",
-        ]
-    )
-    if classification == "deterministic_only":
-        lines.extend(
-            [
-                "- The updated artifact points back to the relevant plan/spec seam.",
-                "- No placeholder or example text remains in the task detail.",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "- [FILL: targeted command or test that must pass.]",
-                "- [FILL: deterministic artifact, behavior, or side-effect condition that must hold.]",
-            ]
-        )
-    lines.extend(
-        [
+            "- [FILL: targeted command or test that must pass.]",
+            "- [FILL: deterministic artifact, behavior, or side-effect condition that must hold.]",
             "",
             "## Constraints And Invariants",
             "",
-        ]
-    )
-    if story and story.acceptance:
-        lines.extend(f"- {item}" for item in story.acceptance[:2])
-    elif context.edge_cases:
-        lines.extend(f"- {item}" for item in context.edge_cases[:2])
-    else:
-        lines.append("- Preserve the task contract stated in `tasks.md`.")
-    lines.extend(
-        [
+            "- [FILL: copy only the constraints and invariants this task must preserve.]",
             "",
             "## Implementation Checklist",
             "",
+            "- [ ] [FILL: repo-grounded current behavior captured.]",
+            "- [ ] [FILL: concrete reuse path or explicit none validated.]",
+            "- [ ] [FILL: seam-specific implementation steps listed.]",
         ]
     )
-    if classification == "deterministic_only":
-        lines.append(f"- [ ] Update `{primary_ref}` with the required traceability detail.")
-    else:
-        lines.extend(
-            [
-                "- [ ] [FILL: repo-grounded current behavior captured.]",
-                "- [ ] [FILL: concrete reuse path or explicit none validated.]",
-                "- [ ] [FILL: seam-specific implementation steps listed.]",
-            ]
-        )
-    dependencies = context.dependencies.get(task.task_id, ())
-    if dependencies:
-        lines.append(f"- [ ] Confirm prerequisite task outputs are present before editing: {', '.join(dependencies)}.")
+    if task.story:
+        lines.append(f"- [ ] [FILL: acceptance for `{task.story}` translated into task-local completion criteria.]")
     lines.extend(
         [
+            *([f"- [ ] Confirm prerequisite task outputs are present before editing: {', '.join(context.dependencies[task.task_id])}."] if context.dependencies.get(task.task_id) else []),
             "",
             "## Dependencies",
             "",
-            f"- {', '.join(dependencies) if dependencies else 'None.'}",
+            f"- {', '.join(context.dependencies.get(task.task_id, ())) if context.dependencies.get(task.task_id) else 'None.'}",
             "",
             "## Process Checklist",
             "",
@@ -737,20 +505,18 @@ def _render_code_scaffold(task: TaskRecord, context: FeatureContext) -> str:
 def _render_human_hud(task: TaskRecord, context: FeatureContext) -> str:
     """Render a deterministic runbook HUD for human-required tasks."""
     summary, ref = _extract_summary_and_ref(task.description)
+    system_label = ref.split(":", 1)[0] if ref else "[FILL: declare the human-owned system or artifact for this task.]"
     return f"""---
 feature_id: "{context.feature_id}"
 task_id: "{task.task_id}"
-classification: "human_runbook"
-needs_repo_search: false
-needs_generative_fill: false
-candidate_design_slices: []
+task_summary: "{summary}"
 ---
 
 # HUD: {task.task_id} [H] - {summary}
 
 ## Runbook
 
-**System**: `{ref.split(':', 1)[0]}`
+**System**: `{system_label}`
 **Steps**:
 1. Execute the human-owned procedure for: {summary}
 2. Record deterministic evidence in the task notes or referenced artifact.
@@ -769,17 +535,12 @@ def _is_template_or_stub(content: str) -> bool:
 
 
 def _prepare(feature_dir: Path, *, rewrite_existing: bool) -> dict[str, Any]:
-    """Scaffold HUDs from deterministic task/spec/plan context."""
+    """Scaffold HUDs from explicit task facts plus fixed section structure."""
     context = _load_feature_context(feature_dir)
     hud_dir = feature_dir / "huds"
     hud_dir.mkdir(parents=True, exist_ok=True)
     updated: list[str] = []
-    classifications: dict[str, str] = {}
     for task in context.task_records:
-        summary, primary_ref = _extract_summary_and_ref(task.description)
-        paths = _related_paths(task, primary_ref)
-        classification = _classify_task(task, paths)
-        classifications[task.task_id] = classification
         hud_path = hud_dir / f"{task.task_id}.md"
         if hud_path.exists() and not rewrite_existing:
             existing = hud_path.read_text(encoding="utf-8")
@@ -793,7 +554,6 @@ def _prepare(feature_dir: Path, *, rewrite_existing: bool) -> dict[str, Any]:
         "feature_dir": str(feature_dir),
         "updated_count": len(updated),
         "updated_tasks": updated,
-        "classifications": classifications,
     }
 
 

@@ -83,6 +83,7 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
         "## Strategy",
         "Relevant Domains",
         "Do not infer t-shirt size from the number of discovery matches",
+        "net_new_surface",
         "Do not create `discovery.md`, `research.md`, `sketch.md`",
         "Do not call `scripts/speckit_codex_handoff_runner.py`",
     ]
@@ -103,6 +104,8 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
         raise SystemExit(f"Command doc still contains forbidden snippets: {', '.join(present)}")
 
     template_text = template_path.read_text(encoding="utf-8")
+    if "\"net_new_surface\": false" not in template_text:
+        raise SystemExit("Plan template missing strategy.net_new_surface contract field")
     required_template_headings = [
         "## Triage",
         "## Strategy Contract",

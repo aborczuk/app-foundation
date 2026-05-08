@@ -529,6 +529,10 @@ def _normalize_contract(contract: Mapping[str, Any]) -> dict[str, Any]:
         if not normalized_domain:
             continue
         domain_reasoning[normalized_domain] = str(value or "").strip()
+    net_new_surface = bool(strategy.get("net_new_surface", False))
+    external_research = bool(strategy.get("external_research", False))
+    if net_new_surface:
+        external_research = True
     return {
         "triage": {
             "duplicate": bool(triage.get("duplicate", False)),
@@ -542,10 +546,11 @@ def _normalize_contract(contract: Mapping[str, Any]) -> dict[str, Any]:
             "reasoning": domain_reasoning,
         },
         "strategy": {
-            "external_research": bool(strategy.get("external_research", False)),
+            "external_research": external_research,
             "architecture_strategy": bool(strategy.get("architecture_strategy", False)),
             "architecture_diagram": bool(strategy.get("architecture_diagram", False)),
             "expanded_design_notes": bool(strategy.get("expanded_design_notes", False)),
+            "net_new_surface": net_new_surface,
             "strategy_reason": str(strategy.get("strategy_reason") or "").strip(),
         },
         "risk": {

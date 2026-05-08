@@ -93,6 +93,7 @@ def _write_contract(
     relevant_domains: list[str] | None = None,
     architecture_strategy: bool = False,
     external_research: bool = False,
+    net_new_surface: bool = False,
     architecture_diagram: bool = False,
     expanded_design_notes: bool = False,
     risk_level: str = "low",
@@ -132,6 +133,7 @@ def _write_contract(
                             "architecture_strategy": architecture_strategy,
                             "expanded_design_notes": expanded_design_notes,
                             "external_research": external_research,
+                            "net_new_surface": net_new_surface,
                             "strategy_reason": "Plan only the sections justified by domains, size, and risk.",
                         },
                         "risk": {
@@ -275,6 +277,28 @@ def test_apply_strategy_rewrites_only_selected_sections(monkeypatch, tmp_path: P
     assert "## Architecture Diagram" in text
     assert "## Expanded Design Notes" in text
     assert "## Plan Completion Summary" in text
+
+
+def test_normalize_contract_forces_external_research_for_net_new_surface() -> None:
+    """Net-new features or surfaces must force external research on in strategy."""
+    contract = plan_step._normalize_contract(
+        {
+            "triage": {"duplicate": False, "risk_level": "medium", "tshirt_size": "m"},
+            "domains": {"relevant": ["observability"], "reasoning": {"observability": "new surface"}},
+            "strategy": {
+                "external_research": False,
+                "net_new_surface": True,
+                "architecture_strategy": False,
+                "architecture_diagram": False,
+                "expanded_design_notes": False,
+                "strategy_reason": "Net new surface requires outside precedent research.",
+            },
+            "risk": {"overall": "medium"},
+        }
+    )
+
+    assert contract["strategy"]["net_new_surface"] is True
+    assert contract["strategy"]["external_research"] is True
 
 
 def test_finalize_duplicate_requests_duplicate_marked(monkeypatch, tmp_path: Path) -> None:

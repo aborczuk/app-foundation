@@ -31,6 +31,7 @@ uv run python scripts/speckit_plan_step.py prepare-triage --feature-id "$FEATURE
    - Risk is a generative judgment across `overall`, requirement clarity, repo uncertainty, external dependency uncertainty, state/data migration risk, runtime side-effect risk, and human/operator dependency.
    - Relevant domains are a generative judgment using the 17 constitution domains. Only include domains that need explicit planning treatment.
    - Strategy is a generative judgment about whether this plan needs external research, architecture strategy, an architecture diagram, or expanded design notes.
+   - Any net new feature or net new operator-facing surface MUST set `strategy.net_new_surface: true`, which in turn requires `strategy.external_research: true`.
 
 4. If triage says `duplicate: true`:
    - Stop the workflow there.

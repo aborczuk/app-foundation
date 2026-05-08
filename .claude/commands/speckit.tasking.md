@@ -11,13 +11,12 @@ $ARGUMENTS
 Generate `tasks.md` and task HUDs from an approved `plan.md` / `spec.json` summary, then stabilize the downstream task graph with deterministic checks.
 
 1. Decompose `plan.md` design slices into `tasks.md`.
-2. Derive a per-task HUD contract JSON from `.specify/templates/task-hud-contract-template.json`.
-3. Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"` to scaffold per-task HUD tickets from that contract.
-4. Fill every non-`[H]` HUD concretely from repo reads plus `spec.json`, `plan.md`, `spec.md`, `tasks.md`, and the per-task HUD contract JSON.
-5. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
-6. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
-7. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
-8. Register tasks and generate acceptance tests from the settled task graph.
+2. Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing` to scaffold per-task HUD tickets from explicit task facts only.
+3. Fill every non-`[H]` HUD concretely from repo reads plus `spec.json`, `plan.md`, `spec.md`, and `tasks.md`.
+4. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
+5. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
+6. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
+7. Register tasks and generate acceptance tests from the settled task graph.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -43,9 +42,8 @@ Required:
 ### 3. Task derivation rules (required)
 
 - Read `spec.json` first; it holds the machine-readable key details of the approved plan/spec contract.
-- Derive a per-task HUD contract JSON next; it is the machine-readable selector for which HUD sections are required and what can be prefilled.
 - Use the spec details, design slices, domains, risk, and tasking metadata from `spec.json` to decide how much task detail each task needs.
-- Use the task HUD contract JSON to decide section presence, acceptance requirements, reuse-evaluation status, and deterministic vs generative fill expectations.
+- Treat `scripts/speckit_remake_huds.py prepare` as a section scaffold only. It must not decide relevant domains, design slices, reuse, acceptance, or the proposed solution.
 - Use the matched slice directives to derive task-specific obligations; the HUD must attach and specialize those directives rather than merely reference slice IDs.
 - Derive tasks from plan contracts first; do not invent major architecture not present in plan.
 - Preserve execution order and dependency rules from sketch + tasks graph.

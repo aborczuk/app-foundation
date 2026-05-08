@@ -124,8 +124,8 @@ task_id: "T015"
     )
 
 
-def test_prepare_scaffolds_huds_with_classification(tmp_path: Path, monkeypatch) -> None:
-    """Prepare should scaffold code HUDs with deterministic metadata and fill markers."""
+def test_prepare_scaffolds_huds_from_explicit_task_facts(tmp_path: Path, monkeypatch) -> None:
+    """Prepare should scaffold code HUDs without deterministic classification decisions."""
     module = _load_module()
     feature_dir = tmp_path / "999-demo"
     feature_dir.mkdir()
@@ -136,17 +136,21 @@ def test_prepare_scaffolds_huds_with_classification(tmp_path: Path, monkeypatch)
 
     assert exit_code == 0
     content = (feature_dir / "huds/T015.md").read_text(encoding="utf-8")
-    assert 'classification: "needs_generative_fill"' in content
+    assert 'task_id: "T015"' in content
+    assert 'story_id: "US3"' in content
+    assert 'primary_edit_seam: "src/demo/router.py:restart_tetris_session"' in content
     assert "## Candidate Design Slices" in content
     assert "## Proposed Solution" in content
     assert "## Acceptance Criteria" in content
     assert "[FILL: describe current repo behavior" in content
+    assert "[FILL: attach the exact design slice title(s), directive(s), and seam(s) that apply to this task.]" in content
+    assert "classification:" not in content
     assert "## Quality Guards" not in content
     assert "Resolve during implement discovery" not in content
 
 
-def test_prepare_keeps_doc_task_deterministic(tmp_path: Path, monkeypatch) -> None:
-    """Documentation-only seams should scaffold without generative placeholders."""
+def test_prepare_scaffolds_doc_tasks_without_shortcuts(tmp_path: Path, monkeypatch) -> None:
+    """Documentation seams should still be emitted as fillable scaffolds."""
     module = _load_module()
     feature_dir = tmp_path / "999-demo"
     feature_dir.mkdir()
@@ -156,9 +160,36 @@ def test_prepare_keeps_doc_task_deterministic(tmp_path: Path, monkeypatch) -> No
     module.main(["prepare", "--feature-dir", str(feature_dir)])
 
     content = (feature_dir / "huds/T016.md").read_text(encoding="utf-8")
-    assert 'classification: "deterministic_only"' in content
+    assert 'task_id: "T016"' in content
     assert "## Acceptance Criteria" in content
-    assert "[FILL:" not in content
+    assert "[FILL:" in content
+    assert "classification:" not in content
+
+
+def test_prepare_keeps_missing_seam_inside_hud(tmp_path: Path, monkeypatch) -> None:
+    """A missing task seam should stay unresolved inside the HUD instead of pointing back to tasks.md."""
+    module = _load_module()
+    feature_dir = tmp_path / "999-demo"
+    feature_dir.mkdir()
+    _write_feature_fixture(feature_dir)
+    monkeypatch.chdir(tmp_path)
+
+    tasks_path = feature_dir / "tasks.md"
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    tasks_text = tasks_text.replace(
+        "- [ ] T015 [US3] Implement restart endpoint/state reset and browser restart affordance in `src/demo/router.py`, `src/demo/templates/tetris.html`, and `src/demo/static/tetris.js` — `src/demo/router.py:restart_tetris_session`",
+        "- [ ] T015 [US3] Implement restart endpoint/state reset and browser restart affordance in `src/demo/router.py`, `src/demo/templates/tetris.html`, and `src/demo/static/tetris.js`",
+    )
+    tasks_path.write_text(tasks_text, encoding="utf-8")
+
+    module.main(["prepare", "--feature-dir", str(feature_dir)])
+
+    content = (feature_dir / "huds/T015.md").read_text(encoding="utf-8")
+    assert "primary_edit_seam: null" in content
+    assert "[resolve from tasks.md annotation]" not in content
+    assert "**File:Symbol**: [FILL: no explicit file:symbol seam was declared in tasks.md. Set the primary seam here.]" in content
+    assert "- [FILL: concrete change required in `src/demo/router.py`.]" in content
+    assert "- `src/demo/router.py` - [FILL: specific intended change.]" in content
 
 
 def test_validate_rejects_unfilled_scaffolds(tmp_path: Path, monkeypatch) -> None:
