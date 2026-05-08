@@ -102,6 +102,7 @@ def test_append_rejects_invalid_order_before_mutation(tmp_path: Path) -> None:
         domains=None,
         strategy=None,
         design_slices=None,
+        spec_json_path=None,
         routing_json_path=None,
         details=None,
     )
@@ -149,6 +150,7 @@ def test_append_rejects_partial_write_and_preserves_state(tmp_path: Path) -> Non
         domains=None,
         strategy=None,
         design_slices=None,
+        spec_json_path=None,
         routing_json_path=None,
         details=None,
     )

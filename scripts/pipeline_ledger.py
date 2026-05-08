@@ -429,6 +429,7 @@ def cmd_append(args: argparse.Namespace) -> None:
         "design_slices": _coerce_json_field(
             getattr(args, "design_slices", None), field_name="design_slices"
         ),
+        "spec_json_path": getattr(args, "spec_json_path", None),
         "routing_json_path": args.routing_json_path,
         "details": args.details,
     }
@@ -656,7 +657,8 @@ def build_parser() -> argparse.ArgumentParser:
     append_p.add_argument("--domains", help="JSON domain metadata for traceability.")
     append_p.add_argument("--strategy", help="JSON strategy metadata for traceability.")
     append_p.add_argument("--design-slices", help="JSON design-slice metadata for traceability.")
-    append_p.add_argument("--routing-json-path", help="Stable routing.json artifact path.")
+    append_p.add_argument("--spec-json-path", help="Stable spec.json artifact path.")
+    append_p.add_argument("--routing-json-path", help="Deprecated stable routing.json artifact path.")
     append_p.add_argument("--details", help="Free-text details for traceability.")
     append_p.set_defaults(func=cmd_append)
 

@@ -25,7 +25,8 @@ DEFAULT_ACCEPTANCE = (
     Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
 )
 DEFAULT_TASKS_TEMPLATE = Path(__file__).resolve().parent.parent / ".specify" / "templates" / "tasks-template.md"
-DEFAULT_ROUTING_ARTIFACT = "routing.json"
+DEFAULT_SPEC_ARTIFACT = "spec.json"
+LEGACY_ROUTING_ARTIFACT = "routing.json"
 
 
 def _build_command_parser() -> argparse.ArgumentParser:
@@ -96,9 +97,12 @@ def _resolve_solution_paths(feature_id: str) -> tuple[Path, Path, Path]:
     return repo_root, feature_dir, feature_dir / "plan.md"
 
 
-def _resolve_routing_artifact(feature_dir: Path) -> Path:
-    """Return the stable plan-produced routing artifact path."""
-    return feature_dir / DEFAULT_ROUTING_ARTIFACT
+def _resolve_spec_artifact(feature_dir: Path) -> Path:
+    """Return the stable plan-produced spec-details artifact path."""
+    spec_path = feature_dir / DEFAULT_SPEC_ARTIFACT
+    if spec_path.exists():
+        return spec_path
+    return feature_dir / LEGACY_ROUTING_ARTIFACT
 
 
 def _runtime_result_path(phase: str, correlation_id: str) -> Path:
@@ -175,16 +179,16 @@ def prepare_tasking(feature_id: str) -> dict[str, Any]:
     """Validate the plan artifact and scaffold tasks.md for generative completion."""
     repo_root, feature_dir, plan_path = _resolve_solution_paths(feature_id)
     tasks_path = feature_dir / "tasks.md"
-    routing_path = _resolve_routing_artifact(feature_dir)
+    spec_path = _resolve_spec_artifact(feature_dir)
     _validate_plan_design_slices(plan_path)
-    if not routing_path.is_file():
-        raise RuntimeError("routing_artifact_missing")
+    if not spec_path.is_file():
+        raise RuntimeError("spec_artifact_missing")
     tasks_path.write_text(_render_tasks_scaffold(feature_dir, plan_path), encoding="utf-8")
     return {
         "ok": True,
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_path),
-        "routing_artifact": str(routing_path),
+        "spec_artifact": str(spec_path),
         "tasks_artifact": str(tasks_path),
         "scaffolded_from_template": str(DEFAULT_TASKS_TEMPLATE),
         "repo_root": str(repo_root),
@@ -344,12 +348,12 @@ def _event_request(*, task_count: int, story_count: int, estimate_points: int) -
     }
 
 
-def _load_routing_contract(feature_dir: Path) -> dict[str, Any]:
-    """Load the stable routing.json artifact produced by the plan phase."""
-    routing_path = _resolve_routing_artifact(feature_dir)
-    if not routing_path.is_file():
+def _load_spec_details(feature_dir: Path) -> dict[str, Any]:
+    """Load the stable spec.json artifact produced by the plan phase."""
+    spec_path = _resolve_spec_artifact(feature_dir)
+    if not spec_path.is_file():
         return {}
-    payload = json.loads(routing_path.read_text(encoding="utf-8"))
+    payload = json.loads(spec_path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {}
 
 
@@ -393,7 +397,7 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     task_count = len(parse_task_definitions(tasks_path))
     story_count = _count_stories(tasks_path)
     estimate_points = _estimate_points(estimates_path) if estimates_path.exists() else 0
-    routing_contract = _load_routing_contract(feature_dir)
+    spec_details = _load_spec_details(feature_dir)
 
     result = {
         "schema_version": SCHEMA_VERSION,
@@ -407,7 +411,7 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
         "debug_path": str(debug_path),
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_path),
-        "routing_artifact": str(_resolve_routing_artifact(feature_dir)),
+        "spec_artifact": str(_resolve_spec_artifact(feature_dir)),
         "tasks_artifact": str(tasks_path),
         "task_count": task_count,
         "story_count": story_count,
@@ -421,13 +425,13 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     }
     result["pipeline_event_request"]["fields"].update(
         {
-            "routing": dict(routing_contract.get("routing", {})),
-            "triage": dict(routing_contract.get("triage", {})),
-            "risk": dict(routing_contract.get("risk", {})),
-            "domains": dict(routing_contract.get("domains", {})),
-            "strategy": dict(routing_contract.get("strategy", {})),
-            "design_slices": list(routing_contract.get("design_slices", [])),
-            "routing_json_path": str(_resolve_routing_artifact(feature_dir)),
+            "routing": dict(spec_details.get("routing", {})),
+            "triage": dict(spec_details.get("triage", {})),
+            "risk": dict(spec_details.get("risk", {})),
+            "domains": dict(spec_details.get("domains", {})),
+            "strategy": dict(spec_details.get("strategy", {})),
+            "design_slices": list(spec_details.get("design_slices", [])),
+            "spec_json_path": str(_resolve_spec_artifact(feature_dir)),
         }
     )
     _write_debug_payload(debug_path, result)

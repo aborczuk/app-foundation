@@ -298,8 +298,8 @@ def test_finalize_duplicate_requests_duplicate_marked(monkeypatch, tmp_path: Pat
     assert result["pipeline_event_request"]["event"] == "duplicate_marked"
     assert result["feature_dir"] == str(feature_dir)
     assert result["plan_artifact"] == str(plan_file)
-    assert result["routing_artifact"] == str(feature_dir / "routing.json")
-    assert (feature_dir / "routing.json").is_file()
+    assert result["spec_artifact"] == str(feature_dir / "spec.json")
+    assert (feature_dir / "spec.json").is_file()
 
 
 def test_finalize_nonduplicate_requires_design_slice_and_requests_plan_approved(
@@ -344,6 +344,6 @@ def test_finalize_nonduplicate_requires_design_slice_and_requests_plan_approved(
     assert result["pipeline_event_request"]["fields"]["routing"]["plan_level"] == "simple"
     assert result["pipeline_event_request"]["fields"]["triage"]["tshirt_size"] == "s"
     assert result["pipeline_event_request"]["fields"]["design_slices"][0]["slice_id"] == "PL-01"
-    routing_payload = json.loads((feature_dir / "routing.json").read_text(encoding="utf-8"))
+    routing_payload = json.loads((feature_dir / "spec.json").read_text(encoding="utf-8"))
     assert routing_payload["design_slices"][0]["slice_id"] == "PL-01"
     assert routing_payload["tasking"]["mode"] == "generative"

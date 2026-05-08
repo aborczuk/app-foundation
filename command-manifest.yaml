@@ -116,7 +116,7 @@ commands:
       - speckit.solution
       - speckit.tasking
       produced_by: scripts/speckit_plan_step.py
-    - output_path: ${FEATURE_DIR}/routing.json
+    - output_path: ${FEATURE_DIR}/spec.json
       consumed_by:
       - speckit.solution
       - speckit.tasking

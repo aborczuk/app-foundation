@@ -8,11 +8,11 @@ $ARGUMENTS
 
 ## Compact Contract (Load First)
 
-Generate `tasks.md` and task HUDs from an approved `plan.md` / `routing.json` contract, then stabilize the downstream task graph with deterministic checks.
+Generate `tasks.md` and task HUDs from an approved `plan.md` / `spec.json` summary, then stabilize the downstream task graph with deterministic checks.
 
 1. Decompose `plan.md` design slices into `tasks.md`.
 2. Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"` to scaffold per-task HUD tickets.
-3. Fill every non-`[H]` HUD concretely from repo reads plus `routing.json`, `plan.md`, `spec.md`, and `tasks.md`.
+3. Fill every non-`[H]` HUD concretely from repo reads plus `spec.json`, `plan.md`, `spec.md`, and `tasks.md`.
 4. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py` with the Codex-backed bridge runners below.
 5. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
 6. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
@@ -28,21 +28,21 @@ Generate `tasks.md` and task HUDs from an approved `plan.md` / `routing.json` co
    - `FEATURE_DIR`
 3. Require:
    - `FEATURE_DIR/plan.md`
-   - `FEATURE_DIR/routing.json`
+   - `FEATURE_DIR/spec.json`
 4. If any hard-block condition fails, stop.
 
 ### 2. Authoritative context loading
 
 Required:
 - `plan.md`
-- `routing.json`
+- `spec.json`
 - `spec.md`
 - `tasks.md` after initial generation
 
 ### 3. Task derivation rules (required)
 
-- Read `routing.json` first; it is the machine-readable plan/tasking contract.
-- Use the routing contract, design slices, domains, risk, and tasking metadata from `routing.json` to decide how much task detail each task needs.
+- Read `spec.json` first; it holds the machine-readable key details of the approved plan/spec contract.
+- Use the spec details, design slices, domains, risk, and tasking metadata from `spec.json` to decide how much task detail each task needs.
 - Derive tasks from plan contracts first; do not invent major architecture not present in plan.
 - Preserve execution order and dependency rules from sketch + tasks graph.
 - Add `[H]` tasks only where sketch/operator boundaries explicitly require human action.
@@ -50,9 +50,11 @@ Required:
 - Preserve command/script/template/manifest work as explicit tasks when present in sketch.
 - Keep task descriptions deterministic and implementation-usable (no vague placeholders).
 - Treat each design slice's `Implementation Directive` as required source material for task/HUD generation.
+- Solve each design slice before decomposing it into tasks; do not only restate the directive.
+- Put the solved slice-local implementation approach into the corresponding tasks and HUDs.
 - Do not emit a non-`[H]` task unless the associated HUD can be filled with current behavior, target behavior, concrete required edits, touched symbols, tests, constraints, dependencies, and done criteria.
 - Task descriptions may remain concise, but the corresponding HUD must contain the implementation-ready ticket detail.
-- If a task cannot be hydrated into a concrete HUD from `routing.json` / `plan.md` plus bounded repo reads, mark that HUD `BLOCKED: insufficient implementation directive` and stop before acceptance generation.
+- If a task cannot be hydrated into a concrete HUD from `spec.json` / `plan.md` plus bounded repo reads, mark that HUD `BLOCKED: insufficient implementation directive` and stop before acceptance generation.
 
 ### 3b. HUD / implementation-ticket requirements (required)
 
@@ -65,15 +67,18 @@ Each code HUD must fill all required `[FILL: ...]` fields from the HUD template 
 Each code HUD must include:
 
 1. Objective
-2. Current repo behavior
-3. Target behavior
-4. Primary edit seam
-5. Required edits
-6. Touched symbols
-7. Tests to add or update
-8. Done criteria
-9. Constraints and invariants
-10. Dependencies
+2. Relevant domains
+3. Candidate design slices
+4. Proposed solution
+5. Current repo behavior
+6. Target behavior
+7. Primary edit seam
+8. Required edits
+9. Touched symbols
+10. Tests to add or update
+11. Done criteria
+12. Constraints and invariants
+13. Dependencies
 
 #### Required Edits quality bar
 
@@ -94,7 +99,7 @@ Valid required edits identify:
 - side effects that are forbidden
 - reason codes, fields, event names, payload keys, assertion values, or command outputs where applicable
 
-If the exact implementation cannot be determined from `routing.json` / `plan.md` and bounded repo reads, write `BLOCKED: insufficient implementation directive` in the HUD and stop before acceptance generation.
+If the exact implementation cannot be determined from `spec.json` / `plan.md` and bounded repo reads, write `BLOCKED: insufficient implementation directive` in the HUD and stop before acceptance generation.
 
 #### HUD placeholder gate
 
@@ -146,7 +151,7 @@ Treat non-zero as hard-block. The tasking step owns `task_registered` events; im
 Scaffold HUD implementation tickets after `tasks.md` is complete:
 - `uv run --no-sync python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing"`
 
-Then fill every non-`[H]` HUD generatively before stabilization continues.
+Then fill every non-`[H]` HUD generatively before stabilization continues, using the solved slice-local solution, exact symbols, and relevant domains for each task.
 
 After HUD fill, verify every non-`[H]` HUD satisfies the HUD / implementation-ticket requirements above:
 - `uv run --no-sync python scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`
@@ -170,7 +175,7 @@ Report at end:
 
 ## Behavior rules
 
-- Do not treat `routing.json` as optional inspiration; it is the machine-readable tasking contract.
+- Do not treat `spec.json` as optional inspiration; it is the machine-readable summary of the approved plan/spec details.
 - Do not skip `speckit_tasking_chain.py`; tasking must include estimate/breakdown stabilization logic.
 - Do not let deterministic scaffolds stand in for final HUD content on code tasks.
 - Do not append completion events before deterministic checks pass.

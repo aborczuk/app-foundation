@@ -69,7 +69,7 @@ A user can recognize a lost game and immediately start a fresh one.
 """,
         encoding="utf-8",
     )
-    (feature_dir / "routing.json").write_text(
+    (feature_dir / "spec.json").write_text(
         json.dumps(
             {
                 "schema_version": "1.0.0",
@@ -138,6 +138,7 @@ def test_prepare_scaffolds_huds_with_classification(tmp_path: Path, monkeypatch)
     content = (feature_dir / "huds/T015.md").read_text(encoding="utf-8")
     assert 'classification: "needs_generative_fill"' in content
     assert "## Candidate Design Slices" in content
+    assert "## Proposed Solution" in content
     assert "[FILL: describe current repo behavior" in content
     assert "## Quality Guards" not in content
     assert "Resolve during implement discovery" not in content

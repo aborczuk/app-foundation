@@ -37,6 +37,7 @@ REQUIRED_CODE_SECTIONS = (
     "## Objective",
     "## Relevant Domains",
     "## Candidate Design Slices",
+    "## Proposed Solution",
     "## Current Repo Behavior",
     "## Target Behavior",
     "## Primary Edit Seam",
@@ -75,7 +76,7 @@ class StoryRecord:
 
 @dataclass(frozen=True)
 class SliceRecord:
-    """Machine-readable design slice loaded from routing.json or plan parsing."""
+    """Machine-readable design slice loaded from spec.json or plan parsing."""
 
     slice_id: str
     title: str
@@ -114,7 +115,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command")
 
-    prepare = subparsers.add_parser("prepare", help="Scaffold HUDs from tasks + routing context.")
+    prepare = subparsers.add_parser("prepare", help="Scaffold HUDs from tasks + spec-details context.")
     prepare.add_argument("--feature-dir", required=True)
     prepare.add_argument("--rewrite-existing", action="store_true")
     prepare.add_argument("--json", action="store_true")
@@ -251,13 +252,16 @@ def _parse_dependency_map(tasks_text: str) -> dict[str, tuple[str, ...]]:
     return {task_id: tuple(dict.fromkeys(values)) for task_id, values in mapping.items()}
 
 
-def _routing_artifact_path(feature_dir: Path) -> Path:
-    """Return the stable routing artifact path for one feature."""
+def _spec_artifact_path(feature_dir: Path) -> Path:
+    """Return the stable spec-details artifact path for one feature."""
+    spec_path = feature_dir / "spec.json"
+    if spec_path.exists():
+        return spec_path
     return feature_dir / "routing.json"
 
 
 def _parse_plan_slices(plan_file: Path) -> tuple[SliceRecord, ...]:
-    """Fallback parser for design slices when routing.json is absent."""
+    """Fallback parser for design slices when spec.json is absent."""
     text = plan_file.read_text(encoding="utf-8")
     match = re.search(r"^## Design Slices\s*$([\s\S]*?)(?=^##\s|\Z)", text, re.MULTILINE)
     if not match:
@@ -291,10 +295,10 @@ def _parse_plan_slices(plan_file: Path) -> tuple[SliceRecord, ...]:
 
 
 def _load_slices(feature_dir: Path) -> tuple[dict[str, str], tuple[SliceRecord, ...]]:
-    """Load domain reasoning and machine-readable slices from routing.json when present."""
-    routing_path = _routing_artifact_path(feature_dir)
-    if routing_path.exists():
-        payload = json.loads(routing_path.read_text(encoding="utf-8"))
+    """Load domain reasoning and machine-readable slices from spec.json when present."""
+    spec_path = _spec_artifact_path(feature_dir)
+    if spec_path.exists():
+        payload = json.loads(spec_path.read_text(encoding="utf-8"))
         domains = dict(payload.get("domains", {}).get("reasoning", {}))
         slices = tuple(
             SliceRecord(
@@ -450,6 +454,37 @@ def _render_target_behavior(task: TaskRecord, story: StoryRecord | None, matches
     return lines
 
 
+def _render_proposed_solution(
+    primary_ref: str,
+    matches: tuple[SliceMatch, ...],
+    slices: tuple[SliceRecord, ...],
+    *,
+    classification: str,
+) -> list[str]:
+    """Seed the per-task solution section from candidate design slices."""
+    if classification == "deterministic_only":
+        return [f"- Keep the work inside `{primary_ref}` and make the task outcome traceable to the approved plan/spec details."]
+    solution_lines: list[str] = []
+    slice_map = {slice_record.slice_id: slice_record for slice_record in slices}
+    for match in matches:
+        slice_record = slice_map.get(match.slice_id)
+        if not slice_record:
+            continue
+        directive = slice_record.directive or "derive the concrete implementation after repo review"
+        solution_lines.append(
+            f"- Candidate slice `{match.slice_id}`: {directive} Apply that solution through `{primary_ref}` and the task-owned seams only."
+        )
+    if solution_lines:
+        solution_lines.append(
+            f"- [FILL: replace these candidate slice directives with the actual proposed solution for `{primary_ref}`, including exact symbols and behavior.]"
+        )
+        return solution_lines
+    return [
+        f"- [FILL: solve the applicable design slice for `{primary_ref}` and describe the concrete implementation path.]",
+        "- [FILL: name the exact symbols, branches, or contracts this task will change.]",
+    ]
+
+
 def _render_test_blocks(task: TaskRecord, story: StoryRecord | None, related_tests: tuple[TaskRecord, ...]) -> list[str]:
     """Render deterministic test scaffolds or concrete doc-review checks."""
     if not related_tests and not task.story:
@@ -527,9 +562,9 @@ def _render_code_scaffold(task: TaskRecord, context: FeatureContext) -> str:
         "",
         *_domain_lines(task, context, paths),
         "",
-        "## Candidate Design Slices",
-        "",
-    ]
+            "## Candidate Design Slices",
+            "",
+        ]
     if slice_matches:
         lines.extend(
             [
@@ -543,6 +578,10 @@ def _render_code_scaffold(task: TaskRecord, context: FeatureContext) -> str:
         lines.append("- `[FILL: slice id]` - [FILL: explain the slice linkage after repo review.]")
     lines.extend(
         [
+            "",
+            "## Proposed Solution",
+            "",
+            *_render_proposed_solution(primary_ref, slice_matches, context.slices, classification=classification),
             "",
             "## Current Repo Behavior",
             "",

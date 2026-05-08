@@ -68,8 +68,8 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
     if "scripts/speckit_codex_handoff_runner.py" in scripts:
         raise SystemExit("Plan manifest still declares the nested Codex handoff runner")
     artifact_paths = [artifact["output_path"] for artifact in artifacts]
-    if "${FEATURE_DIR}/routing.json" not in artifact_paths:
-        raise SystemExit("Plan manifest missing stable routing.json artifact contract")
+    if "${FEATURE_DIR}/spec.json" not in artifact_paths:
+        raise SystemExit("Plan manifest missing stable spec.json artifact contract")
 
     command_doc = command_doc_path.read_text(encoding="utf-8")
     required_snippets = [

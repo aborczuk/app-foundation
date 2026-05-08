@@ -23,7 +23,7 @@ from bootstrap_session import bootstrap_session  # noqa: E402
 DEFAULT_SCAFFOLD = REPO_ROOT / ".specify" / "scripts" / "pipeline-scaffold.py"
 PLAN_COMPLETION_MARKER = "## Plan Completion Summary"
 BASE_TEMPLATE_SECTIONS = ("Triage", "Strategy Contract", "Internal Discovery")
-ROUTING_ARTIFACT_NAME = "routing.json"
+SPEC_ARTIFACT_NAME = "spec.json"
 DISCOVERY_MAX_TERMS = 5
 FILE_PATH_RE = re.compile(r"^file_path:\s*(?P<path>.+)$", re.MULTILINE)
 JSON_FENCE_RE = re.compile(r"```json\s*(?P<body>.*?)```", re.IGNORECASE | re.DOTALL)
@@ -639,16 +639,17 @@ def _parse_design_slices(plan_file: Path) -> list[dict[str, Any]]:
     return slices
 
 
-def _routing_artifact_path(feature_dir: Path) -> Path:
-    """Return the stable machine-readable routing artifact path for one feature."""
-    return feature_dir / ROUTING_ARTIFACT_NAME
+def _spec_artifact_path(feature_dir: Path) -> Path:
+    """Return the stable machine-readable spec-details artifact path for one feature."""
+    return feature_dir / SPEC_ARTIFACT_NAME
 
 
-def _write_routing_artifact(*, feature_id: str, feature_dir: Path, contract: Mapping[str, Any], plan_file: Path) -> Path:
-    """Persist the normalized plan/tasking contract for downstream agents."""
+def _write_spec_artifact(*, feature_id: str, feature_dir: Path, contract: Mapping[str, Any], plan_file: Path) -> Path:
+    """Persist the machine-readable plan/spec details needed by downstream phases."""
     payload = {
         "schema_version": SCHEMA_VERSION,
         "feature_id": feature_id,
+        "artifact_kind": "spec_details",
         "routing": _ledger_routing_view(contract),
         "triage": dict(contract.get("triage", {})),
         "risk": dict(contract.get("risk", {})),
@@ -661,10 +662,10 @@ def _write_routing_artifact(*, feature_id: str, feature_dir: Path, contract: Map
         "tasking": {
             "mode": "generative",
             "hud_generation": "generative",
-            "task_detail_source": "command_fill",
+                "task_detail_source": "command_fill",
         },
     }
-    artifact_path = _routing_artifact_path(feature_dir)
+    artifact_path = _spec_artifact_path(feature_dir)
     artifact_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return artifact_path
 
@@ -889,7 +890,7 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
     debug_path = _runtime_result_path(phase, correlation_id)
     design_slices = _parse_design_slices(plan_file)
     contract_with_slices = {**contract, "design_slices": design_slices}
-    routing_artifact = _write_routing_artifact(
+    spec_artifact = _write_spec_artifact(
         feature_id=feature_id,
         feature_dir=feature_dir,
         contract=contract_with_slices,
@@ -909,7 +910,7 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
             "debug_path": str(debug_path),
             "feature_dir": str(feature_dir),
             "plan_artifact": str(plan_file),
-            "routing_artifact": str(routing_artifact),
+            "spec_artifact": str(spec_artifact),
             "triage": contract["triage"],
             "domains": contract["domains"],
             "strategy": contract["strategy"],
@@ -917,7 +918,7 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
             "design_slices": design_slices,
             "pipeline_event_request": _event_request("duplicate_marked", contract=contract_with_slices),
         }
-        result["pipeline_event_request"]["fields"]["routing_json_path"] = str(routing_artifact)
+        result["pipeline_event_request"]["fields"]["spec_json_path"] = str(spec_artifact)
         _write_debug_payload(debug_path, result)
         return result
 
@@ -934,7 +935,7 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
         "debug_path": str(debug_path),
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_file),
-        "routing_artifact": str(routing_artifact),
+        "spec_artifact": str(spec_artifact),
         "triage": contract["triage"],
         "domains": contract["domains"],
         "strategy": contract["strategy"],
@@ -942,7 +943,7 @@ def finalize_plan(feature_id: str, correlation_id: str, *, phase: str = "plan") 
         "design_slices": design_slices,
         "pipeline_event_request": _event_request("plan_approved", contract=contract_with_slices),
     }
-    result["pipeline_event_request"]["fields"]["routing_json_path"] = str(routing_artifact)
+    result["pipeline_event_request"]["fields"]["spec_json_path"] = str(spec_artifact)
     _write_debug_payload(debug_path, result)
     return result
 

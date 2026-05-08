@@ -1368,6 +1368,7 @@ def append_requested_pipeline_event(
         domains=fields.get("domains"),
         strategy=fields.get("strategy"),
         design_slices=fields.get("design_slices"),
+        spec_json_path=fields.get("spec_json_path") or fields.get("routing_json_path"),
         routing_json_path=fields.get("routing_json_path"),
         details=fields.get("details"),
     )

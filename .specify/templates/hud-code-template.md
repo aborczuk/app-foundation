@@ -36,6 +36,15 @@ Template rules:
 [EXAMPLE: `PL-01` — route/runtime seam overlap from `app.py` and router work; high confidence.]
 [EXAMPLE: `PL-03` — browser shell file overlap from template/static assets; high confidence.]
 
+## Proposed Solution
+
+- Solve the relevant design slice for this task before writing the rest of the HUD.
+- Carry that solved slice-local implementation into the task ticket here.
+- `[FILL: concrete implementation approach this task will take.]`
+- `[FILL: exact symbols, files, or contracts this solution will change.]`
+
+[EXAMPLE: Add `restart_tetris_session()` to the router, delegate the reset to `TetrisSession.reset()`, preserve the existing response envelope shape, and refresh the browser state through the existing restart handler path in `tetris.js`.]
+
 ## Current Repo Behavior
 
 [FILL: Describe the current behavior verified from bounded repo reads. Include the observed file/symbol/branch/contract when possible.]

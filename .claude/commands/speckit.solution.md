@@ -30,11 +30,14 @@ uv run python scripts/speckit_solution_step.py prepare-tasking --feature-id "$FE
 
 2. Open `tasks.md`.
    - Treat `plan.md` and its `## Design Slices` section as the authoritative source of solutioning.
+   - Solve each design slice before writing tasks. Do not only restate the slice title or directive.
    - Do not generate or require `sketch.md`.
    - Decompose the plan slices directly into `tasks.md`.
 
 3. Fill `tasks.md` directly.
+   - For each design slice, write the actual proposed solution first, then split that solution into the required tasks.
    - Anchor every non-human task to a concrete file or symbol seam from the plan.
+   - Carry the solved slice, concrete symbols, and relevant constitution domains forward into the corresponding HUDs.
    - Preserve slice ordering and dependencies from `plan.md`.
    - Produce the actual number of tasks required by the plan; do not leave template placeholder content behind.
 
@@ -45,8 +48,10 @@ uv run python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR
 ```
 
 5. Fill every non-`[H]` `huds/TXXX.md` directly.
-   - Load `routing.json` first; it is the machine-readable plan contract for tasking.
+   - Load `spec.json` first; it contains the machine-readable key details of the approved plan/spec contract.
    - Treat the scaffold as deterministic seed data only.
+   - For each task, write the slice-local proposed solution that this task will implement.
+   - Name the exact file:symbol seams, touched symbols, relevant domains, constraints, and tests needed for that solution.
    - Replace every `[FILL: ...]` marker with repo-grounded, seam-specific implementation detail.
    - The final HUD must be concrete enough that a smaller implement model can execute the task without re-inventing design.
 
@@ -61,7 +66,7 @@ uv run python scripts/speckit_solution_step.py finalize --feature-id "$FEATURE_I
 ### 1. Setup
 
 The helper script resolves the feature workspace, validates that `plan.md` exists, requires `## Design Slices`, and scaffolds `tasks.md` from the documented tasks template.
-It also expects `routing.json` from `/speckit.plan` to be present as the stable machine-readable tasking contract.
+It also expects `spec.json` from `/speckit.plan` to be present as the stable machine-readable summary of the approved plan/spec details.
 
 ### 2. Hard-block gate
 
@@ -72,7 +77,10 @@ It also expects `routing.json` from `/speckit.plan` to be present as the stable 
 ### 3. Direct Task Generation
 
 - Decompose approved `plan.md` design slices into `tasks.md` directly in this command.
+- Solve each slice before turning it into tasks. A task list without the solved implementation approach is incomplete.
+- Write tasks from the solved slice, not from a restated headline.
 - Anchor every non-human task to a concrete file/symbol seam from the design slice.
+- Keep solutioning local to the slice: proposed behavior, symbols, branches, and checks must land in the tasks/HUDs that implement that slice.
 - Preserve slice ordering and dependencies from the plan.
 - Do not call `/speckit.tasking` as a nested command.
 
@@ -80,7 +88,12 @@ It also expects `routing.json` from `/speckit.plan` to be present as the stable 
 
 - Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing` after `tasks.md` is complete.
 - That helper only scaffolds HUDs and classifies which tasks need repo-search/generative fill.
-- The command must then fill every non-`[H]` HUD concretely using bounded repo reads plus `routing.json`, `plan.md`, `spec.md`, and `tasks.md`.
+- The command must then fill every non-`[H]` HUD concretely using bounded repo reads plus `spec.json`, `plan.md`, `spec.md`, and `tasks.md`.
+- Every non-`[H]` HUD must include:
+  - the proposed solution for the task
+  - the exact symbols and seams the task will change
+  - the relevant constitution domains that materially apply to the task
+  - the concrete tests and invariants that make the solution safe to implement
 - Do not leave scaffold placeholders in any final HUD.
 
 ### 5. Deterministic Finalize
@@ -116,4 +129,5 @@ The command ends by running `finalize`. The final response from this command mus
 - Do not re-decide architecture already settled in `plan.md`.
 - Do not treat `scripts/speckit_remake_huds.py` output as the final HUD content for code tasks.
 - Do not call `/speckit.tasking`.
+- Do not treat `spec.json` as optional inspiration; it is the machine-readable summary of the approved plan/spec details that must feed task and HUD generation.
 - Do not emit `solution_approved` before `finalize` completes.
