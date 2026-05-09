@@ -152,8 +152,10 @@ def _extract_summary_and_ref(description: str) -> tuple[str, str | None]:
     inline = TASK_REF_RE.search(description)
     if inline:
         ref = inline.group(1)
-        summary = description.replace(inline.group(0), "").strip(" -")
-        return summary, ref
+        # Keep inline file:symbol references in the summary text so imperative
+        # task phrasing like "Extend `path:symbol` and create ..." does not
+        # degrade into malformed prose after seam extraction.
+        return description.strip(), ref
     return description.strip(), None
 
 

@@ -204,3 +204,18 @@ def test_validate_rejects_unfilled_scaffolds(tmp_path: Path, monkeypatch) -> Non
     exit_code = module.main(["validate", "--feature-dir", str(feature_dir), "--json"])
 
     assert exit_code == 2
+
+
+def test_extract_summary_and_ref_keeps_inline_seam_in_summary() -> None:
+    """Inline file:symbol seams should not be removed from imperative summary text."""
+    module = _load_module()
+
+    summary, ref = module._extract_summary_and_ref(
+        "Extend `src/clickup_control_plane/app.py:create_app` and create `src/clickup_control_plane/tetris/routes.py` scaffolding so the app has a dedicated mount seam."
+    )
+
+    assert summary == (
+        "Extend `src/clickup_control_plane/app.py:create_app` and create "
+        "`src/clickup_control_plane/tetris/routes.py` scaffolding so the app has a dedicated mount seam."
+    )
+    assert ref == "src/clickup_control_plane/app.py:create_app"

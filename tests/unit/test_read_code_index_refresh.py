@@ -374,7 +374,7 @@ def test_vector_refresh_if_needed_launches_background_refresh_for_unaffected_sco
     assert "cause=git-path-drift" not in captured.err
 
 
-def test_vector_refresh_if_needed_sync_refreshes_each_time_for_overlap(monkeypatch, tmp_path: Path) -> None:
+def test_vector_refresh_if_needed_dedupes_sync_refresh_for_overlap(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         read_code_health,
         "vector_index_probe",
@@ -400,9 +400,27 @@ def test_vector_refresh_if_needed_sync_refreshes_each_time_for_overlap(monkeypat
     target = tmp_path / "src" / "sample.py"
     assert read_code_health.vector_refresh_if_needed(target) is True
     assert read_code_health.vector_refresh_if_needed(target) is True
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert calls[0] == read_code_health._vector_indexer_cmd(tmp_path, "refresh", str(target))
-    assert calls[1] == read_code_health._vector_indexer_cmd(tmp_path, "refresh", str(target))
+
+
+def test_vector_refresh_synchronous_invalidates_stale_probe_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setenv("READ_CODE_SESSION_ID", "sync-refresh-session")
+    stale_probe = _vector_probe(
+        status="stale",
+        stale_reason="indexable git drift paths: src/sample.py",
+        stale_reason_class="git-path-drift",
+        stale_drift_paths=("src/sample.py",),
+    )
+    read_code_health._remember_vector_probe("sync-refresh-session", stale_probe)
+    assert read_code_health._load_vector_probe_cache("sync-refresh-session") == stale_probe
+
+    monkeypatch.setattr(read_code_health, "_run_command_capture", lambda cmd, **kwargs: _completed(0))
+
+    target = tmp_path / "src" / "sample.py"
+    assert read_code_health.vector_refresh_synchronous([target]) is True
+    assert read_code_health._load_vector_probe_cache("sync-refresh-session") is None
 
 
 def test_vector_refresh_if_needed_launches_when_overlap_is_unknown(

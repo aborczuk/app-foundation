@@ -57,8 +57,16 @@ uv run python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR
 
 6. Run the estimate/breakdown loop through spawned subagents until the existing stabilization script reports the task graph is settled.
    - Spawn an `estimate` subagent on `gpt-5.4-mini`.
+   - Use `spawn_agent`.
+   - Do not use `fork_context: true`.
+   - Pass a focused prompt and the specific file references the subagent needs.
+   - Set `model: gpt-5.4-mini`.
    - Instruct it to execute `/speckit.estimate` for this feature and report whether any tasks remain at `8` or `13`.
    - If any high-point tasks remain, spawn a `breakdown` subagent on `gpt-5.4-mini`.
+   - Use `spawn_agent`.
+   - Do not use `fork_context: true`.
+   - Pass a focused prompt and the specific file references the subagent needs.
+   - Set `model: gpt-5.4-mini`.
    - Instruct it to execute `/speckit.breakdown` for this feature, then loop back to a fresh `estimate` subagent.
    - After each pass, validate the settled state with:
 
@@ -103,7 +111,15 @@ It also expects `spec.json` from `/speckit.plan` to be present as the stable mac
 
 To do that:
 - Create a spawned subagent on `gpt-5.4-mini` with the command instructions from `/speckit.estimate` 
+- Use `spawn_agent`.
+- Do not use `fork_context: true`.
+- Pass a focused prompt and the specific file references the subagent needs.
+- Set `model: gpt-5.4-mini`.
 - If the estimate is above 8/13 for any task, create another spawned sub agent for `/speckit.breakdown` to break it down
+- Use `spawn_agent`.
+- Do not use `fork_context: true`.
+- Pass a focused prompt and the specific file references the subagent needs.
+- Set `model: gpt-5.4-mini`.
 - Then pass the breakdown tasks back to estimate to estimate agiain
 - Keep looping until `scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json` reports `"ok": true`.
 - Treat that script as the settled-state validator for the existing estimate/breakdown workflow.
@@ -117,6 +133,7 @@ for Every non-`[H]` HUD:
 
 - Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing` after `tasks.md` is complete and estimate/breakdown is settled to create the scaffold templates.
 - You must then fill every non-`[H]` HUD concretely using read-code.py plus `spec.json`, `plan.md`, `spec.md`, and `tasks.md`.
+- Apply scaffold-preserving HUD edits with `scripts/speckit_fill_huds.py`; do not replace whole HUD files after scaffold generation.
 - One by one, make the solution for each task with the parameters:
   - the proposed solution for the task
   - the matched slice directives attached and specialized into task-specific required edits

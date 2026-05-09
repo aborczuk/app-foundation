@@ -243,6 +243,12 @@ def _emit_session_warning_once(key: str, message: str, *, ttl_seconds: float | N
 def _should_launch_background_refresh(scope_path: Path, *, channel: str) -> bool:
     """Return whether a background refresh should start based on debounce policy."""
     debounce = READ_CODE_BACKGROUND_REFRESH_DEBOUNCE_SECONDS
+    return _should_launch_session_refresh(scope_path, channel=channel, ttl_seconds=debounce)
+
+
+def _should_launch_session_refresh(scope_path: Path, *, channel: str, ttl_seconds: float) -> bool:
+    """Return whether a session-scoped refresh should start within the TTL window."""
+    debounce = ttl_seconds
     if debounce <= 0:
         return True
     session_id = _read_code_session_id()
@@ -257,6 +263,12 @@ def _should_launch_background_refresh(scope_path: Path, *, channel: str) -> bool
     state = {name: ts for name, ts in state.items() if now - ts <= max(debounce * 6, 60.0)}
     _persist_session_state(cache_path, state)
     return True
+
+
+def _should_launch_sync_vector_refresh(scope_path: Path) -> bool:
+    """Return whether a sync overlap vector refresh should run for this scope."""
+    ttl = max(READ_CODE_PROBE_CACHE_TTL_SECONDS, READ_CODE_BACKGROUND_REFRESH_DEBOUNCE_SECONDS)
+    return _should_launch_session_refresh(scope_path, channel="vector-sync", ttl_seconds=ttl)
 
 
 def _normalize_refresh_paths(scope_path: Path, drift_paths: tuple[str, ...]) -> list[Path]:
@@ -326,6 +338,7 @@ def vector_refresh_synchronous(paths: Sequence[Path]) -> bool:
             _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
         print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
         return False
+    _invalidate_vector_probe_cache()
     return True
 
 
@@ -1216,7 +1229,9 @@ def vector_refresh_by_state(scope_path: Path | None = None, *, verbose: bool = F
     return _dispatch_refresh_by_state(
         status=status,
         overlap=overlap,
-        sync_refresh=lambda: vector_refresh_synchronous(refresh_paths),
+        sync_refresh=lambda: True
+        if not _should_launch_sync_vector_refresh(path)
+        else vector_refresh_synchronous(refresh_paths),
         async_refresh=lambda: vector_refresh_background(path, refresh_paths),
         bootstrap_missing=lambda: vector_bootstrap_if_missing(path),
     )

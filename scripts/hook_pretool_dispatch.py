@@ -11,6 +11,7 @@ import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 GUARD_SCRIPTS = (
@@ -60,6 +61,17 @@ def _grep_guard(command: str) -> str | None:
     return None
 
 
+def _payload_contains_delete_file_marker(payload: Any) -> bool:
+    """Return true when any tool-input string contains the apply_patch delete-file marker."""
+    if isinstance(payload, str):
+        return "*** Delete File:" in payload
+    if isinstance(payload, dict):
+        return any(_payload_contains_delete_file_marker(value) for value in payload.values())
+    if isinstance(payload, list):
+        return any(_payload_contains_delete_file_marker(value) for value in payload)
+    return False
+
+
 def _load_guard_main(script_name: str) -> Callable[[], int] | None:
     """Load a guard module and return its main function if available."""
     module_path = SCRIPT_DIR / script_name
@@ -74,7 +86,7 @@ def _load_guard_main(script_name: str) -> Callable[[], int] | None:
         return None
 
     main = getattr(module, "main", None)
-    return main if callable(main) else None
+    return cast(Callable[[], int], main) if callable(main) else None
 
 
 def _run_guard(main: Callable[[], int], payload_text: str) -> str:
@@ -106,6 +118,10 @@ def main() -> int:
     try:
         payload = json.loads(payload_text)
     except Exception:
+        return 0
+
+    if _payload_contains_delete_file_marker(payload.get("tool_input")):
+        _emit_deny("apply_patch payloads containing `*** Delete File:` are denied.")
         return 0
 
     command = str(payload.get("tool_input", {}).get("command", "")).strip()

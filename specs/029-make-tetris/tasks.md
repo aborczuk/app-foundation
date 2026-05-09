@@ -1,273 +1,104 @@
----
-
-description: "Task list template for feature implementation"
----
-
 # Tasks: make tetris
 
 **Input**: Design documents from `/specs/029-make-tetris/`
-**Prerequisites**: plan.md (required), spec.md (required for user stories)
-**Skills**: Invoke any workflow skills listed in plan.md `Implementation Skills` field before the tasks that depend on them (Constitution V: Reuse, VIII: Reuse Over Invention)
-
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
-
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+**Prerequisites**: `plan.md`, `spec.md`, `spec.json`
+**Tests**: Deterministic unit and integration coverage are required because the feature introduces a rule-heavy gameplay state machine into the FastAPI runtime.
 
 ## Format: `[ID] [P?] [Story] Description`
 
-- **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
-- Include exact file paths in descriptions
-
-## Path Conventions
-
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
-
-<!-- 
-  ============================================================================
-  IMPORTANT: The tasks below are SAMPLE TASKS for illustration purposes only.
-  
-  The /speckit.tasks command MUST replace these with actual tasks based on:
-  - User stories from spec.md (with their priorities P1, P2, P3...)
-  - Feature requirements from plan.md
-  - Entities from data-model.md
-  - Endpoints from contracts/
-  
-  Tasks MUST be organized by user story so each story can be:
-  - Implemented independently
-  - Tested independently
-  - Delivered as an MVP increment
-  
-  DO NOT keep these sample tasks in the generated tasks.md file.
-  ============================================================================
--->
+- **[P]**: Can run in parallel when the listed files do not overlap.
+- **[Story]**: Required only for tasks inside user story phases.
+- Every task description includes concrete file paths or file:symbol seams.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Project initialization and basic structure
+**Purpose**: Establish the isolated Tetris runtime surface inside the existing app without perturbing current control-plane routes.
 
-- [ ] T000 Validate and record External Ingress + Runtime Readiness Gate status from plan.md (or mark N/A with rationale) in specs/[###-feature-name]/tasks.md
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Extend `src/clickup_control_plane/app.py:create_app` and create `src/clickup_control_plane/tetris/__init__.py`, `src/clickup_control_plane/tetris/routes.py`, and `src/clickup_control_plane/tetris/assets/` scaffolding so the FastAPI app has a dedicated Tetris mount seam for PL-01.
 
-**Checkpoint**: External ingress/runtime readiness gate status is explicit and package imports successfully; test fixtures load without error (`python -c "from <package> import ..."` + `pytest --collect-only tests/<package>/`)
-
----
+**Checkpoint**: The repo has a dedicated Tetris package and a single runtime seam in `create_app()` for the feature.
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
+**Purpose**: Build the authoritative typed gameplay core that every user story depends on.
 
-**⚠️ CRITICAL**: No user story work can begin until this phase is complete
+**⚠️ CRITICAL**: No user story task should begin before this phase is coherent.
 
-Examples of foundational tasks (adjust based on your project):
+- [ ] T002 Create typed gameplay state symbols in `src/clickup_control_plane/tetris/models.py` and piece definitions in `src/clickup_control_plane/tetris/pieces.py` for board geometry, tetromino orientations, score state, and session status required by PL-02.
+- [ ] T003 Implement deterministic state transitions in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py` for spawn, move, rotate, gravity tick, lock, line-clear preparation, score accumulation hooks, and restartable session orchestration from PL-02.
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
-- [ ] T010 [P] Add async process lifecycle primitives (start/ready/timeout-cancel/shutdown) where async workers/integrations exist
-- [ ] T011 [P] Add state ownership/reconciliation invariants and drift-detection baseline where local state mirrors live external state
-- [ ] TXXX [P] Add local DB transaction boundary and idempotent-retry baseline where lifecycle/risk/financial state is persisted locally
+**Checkpoint**: The Tetris package owns a typed game-state engine that the browser shell can call without embedding game rules in UI code.
 
-**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+## Phase 3: User Story 1 - Start and Play a Tetris Game (Priority: P1)
 
----
+**Goal**: Opening the feature starts a playable session with visible board state and responsive controls.
 
-## Phase 3: User Story 1 - [Title] (Priority: P1) 🎯 MVP
+**Independent Test**: Open the Tetris page, confirm an empty board plus active piece are rendered, then move/rotate the active piece while gravity continues to advance play.
 
-**Goal**: [Brief description of what this story delivers]
+- [ ] T004 [US1] Add the initial game page and session endpoints in `src/clickup_control_plane/tetris/routes.py` and wire them from `src/clickup_control_plane/app.py:create_app` so the browser can fetch a fresh authoritative session and tick/move/rotate commands through PL-01 and PL-03 seams.
+- [ ] T005 [US1] Build the playable browser shell in `src/clickup_control_plane/tetris/assets/tetris.js`, `src/clickup_control_plane/tetris/assets/tetris.css`, and the page response in `src/clickup_control_plane/tetris/routes.py` so the board, active piece, controls, score panel, and game loop render from server-backed session state.
 
-**Independent Test**: [How to verify this story works on its own]
+## Phase 4: User Story 2 - Clear Lines and Track Score (Priority: P2)
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+**Goal**: Completed rows clear deterministically and the visible score updates in the same session.
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+**Independent Test**: Drive the engine into a completed row, confirm the row disappears, the board collapses correctly, and the rendered score increases without resetting the session.
 
-- [ ] T012 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T013 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
-- [ ] T014 [US1] Async running-loop regression test (no nested-loop/runtime lifecycle errors) in tests/integration/test_[name].py
+- [ ] T006 [US2] Complete line-clear and scoring behavior in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py` so locked pieces trigger row detection, collapse logic, score updates, and next-piece continuation consistent with PL-02.
+- [ ] T007 [US2] Add deterministic unit coverage in `tests/unit/test_tetris_engine.py` for boundary movement, blocked rotation, single/multi-line clears, score updates, and next-piece continuation required by PL-04.
 
-### Implementation for User Story 1
+## Phase 5: User Story 3 - Reach Game Over and Restart (Priority: P3)
 
-- [ ] T015 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T016 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T017 [US1] Implement [Service] in src/services/[service].py (depends on T015, T016)
-- [ ] T018 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T019 [US1] Add validation and error handling
-- [ ] T020 [US1] Add logging for user story 1 operations
-- [ ] T021 [US1] Implement async process lifecycle guard (owned startup, timeout/cancel, graceful shutdown, force-kill fallback) in src/[location]/[file].py
+**Goal**: The session reaches a stable game-over state and can restart into a fresh run immediately.
 
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
+**Independent Test**: Play or simulate a full board until a new piece cannot spawn, verify controls stop mutating the ended session, then restart and observe a clean board plus zeroed score.
 
----
+- [ ] T008 [US3] Finalize terminal-state and restart handling in `src/clickup_control_plane/tetris/engine.py`, `src/clickup_control_plane/tetris/service.py`, and `src/clickup_control_plane/tetris/routes.py` so illegal spawn transitions mark the session game over, post-game commands are inert, and restart creates a fresh authoritative session.
+- [ ] T009 [US3] Add end-to-end runtime verification in `tests/integration/test_tetris_routes.py` for opening the Tetris surface, progressing session state, reaching game over, and restarting through the FastAPI route/runtime seam defined by PL-04.
 
-## Phase 4: User Story 2 - [Title] (Priority: P2)
+## Phase 6: Polish & Cross-Cutting Concerns
 
-**Goal**: [Brief description of what this story delivers]
+**Purpose**: Close the loop on artifact hygiene and feature-facing documentation that supports implementation and verification.
 
-**Independent Test**: [How to verify this story works on its own]
-
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
-
-- [ ] T022 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T023 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
-
-### Implementation for User Story 2
-
-- [ ] T024 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T025 [US2] Implement [Service] in src/services/[service].py
-- [ ] T026 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T027 [US2] Integrate with User Story 1 components (if needed)
-
-**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
-
----
-
-## Phase 5: User Story 3 - [Title] (Priority: P3)
-
-**Goal**: [Brief description of what this story delivers]
-
-**Independent Test**: [How to verify this story works on its own]
-
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
-
-- [ ] T028 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T029 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
-
-### Implementation for User Story 3
-
-- [ ] T030 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T031 [US3] Implement [Service] in src/services/[service].py
-- [ ] T032 [US3] Implement [endpoint/feature] in src/[location]/[file].py
-
-**Checkpoint**: All user stories should now be independently functional
-
----
-
-[Add more user story phases as needed, following the same pattern]
-
----
-
-## Phase N: Polish & Cross-Cutting Concerns
-
-**Purpose**: Improvements that affect multiple user stories
-
-- [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
-- [ ] TXXX Run quickstart.md validation
-- [ ] TXXX Run async cleanup checks to verify no orphan processes/tasks remain after integration/E2E runs
-- [ ] TXXX Run transaction-integrity checks to verify no partial local writes or impossible lifecycle transitions remain after integration/E2E runs
-- [ ] TXXX If runtime behavior/config/operator flow changed, update `specs/001-auto-options-trader/behavior-map.md` and include a validation note for the updated behavior row(s)
-
----
+- [ ] T010 Update `specs/029-make-tetris/tasks.md`, generated HUDs under `specs/029-make-tetris/huds/`, and any touched docstrings in `src/clickup_control_plane/tetris/*.py` so the solution artifact set preserves slice-to-task traceability, explicit constraints, and implement-ready acceptance criteria.
 
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Stories (Phase 3+)**: All depend on Foundational phase completion
-  - User stories can then proceed in parallel (if staffed)
-  - Or sequentially in priority order (P1 → P2 → P3)
-- **Polish (Final Phase)**: Depends on all desired user stories being complete
+- Phase 1 must finish before any foundational or story work because it establishes the route/package seam.
+- Phase 2 must finish before any story work because every gameplay and browser interaction depends on the typed engine/service core.
+- Phase 3 delivers the MVP playable loop.
+- Phase 4 extends the same authoritative session with clear/score behavior after the MVP path works.
+- Phase 5 depends on the prior runtime and engine behavior to close the full play loop.
+- Phase 6 runs after the feature tasks are materially settled.
 
 ### User Story Dependencies
 
-- **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
-- **User Story 2 (P2)**: Can start after Foundational (Phase 2) - May integrate with US1 but should be independently testable
-- **User Story 3 (P3)**: Can start after Foundational (Phase 2) - May integrate with US1/US2 but should be independently testable
-
-### Within Each User Story
-
-- Tests (if included) MUST be written and FAIL before implementation
-- **Adopted dependencies** (external tools/packages delivering part of the story's capability) MUST include tasks for: dependency installation, configuration/registration, initial setup (index builds, migrations, etc.), integration verification with real project data, failure-mode handling, and documentation updates. An adopted dependency with zero tasks is a gap — using someone else's tool is still integration work.
-- Async integrations MUST include: lifecycle implementation task + running-loop regression test + no-orphan cleanup verification
-- Live-vs-local state integrations MUST include: reconciliation invariant task + stale/orphan drift regression test + no-active-drift validation
-- Local DB mutating integrations MUST include: explicit transaction-boundary task + rollback/idempotency regression test + no-partial-write validation
-- Runtime/config/operator-flow changes MUST include a behavior-map sync task for `specs/001-auto-options-trader/behavior-map.md`
-- If the plan includes external ingress/webhook/callback handling, `T000` is mandatory and must complete before webhook registration, public URL setup, or external dependency provisioning tasks
-- Models before services
-- Services before endpoints
-- Core implementation before integration
-- Story complete before moving to next priority
+- **US1**: Depends on T001-T003 and is the MVP entry point.
+- **US2**: Depends on US1 runtime wiring plus T006.
+- **US3**: Depends on US1 and US2 behavior because game over and restart operate on the complete session loop.
 
 ### Parallel Opportunities
 
-- All Setup tasks marked [P] can run in parallel
-- All Foundational tasks marked [P] can run in parallel (within Phase 2)
-- Once Foundational phase completes, all user stories can start in parallel (if team capacity allows)
-- All tests for a user story marked [P] can run in parallel
-- Models within a story marked [P] can run in parallel
-- Different user stories can be worked on in parallel by different team members
-
----
-
-## Parallel Example: User Story 1
-
-```bash
-# Launch all tests for User Story 1 together (if tests requested):
-Task: "Contract test for [endpoint] in tests/contract/test_[name].py"
-Task: "Integration test for [user journey] in tests/integration/test_[name].py"
-
-# Launch all models for User Story 1 together:
-Task: "Create [Entity1] model in src/models/[entity1].py"
-Task: "Create [Entity2] model in src/models/[entity2].py"
-```
-
----
+- T002 and T003 should remain sequential because the engine depends on the typed model layer.
+- T004 and T005 should remain sequential because the browser shell depends on the route/session contract.
+- T007 can start after T006’s public engine behavior is stable.
+- T009 can start after T008’s route/runtime contract is stable.
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
+### MVP First
 
-1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
-3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently
-5. Deploy/demo if ready
+1. Finish T001-T003 to establish the Tetris package and deterministic engine core.
+2. Finish T004-T005 to deliver User Story 1 as the first playable milestone.
+3. Verify the MVP before expanding rule coverage and terminal-state behavior.
 
 ### Incremental Delivery
 
-1. Complete Setup + Foundational → Foundation ready
-2. Add User Story 1 → Test independently → Deploy/Demo (MVP!)
-3. Add User Story 2 → Test independently → Deploy/Demo
-4. Add User Story 3 → Test independently → Deploy/Demo
-5. Each story adds value without breaking previous stories
-
-### Parallel Team Strategy
-
-With multiple developers:
-
-1. Team completes Setup + Foundational together
-2. Once Foundational is done:
-   - Developer A: User Story 1
-   - Developer B: User Story 2
-   - Developer C: User Story 3
-3. Stories complete and integrate independently
-
----
-
-## Notes
-
-- [P] tasks = different files, no dependencies
-- [Story] label maps task to specific user story for traceability
-- Each user story should be independently completable and testable
-- Verify tests fail before implementing
-- Commit after each task or logical group
-- Stop at any checkpoint to validate story independently
-- Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
-
+1. Add line-clear and score behavior with T006-T007.
+2. Add game-over and restart behavior with T008-T009.
+3. Close with T010 so the HUD/tasking artifacts stay aligned with the implemented design.
 
 ## Plan Design Slice Index
 

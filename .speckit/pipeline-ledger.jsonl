@@ -57,3 +57,5 @@
 {"actor": "pipeline_driver", "details": "driver success append for speckit.implement", "event": "implementation_completed", "feature_id": "023", "phase": "implement", "timestamp_utc": "2026-04-23T14:24:55.088641Z"}
 {"actor": "pipeline_driver", "details": "driver success append for speckit.research", "event": "research_completed", "feature_id": "019", "phase": "research", "timestamp_utc": "2026-04-28T15:23:22.337438Z"}
 {"actor": "codex", "event": "backlog_registered", "feature_id": "027", "phase": "", "timestamp_utc": "2026-04-29T16:15:38.752094Z"}
+{"actor": "codex", "event": "backlog_registered", "feature_id": "029", "phase": "", "timestamp_utc": "2026-05-09T00:22:46.360200Z"}
+{"actor": "codex", "event": "plan_approved", "feasibility_required": "false", "feature_id": "029", "phase": "", "timestamp_utc": "2026-05-09T00:22:46.369142Z"}
