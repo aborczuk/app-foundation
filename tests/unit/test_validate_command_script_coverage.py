@@ -95,6 +95,17 @@ def test_speckit_specify_doc_uses_the_driver_next_phase_label() -> None:
     assert "Next phase: solution" not in content
 
 
+def test_speckit_specify_doc_requires_goal_to_fr_validation() -> None:
+    """Ensure specify validates goal-to-FR completeness before handoff."""
+    repo_root = Path(__file__).resolve().parents[2]
+    spec_doc = repo_root / ".claude" / "commands" / "speckit.specify.md"
+    content = spec_doc.read_text(encoding="utf-8")
+
+    assert "compare the one-line purpose, consumer/context, and user-story goals against the functional requirements set" in content
+    assert "Do not defer goal-to-FR gaps to plan/tasks." in content
+    assert "cover the declared feature goal end to end" in content
+
+
 def test_validate_command_script_coverage_reports_missing_required_reference(tmp_path: Path) -> None:
     """The validator should report a missing required scaffold reference."""
     canonical_manifest = tmp_path / "command-manifest.yaml"

@@ -18,11 +18,13 @@
    ```
 
 2. Review the generated spec output and mark findings.
-3. If clarification markers remain, update the spec and re-run the extractor until it is clean.
+3. Before handoff, explicitly compare the one-line purpose, consumer/context, and user-story goals against the functional requirements set.
+4. If any promised user-visible goal or end-to-end outcome is not concretely represented in the functional requirements, revise the spec before moving on. Do not defer goal-to-FR gaps to plan/tasks.
+5. If clarification markers remain, update the spec and re-run the extractor until it is clean.
 
 ## Completion
 
-1. After validation passes, confirm the spec requirements are complete.
+1. After validation passes, confirm the spec requirements are complete and cover the declared feature goal end to end.
 2. Report:
    - branch name
    - spec file path

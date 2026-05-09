@@ -26,3 +26,14 @@ def test_speckit_analyze_doc_mentions_traceable_analysis_artifact() -> None:
     assert "pipeline-scaffold.py" in manifest_text
     assert "analysis-template.md" in manifest_text
     assert "Specification Analysis Report" in template_text
+    assert "FEATURE_DIR/sketch.md" not in doc_text
+
+
+def test_speckit_analyze_doc_makes_goal_to_fr_alignment_a_first_pass() -> None:
+    """Keep analyze focused on upstream goal-to-FR completeness before task drift."""
+    doc_path = Path(__file__).resolve().parents[2] / ".claude" / "commands" / "speckit.analyze.md"
+    content = doc_path.read_text(encoding="utf-8")
+
+    assert "#### A. Goal-to-Requirement Alignment" in content
+    assert "before doing downstream task-coverage analysis" in content
+    assert "returning to `specify` first" in content
