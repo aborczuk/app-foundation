@@ -34,3 +34,26 @@ def test_read_code_window_limit_comes_from_env_var() -> None:
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "over 12 are denied" in decision["permissionDecisionReason"]
+
+
+def test_read_code_window_limit_uses_bounded_span_not_end_line() -> None:
+    """A later window under the limit should not be denied just because the end line is large."""
+    stdout = _run_hook(
+        "uv run python scripts/read_code.py window scripts/read_code.py 81 119",
+        max_lines="80",
+    )
+
+    assert stdout == ""
+
+
+def test_read_code_window_limit_denies_actual_span_over_limit() -> None:
+    """The hook should deny windows whose computed span exceeds the configured limit."""
+    stdout = _run_hook(
+        "uv run python scripts/read_code.py window scripts/read_code.py 81 161",
+        max_lines="80",
+    )
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "over 80 are denied" in decision["permissionDecisionReason"]

@@ -26,6 +26,39 @@ def _load_script_module(module_name: str, script_name: str):
 speckit_solution_step = _load_script_module("speckit_solution_step", "speckit_solution_step.py")
 
 
+def test_resolve_feature_dir_accepts_numeric_id(tmp_path: Path) -> None:
+    """Numeric feature ids should resolve to the matching specs slug directory."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "029-make-tetris"
+    feature_dir.mkdir(parents=True)
+
+    resolved = speckit_solution_step._resolve_feature_dir(repo_root, "029")
+
+    assert resolved == feature_dir
+
+
+def test_resolve_feature_dir_accepts_full_slug(tmp_path: Path) -> None:
+    """Full feature slugs should resolve directly without prefix globbing."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "029-make-tetris"
+    feature_dir.mkdir(parents=True)
+
+    resolved = speckit_solution_step._resolve_feature_dir(repo_root, "029-make-tetris")
+
+    assert resolved == feature_dir
+
+
+def test_resolve_feature_dir_normalizes_trailing_slash(tmp_path: Path) -> None:
+    """Feature ids with a trailing slash should resolve after normalization."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "029-make-tetris"
+    feature_dir.mkdir(parents=True)
+
+    resolved = speckit_solution_step._resolve_feature_dir(repo_root, "029-make-tetris/")
+
+    assert resolved == feature_dir
+
+
 def test_prepare_tasking_scaffolds_tasks_from_plan(tmp_path: Path, monkeypatch) -> None:
     """The scaffold helper should validate plan slices and seed tasks.md from the template."""
     repo_root = tmp_path / "repo"

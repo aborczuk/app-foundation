@@ -204,14 +204,21 @@ def _extract_read_code_context_lines(args: list[str]) -> int:
 
 
 def _extract_read_code_window_lines(args: list[str]) -> int:
-    """Return the window helper's requested line count."""
-    requested_lines = 60
-    tail = args[2:]
-    for token in tail:
-        if token.isdigit():
-            requested_lines = int(token)
-            break
-    return requested_lines
+    """Return the window helper's requested line count from start/end bounds."""
+    if len(args) < 3:
+        return 60
+
+    start_line_raw = args[1]
+    end_line_raw = args[2]
+    if not start_line_raw.isdigit() or not end_line_raw.isdigit():
+        return 60
+
+    start_line = int(start_line_raw)
+    end_line = int(end_line_raw)
+    if end_line < start_line:
+        return 60
+
+    return end_line - start_line + 1
 
 
 def _extract_markdown_read_policy(command: str) -> str | None:

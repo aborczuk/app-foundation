@@ -37,14 +37,22 @@ def _build_command_parser() -> argparse.ArgumentParser:
         "prepare-tasking",
         help="Validate plan.md and scaffold tasks.md for the generative solution command",
     )
-    prepare.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+    prepare.add_argument(
+        "--feature-id",
+        required=True,
+        help="Feature id or slug, e.g. 023 or 023-feature-name",
+    )
     prepare.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
 
     finalize = subparsers.add_parser(
         "finalize",
         help="Validate tasks.md, run deterministic stabilization, and emit the event request envelope",
     )
-    finalize.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+    finalize.add_argument(
+        "--feature-id",
+        required=True,
+        help="Feature id or slug, e.g. 023 or 023-feature-name",
+    )
     finalize.add_argument("--phase", default="solution", help="Phase label for runtime result storage")
     finalize.add_argument("--correlation-id", required=True, help="Run-scoped correlation id")
     finalize.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
@@ -54,7 +62,11 @@ def _build_command_parser() -> argparse.ArgumentParser:
 def _build_legacy_parser() -> argparse.ArgumentParser:
     """Preserve the legacy finalize-style CLI for direct callers and older tests."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--feature-id", required=True, help="Feature ID, e.g. 023")
+    parser.add_argument(
+        "--feature-id",
+        required=True,
+        help="Feature id or slug, e.g. 023 or 023-feature-name",
+    )
     parser.add_argument("--phase", default="solution", help="Phase label for runtime result storage")
     parser.add_argument("--correlation-id", required=True, help="Run-scoped correlation id")
     parser.add_argument("--json", action="store_true", help="Emit JSON result on stdout")
@@ -80,8 +92,15 @@ def _run_command(
 
 
 def _resolve_feature_dir(repo_root: Path, feature_id: str) -> Path:
-    """Resolve the feature directory directly from specs/ without branch gating."""
-    matches = sorted((repo_root / "specs").glob(f"{feature_id}-*"))
+    """Resolve a feature directory from either its numeric id or full slug."""
+    normalized_feature = feature_id.strip().strip("/")
+    specs_dir = repo_root / "specs"
+    direct_match = specs_dir / normalized_feature
+    if direct_match.is_dir():
+        return direct_match
+
+    prefix = normalized_feature.split("-", 1)[0]
+    matches = sorted(specs_dir.glob(f"{prefix}-*"))
     if len(matches) == 1:
         return matches[0]
     if not matches:
