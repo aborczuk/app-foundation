@@ -14,7 +14,7 @@
 
 **Purpose**: Establish the isolated Tetris runtime surface inside the existing app without perturbing current control-plane routes.
 
-- [ ] T001 Extend `src/clickup_control_plane/app.py:create_app` and create `src/clickup_control_plane/tetris/__init__.py`, `src/clickup_control_plane/tetris/routes.py`, and `src/clickup_control_plane/tetris/assets/` scaffolding so the FastAPI app has a dedicated Tetris mount seam for PL-01.
+- [X] T001 Extend `src/clickup_control_plane/app.py:create_app` and create `src/clickup_control_plane/tetris/__init__.py`, `src/clickup_control_plane/tetris/routes.py`, and `src/clickup_control_plane/tetris/assets/` scaffolding so the FastAPI app has a dedicated Tetris mount seam for PL-01.
 
 **Checkpoint**: The repo has a dedicated Tetris package and a single runtime seam in `create_app()` for the feature.
 

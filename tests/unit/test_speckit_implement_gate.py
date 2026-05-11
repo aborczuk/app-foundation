@@ -220,3 +220,72 @@ def test_task_gate_points_to_open_task(tmp_path: Path, monkeypatch) -> None:
     assert payload["implementation_completed_state"] == "continue_open_tasks"
     assert payload["open_task_ids"] == ["T046"]
     assert payload["continuation_task_id"] == "T046"
+
+
+def test_task_gate_filters_stale_ledger_tasks_to_current_tasks_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    feature_dir = tmp_path / "specs" / "029-make-tetris"
+    feature_dir.mkdir(parents=True)
+    (feature_dir / "tasks.md").write_text(
+        "\n".join(
+            [
+                "# Tasks",
+                "",
+                "## Phase 1",
+                "",
+                "- [ ] T001 Current task one",
+                "- [ ] T002 Current task two",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    feature_state = speckit_implement_gate.task_ledger.FeatureState()
+    feature_state.tasks["T000"] = speckit_implement_gate.task_ledger.TaskState(
+        registered=True,
+        started=True,
+        closed=False,
+        owner_actor="codex",
+    )
+    feature_state.tasks["T001"] = speckit_implement_gate.task_ledger.TaskState(
+        registered=True,
+        started=True,
+        closed=True,
+        owner_actor="codex",
+    )
+    feature_state.tasks["T002"] = speckit_implement_gate.task_ledger.TaskState(
+        registered=True,
+        started=False,
+        closed=False,
+        owner_actor="codex",
+    )
+
+    monkeypatch.setattr(
+        speckit_implement_gate.task_ledger,
+        "read_events",
+        lambda _path: [],
+    )
+    monkeypatch.setattr(
+        speckit_implement_gate.task_ledger,
+        "validate_sequence",
+        lambda _events: ([], {"029": feature_state}),
+    )
+    monkeypatch.setattr(
+        speckit_implement_gate.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected subprocess invocation")),
+    )
+
+    args = argparse.Namespace(
+        feature_dir=str(feature_dir),
+        json=True,
+    )
+
+    exit_code, payload = speckit_implement_gate._phase_gate(args)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["closed_task_ids"] == ["T001"]
+    assert payload["open_task_ids"] == ["T002"]
+    assert payload["continuation_task_id"] == "T002"
