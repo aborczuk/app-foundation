@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from src.clickup_control_plane.tetris.models import (
     ActivePiece,
+    GameState,
     PieceKind,
     ScoreState,
     SessionStatus,
@@ -168,6 +169,44 @@ def test_spawn_next_piece_replenishes_empty_queue_deterministically() -> None:
     assert spawned.active_piece is not None
     assert spawned.active_piece.kind is PieceKind.Z
     assert spawned.next_piece_queue == (PieceKind.I,)
+
+
+def test_illegal_spawn_marks_session_game_over() -> None:
+    """Spawning into a filled board should end the session deterministically."""
+    service = TetrisService(piece_sequence=(PieceKind.T,))
+    blocked_state = GameState(
+        board=_board_with_cells({(x, y) for x in range(10) for y in range(4)}),
+        status=SessionStatus.READY,
+        next_piece_queue=(PieceKind.T,),
+    )
+
+    game_over = service.spawn_next_piece(blocked_state)
+
+    assert game_over.status is SessionStatus.GAME_OVER
+    assert game_over.active_piece is None
+
+
+def test_post_game_commands_are_inert_until_restart() -> None:
+    """Ended sessions should ignore move/rotate/tick/lock until restart."""
+    service = TetrisService(piece_sequence=(PieceKind.T, PieceKind.I))
+    ended_state = GameState(
+        board=_board_with_cells({(x, y) for x in range(10) for y in range(4)}),
+        status=SessionStatus.GAME_OVER,
+        active_piece=None,
+        next_piece_queue=(),
+        score=ScoreState(score=1200, lines_cleared=4, level=1),
+    )
+
+    assert service.move(ended_state, -1, 0) is ended_state
+    assert service.rotate(ended_state) is ended_state
+    assert service.tick(ended_state) is ended_state
+    assert service.lock(ended_state) is ended_state
+
+    restarted = service.restart_session()
+
+    assert restarted.status is SessionStatus.ACTIVE
+    assert restarted.score.score == 0
+    assert restarted.score.lines_cleared == 0
 
 
 def test_restart_session_returns_fresh_board_and_score() -> None:

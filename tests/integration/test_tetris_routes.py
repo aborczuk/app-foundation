@@ -7,7 +7,7 @@ import pytest
 
 from src.clickup_control_plane.app import create_app
 from src.clickup_control_plane.config import LOCAL_TETRIS_RUNTIME_ENV
-from src.clickup_control_plane.tetris.models import PieceKind
+from src.clickup_control_plane.tetris.models import GameState, PieceKind, SessionStatus
 from src.clickup_control_plane.tetris.service import TetrisService
 
 
@@ -53,6 +53,41 @@ async def test_tetris_route_surface_supports_session_and_commands() -> None:
     assert ticked.json()["active_piece"]["position"] == {"x": 2, "y": 1}
     assert current.json()["status"] == "active"
     assert current.json()["next_piece_queue"] == ["I"]
+
+
+@pytest.mark.asyncio
+async def test_tetris_route_game_over_is_inert_until_restart() -> None:
+    """Game-over sessions should ignore commands until the restart route resets them."""
+    app = create_app()
+    service = TetrisService(piece_sequence=(PieceKind.T, PieceKind.I))
+    app.state.tetris_service = service
+    game_over_state = GameState(
+        board=tuple(
+            tuple(PieceKind.S for _ in range(10))
+            for _ in range(20)
+        ),
+        status=SessionStatus.GAME_OVER,
+        active_piece=None,
+        next_piece_queue=(),
+    )
+    app.state.tetris_state = game_over_state
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        moved = await client.post("/tetris/session/move", json={"dx": -1, "dy": 0})
+        rotated = await client.post("/tetris/session/rotate", json={"clockwise": True})
+        ticked = await client.post("/tetris/session/tick")
+        restarted = await client.post("/tetris/session/restart")
+
+    assert moved.status_code == 200
+    assert moved.json()["status"] == "game_over"
+    assert moved.json()["active_piece"] is None
+    assert rotated.json() == moved.json()
+    assert ticked.json() == moved.json()
+    assert restarted.status_code == 200
+    assert restarted.json()["status"] == "active"
+    assert restarted.json()["score"] == {"score": 0, "lines_cleared": 0, "level": 1}
+    assert restarted.json()["active_piece"]["kind"] == "T"
 
 
 @pytest.mark.asyncio

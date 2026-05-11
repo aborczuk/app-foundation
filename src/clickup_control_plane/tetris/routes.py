@@ -49,7 +49,7 @@ async def tetris_root() -> HTMLResponse:
         "data-command-move='/tetris/session/move' "
         "data-command-rotate='/tetris/session/rotate' "
         "data-command-tick='/tetris/session/tick' "
-        "data-command-restart='/tetris/session'>"
+        "data-command-restart='/tetris/session/restart'>"
         "<section class='tetris-panel tetris-panel--board' aria-labelledby='tetris-board-title'>"
         "<div class='tetris-panel__header'>"
         "<p class='tetris-kicker'>PL-03</p>"
@@ -126,6 +126,15 @@ async def create_session(request: Request) -> JSONResponse:
     state = service.start_session()
     _set_session_state(request, state)
     return JSONResponse(status_code=status.HTTP_201_CREATED, content=_serialize_state(state))
+
+
+@router.post("/session/restart")
+async def restart_session(request: Request) -> JSONResponse:
+    """Restart the authoritative session after game over or manual reset."""
+    service = _get_tetris_service(request)
+    state = service.restart_session()
+    _set_session_state(request, state)
+    return JSONResponse(content=_serialize_state(state))
 
 
 @router.post("/session/move")
