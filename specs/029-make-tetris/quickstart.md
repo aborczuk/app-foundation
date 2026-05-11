@@ -57,6 +57,10 @@
 <!-- speckit_implement_docs:entry_id=T010:runbook -->
 - Closed T010 at commit 4abc9a8 after offline QA pass offline-qa-t010-20260511T172929Z; added runtime lifecycle coverage for reaching game over through tick and then restarting over HTTP.
 
+
+<!-- speckit_implement_docs:entry_id=T011:runbook -->
+- Closed T011 at commit 975489b after offline QA pass offline-qa-t011-20260511T173513Z; validated the full artifact set and fixed behavioral QA so artifact-only tasks are judged against markdown/task artifacts too.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -88,3 +92,6 @@
 
 <!-- speckit_implement_docs:entry_id=T010:decision_log -->
 - T010 completed the end-to-end runtime lifecycle proof by showing the live FastAPI seam can progress into game over via tick and recover via the explicit restart route without collapsing to mocks.
+
+<!-- speckit_implement_docs:entry_id=T011:decision_log -->
+- T011 finalized the solution artifact set and patched speckit_behavioral_qa so acceptance-keyword checks consider artifact files like HUDs and tasks, which is required for non-code closeout tasks.
