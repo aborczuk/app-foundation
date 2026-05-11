@@ -34,6 +34,7 @@ from .schemas import (
 from .service import DispatchOrchestrationService
 from .state_store import StateStore
 from .tetris.routes import router as tetris_router
+from .tetris.service import TetrisService
 from .webhook_auth import SignatureVerificationError, assert_valid_clickup_signature
 
 _CLICKUP_API_BASE = "https://api.clickup.com/api/v2"
@@ -115,6 +116,7 @@ async def _lifespan(app: FastAPI):
     config = get_runtime_config()
     state_store = StateStore(config.control_plane_db_path)
     await state_store.initialize()
+    tetris_service = TetrisService()
 
     async with AsyncExitStack() as stack:
         dispatcher_client = await stack.enter_async_context(
@@ -157,6 +159,8 @@ async def _lifespan(app: FastAPI):
         app.state.dispatch_service = dispatch_service
         app.state.reconciliation_service = reconciliation_service
         app.state.reconciliation_result = reconciliation_result
+        app.state.tetris_service = tetris_service
+        app.state.tetris_state = tetris_service.start_session()
         yield
 
 
