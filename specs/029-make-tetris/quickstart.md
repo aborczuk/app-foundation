@@ -49,6 +49,10 @@
 <!-- speckit_implement_docs:entry_id=T008:runbook -->
 - Closed T008 at commit 97f282e after offline QA pass offline-qa-t008-20260511T171025Z; extended the unit suite with deterministic empty-queue spawn coverage.
 
+
+<!-- speckit_implement_docs:entry_id=T009:runbook -->
+- Closed T009 at commit 0470728 after offline QA pass offline-qa-t009-20260511T172255Z; added explicit restart routing plus terminal-state unit and integration coverage.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -74,3 +78,6 @@
 
 <!-- speckit_implement_docs:entry_id=T008:decision_log -->
 - T008 completed the engine-focused unit regression seam by adding direct coverage for deterministic queue replenishment in TetrisService.spawn_next_piece, preserving a browser-free unit boundary.
+
+<!-- speckit_implement_docs:entry_id=T009:decision_log -->
+- T009 made restart an explicit HTTP seam at /tetris/session/restart and verified that ended sessions stay inert until a fresh authoritative restart is provisioned.

@@ -54,7 +54,7 @@
 
 **Independent Test**: Play or simulate a full board until a new piece cannot spawn, verify controls stop mutating the ended session, then restart and observe a clean board plus zeroed score.
 
-- [ ] T009 [US3] Finalize terminal-state and restart handling in `src/clickup_control_plane/tetris/engine.py`, `src/clickup_control_plane/tetris/service.py`, and `src/clickup_control_plane/tetris/routes.py` so illegal spawn transitions mark the session game over, post-game commands are inert, and restart creates a fresh authoritative session.
+- [X] T009 [US3] Finalize terminal-state and restart handling in `src/clickup_control_plane/tetris/engine.py`, `src/clickup_control_plane/tetris/service.py`, and `src/clickup_control_plane/tetris/routes.py` so illegal spawn transitions mark the session game over, post-game commands are inert, and restart creates a fresh authoritative session.
 - [ ] T010 [US3] Add end-to-end runtime verification in `tests/integration/test_tetris_routes.py` for opening the Tetris surface, progressing session state, reaching game over, and restarting through the FastAPI route/runtime seam defined by PL-04.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
