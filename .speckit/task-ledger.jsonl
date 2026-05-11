@@ -1319,3 +1319,4 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "029", "task_id": "T007", "timestamp_utc": "2026-05-11T17:07:39.304116Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "029", "qa_run_id": "offline-qa-t007-20260511T170725Z", "task_id": "T007", "timestamp_utc": "2026-05-11T17:07:39.347113Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "029", "task_id": "T007", "timestamp_utc": "2026-05-11T17:07:39.388226Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "029", "task_id": "T008", "timestamp_utc": "2026-05-11T17:08:24.028487Z"}

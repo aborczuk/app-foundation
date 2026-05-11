@@ -152,6 +152,24 @@ def test_lock_single_line_clear_collapses_board_and_replenishes_queue() -> None:
     assert next_state.next_piece_queue == ()
 
 
+def test_spawn_next_piece_replenishes_empty_queue_deterministically() -> None:
+    """Spawning from an empty ready-state queue should refill from the deterministic sequence."""
+    service = TetrisService(piece_sequence=(PieceKind.Z, PieceKind.I))
+    ready_state = replace(
+        service.start_session(),
+        active_piece=None,
+        next_piece_queue=(),
+        status=SessionStatus.READY,
+    )
+
+    spawned = service.spawn_next_piece(ready_state)
+
+    assert spawned.status is SessionStatus.ACTIVE
+    assert spawned.active_piece is not None
+    assert spawned.active_piece.kind is PieceKind.Z
+    assert spawned.next_piece_queue == (PieceKind.I,)
+
+
 def test_restart_session_returns_fresh_board_and_score() -> None:
     """Restarting should return a fresh session with a cleared board."""
     service = TetrisService(piece_sequence=(PieceKind.T, PieceKind.I))
