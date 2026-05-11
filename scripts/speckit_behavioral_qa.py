@@ -41,6 +41,30 @@ def _json_print(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _extract_section_body(content: str, heading: str) -> str:
+    """Return the raw body for a markdown heading if present."""
+    match = re.search(
+        rf"^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)",
+        content,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
+def _extract_bullets(section_body: str) -> list[str]:
+    """Extract non-empty markdown bullet text from a section body."""
+    bullets: list[str] = []
+    for line in section_body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            item = stripped[2:].strip()
+            if item:
+                bullets.append(item)
+    return bullets
+
+
 def _read_hud(hud_path: Path) -> dict[str, Any]:
     """Parse HUD markdown and extract key sections."""
     if not hud_path.exists():
@@ -54,13 +78,19 @@ def _read_hud(hud_path: Path) -> dict[str, Any]:
         "touched_symbols": [],
     }
 
-    # Extract acceptance criteria from Functional Goal section
+    # Extract acceptance criteria from the current HUD section shape first.
+    acceptance_section = _extract_section_body(content, "Acceptance Criteria")
+    acceptance_bullets = _extract_bullets(acceptance_section)
+    if acceptance_bullets:
+        hud["acceptance_criteria"] = "\n".join(acceptance_bullets)
+
+    # Fall back to the legacy Functional Goal section shape.
     ac_match = re.search(
         r"##\s+Functional Goal\s+.*?\*\*Acceptance Criteria\*\*:\s*(.*?)(?=\n##|\Z)",
         content,
         re.DOTALL,
     )
-    if ac_match:
+    if ac_match and not hud["acceptance_criteria"]:
         hud["acceptance_criteria"] = ac_match.group(1).strip()
 
     # Extract File:Symbol
@@ -68,18 +98,11 @@ def _read_hud(hud_path: Path) -> dict[str, Any]:
     if fs_match:
         hud["file_symbol"] = fs_match.group(1).strip()
 
-    # Extract quality guards
-    in_qg = False
-    for line in content.splitlines():
-        if line.strip().startswith("## Quality Guards"):
-            in_qg = True
-            continue
-        if in_qg and line.startswith("## "):
-            break
-        if in_qg and line.strip().startswith("-"):
-            guard = line.strip().lstrip("- ").strip()
-            if guard:
-                hud["quality_guards"].append(guard)
+    # Extract quality guards from either the legacy or current section naming.
+    quality_guards = _extract_bullets(_extract_section_body(content, "Quality Guards"))
+    if not quality_guards:
+        quality_guards = _extract_bullets(_extract_section_body(content, "Relevant Domains"))
+    hud["quality_guards"].extend(quality_guards)
 
     return hud
 

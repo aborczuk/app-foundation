@@ -1277,3 +1277,4 @@
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/029-make-tetris/tasks.md", "event": "task_registered", "feature_id": "029", "task_id": "T015", "timestamp_utc": "2026-05-07T19:05:29.707669Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/029-make-tetris/tasks.md", "event": "task_registered", "feature_id": "029", "task_id": "T016", "timestamp_utc": "2026-05-07T19:05:29.714432Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/029-make-tetris/tasks.md", "event": "task_registered", "feature_id": "029", "task_id": "T017", "timestamp_utc": "2026-05-07T19:05:29.721194Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "029", "task_id": "T001", "timestamp_utc": "2026-05-11T00:54:19.263127Z"}

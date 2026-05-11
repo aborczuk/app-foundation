@@ -128,7 +128,22 @@ def _extract_primary_file_from_hud(hud_path: Path) -> str | None:
 
 
 def _changed_files_from_head(repo_root: Path) -> list[str]:
-    """Return the unique file list changed in HEAD."""
+    """Return workspace changes first, then fall back to files changed in HEAD."""
+    code, out, _ = _run(["git", "status", "--short"], cwd=repo_root)
+    if code == 0 and out.strip():
+        files: list[str] = []
+        for raw_line in out.splitlines():
+            line = raw_line.rstrip()
+            if len(line) < 3:
+                continue
+            path_fragment = line[2:].strip()
+            if " -> " in path_fragment:
+                path_fragment = path_fragment.split(" -> ", 1)[1].strip()
+            if path_fragment:
+                files.append(path_fragment)
+        if files:
+            return sorted(dict.fromkeys(files))
+
     code, out, _ = _run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo_root)
     if code != 0:
         return []
@@ -178,7 +193,15 @@ def _build_test_runs(repo_root: Path, feature_id: str, task_id: str) -> list[dic
 
 
 def _diff_summary(repo_root: Path) -> str:
-    """Summarize the current HEAD diff for the offline QA payload."""
+    """Summarize workspace changes first, then fall back to the last commit diff."""
+    code, out, _ = _run(["git", "diff", "--stat", "--no-color", "HEAD", "--"], cwd=repo_root)
+    if code == 0 and out.strip():
+        return out.strip()
+
+    code, out, _ = _run(["git", "status", "--short"], cwd=repo_root)
+    if code == 0 and out.strip():
+        return out.strip()
+
     code, out, _ = _run(["git", "show", "--stat", "--oneline", "--no-color", "HEAD"], cwd=repo_root)
     if code == 0 and out.strip():
         return out.strip()

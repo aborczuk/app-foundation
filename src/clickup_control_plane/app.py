@@ -33,6 +33,7 @@ from .schemas import (
 )
 from .service import DispatchOrchestrationService
 from .state_store import StateStore
+from .tetris.routes import router as tetris_router
 from .webhook_auth import SignatureVerificationError, assert_valid_clickup_signature
 
 _CLICKUP_API_BASE = "https://api.clickup.com/api/v2"
@@ -162,6 +163,7 @@ async def _lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Build and configure FastAPI application."""
     api = FastAPI(title="ClickUp Control Plane", version="0.1.0", lifespan=_lifespan)
+    api.include_router(tetris_router)
 
     @api.get("/control-plane/health")
     async def health() -> dict[str, str]:

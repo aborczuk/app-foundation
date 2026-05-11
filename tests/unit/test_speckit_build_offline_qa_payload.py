@@ -32,3 +32,46 @@ def test_default_hud_path_is_feature_local() -> None:
     expected = feature_dir / "huds" / "T004.md"
     actual = speckit_build_offline_qa_payload._default_hud_path(feature_dir, "T004")
     assert actual == expected
+
+
+def test_changed_files_from_head_prefers_workspace_changes(tmp_path: Path) -> None:
+    """Workspace edits should drive payload changed_files before a task commit exists."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "codex@example.com"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Codex"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    tracked = repo_root / "tracked.txt"
+    tracked.write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    tracked.write_text("base\nworkspace change\n", encoding="utf-8")
+    untracked = repo_root / "untracked.txt"
+    untracked.write_text("new file\n", encoding="utf-8")
+
+    changed_files = speckit_build_offline_qa_payload._changed_files_from_head(repo_root)
+
+    assert changed_files == ["tracked.txt", "untracked.txt"]
