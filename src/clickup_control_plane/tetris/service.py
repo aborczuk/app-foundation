@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from . import engine
-from .models import GameState, PieceKind
+from .models import GameState, PieceKind, SessionStatus
 from .pieces import CANONICAL_PIECE_ORDER
 
 DEFAULT_PIECE_SEQUENCE: tuple[PieceKind, ...] = CANONICAL_PIECE_ORDER * 16
@@ -46,5 +46,17 @@ class TetrisService:
         return engine.tick(state)
 
     def lock(self, state: GameState) -> GameState:
-        """Lock the active piece through the pure engine seam."""
-        return engine.lock_active_piece(state)
+        """Lock the active piece and replenish the deterministic queue when needed."""
+        locked_state = engine.lock_active_piece(state)
+        if (
+            locked_state.status is SessionStatus.GAME_OVER
+            and locked_state.active_piece is None
+            and not locked_state.next_piece_queue
+        ):
+            replenished_state = replace(
+                locked_state,
+                status=SessionStatus.READY,
+                next_piece_queue=self._piece_sequence,
+            )
+            return engine.spawn_next_piece(replenished_state)
+        return locked_state

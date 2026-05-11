@@ -121,6 +121,37 @@ def test_lock_clears_rows_and_updates_score() -> None:
     assert next_state.board == empty_board()
 
 
+def test_lock_single_line_clear_collapses_board_and_replenishes_queue() -> None:
+    """Single-line clears should collapse the board and continue with a replenished queue."""
+    service = TetrisService(piece_sequence=(PieceKind.O,))
+    state = service.start_session()
+    board_rows: list[list[PieceKind | None]] = [
+        [None for _ in range(10)]
+        for _ in range(20)
+    ]
+    for x in range(10):
+        if x not in {4, 5}:
+            board_rows[19][x] = PieceKind.S
+    locked_state = replace(
+        state,
+        board=tuple(tuple(row) for row in board_rows),
+        active_piece=ActivePiece(kind=PieceKind.O, position=(3, 18)),
+        score=ScoreState(score=0, lines_cleared=0, level=1),
+    )
+
+    next_state = service.lock(locked_state)
+
+    assert next_state.status is SessionStatus.ACTIVE
+    assert next_state.active_piece is not None
+    assert next_state.active_piece.kind is PieceKind.O
+    assert next_state.score.score == 40
+    assert next_state.score.lines_cleared == 1
+    assert next_state.score.level == 1
+    assert next_state.board[19][4] is PieceKind.O
+    assert next_state.board[19][5] is PieceKind.O
+    assert next_state.next_piece_queue == ()
+
+
 def test_restart_session_returns_fresh_board_and_score() -> None:
     """Restarting should return a fresh session with a cleared board."""
     service = TetrisService(piece_sequence=(PieceKind.T, PieceKind.I))
