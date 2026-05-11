@@ -25,7 +25,7 @@
 **⚠️ CRITICAL**: No user story task should begin before this phase is coherent.
 
 - [X] T002 Create typed gameplay state symbols in `src/clickup_control_plane/tetris/models.py` and piece definitions in `src/clickup_control_plane/tetris/pieces.py` for board geometry, tetromino orientations, score state, and session status required by PL-02.
-- [ ] T003 Implement deterministic state transitions in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py` for spawn, move, rotate, gravity tick, lock, line-clear preparation, score accumulation hooks, and restartable session orchestration from PL-02.
+- [X] T003 Implement deterministic state transitions in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py` for spawn, move, rotate, gravity tick, lock, line-clear preparation, score accumulation hooks, and restartable session orchestration from PL-02.
 
 **Checkpoint**: The Tetris package owns a typed game-state engine that the browser shell can call without embedding game rules in UI code.
 
