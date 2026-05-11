@@ -55,11 +55,19 @@ Each task has a HUD file at `specs/{feature_id}-*/huds/{task_id}.md` containing:
 After implementation, QA verifies your work against the acceptance criteria:
 
 ```bash
-# Build QA payload and run verification
-python scripts/speckit_offline_qa_handoff.py \
+# Validate an edit batch through the guarded workflow
+uv run python scripts/edit_code.py validate \
+  --paths src/mcp_codebase/server.py \
+  --tests tests/unit/test_pipeline_driver.py
+
+# For the full closeout flow on a task, use the sync handoff command
+uv run python scripts/edit_code.py sync \
+  --paths src/mcp_codebase/server.py \
+  --tests tests/unit/test_pipeline_driver.py \
+  --commit-message "Describe one coherent edit unit" \
+  --handoff \
   --feature-id 023 \
-  --task-id T001 \
-  --json
+  --task-id T001
 ```
 
 The QA agent:
@@ -89,6 +97,7 @@ python scripts/speckit_closeout_task.py \
 
 | Script | Purpose |
 |---|---|
+| `scripts/edit_code.py` | Canonical validate/refresh/sync workflow wrapper |
 | `scripts/offline_qa.py` | Schema + behavioral QA verifier |
 | `scripts/speckit_behavioral_qa.py` | Runs tests and checks drift |
 | `scripts/speckit_closeout_task.py` | Closes task if QA passed |
@@ -111,14 +120,11 @@ python scripts/offline_qa.py --payload-file ... --skip-behavioral
 ## Testing
 
 ```bash
-# All tests
-pytest tests/ -v
+# Run targeted tests through the guard
+uv run --no-sync python scripts/pytest_guard.py run -- tests/unit/test_pipeline_driver.py -q
 
-# Contract tests
-pytest tests/contract/ -v
-
-# Unit tests
-pytest tests/unit/ -v
+# Run validation for a coherent edit batch
+uv run python scripts/edit_code.py validate --paths scripts/pipeline_driver.py --tests tests/unit/test_pipeline_driver.py
 ```
 
 ## Governance
@@ -126,6 +132,7 @@ pytest tests/unit/ -v
 - `constitution.md` — Pipeline constitution
 - `AGENTS.md` — Agent instructions
 - `CLAUDE.md` — AI assistant context
+- `docs/architecture/` — Canonical repo and subsystem maps
 - `docs/governance/` — Detailed governance docs
 
 ## Services

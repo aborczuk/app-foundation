@@ -341,10 +341,14 @@ def test_run_codex_exec_seeds_a_private_codex_home_with_guard_config(tmp_path: P
     assert stdout == "codex stdout"
     assert stderr == "codex stderr"
     assert last_message == ""
-    assert captured["command"][0] == "/usr/bin/codex"
-    assert "--ignore-user-config" not in captured["command"]
-    assert "--add-dir" not in captured["command"]
-    assert str(repo_root) in captured["command"]
-    assert "--skip-git-repo-check" not in captured["command"]
+    command = captured["command"]
+    env = captured["env"]
+    assert isinstance(command, list)
+    assert isinstance(env, dict)
+    assert command[0] == "/usr/bin/codex"
+    assert "--ignore-user-config" not in command
+    assert "--add-dir" not in command
+    assert str(repo_root) in command
+    assert "--skip-git-repo-check" not in command
     assert captured["cwd"] == repo_root
-    assert captured["env"]["CODEX_HOME"] != str(source_home)
+    assert env["CODEX_HOME"] != str(source_home)

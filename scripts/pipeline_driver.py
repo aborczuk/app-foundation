@@ -202,6 +202,31 @@ def _prepare_generative_handoff(
     return prepared
 
 
+def _block_command_agent_owned_route(
+    *,
+    command_id: str,
+    feature_id: str,
+    phase: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Return a deterministic block for routes that must run through the command agent."""
+    direct_command = f"/{command_id}"
+    return {
+        "schema_version": "1.0.0",
+        "ok": False,
+        "exit_code": 1,
+        "correlation_id": correlation_id,
+        "gate": "direct_command_required",
+        "reasons": ["command_agent_route_requires_direct_command"],
+        "error_code": "command_agent_route_requires_direct_command",
+        "next_phase": phase,
+        "debug_path": None,
+        "feature_id": feature_id,
+        "command_id": command_id,
+        "direct_command": direct_command,
+    }
+
+
 def load_generated_step_result(*, phase: str, correlation_id: str) -> dict[str, Any] | None:
     """Load an optional runtime result envelope emitted by a generative phase helper."""
     if not phase or not correlation_id:
@@ -587,7 +612,7 @@ def resolve_step_mapping(
 
     Returns either:
     - Deterministic: {"type": "deterministic", "route": {...}, "command_id": "..."}
-    - Generative: {"type": "generative", "handoff": {...}}
+    - Generative: {"type": "generative", "route": {...}, "handoff": {...}}
     - Legacy: {"type": "legacy", "command_id": "..."}
     """
     from pipeline_driver_contracts import load_driver_routes
@@ -662,6 +687,7 @@ def resolve_step_mapping(
         return {
             "type": "generative",
             "command_id": command_id,
+            "route": normalized_route,
             "handoff": {
                 "handoff_id": handoff_id,
                 "step_name": command_id,
@@ -1959,20 +1985,30 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
 
     elif mapping_type == "generative":
+        route = mapping.get("route", {})
+        execution_owner = str(route.get("execution_owner") or "handoff_runner").strip().lower()
         handoff = _prepare_generative_handoff(
             mapping["handoff"],
             command_id=mapping.get("command_id"),
             feature_id=resolved_feature_id,
             correlation_id=correlation_id,
         )
-        step_result = run_generative_handoff(
-            handoff,
-            feature_id=resolved_feature_id,
-            phase=effective_phase,
-            correlation_id=correlation_id,
-            next_phase=route_next_phase,
-            handoff_runner=args.handoff_runner,
-        )
+        if execution_owner == "command_agent":
+            step_result = _block_command_agent_owned_route(
+                command_id=str(mapping.get("command_id") or ""),
+                feature_id=resolved_feature_id,
+                phase=effective_phase,
+                correlation_id=correlation_id,
+            )
+        else:
+            step_result = run_generative_handoff(
+                handoff,
+                feature_id=resolved_feature_id,
+                phase=effective_phase,
+                correlation_id=correlation_id,
+                next_phase=route_next_phase,
+                handoff_runner=args.handoff_runner,
+            )
         if int(step_result.get("exit_code", 1)) == 0:
             generated_artifact = step_result.get("generated_artifact")
             artifact_path: str | Path | None = None

@@ -314,16 +314,15 @@ commands:
       - story_count
       - estimate_points
   speckit.implement:
-    description: Execute the next registered task through driver-owned approval, validation,
-      QA, and closeout sequencing
+    description: Execute the next registered task through command-agent-owned builder
+      and QA subagent orchestration plus script-owned QA and closeout sequencing
     driver:
-      mode: deterministic
-      script_path: scripts/speckit_implement_step.py
+      mode: generative
+      execution_owner: command_agent
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/python/check_prerequisites.py
-    - scripts/speckit_implement_step.py
     - scripts/speckit_gate_status.py
     - scripts/speckit_implement_gate.py
     - scripts/speckit_prepare_ignores.py

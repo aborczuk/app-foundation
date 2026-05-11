@@ -22,7 +22,7 @@ The stack also has two gate families:
 
 - `scripts/pipeline_driver.py`: Main CLI and orchestrator. It resolves the current phase, validates the requested phase, routes the command, runs deterministic or generative work, emits compact status, and appends success events back to the pipeline ledger when a routed step completes.
 - `scripts/pipeline_driver_state.py`: Feature-state helper module. It loads the pipeline ledger, resolves the ledger-authoritative phase, detects drift, manages feature locks in `.speckit/locks/`, and exposes the `advance_phase` mapping used by the driver.
-- `scripts/pipeline_driver_contracts.py`: Manifest contract loader. It reads `.specify/command-manifest.yaml`, normalizes driver modes, resolves script paths, and exposes command routing metadata to the driver and tests.
+- `scripts/pipeline_driver_contracts.py`: Manifest contract loader. It reads `command-manifest.yaml`, normalizes driver modes, resolves script paths, and exposes command routing metadata to the driver and tests.
 - `scripts/pipeline_ledger.py`: Append-only feature ledger CLI. It defines `PipelineState`, validates phase transitions, appends feature-level events, and exposes the `assert-phase-complete` gate used to block phase progression until the expected event exists.
 - `scripts/task_ledger.py`: Append-only task ledger CLI. It validates task event sequencing, appends per-task events, and exposes `assert-can-start` so only the right actor can start the right task in the right order.
 - `scripts/speckit_gate_status.py`: High-level gate status reporter. It summarizes whether the current feature is ready for plan or implement progression based on the required artifacts and checklist state.

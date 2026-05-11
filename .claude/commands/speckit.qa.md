@@ -8,13 +8,13 @@ $ARGUMENTS
 
 ## Compact Contract (Load First)
 
-Run behavioral QA for a completed task to verify implementation against acceptance criteria, detect drift, and emit a structured PASS/FIX_REQUIRED verdict.
+Act as the persistent implement-session QA subagent for one completed task at a time. Review the builder output against task acceptance criteria, detect drift, and emit a structured PASS/FIX_REQUIRED verdict for the orchestrator. The downstream offline QA script remains the canonical closeout authority.
 
 1. Resolve feature context and task HUD.
 2. Read acceptance criteria from HUD (or tasks.md fallback).
-3. Review the deterministic test logs provided in the handoff payload.
+3. Review the builder output, diff/test evidence, and HUD seam for the selected task.
 4. Verify implementation matches acceptance criteria (semantic drift detection).
-5. Emit structured verdict JSON with specific findings.
+5. Emit structured PASS/FIX_REQUIRED findings back to the orchestrator only.
 
 ## Expanded Guidance (Load On Demand)
 
@@ -43,16 +43,16 @@ If neither exists → `FIX_REQUIRED: MISSING_ACCEPTANCE_CRITERIA`
 
 ### 3. Test verification
 
-The deterministic behavioral script has already run the tests. Review the `test_runs` evidence in the handoff payload:
+The orchestrator provides the task-local `test_runs` evidence in the QA handoff payload:
 - Confirm that tests covering the changed files were actually executed.
 - Confirm that all relevant test runs have `exit_code == 0`.
 - If tests were skipped or failed, this is a blocking finding.
 
-Do not run tests manually unless the provided logs are ambiguous or missing.
+Do not run tests manually unless the provided logs are ambiguous or missing. Do not emit ledger events or close tasks.
 
 ### 4. Drift detection
 
-Check that the implementation addresses the acceptance criteria:
+Check that the builder implementation addresses the acceptance criteria:
 - **File symbol check**: Was the HUD's `File:Symbol` actually modified?
 - **Keyword match**: Do changed files contain keywords from acceptance criteria?
 - **Test coverage**: Do tests verify the acceptance criteria?
@@ -61,7 +61,7 @@ If drift detected → `FIX_REQUIRED: IMPLEMENTATION_DRIFT`
 
 ### 5. Verdict emission
 
-The QA agent emits a JSON result:
+The QA subagent emits a JSON result back to the orchestrator:
 
 ```json
 {
@@ -90,7 +90,11 @@ Findings are specific and actionable:
 
 ### 6. Integration with offline QA
 
-The behavioral QA agent is invoked by `offline_qa.py` after schema validation. The combined result includes both schema and behavioral findings.
+This QA subagent is the orchestrator-facing reviewer inside `/speckit.implement`. The script-owned offline QA path is still authoritative for canonical task closeout:
+- `scripts/speckit_offline_qa_handoff.py`
+- `scripts/speckit_closeout_task.py`
+
+The behavioral QA agent invoked by `offline_qa.py` after schema validation remains the canonical downstream check. The combined result includes both schema and behavioral findings.
 
 To skip behavioral QA (e.g., for legacy specs without HUDs):
 ```bash
@@ -104,3 +108,4 @@ python scripts/offline_qa.py --payload-file ... --skip-behavioral
 - Do not skip drift detection even if tests pass.
 - Keep findings specific and actionable (file names, symbol names, test names).
 - Emit warnings for non-blocking issues (e.g., missing HUD but tasks.md has criteria).
+- Do not append ledger events, close tasks, or emit phase-completion events.

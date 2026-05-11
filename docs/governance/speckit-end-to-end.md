@@ -17,7 +17,7 @@ End-to-end information already existed, but it was split:
 - State machine diagram: `constitution-workflow.md` and `.claude/constitution-workflow.md`
 - Command ownership matrix: `docs/governance/command-script-coverage.md`
 - Command behavior contracts: `.claude/commands/speckit.*.md`
-- Artifact/event registry: `command-manifest.yaml` (mirror: `command-manifest.yaml`)
+- Artifact/event registry: `command-manifest.yaml`
 
 ## System Of Record
 
@@ -27,7 +27,6 @@ End-to-end information already existed, but it was split:
 | State transitions diagram | `constitution-workflow.md` |
 | Per-command behavior contract | `.claude/commands/speckit.<step>.md` |
 | Artifact + template + emitted event registration | `command-manifest.yaml` |
-| Manifest mirror | `command-manifest.yaml` |
 | Template files | `.specify/templates/` |
 | Template scaffolding engine | `.specify/scripts/pipeline-scaffold.py` |
 | Feature bootstrap/setup scripts | `.specify/scripts/bash/*.sh` |
@@ -47,19 +46,32 @@ Key hard-gate facts:
 - `plan_approved` must occur before solution steps.
 - `analysis_completed` must occur before `/speckit.e2e`.
 - `offline_qa_passed` is required before task close. The QA agent (`scripts/speckit_behavioral_qa.py`) verifies acceptance criteria, runs tests, and checks for implementation drift. Tasks with `FIX_REQUIRED` cannot close.
+- `/speckit.implement` is a generative command-agent-owned orchestration step. It is not a deterministic step-script runner and it must not delegate task execution to a Codex subrunner.
 
 For exact matrix and event semantics, use `constitution.md`.
 
 ## How A Step Actually Executes
 
 1. Command contract is read from `.claude/commands/speckit.<step>.md`.
-2. Setup script discovers context (`check_prerequisites.py` or `setup_plan.py`).
-3. If templated outputs are required, scaffold is run by script:
+2. Driver route is resolved from `command-manifest.yaml`.
+3. Setup scripts discover context (`check_prerequisites.py` or `setup_plan.py`) and script-owned gates run first.
+4. If templated outputs are required, scaffold is run by script:
    - shared: `.specify/scripts/pipeline-scaffold.py`
    - or dedicated: `.specify/scripts/bash/<script>.sh`
-4. LLM fills placeholders/content according to command contract.
-5. Deterministic gates validate structure/sequence.
-6. Pipeline event is appended and validated through `scripts/pipeline_ledger.py`.
+5. Execution then follows the driver mode:
+   - deterministic: a step script owns the phase runtime
+   - generative: the command agent owns the phase runtime and uses the command doc as the orchestration contract
+6. Script-owned validation, ledgers, and closeout helpers remain authoritative after LLM work.
+7. Pipeline event is appended and validated through `scripts/pipeline_ledger.py`.
+
+Important `implement` exception:
+
+- `speckit.implement` is a generative route.
+- The `/speckit.implement` command agent itself orchestrates the persistent builder and QA subagents.
+- The builder prompt comes from `.claude/commands/speckit.implement.md`.
+- The QA prompt comes from `.claude/commands/speckit.qa.md`.
+- Script-owned helpers still own offline QA, task closeout, docs updates, and task-gate continuation.
+- `scripts/speckit_implement_step.py` and `scripts/speckit_codex_handoff_runner.py` are not the orchestration authority for `implement`.
 
 ## Artifact Generation Model
 
@@ -91,11 +103,11 @@ Access pattern:
 If you change command behavior:
 
 - `.claude/commands/speckit.<step>.md`
+- and, if the orchestration boundary changes, the command's `driver` route in `command-manifest.yaml`
 
 If you change command outputs/events:
 
 - `command-manifest.yaml`
-- `command-manifest.yaml` (mirror)
 - templates under `.specify/templates/`
 
 If you change pipeline order/event rules:

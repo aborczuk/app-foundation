@@ -1731,7 +1731,7 @@ def test_main_bootstraps_description_requests(monkeypatch, capsys) -> None:
     assert command[-1] == "create a universal backlog jsonl for all registered tasks"
 
 
-def test_main_passes_context_to_implement_step(monkeypatch) -> None:
+def test_main_blocks_command_agent_owned_implement_route(monkeypatch) -> None:
     monkeypatch.setattr(
         pipeline_driver,
         "resolve_phase_state",
@@ -1753,12 +1753,19 @@ def test_main_passes_context_to_implement_step(monkeypatch) -> None:
         pipeline_driver,
         "resolve_step_mapping",
         lambda *args, **kwargs: {
-            "type": "deterministic",
+            "type": "generative",
             "command_id": "speckit.implement",
             "route": {
-                "mode": "deterministic",
-                "script_path": "scripts/speckit_implement_step.py",
-                "timeout_seconds": 300,
+                "mode": "generative",
+                "execution_owner": "command_agent",
+            },
+            "handoff": {
+                "handoff_id": "handoff-run-test",
+                "step_name": "speckit.implement",
+                "required_inputs": [],
+                "output_template_path": "",
+                "completion_marker": "",
+                "correlation_id": "run-test:speckit.implement",
             },
         },
     )
@@ -1771,44 +1778,22 @@ def test_main_passes_context_to_implement_step(monkeypatch) -> None:
             "approval_granted": True,
         },
     )
-    monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
-
     observed: dict[str, object] = {}
 
-    def _fake_run_step(command, *, timeout_seconds, correlation_id, **kwargs):  # noqa: ANN001
-        observed["command"] = list(command)
-        observed["timeout_seconds"] = timeout_seconds
-        observed["correlation_id"] = correlation_id
-        return {
-            "schema_version": "1.0.0",
-            "ok": True,
-            "exit_code": 0,
-            "correlation_id": correlation_id,
-            "next_phase": "closed",
-            "gate": None,
-            "reasons": [],
-            "error_code": None,
-            "debug_path": None,
-        }
+    def _capture_status(step_result):  # noqa: ANN001
+        observed["step_result"] = dict(step_result)
 
-    monkeypatch.setattr(pipeline_driver, "run_step", _fake_run_step)
-
+    monkeypatch.setattr(pipeline_driver, "emit_human_status", _capture_status)
     exit_code = pipeline_driver.main(
         ["--feature-id", "023-deterministic-phase-orchestration", "--phase", "implement"]
     )
 
-    assert exit_code == 0
-    assert observed["timeout_seconds"] == 300
-    assert observed["correlation_id"] == "run-test:speckit.implement"
-    assert observed["command"] == [
-        "scripts/speckit_implement_step.py",
-        "--feature-id",
-        "023",
-        "--phase",
-        "implement",
-        "--correlation-id",
-        "run-test:speckit.implement",
-    ]
+    assert exit_code == 1
+    step_result = observed["step_result"]
+    assert isinstance(step_result, dict)
+    assert step_result["gate"] == "direct_command_required"
+    assert step_result["error_code"] == "command_agent_route_requires_direct_command"
+    assert step_result["direct_command"] == "/speckit.implement"
 
 
 def test_main_passes_context_to_specify_step(monkeypatch) -> None:
@@ -2336,6 +2321,7 @@ def test_resolve_step_mapping_creates_generative_handoff(tmp_path: Path) -> None
     )
     assert result["type"] == "generative"
     assert result["command_id"] == "speckit.specify"
+    assert result["route"]["mode"] == "generative"
     assert "handoff" in result
     handoff = result["handoff"]
     assert handoff["handoff_id"] == "handoff_run_20260410T120000Z_019"
@@ -2527,6 +2513,7 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
         "planreview",
         "sketch",
         "solution",
+        "implement",
     ]
     for phase in generative_commands:
         result = pipeline_driver.resolve_step_mapping(
@@ -2543,7 +2530,8 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
     assert routes["speckit.run"]["mode"] == "deterministic"
     assert routes["speckit.run"]["script_path"]
     assert routes["speckit.tasking"]["mode"] != "legacy"
-    assert routes["speckit.implement"]["mode"] != "legacy"
+    assert routes["speckit.implement"]["mode"] == "generative"
+    assert routes["speckit.implement"]["execution_owner"] == "command_agent"
     assert routes["speckit.solution"]["mode"] == "generative"
     assert routes["speckit.solution"]["script_path"] == str(
         (manifest_path.parent / "scripts" / "speckit_solution_step.py").resolve()

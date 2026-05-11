@@ -268,6 +268,7 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
     - mode: canonical driver mode (`deterministic`, `generative`, `legacy`)
     - script_path: normalized absolute script path if declared
     - timeout_seconds: optional positive integer
+    - execution_owner: optional execution boundary owner for generative routes
     - scripts: declared script dependencies, trimmed but not re-rooted
     - artifacts: normalized artifact declarations, including consumed_by metadata
     - emits: declared pipeline events for the command
@@ -376,6 +377,9 @@ def load_driver_routes(manifest_path: str | Path | None = None) -> dict[str, dic
             "emits": emit_events,
             "emit_contracts": emit_contracts,
         }
+        execution_owner = driver_block.get("execution_owner")
+        if execution_owner is not None:
+            route["execution_owner"] = _normalize_freeform_metadata(execution_owner)
         if normalized_description is not None:
             route["description"] = normalized_description
         if normalized_scripts is not None:

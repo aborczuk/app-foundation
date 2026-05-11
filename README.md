@@ -34,14 +34,11 @@ uv run python -m src.mcp_clickup
 ### Run Tests
 
 ```bash
-# All tests
-pytest tests/ -v
+# Run a targeted selector through the repo guard
+uv run --no-sync python scripts/pytest_guard.py run -- tests/unit/test_pipeline_driver.py -q
 
-# Contract tests only
-pytest tests/contract/ -v
-
-# Unit tests only
-pytest tests/unit/ -v
+# Or validate a coherent edit batch through the handoff wrapper
+uv run python scripts/edit_code.py validate --paths scripts/pipeline_driver.py --tests tests/unit/test_pipeline_driver.py
 ```
 
 ## Project Structure
@@ -49,10 +46,15 @@ pytest tests/unit/ -v
 - **src/** — Application code
   - `clickup_control_plane/` — FastAPI webhook service + n8n dispatcher
   - `mcp_*/` — MCP server implementations (Codebase, Trello, ClickUp)
-- **tests/** — Contract and unit test suites
-- **specs/** — Architecture and governance documentation (014-017)
+- **scripts/** — Deterministic workflow, validation, and repo tooling
+- **tests/** — Unit, contract, and integration suites
+- **docs/architecture/** — Stable subsystem and repo maps
+- **docs/governance/** — Workflow/process contracts and runbooks
+- **specs/** — Feature-scoped design records, plans, tasks, and handoff artifacts
 - **.claude/** — Development governance (domains, speckit commands)
 - **.speckit/** — Task and pipeline audit ledgers
+
+For a canonical repo map, start with `docs/architecture/repo-map.md`.
 
 ## The Speckit Natural Loop
 
