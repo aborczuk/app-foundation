@@ -45,6 +45,10 @@
 <!-- speckit_implement_docs:entry_id=T007:runbook -->
 - Closed T007 at commit 5a428e5 after offline QA pass offline-qa-t007-20260511T170725Z; fixed queue-replenishing continuation after lock and added single-line clear coverage.
 
+
+<!-- speckit_implement_docs:entry_id=T008:runbook -->
+- Closed T008 at commit 97f282e after offline QA pass offline-qa-t008-20260511T171025Z; extended the unit suite with deterministic empty-queue spawn coverage.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -67,3 +71,6 @@
 
 <!-- speckit_implement_docs:entry_id=T007:decision_log -->
 - T007 tightened the service-facing continuation seam: when a lock exhausts the deterministic queue, TetrisService now replenishes and spawns the next piece instead of dropping the session into GAME_OVER; unit coverage now includes single-line clear collapse and continuation.
+
+<!-- speckit_implement_docs:entry_id=T008:decision_log -->
+- T008 completed the engine-focused unit regression seam by adding direct coverage for deterministic queue replenishment in TetrisService.spawn_next_piece, preserving a browser-free unit boundary.

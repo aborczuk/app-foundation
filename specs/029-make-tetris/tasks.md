@@ -46,7 +46,7 @@
 **Independent Test**: Drive the engine into a completed row, confirm the row disappears, the board collapses correctly, and the rendered score increases without resetting the session.
 
 - [X] T007 [US2] Complete line-clear and scoring behavior in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py` so locked pieces trigger row detection, collapse logic, score updates, and next-piece continuation consistent with PL-02.
-- [ ] T008 [US2] Add deterministic unit coverage in `tests/unit/test_tetris_engine.py` for boundary movement, blocked rotation, single/multi-line clears, score updates, and next-piece continuation required by PL-04.
+- [X] T008 [US2] Add deterministic unit coverage in `tests/unit/test_tetris_engine.py` for boundary movement, blocked rotation, single/multi-line clears, score updates, and next-piece continuation required by PL-04.
 
 ## Phase 5: User Story 3 - Reach Game Over and Restart (Priority: P3)
 
