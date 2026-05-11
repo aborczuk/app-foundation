@@ -79,3 +79,25 @@ def test_payload_test_runs_accepts_explicit_evidence() -> None:
     normalized = speckit_behavioral_qa._payload_test_runs(payload)
 
     assert normalized == payload["test_runs"]
+
+
+def test_check_acceptance_in_diff_accepts_markdown_artifact_tasks(tmp_path: Path) -> None:
+    """Behavioral QA should scan markdown artifacts for artifact-only acceptance checks."""
+    artifact = tmp_path / "artifact.md"
+    artifact.write_text(
+        "This completed generator-valid artifact preserves explicit constraints, "
+        "current docstrings, and implement-ready acceptance criteria.\n",
+        encoding="utf-8",
+    )
+
+    ok, findings = speckit_behavioral_qa._check_acceptance_in_diff(
+        tmp_path,
+        ["artifact.md"],
+        (
+            "The solution artifacts preserve explicit constraints and implement-ready "
+            "acceptance criteria while current docstrings stay generator-valid."
+        ),
+    )
+
+    assert ok is True
+    assert findings == []

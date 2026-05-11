@@ -281,8 +281,9 @@ def _check_acceptance_in_diff(
 
     # Read changed files and look for keyword matches
     matched_any = False
+    eligible_suffixes = (".py", ".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")
     for cf in changed_files:
-        if not cf.endswith(".py"):
+        if not cf.endswith(eligible_suffixes):
             continue
         path = repo_root / cf
         if not path.exists():

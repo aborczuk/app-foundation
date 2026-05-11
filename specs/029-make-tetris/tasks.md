@@ -61,7 +61,7 @@
 
 **Purpose**: Close the loop on artifact hygiene and feature-facing documentation that supports implementation and verification.
 
-- [ ] T011 Update `specs/029-make-tetris/tasks.md`, generated HUDs under `specs/029-make-tetris/huds/`, and any touched docstrings in `src/clickup_control_plane/tetris/*.py` so the solution artifact set preserves slice-to-task traceability, explicit constraints, and implement-ready acceptance criteria.
+- [ ] T011 Finalize `specs/029-make-tetris/tasks.md`, generated HUDs under `specs/029-make-tetris/huds/`, and current docstrings in `src/clickup_control_plane/tetris/*.py` so the completed generator-valid artifact set preserves slice-to-task traceability, explicit constraints, and implement-ready acceptance criteria.
 
 ## Dependencies & Execution Order
 
