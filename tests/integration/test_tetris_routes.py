@@ -21,6 +21,8 @@ async def test_tetris_route_surface_supports_session_and_commands() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         page = await client.get("/tetris")
+        css = await client.get("/tetris/assets/tetris.css")
+        js = await client.get("/tetris/assets/tetris.js")
         created = await client.post("/tetris/session")
         moved = await client.post("/tetris/session/move", json={"dx": -1, "dy": 0})
         rotated = await client.post("/tetris/session/rotate", json={"clockwise": True})
@@ -28,7 +30,17 @@ async def test_tetris_route_surface_supports_session_and_commands() -> None:
         current = await client.get("/tetris/session")
 
     assert page.status_code == 200
-    assert "Tetris" in page.text
+    assert "data-traceability='PL-03'" in page.text
+    assert "/tetris/assets/tetris.css" in page.text
+    assert "/tetris/assets/tetris.js" in page.text
+    assert "id='tetris-board'" in page.text
+    assert "id='tetris-controls'" in page.text
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert "tetris-board" in css.text
+    assert js.status_code == 200
+    assert js.headers["content-type"].startswith("text/javascript")
+    assert "fetchSession" in js.text
     assert created.status_code == 201
     assert created.json()["status"] == "active"
     assert created.json()["active_piece"]["kind"] == "T"

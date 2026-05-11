@@ -1,13 +1,20 @@
 """Routing seam for the Tetris feature."""
 
-from fastapi import APIRouter, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .models import ActivePiece, GameState, PieceKind, ScoreState
 from .service import TetrisService
 
 router = APIRouter(prefix="/tetris", tags=["tetris"])
+ASSET_ROOT = Path(__file__).with_name("assets")
+ASSET_MEDIA_TYPES = {
+    "tetris.css": "text/css; charset=utf-8",
+    "tetris.js": "text/javascript; charset=utf-8",
+}
 
 
 class MoveCommand(BaseModel):
@@ -23,23 +30,86 @@ class RotateCommand(BaseModel):
     clockwise: bool = Field(default=True, description="Rotate clockwise when true.")
 
 
-@router.get("", include_in_schema=False, response_class=HTMLResponse)
+@router.api_route("", methods=["GET", "HEAD"], include_in_schema=False, response_class=HTMLResponse)
 async def tetris_root() -> HTMLResponse:
-    """Render the initial Tetris surface shell."""
+    """Render the thin browser shell for the server-backed Tetris session."""
     return HTMLResponse(
         "<!doctype html>"
-        "<html lang='en'>"
-        "<head><meta charset='utf-8'><title>Tetris</title></head>"
+        "<html lang='en' data-traceability='PL-03'>"
+        "<head>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>Tetris</title>"
+        "<link rel='stylesheet' href='/tetris/assets/tetris.css'>"
+        "<script defer src='/tetris/assets/tetris.js'></script>"
+        "</head>"
         "<body>"
-        "<main>"
-        "<h1>Tetris</h1>"
-        "<p>Session endpoint: <code>/tetris/session</code></p>"
-        "<p>Commands: <code>/tetris/session/move</code>, "
-        "<code>/tetris/session/rotate</code>, <code>/tetris/session/tick</code></p>"
+        "<main class='tetris-page' id='tetris-app' "
+        "data-session-endpoint='/tetris/session' "
+        "data-command-move='/tetris/session/move' "
+        "data-command-rotate='/tetris/session/rotate' "
+        "data-command-tick='/tetris/session/tick' "
+        "data-command-restart='/tetris/session'>"
+        "<section class='tetris-panel tetris-panel--board' aria-labelledby='tetris-board-title'>"
+        "<div class='tetris-panel__header'>"
+        "<p class='tetris-kicker'>PL-03</p>"
+        "<h1 id='tetris-board-title'>Tetris</h1>"
+        "<p class='tetris-summary'>Server-backed play surface, board, and gravity loop.</p>"
+        "</div>"
+        "<div class='tetris-board-shell'>"
+        "<div id='tetris-board' class='tetris-board' role='grid' aria-label='Tetris board' "
+        "aria-live='polite'></div>"
+        "</div>"
+        "</section>"
+        "<aside class='tetris-panel tetris-panel--hud'>"
+        "<section class='tetris-hud-block' aria-labelledby='tetris-score-title'>"
+        "<div class='tetris-panel__header'>"
+        "<p class='tetris-kicker'>Snapshot</p>"
+        "<h2 id='tetris-score-title'>Score</h2>"
+        "</div>"
+        "<dl class='tetris-stats'>"
+        "<div><dt>Status</dt><dd id='tetris-status'>ready</dd></div>"
+        "<div><dt>Score</dt><dd id='tetris-score'>0</dd></div>"
+        "<div><dt>Lines</dt><dd id='tetris-lines'>0</dd></div>"
+        "<div><dt>Level</dt><dd id='tetris-level'>1</dd></div>"
+        "<div><dt>Ticks</dt><dd id='tetris-ticks'>0</dd></div>"
+        "</dl>"
+        "</section>"
+        "<section class='tetris-hud-block' aria-labelledby='tetris-next-title'>"
+        "<div class='tetris-panel__header'>"
+        "<p class='tetris-kicker'>Queue</p>"
+        "<h2 id='tetris-next-title'>Next pieces</h2>"
+        "</div>"
+        "<ol id='tetris-next-queue' class='tetris-queue'></ol>"
+        "</section>"
+        "<section class='tetris-hud-block' aria-labelledby='tetris-controls-title'>"
+        "<div class='tetris-panel__header'>"
+        "<p class='tetris-kicker'>Control</p>"
+        "<h2 id='tetris-controls-title'>Controls</h2>"
+        "</div>"
+        "<div id='tetris-controls' class='tetris-controls'>"
+        "<button type='button' data-command='move-left'>Left</button>"
+        "<button type='button' data-command='rotate'>Rotate</button>"
+        "<button type='button' data-command='move-right'>Right</button>"
+        "<button type='button' data-command='soft-drop'>Drop</button>"
+        "<button type='button' data-command='new-game'>New game</button>"
+        "</div>"
+        "<p class='tetris-hint'>Arrow keys map to the same route-backed commands.</p>"
+        "</section>"
+        "</aside>"
         "</main>"
         "</body>"
         "</html>"
     )
+
+
+@router.api_route("/assets/{asset_name}", methods=["GET", "HEAD"], include_in_schema=False)
+async def tetris_asset(asset_name: str) -> FileResponse:
+    """Serve a versioned browser asset for the Tetris shell."""
+    if asset_name not in ASSET_MEDIA_TYPES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown Tetris asset.")
+    asset_path = ASSET_ROOT / asset_name
+    return FileResponse(asset_path, media_type=ASSET_MEDIA_TYPES[asset_name])
 
 
 @router.get("/session")
