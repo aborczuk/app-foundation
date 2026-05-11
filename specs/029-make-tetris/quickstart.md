@@ -53,6 +53,10 @@
 <!-- speckit_implement_docs:entry_id=T009:runbook -->
 - Closed T009 at commit 0470728 after offline QA pass offline-qa-t009-20260511T172255Z; added explicit restart routing plus terminal-state unit and integration coverage.
 
+
+<!-- speckit_implement_docs:entry_id=T010:runbook -->
+- Closed T010 at commit 4abc9a8 after offline QA pass offline-qa-t010-20260511T172929Z; added runtime lifecycle coverage for reaching game over through tick and then restarting over HTTP.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -81,3 +85,6 @@
 
 <!-- speckit_implement_docs:entry_id=T009:decision_log -->
 - T009 made restart an explicit HTTP seam at /tetris/session/restart and verified that ended sessions stay inert until a fresh authoritative restart is provisioned.
+
+<!-- speckit_implement_docs:entry_id=T010:decision_log -->
+- T010 completed the end-to-end runtime lifecycle proof by showing the live FastAPI seam can progress into game over via tick and recover via the explicit restart route without collapsing to mocks.
