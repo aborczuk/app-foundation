@@ -20,6 +20,10 @@
 <!-- speckit_implement_docs:entry_id=T004:runbook -->
 - Closed T004 at commit ba4ec3b after offline QA pass offline-qa-t004-20260511T013443Z.
 
+
+<!-- speckit_implement_docs:entry_id=T005:runbook -->
+- Closed T005 at commit f8d8351 after offline QA pass offline-qa-t005-20260511T163610Z, including live localhost verification of page, assets, and command flow.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -33,3 +37,6 @@
 
 <!-- speckit_implement_docs:entry_id=T004:decision_log -->
 - T004 added the initial Tetris runtime surface: HTML entry route plus authoritative session, move, rotate, and tick endpoints that delegate to TetrisService through the FastAPI app seam.
+
+<!-- speckit_implement_docs:entry_id=T005:decision_log -->
+- T005 introduced the playable browser shell with server-backed board rendering, controls, gravity loop, and asset delivery; verification required running the shared app with dummy control-plane env because Tetris still shares the global app lifespan.

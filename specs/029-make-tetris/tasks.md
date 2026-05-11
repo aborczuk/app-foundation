@@ -36,7 +36,7 @@
 **Independent Test**: Open the Tetris page, confirm an empty board plus active piece are rendered, then move/rotate the active piece while gravity continues to advance play.
 
 - [X] T004 [US1] Add the initial game page and session endpoints in `src/clickup_control_plane/tetris/routes.py` and wire them from `src/clickup_control_plane/app.py:create_app` so the browser can fetch a fresh authoritative session and tick/move/rotate commands through PL-01 and PL-03 seams.
-- [ ] T005 [US1] Build the playable browser shell in `src/clickup_control_plane/tetris/assets/tetris.js`, `src/clickup_control_plane/tetris/assets/tetris.css`, and the page response in `src/clickup_control_plane/tetris/routes.py` so the board, active piece, controls, score panel, and game loop render from server-backed session state.
+- [X] T005 [US1] Build the playable browser shell in `src/clickup_control_plane/tetris/assets/tetris.js`, `src/clickup_control_plane/tetris/assets/tetris.css`, and the page response in `src/clickup_control_plane/tetris/routes.py` so the board, active piece, controls, score panel, and game loop render from server-backed session state.
 
 ## Phase 4: User Story 2 - Clear Lines and Track Score (Priority: P2)
 
