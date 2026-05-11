@@ -7,7 +7,13 @@ import pytest
 
 from src.clickup_control_plane.app import create_app
 from src.clickup_control_plane.config import LOCAL_TETRIS_RUNTIME_ENV
-from src.clickup_control_plane.tetris.models import GameState, PieceKind, SessionStatus
+from src.clickup_control_plane.tetris.models import (
+    ActivePiece,
+    GameState,
+    PieceKind,
+    ScoreState,
+    SessionStatus,
+)
 from src.clickup_control_plane.tetris.service import TetrisService
 
 
@@ -87,6 +93,40 @@ async def test_tetris_route_game_over_is_inert_until_restart() -> None:
     assert restarted.status_code == 200
     assert restarted.json()["status"] == "active"
     assert restarted.json()["score"] == {"score": 0, "lines_cleared": 0, "level": 1}
+    assert restarted.json()["active_piece"]["kind"] == "T"
+
+
+@pytest.mark.asyncio
+async def test_tetris_route_tick_can_reach_game_over_before_restart() -> None:
+    """A live tick should be able to lock, fail the next spawn, and mark game over."""
+    app = create_app()
+    service = TetrisService(piece_sequence=(PieceKind.T,))
+    app.state.tetris_service = service
+    board_rows: list[list[PieceKind | None]] = [
+        [None for _ in range(10)]
+        for _ in range(20)
+    ]
+    for x in (4, 5, 6):
+        board_rows[1][x] = PieceKind.S
+    terminal_state = GameState(
+        board=tuple(tuple(row) for row in board_rows),
+        status=SessionStatus.ACTIVE,
+        active_piece=ActivePiece(kind=PieceKind.O, position=(3, 18)),
+        next_piece_queue=(),
+        score=ScoreState(),
+    )
+    app.state.tetris_state = terminal_state
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        ticked = await client.post("/tetris/session/tick")
+        restarted = await client.post("/tetris/session/restart")
+
+    assert ticked.status_code == 200
+    assert ticked.json()["status"] == "game_over"
+    assert ticked.json()["active_piece"] is None
+    assert restarted.status_code == 200
+    assert restarted.json()["status"] == "active"
     assert restarted.json()["active_piece"]["kind"] == "T"
 
 
