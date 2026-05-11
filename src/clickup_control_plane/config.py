@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlparse
 
+LOCAL_TETRIS_RUNTIME_ENV = "CONTROL_PLANE_LOCAL_TETRIS"
+
 
 class ConfigError(ValueError):
     """Raised when required runtime configuration is missing or malformed."""
@@ -123,6 +125,25 @@ def load_runtime_config(env: Mapping[str, str] | None = None) -> ControlPlaneRun
         hitl_waiting_status=hitl_waiting_status,
         hitl_blocked_status=hitl_blocked_status,
         hitl_timeout_seconds=hitl_timeout_seconds,
+    )
+
+
+def is_local_tetris_runtime(env: Mapping[str, str] | None = None) -> bool:
+    """Return whether the process should boot the local Tetris-only runtime."""
+    source = env if env is not None else os.environ
+    raw_value = source.get(LOCAL_TETRIS_RUNTIME_ENV)
+    if raw_value is None:
+        return False
+
+    value = raw_value.strip().lower()
+    if not value:
+        raise ConfigError(f"{LOCAL_TETRIS_RUNTIME_ENV} cannot be blank.")
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigError(
+        f"{LOCAL_TETRIS_RUNTIME_ENV} must be one of: 1, 0, true, false, yes, no, on, off."
     )
 
 

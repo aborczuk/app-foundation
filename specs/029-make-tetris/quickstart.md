@@ -1,5 +1,18 @@
 # Quickstart
 
+## Local Tetris Runtime
+
+- Start the dedicated local Tetris runtime without ClickUp or n8n bootstrap env:
+  - `uv run python -m uvicorn src.clickup_control_plane.app:tetris_app --host 127.0.0.1 --port 8765`
+- Open `http://127.0.0.1:8765/tetris`.
+- Manual verification:
+  - page loads and renders the board/HUD
+  - `New Game` starts a fresh session
+  - arrow keys or buttons move/rotate the active piece
+  - the piece falls over time without any browser-side gameplay authority
+- The full control-plane runtime still uses:
+  - `uv run python -m uvicorn src.clickup_control_plane.app:app --host 127.0.0.1 --port 8765`
+
 ## Deterministic Operator Runbook Notes
 
 ### Recovery Delta Validation Notes

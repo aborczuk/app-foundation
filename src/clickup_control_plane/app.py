@@ -18,7 +18,12 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .clickup_client import ClickUpError, ClickUpOutcomeClient, TaskOutcomePayload
-from .config import ConfigError, ControlPlaneRuntimeConfig, load_runtime_config
+from .config import (
+    ConfigError,
+    ControlPlaneRuntimeConfig,
+    is_local_tetris_runtime,
+    load_runtime_config,
+)
 from .dispatcher import N8NDispatchClient
 from .qa_loop import resolve_qa_loop_config
 from .reconcile import ReconciliationService
@@ -111,62 +116,85 @@ class _ClickUpTaskStatusProbe:
         return _status_implies_active(status_name)
 
 
-@asynccontextmanager
-async def _lifespan(app: FastAPI):
-    config = get_runtime_config()
-    state_store = StateStore(config.control_plane_db_path)
-    await state_store.initialize()
+def _seed_tetris_runtime_state(app: FastAPI) -> None:
+    """Attach the authoritative in-memory Tetris session to the app state."""
     tetris_service = TetrisService()
+    app.state.tetris_service = tetris_service
+    app.state.tetris_state = tetris_service.start_session()
 
-    async with AsyncExitStack() as stack:
-        dispatcher_client = await stack.enter_async_context(
-            N8NDispatchClient(
-                base_url=config.n8n_dispatch_base_url,
-                timeout_seconds=config.request_timeout_seconds,
+
+def _build_lifespan(*, local_tetris_only: bool):
+    """Build the FastAPI lifespan for either full control-plane or Tetris-only boot."""
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        """Initialize either the full control-plane runtime or the Tetris-only runtime."""
+        if local_tetris_only:
+            _seed_tetris_runtime_state(app)
+            yield
+            return
+
+        config = get_runtime_config()
+        state_store = StateStore(config.control_plane_db_path)
+        await state_store.initialize()
+
+        async with AsyncExitStack() as stack:
+            dispatcher_client = await stack.enter_async_context(
+                N8NDispatchClient(
+                    base_url=config.n8n_dispatch_base_url,
+                    timeout_seconds=config.request_timeout_seconds,
+                )
             )
-        )
-        clickup_client = await stack.enter_async_context(
-            ClickUpOutcomeClient(
-                api_token=config.clickup_api_token,
-                timeout_seconds=config.request_timeout_seconds,
+            clickup_client = await stack.enter_async_context(
+                ClickUpOutcomeClient(
+                    api_token=config.clickup_api_token,
+                    timeout_seconds=config.request_timeout_seconds,
+                )
             )
-        )
-        probe = await stack.enter_async_context(
-            _ClickUpTaskStatusProbe(
-                api_token=config.clickup_api_token,
-                timeout_seconds=config.request_timeout_seconds,
+            probe = await stack.enter_async_context(
+                _ClickUpTaskStatusProbe(
+                    api_token=config.clickup_api_token,
+                    timeout_seconds=config.request_timeout_seconds,
+                )
             )
-        )
-        reconciliation_service = ReconciliationService(
-            state_store=state_store,
-            run_state_probe=probe,
-        )
-        dispatch_service = DispatchOrchestrationService(
-            state_store=state_store,
-            dispatcher_client=dispatcher_client,
-            clickup_outcome_client=clickup_client,
-            qa_loop_config=resolve_qa_loop_config(config),
-            allowlist=config.allowlist,
-            workflow_controlled_statuses=_workflow_controlled_statuses(config),
-            reconciliation_service=reconciliation_service,
-        )
-        reconciliation_result = await reconciliation_service.reconcile_stale_active_runs()
+            reconciliation_service = ReconciliationService(
+                state_store=state_store,
+                run_state_probe=probe,
+            )
+            dispatch_service = DispatchOrchestrationService(
+                state_store=state_store,
+                dispatcher_client=dispatcher_client,
+                clickup_outcome_client=clickup_client,
+                qa_loop_config=resolve_qa_loop_config(config),
+                allowlist=config.allowlist,
+                workflow_controlled_statuses=_workflow_controlled_statuses(config),
+                reconciliation_service=reconciliation_service,
+            )
+            reconciliation_result = await reconciliation_service.reconcile_stale_active_runs()
 
-        app.state.runtime_config = config
-        app.state.state_store = state_store
-        app.state.dispatcher_client = dispatcher_client
-        app.state.clickup_outcome_client = clickup_client
-        app.state.dispatch_service = dispatch_service
-        app.state.reconciliation_service = reconciliation_service
-        app.state.reconciliation_result = reconciliation_result
-        app.state.tetris_service = tetris_service
-        app.state.tetris_state = tetris_service.start_session()
-        yield
+            app.state.runtime_config = config
+            app.state.state_store = state_store
+            app.state.dispatcher_client = dispatcher_client
+            app.state.clickup_outcome_client = clickup_client
+            app.state.dispatch_service = dispatch_service
+            app.state.reconciliation_service = reconciliation_service
+            app.state.reconciliation_result = reconciliation_result
+            _seed_tetris_runtime_state(app)
+            yield
+
+    return _lifespan
 
 
-def create_app() -> FastAPI:
-    """Build and configure FastAPI application."""
-    api = FastAPI(title="ClickUp Control Plane", version="0.1.0", lifespan=_lifespan)
+def create_app(*, local_tetris_only: bool | None = None) -> FastAPI:
+    """Build and configure either the full app or the dedicated Tetris runtime app."""
+    resolved_local_tetris_only = (
+        is_local_tetris_runtime() if local_tetris_only is None else local_tetris_only
+    )
+    api = FastAPI(
+        title="ClickUp Control Plane",
+        version="0.1.0",
+        lifespan=_build_lifespan(local_tetris_only=resolved_local_tetris_only),
+    )
     api.include_router(tetris_router)
 
     @api.get("/control-plane/health")
@@ -562,3 +590,4 @@ def _status_implies_active(status_name: str) -> bool:
 
 
 app = create_app()
+tetris_app = create_app(local_tetris_only=True)

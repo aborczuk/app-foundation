@@ -1,6 +1,6 @@
 # Effort Estimate: make tetris
 
-**Date**: 2026-05-08 | **Total Points**: 28 | **T-shirt Size**: medium
+**Date**: 2026-05-08 | **Total Points**: 31 | **T-shirt Size**: medium
 **Estimated by**: AI (speckit.estimate) — calibrate against actuals after implementation
 
 ---
@@ -14,11 +14,12 @@
 | T003 | 5 | Implement deterministic spawn/move/rotate/gravity/session orchestration in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py`. | Core rule engine is the highest-risk implementation seam and needs careful state transitions. |
 | T004 | 3 | Add the game page and session command endpoints in `src/clickup_control_plane/tetris/routes.py` and `src/clickup_control_plane/app.py:create_app`. | Route wiring is moderate because it serializes engine state into a stable browser contract. |
 | T005 | 5 | Build the playable browser shell in `src/clickup_control_plane/tetris/assets/tetris.js` and `src/clickup_control_plane/tetris/assets/tetris.css`. | Client loop, rendering, and keyboard control wiring are substantial but bounded once the route contract exists. |
-| T006 | 3 | Add line-clear and score behavior in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py`. | Targeted extension of the core engine after the base transitions exist. |
-| T007 | 2 | Add deterministic unit coverage in `tests/unit/test_tetris_engine.py`. | Straightforward once engine interfaces are stable. |
-| T008 | 3 | Finalize game-over and restart handling across `src/clickup_control_plane/tetris/engine.py`, `service.py`, and `routes.py`. | Moderate extension of existing session flow with a few invariants to preserve. |
-| T009 | 1 | Add FastAPI integration coverage in `tests/integration/test_tetris_routes.py`. | Focused black-box verification using the already-defined runtime contract. |
-| T010 | 1 | Refresh HUD/tasking traceability and docstrings for the Tetris artifacts. | Small closeout work after the main implementation shape settles. |
+| T006 | 3 | Add a dedicated local Tetris runtime path so `/tetris` can start without ClickUp/n8n bootstrap env for manual verification. | Moderate decoupling work across app bootstrap, config, and dev-facing docs/runtime seams without changing the authoritative game logic. |
+| T007 | 3 | Add line-clear and score behavior in `src/clickup_control_plane/tetris/engine.py` and `src/clickup_control_plane/tetris/service.py`. | Targeted extension of the core engine after the base transitions exist. |
+| T008 | 2 | Add deterministic unit coverage in `tests/unit/test_tetris_engine.py`. | Straightforward once engine interfaces are stable. |
+| T009 | 3 | Finalize game-over and restart handling across `src/clickup_control_plane/tetris/engine.py`, `service.py`, and `routes.py`. | Moderate extension of existing session flow with a few invariants to preserve. |
+| T010 | 1 | Add FastAPI integration coverage in `tests/integration/test_tetris_routes.py`. | Focused black-box verification using the already-defined runtime contract. |
+| T011 | 1 | Refresh HUD/tasking traceability and docstrings for the Tetris artifacts. | Small closeout work after the main implementation shape settles. |
 
 ---
 
@@ -51,8 +52,8 @@
 | Phase 3: User Story 1 | 8 | 2 | 0 |
 | Phase 4: User Story 2 | 5 | 2 | 0 |
 | Phase 5: User Story 3 | 4 | 2 | 0 |
-| Phase 6: Polish & Cross-Cutting Concerns | 1 | 1 | 0 |
-| **Total** | **28** | **10** | **0** |
+| Phase 6: Polish & Cross-Cutting Concerns | 4 | 2 | 0 |
+| **Total** | **31** | **11** | **0** |
 
 ---
 

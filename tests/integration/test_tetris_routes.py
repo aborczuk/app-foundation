@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from src.clickup_control_plane.app import create_app
+from src.clickup_control_plane.config import LOCAL_TETRIS_RUNTIME_ENV
 from src.clickup_control_plane.tetris.models import PieceKind
 from src.clickup_control_plane.tetris.service import TetrisService
 
@@ -52,3 +53,36 @@ async def test_tetris_route_surface_supports_session_and_commands() -> None:
     assert ticked.json()["active_piece"]["position"] == {"x": 2, "y": 1}
     assert current.json()["status"] == "active"
     assert current.json()["next_piece_queue"] == ["I"]
+
+
+@pytest.mark.asyncio
+async def test_local_tetris_runtime_starts_without_control_plane_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Start the dedicated Tetris-only runtime without ClickUp/n8n bootstrap env."""
+    for key in (
+        "CLICKUP_API_TOKEN",
+        "CLICKUP_WEBHOOK_SECRET",
+        "N8N_DISPATCH_BASE_URL",
+        "CONTROL_PLANE_ALLOWLIST",
+        LOCAL_TETRIS_RUNTIME_ENV,
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    app = create_app(local_tetris_only=True)
+
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            page = await client.get("/tetris")
+            health = await client.get("/control-plane/health")
+            created = await client.post("/tetris/session")
+
+    assert page.status_code == 200
+    assert health.status_code == 200
+    assert created.status_code == 201
+    assert created.json()["status"] == "active"
+    assert hasattr(app.state, "tetris_service")
+    assert not hasattr(app.state, "dispatch_service")
