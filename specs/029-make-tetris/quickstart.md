@@ -16,6 +16,10 @@
 <!-- speckit_implement_docs:entry_id=T003:runbook -->
 - Closed T003 at commit 4c27024 after offline QA pass offline-qa-t003-20260511T012657Z.
 
+
+<!-- speckit_implement_docs:entry_id=T004:runbook -->
+- Closed T004 at commit ba4ec3b after offline QA pass offline-qa-t004-20260511T013443Z.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -26,3 +30,6 @@
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
 - T003 added the deterministic engine/service seams for spawn, move, rotate, gravity, lock, line-clear scoring, and restart orchestration, plus unit coverage for the core gameplay loop.
+
+<!-- speckit_implement_docs:entry_id=T004:decision_log -->
+- T004 added the initial Tetris runtime surface: HTML entry route plus authoritative session, move, rotate, and tick endpoints that delegate to TetrisService through the FastAPI app seam.
