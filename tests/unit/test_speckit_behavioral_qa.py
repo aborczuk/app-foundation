@@ -62,3 +62,20 @@ def test_read_hud_supports_current_hud_shape(tmp_path: Path) -> None:
         "Existing control-plane endpoints keep their behavior."
     )
     assert parsed["quality_guards"] == ["Runtime Surface: keep one mount seam."]
+
+
+def test_payload_test_runs_accepts_explicit_evidence() -> None:
+    """Behavioral QA should accept valid payload-provided test evidence."""
+    payload = {
+        "test_runs": [
+            {
+                "command": "uv run --no-sync python scripts/pytest_guard.py run -- tests/unit/test_tetris_engine.py",
+                "exit_code": 0,
+                "output": "1 passed",
+            }
+        ]
+    }
+
+    normalized = speckit_behavioral_qa._payload_test_runs(payload)
+
+    assert normalized == payload["test_runs"]

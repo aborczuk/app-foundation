@@ -213,6 +213,35 @@ def _run_tests_for_files(
     return all_passed, test_runs, warnings
 
 
+def _payload_test_runs(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return valid payload-supplied test runs when explicit evidence is present."""
+    raw_runs = payload.get("test_runs")
+    if not isinstance(raw_runs, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for run in raw_runs:
+        if not isinstance(run, dict):
+            return []
+        command = run.get("command")
+        exit_code = run.get("exit_code")
+        output = run.get("output", "")
+        if not isinstance(command, str) or not command.strip():
+            return []
+        if not isinstance(exit_code, int):
+            return []
+        if not isinstance(output, str):
+            return []
+        normalized.append(
+            {
+                "command": command,
+                "exit_code": exit_code,
+                "output": output,
+            }
+        )
+    return normalized
+
+
 def _check_file_symbol_changed(
     repo_root: Path, changed_files: list[str], file_symbol: str
 ) -> tuple[bool, str]:
@@ -354,8 +383,14 @@ def main(argv: list[str] | None = None) -> int:
         ac_ok, ac_findings = _check_acceptance_in_diff(repo_root, changed_files, acceptance)
         findings.extend(ac_findings)
 
-    # Run actual tests
-    if changed_files:
+    # Prefer explicit payload test evidence when present; otherwise discover tests from changed files.
+    payload_runs = _payload_test_runs(payload)
+    if payload_runs:
+        test_runs.extend(payload_runs)
+        warnings.append("Used payload-supplied test_runs for behavioral QA evidence.")
+        if any(run["exit_code"] != 0 for run in payload_runs):
+            findings.append("TESTS_FAILED: One or more payload test runs failed")
+    elif changed_files:
         tests_passed, runs, test_warnings = _run_tests_for_files(repo_root, changed_files, task_id)
         test_runs.extend(runs)
         warnings.extend(test_warnings)
