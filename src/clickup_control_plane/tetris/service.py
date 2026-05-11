@@ -47,6 +47,9 @@ class TetrisService:
 
     def lock(self, state: GameState) -> GameState:
         """Lock the active piece and replenish the deterministic queue when needed."""
+        if state.status is not SessionStatus.ACTIVE:
+            return state
+
         locked_state = engine.lock_active_piece(state)
         if (
             locked_state.status is SessionStatus.GAME_OVER
