@@ -37,7 +37,7 @@
 
 - [X] T004 [US1] Add the initial game page and session endpoints in `src/clickup_control_plane/tetris/routes.py` and wire them from `src/clickup_control_plane/app.py:create_app` so the browser can fetch a fresh authoritative session and tick/move/rotate commands through PL-01 and PL-03 seams.
 - [X] T005 [US1] Build the playable browser shell in `src/clickup_control_plane/tetris/assets/tetris.js`, `src/clickup_control_plane/tetris/assets/tetris.css`, and the page response in `src/clickup_control_plane/tetris/routes.py` so the board, active piece, controls, score panel, and game loop render from server-backed session state.
-- [ ] T006 [US1] Add a dedicated local Tetris runtime path in `src/clickup_control_plane/app.py`, `src/clickup_control_plane/config.py`, and supporting dev-runner/docs seams so `/tetris` can be started and manually verified without requiring ClickUp/n8n control-plane bootstrap configuration.
+- [X] T006 [US1] Add a dedicated local Tetris runtime path in `src/clickup_control_plane/app.py`, `src/clickup_control_plane/config.py`, and supporting dev-runner/docs seams so `/tetris` can be started and manually verified without requiring ClickUp/n8n control-plane bootstrap configuration.
 
 ## Phase 4: User Story 2 - Clear Lines and Track Score (Priority: P2)
 

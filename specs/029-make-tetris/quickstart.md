@@ -37,6 +37,10 @@
 <!-- speckit_implement_docs:entry_id=T005:runbook -->
 - Closed T005 at commit f8d8351 after offline QA pass offline-qa-t005-20260511T163610Z, including live localhost verification of page, assets, and command flow.
 
+
+<!-- speckit_implement_docs:entry_id=T006:runbook -->
+- Closed T006 at commit ac5e6da after offline QA pass offline-qa-t006-20260511T170013Z; added the dedicated tetris_app quickstart path so /tetris can start without ClickUp/n8n env.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -53,3 +57,6 @@
 
 <!-- speckit_implement_docs:entry_id=T005:decision_log -->
 - T005 introduced the playable browser shell with server-backed board rendering, controls, gravity loop, and asset delivery; verification required running the shared app with dummy control-plane env because Tetris still shares the global app lifespan.
+
+<!-- speckit_implement_docs:entry_id=T006:decision_log -->
+- T006 split the shared app bootstrap into full-runtime and Tetris-only lifespan paths, exposed src.clickup_control_plane.app:tetris_app for local verification, added config helper coverage, and documented the exact local run command in quickstart.md.
