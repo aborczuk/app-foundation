@@ -41,6 +41,10 @@
 <!-- speckit_implement_docs:entry_id=T006:runbook -->
 - Closed T006 at commit ac5e6da after offline QA pass offline-qa-t006-20260511T170013Z; added the dedicated tetris_app quickstart path so /tetris can start without ClickUp/n8n env.
 
+
+<!-- speckit_implement_docs:entry_id=T007:runbook -->
+- Closed T007 at commit 5a428e5 after offline QA pass offline-qa-t007-20260511T170725Z; fixed queue-replenishing continuation after lock and added single-line clear coverage.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T001:decision_log -->
@@ -60,3 +64,6 @@
 
 <!-- speckit_implement_docs:entry_id=T006:decision_log -->
 - T006 split the shared app bootstrap into full-runtime and Tetris-only lifespan paths, exposed src.clickup_control_plane.app:tetris_app for local verification, added config helper coverage, and documented the exact local run command in quickstart.md.
+
+<!-- speckit_implement_docs:entry_id=T007:decision_log -->
+- T007 tightened the service-facing continuation seam: when a lock exhausts the deterministic queue, TetrisService now replenishes and spawns the next piece instead of dropping the session into GAME_OVER; unit coverage now includes single-line clear collapse and continuation.
