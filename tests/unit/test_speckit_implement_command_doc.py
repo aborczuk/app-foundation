@@ -23,3 +23,9 @@ def test_speckit_implement_doc_requires_persistent_builder_qa_subagents() -> Non
     assert "scripts/speckit_offline_qa_handoff.py" in doc_text
     assert "scripts/speckit_closeout_task.py" in doc_text
     assert "Subagents do not append ledger events, close tasks, or emit phase-completion events." in doc_text
+    assert "QA payload minimum fields" in doc_text
+    assert "QA result minimum fields" in doc_text
+    assert "only reread a full QA payload/result artifact if the file changed" in doc_text
+    assert "first wait window" in doc_text
+    assert "second wait window" in doc_text
+    assert "empty/null completion is `invalid_completion`" in doc_text

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import task_ledger
+from speckit_implement_contract import compute_payload_digest
 
 TASK_LINE_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]\s+(?P<task_id>T\d{3})\b")
 CHECKBOX_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]")
@@ -201,9 +202,12 @@ def _offline_qa_payload(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             },
         )
 
-    for field in ("feature_id", "task_id", "hud_path", "diff"):
+    for field in ("feature_id", "task_id", "hud_path", "diff", "payload_run_id", "payload_digest"):
         if not _nonempty_string(data.get(field)):
             reasons.append(f"invalid_{field}")
+    if _nonempty_string(data.get("payload_digest")):
+        if compute_payload_digest(data) != data.get("payload_digest"):
+            reasons.append("invalid_payload_digest")
 
     if not _string_list(data.get("acceptance_criteria"), allow_empty=False):
         reasons.append("invalid_acceptance_criteria")

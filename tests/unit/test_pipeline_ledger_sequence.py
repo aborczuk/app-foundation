@@ -74,6 +74,17 @@ def test_new_solution_sequence_passes() -> None:
     errors, _ = assert_transition_result(events)
 
 
+def test_implementation_completed_can_follow_analysis_without_e2e() -> None:
+    events = _base_prefix() + _new_solution_chain() + [
+        _event("analysis_completed", critical_count=0),
+        _event("implementation_completed"),
+        _event("feature_closed"),
+    ]
+    errors, state = assert_transition_result(events)
+    assert errors == []
+    assert state["019"].last_event == "feature_closed"
+
+
 def test_append_rejects_invalid_order_before_mutation(tmp_path: Path) -> None:
     ledger_path = tmp_path / "pipeline-ledger.jsonl"
     args = SimpleNamespace(

@@ -161,12 +161,11 @@ Read code by intent, not by guessing file windows.
 
    The compact match output will hint which analysis to run next.
 
-5. **You can dig for more context within a file as well with the same function and optional file path**
+5. **You can dig for more context within a file with the same function and optional file path**
 
    Examples:
 
    ```bash
-   uv run python scripts/read_code.py window src/mcp_codebase/read_code.py 42 60
    uv run python scripts/read_code.py context "_resolve_pattern_anchor" --path src/mcp_codebase/read_code.py
    ```
 
@@ -174,7 +173,7 @@ Read code by intent, not by guessing file windows.
 
    Use `read_code analyze` to map blast radius, inheritance, imports, dead-code, and other structural questions.
 
-   - Do not use broad `find content` for reassurance once the relevant file or seam is already known; prefer `analyze`, `window`, or a narrower `context` query.
+   - Do not use broad `find content` for reassurance once the relevant file or seam is already known; prefer `analyze` or a narrower `context` query.
 
    Examples:
 
@@ -213,7 +212,7 @@ uv run python scripts/read_code.py find content "semantic search"
 
 7. **After using context to get a seam, for Markdown symbols, use this dig workflow:**
 
-   - Use `window` or `context` for bounded reads: `uv run python scripts/read_code.py window <file> 1 100` — reads lines.
+   - Use `context` for bounded markdown discovery through the semantic reader first.
 
    - Use `read_markdown_headings` when you need markdown structure discovery: `uv run python scripts/read_markdown.py --headings <file>` — lists headings with line numbers.
    - Use `read_markdown_section` when you need an exact heading title: `uv run python scripts/read_markdown.py <file> "<exact heading title>"` — reads one markdown section. Use sparingly because it can be extra tokens.
@@ -242,6 +241,13 @@ uv run python scripts/edit_code.py sync --paths <touched-paths> --tests <pytest-
 - Reread only on concrete signals: patch failure, failing tests/lint/LSP diagnostics, or explicit ambiguity from the diff.
 - After each edit batch, run a validation loop before starting the next batch.
 - Validation loop: targeted tests for the touched behavior via `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`, codebase-lsp diagnostics for touched Python files, and `uv run ruff check` (via `scripts/ruff_guard.py <python-paths>` when applicable).
+- Guard I/O pattern for all new wrappers and validators:
+  - accept narrow, structured inputs only; prefer explicit file paths, task ids, feature ids, or selectors over broad repo scans
+  - print a compact summary first, then a bounded failure excerpt, and always provide a log or artifact path for the full output
+  - never dump full success output by default
+  - on failure, cap printed output and report how to retrieve the full artifact or raise the cap explicitly
+  - prefer one-item-at-a-time or shortlist stepping for discovery-style outputs instead of full tables or long lists
+  - if a wrapper emits a persisted artifact (log, payload, result), downstream steps should carry forward a compact decision summary and reread the full artifact only when it changed or a contradiction appears
 - For task completion, use the unified handoff and closeout flow:
   ```bash
   uv run python scripts/edit_code.py sync --paths <paths> --tests <tests> --commit-message "<message>" --handoff --feature-id <FID> --task-id <TID>

@@ -183,8 +183,8 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     },
     "solution_approved": {"plan_approved", "tasking_completed"},
     "analysis_completed": {"solution_approved"},
-    "e2e_generated": {"analysis_completed"},  # e2e MUST follow analysis (enforces analysis is required before impl)
-    "implementation_completed": {"e2e_generated"},
+    "e2e_generated": {"analysis_completed"},
+    "implementation_completed": {"analysis_completed", "e2e_generated"},
     "feature_closed": {"e2e_generated", "implementation_completed"},
 }
 

@@ -39,6 +39,7 @@ def test_build_pytest_command_strips_override_flags(monkeypatch) -> None:
 
 def test_run_writes_full_log_and_prints_first_failure(monkeypatch, tmp_path: Path, capsys) -> None:
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    monkeypatch.setenv("PYTEST_GUARD_MAX_FIRST_FAILURE_LINES", "3")
     guard = _load_module()
     failure_output = "\n".join(
         [
@@ -46,6 +47,9 @@ def test_run_writes_full_log_and_prints_first_failure(monkeypatch, tmp_path: Pat
             "FAILURES",
             "________________________ test_first ________________________",
             "E   AssertionError: boom",
+            "E   detail line 1",
+            "E   detail line 2",
+            "E   detail line 3",
             "________________________ test_second ________________________",
             "E   AssertionError: second",
             "=========================== short test summary info ============================",
@@ -85,6 +89,7 @@ def test_run_writes_full_log_and_prints_first_failure(monkeypatch, tmp_path: Pat
     assert "summary:" in stdout
     assert "--- first_failure ---" in stdout
     assert "test_first" in stdout
+    assert "... first_failure truncated by pytest_guard" in stdout
     assert "test_second" not in stdout
     assert seen_envs
     assert seen_envs[0]["UV_CACHE_DIR"] == str(Path(__file__).resolve().parents[2] / ".codegraphcontext" / ".uv-cache")

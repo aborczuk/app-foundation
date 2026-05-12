@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from speckit_implement_contract import offline_result_reasons
+
 
 def _run(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
     proc = subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, check=False)
@@ -31,6 +33,15 @@ def _json_print(payload: dict[str, Any], as_json: bool) -> None:
     print(f"result_file={payload['result_file']}")
     for reason in payload.get("reasons", []):
         print(f"- {reason}")
+
+
+def _load_json_file(path: Path) -> dict[str, Any] | None:
+    """Load a JSON object from disk, returning None on parse failure."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def run_offline_qa_handoff(
@@ -98,12 +109,19 @@ def run_offline_qa_handoff(
     ]
     validate_code, validate_out, validate_err = _run(validate_cmd, cwd=repo_root)
     payload["validate_exit_code"] = validate_code
-    payload["validate_stdout"] = validate_out
+    if validate_code != 0 and validate_out:
+        payload["validate_stdout"] = validate_out
     if validate_err:
         payload["validate_stderr"] = validate_err
     if validate_code != 0:
         payload["reasons"].append("offline_payload_invalid")
         return payload
+    payload_json = _load_json_file(payload_file)
+    if payload_json is None:
+        payload["reasons"].append("invalid_payload_json")
+        return payload
+    payload["payload_run_id"] = payload_json.get("payload_run_id")
+    payload["payload_digest"] = payload_json.get("payload_digest")
 
     result_file.parent.mkdir(parents=True, exist_ok=True)
     qa_cmd = [
@@ -116,20 +134,31 @@ def run_offline_qa_handoff(
     ]
     qa_code, qa_out, qa_err = _run(qa_cmd, cwd=repo_root)
     payload["offline_qa_exit_code"] = qa_code
-    payload["offline_qa_stdout"] = qa_out
+    if qa_code != 0 and qa_out:
+        payload["offline_qa_stdout"] = qa_out
     if qa_err:
         payload["offline_qa_stderr"] = qa_err
 
     if result_file.exists():
-        try:
-            result_json = json.loads(result_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        result_json = _load_json_file(result_file)
+        if result_json is None:
             payload["reasons"].append("invalid_result_json")
+            return payload
+        reasons = offline_result_reasons(
+            result_json,
+            feature_id=feature_id,
+            task_id=task_id,
+            payload_run_id=str(payload_json.get("payload_run_id") or ""),
+            payload_digest=str(payload_json.get("payload_digest") or ""),
+        )
+        if reasons:
+            payload["reasons"].extend(reasons)
             return payload
         payload["result_verdict"] = result_json.get("verdict")
         payload["qa_run_id"] = result_json.get("qa_run_id")
+        payload["changed_files_considered"] = result_json.get("changed_files_considered", [])
 
-    payload["ok"] = qa_code == 0
+    payload["ok"] = qa_code == 0 and not payload["reasons"]
     return payload
 
 

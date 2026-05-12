@@ -15,3 +15,8 @@ def test_speckit_qa_doc_describes_subagent_role_without_closeout_ownership() -> 
     assert "scripts/speckit_offline_qa_handoff.py" in doc_text
     assert "scripts/speckit_closeout_task.py" in doc_text
     assert "Do not append ledger events, close tasks, or emit phase-completion events." in doc_text
+    assert '"qa_run_id"' in doc_text
+    assert '"changed_files_considered"' in doc_text
+    assert "`INVALID_COMPLETION`" in doc_text
+    assert "`TASK_SCOPE_MISMATCH`" in doc_text
+    assert "retry once against the same QA subagent" in doc_text

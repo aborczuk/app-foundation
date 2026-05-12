@@ -108,6 +108,11 @@ def test_agents_edit_instructions_require_batch_validation_loop() -> None:
     assert "Do not advance past an edit batch" in agents_text
     assert "uv run python scripts/hook_refresh_indexes.py" in agents_text
     assert "changed-path JSON payload on stdin" in agents_text
+    assert "Guard I/O pattern for all new wrappers and validators" in agents_text
+    assert "print a compact summary first, then a bounded failure excerpt" in agents_text
+    assert "never dump full success output by default" in agents_text
+    assert "prefer one-item-at-a-time or shortlist stepping" in agents_text
+    assert "carry forward a compact decision summary" in agents_text
     assert "Commit once per completed edit unit" in agents_text
     assert "small, well-described commits are the basic unit of maintainable code" in agents_text
     assert "commit and push so the branch is synced" in agents_text

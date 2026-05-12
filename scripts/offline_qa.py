@@ -194,9 +194,12 @@ def build_result(payload: dict[str, Any], behavioral_result: dict[str, Any] | No
         "qa_run_id": build_qa_run_id(task_id),
         "feature_id": feature_id,
         "task_id": task_id,
+        "payload_run_id": _as_non_empty_str(payload.get("payload_run_id")),
+        "payload_digest": _as_non_empty_str(payload.get("payload_digest")),
         "verdict": verdict,
         "findings": all_findings,
         "messages": all_messages,
+        "changed_files_considered": payload.get("changed_files", []),
     }
 
     if behavioral_result:

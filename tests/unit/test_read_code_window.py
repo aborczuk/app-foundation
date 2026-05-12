@@ -1,4 +1,4 @@
-"""Unit tests for the read_code window command contract."""
+"""Unit tests for the read_code window disablement contract."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _load_read_code_module():
 
 
 def test_parse_window_args_uses_start_and_end_lines(tmp_path: Path) -> None:
-    """Parse the window command as an explicit start/end range."""
+    """Window argument parsing remains stable for any internal callers."""
     read_code = _load_read_code_module()
     target = tmp_path / "sample.py"
     target.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
@@ -49,21 +49,14 @@ def test_parse_window_args_rejects_ranges_over_the_maximum(tmp_path: Path) -> No
     assert read_code._parse_window_args([str(target), "1", str(read_code.READ_CODE_MAX_LINES + 1)]) is None
 
 
-def test_read_code_window_renders_the_requested_end_line(tmp_path: Path, monkeypatch) -> None:
-    """Pass the parsed end line through to the raw window renderer."""
+def test_read_code_window_is_disabled(tmp_path: Path, capsys) -> None:
+    """Window mode should fail closed and force semantic-first discovery."""
     read_code = _load_read_code_module()
     target = tmp_path / "sample.py"
     target.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
-    captured: list[tuple[Path, int, int]] = []
-
-    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda path, verbose=False: True)
-    monkeypatch.setattr(
-        read_code,
-        "_render_numbered_window",
-        lambda file_path, start_line, end_line: captured.append((file_path, start_line, end_line)),
-    )
 
     rc = read_code.read_code_window([str(target), "2", "4"])
+    stderr = capsys.readouterr().err
 
-    assert rc == 0
-    assert captured == [(target, 2, 4)]
+    assert rc == 1
+    assert "window mode is disabled" in stderr

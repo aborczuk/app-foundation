@@ -77,6 +77,20 @@ Before task execution or handoff:
   3. send the builder result, acceptance criteria, HUD seam, and test evidence to the QA subagent
   4. if QA returns `FIX_REQUIRED`, send those findings back to the same builder and retry the same task
   5. once QA returns a pass-worthy handoff, stop the subagent loop for that task and let the script-owned QA/closeout path continue
+- Guard JSON payload/result handling actively:
+  - extract a compact decision summary once rather than repeatedly rereading full payload/result JSON artifacts
+  - QA payload minimum fields: `feature_id`, `task_id`, `changed_files`, `acceptance_criteria`, `test_runs`
+  - QA result minimum fields: `qa_run_id`, `task_id`, `verdict`, `findings`, `changed_files_considered`
+  - reject a QA payload/result as invalid if the current task id does not match, required fields are missing, or the result run id is older than the active payload/run
+  - only reread a full QA payload/result artifact if the file changed, a new run id was produced, or a downstream gate contradicted the cached summary
+- Use an explicit wait budget before declaring a subagent stalled:
+  - first wait window: allow a normal response window before intervening
+  - second wait window: if still quiet but not failed, allow one extended wait
+  - only after both wait windows expire may the orchestrator mark the builder or QA subagent as stalled
+- Treat invalid or empty subagent completions as orchestration failures, not verdicts:
+  - an empty/null completion is `invalid_completion`, not `PASS` and not `FIX_REQUIRED`
+  - retry once against the same subagent with a stricter response instruction
+  - if the retry is still empty/invalid, respawn a replacement subagent before continuing the task
 - Do not route task execution through `scripts/speckit_codex_handoff_runner.py`.
 - Do not delegate implement orchestration to `scripts/speckit_implement_step.py`.
 - Preserve task dependency and phase ordering.
@@ -125,3 +139,6 @@ The task gate uses the task ledger as the source of truth for whether work is st
 - Do not emit completion events from LLM content.
 - Do not let the builder or QA subagents invoke closeout, task-gate, or pipeline phase completion.
 - Do not use a Codex subrunner for implement task execution.
+- Do not treat quiet subagents as stalled until the defined wait budget is exhausted.
+- Do not trust stale or mis-scoped QA JSON artifacts; reject them if `task_id`, `qa_run_id`, or required fields do not match the active task.
+- Do not treat an empty/null subagent completion as a valid builder result or QA verdict.
