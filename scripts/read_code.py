@@ -120,6 +120,7 @@ class _ContextArgs:
     show_shortlist: bool
     inline_body: bool
     candidate_index: int
+    content_type: str | None
 
 
 @dataclass(frozen=True)
@@ -378,6 +379,24 @@ def _candidate_raw_score(item: dict[str, object]) -> float:
 
 def _vector_anchor_rank(match: _VectorMatch) -> tuple[int]:
     return (match.cosine_similarity,)
+
+
+def _is_test_path(path: Path) -> bool:
+    """Return whether a candidate path lives under the repository test tree."""
+    return any(part.lower() == "tests" for part in path.parts)
+
+
+def _matches_context_content_type(match: _VectorMatch, content_type: str | None) -> bool:
+    """Return whether a semantic candidate belongs to the requested content type."""
+    if content_type is None:
+        return True
+    if content_type == "markdown":
+        return _is_markdown(match.file_path)
+    if content_type == "tests":
+        return _is_test_path(match.file_path)
+    if content_type == "code":
+        return not _is_markdown(match.file_path) and not _is_test_path(match.file_path)
+    return True
 
 
 def _vector_match_for_item(item: dict[str, object], query: str, normalized_query: str) -> _VectorMatch | None:
@@ -692,12 +711,17 @@ def _query_semantic_anchor_candidate(
     *,
     candidate_index: int,
     show_shortlist_hint: bool,
+    content_type: str | None,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
     """Query ranked candidates and select a semantic anchor with standardized error handling."""
     code_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
     markdown_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "markdown")
     vector_candidates = sorted(
-        code_candidates + markdown_candidates,
+        [
+            candidate
+            for candidate in (code_candidates + markdown_candidates)
+            if _matches_context_content_type(candidate, content_type)
+        ],
         key=_vector_anchor_rank,
         reverse=True,
     )[:5]
@@ -718,6 +742,7 @@ def _resolve_pattern_anchor(
     candidate_index: int,
     allow_fallback: bool,
     show_shortlist_hint: bool,
+    content_type: str | None,
 ) -> _AnchorResolution | None:
     if _is_markdown(file_path):
         assert file_path is not None
@@ -739,6 +764,8 @@ def _resolve_pattern_anchor(
                 docstring="",
                 cosine_similarity=100,
             )
+            if not _matches_context_content_type(vector_match, content_type):
+                return None
             return _AnchorResolution(
                 vector_candidates=[vector_match],
                 vector_match=vector_match,
@@ -753,6 +780,7 @@ def _resolve_pattern_anchor(
         normalized_pattern,
         candidate_index=candidate_index,
         show_shortlist_hint=show_shortlist_hint,
+        content_type=content_type,
     )
     if not selection_ok:
         return None
@@ -780,6 +808,7 @@ def _resolve_pattern_anchor(
                 normalized_pattern,
                 candidate_index=candidate_index,
                 show_shortlist_hint=show_shortlist_hint,
+                content_type=content_type,
             )
             if not selection_ok:
                 return None
@@ -846,8 +875,10 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
     show_shortlist = False
     inline_body = False
     candidate_index = 0
+    content_type: str | None = None
     expect_candidate_index = False
     expect_path = False
+    expect_content_type = False
 
     first_arg = argv[0]
     first_is_file = False
@@ -876,6 +907,12 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
                 return None
             candidate_index = int(token, 10)
             expect_candidate_index = False
+        elif expect_content_type:
+            if token not in {"code", "markdown", "tests"}:
+                print(f"ERROR: --content-type expects one of: code, markdown, tests ({token})", file=sys.stderr)
+                return None
+            content_type = token
+            expect_content_type = False
         elif expect_path:
             path_candidate = Path(token)
             if not path_candidate.is_file():
@@ -901,6 +938,14 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
                 print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
                 return None
             candidate_index = int(value, 10)
+        elif token == "--content-type":
+            expect_content_type = True
+        elif token.startswith("--content-type="):
+            _, _, value = token.partition("=")
+            if value not in {"code", "markdown", "tests"}:
+                print(f"ERROR: --content-type expects one of: code, markdown, tests ({value})", file=sys.stderr)
+                return None
+            content_type = value
         elif token == "--path":
             expect_path = True
         elif token.startswith("--path="):
@@ -918,6 +963,9 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
             return None
     if expect_candidate_index:
         print("ERROR: --candidate-index requires a value", file=sys.stderr)
+        return None
+    if expect_content_type:
+        print("ERROR: --content-type requires a value", file=sys.stderr)
         return None
     if expect_path:
         print("ERROR: --path requires a value", file=sys.stderr)
@@ -939,6 +987,7 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
         show_shortlist=show_shortlist,
         inline_body=inline_body,
         candidate_index=candidate_index,
+        content_type=content_type,
     )
 
 
@@ -1267,6 +1316,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         candidate_index=parsed.candidate_index,
         allow_fallback=parsed.allow_fallback,
         show_shortlist_hint=True,
+        content_type=parsed.content_type,
     )
     if resolution is None:
         return 1

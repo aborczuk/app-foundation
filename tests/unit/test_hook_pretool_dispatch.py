@@ -47,3 +47,42 @@ def test_allows_non_delete_apply_patch_payload() -> None:
     )
 
     assert stdout == ""
+
+
+def test_denies_git_grep_with_repo_specific_guidance() -> None:
+    """The dispatcher should give explicit repo guidance for git grep usage."""
+    stdout = _run_hook(
+        {
+            "tool_name": "exec_command",
+            "tool_input": {
+                "command": "git grep -n needle origin/main -- src/file.py",
+            },
+        }
+    )
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    reason = decision["permissionDecisionReason"]
+    assert "git grep" in reason
+    assert "scripts/read_code.py context" in reason
+    assert "scripts/github_guard.py run -- gh" in reason
+
+
+def test_denies_rg_with_repo_reader_guidance() -> None:
+    """The dispatcher should point plain rg usage to the repo readers."""
+    stdout = _run_hook(
+        {
+            "tool_name": "exec_command",
+            "tool_input": {
+                "command": "rg needle src",
+            },
+        }
+    )
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    reason = decision["permissionDecisionReason"]
+    assert "grep/rg" in reason
+    assert "scripts/read_code.py context" in reason

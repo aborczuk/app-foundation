@@ -51,12 +51,19 @@ def _worktree_guard(command: str) -> str | None:
 
 def _grep_guard(command: str) -> str | None:
     """Return the deny reason for direct grep/rg Bash usage."""
+    if re.search(r"(?<!\S)git\s+grep(?:\s|$)", command):
+        return (
+            "Direct `git grep` is denied. For repo search use `uv run python scripts/read_code.py "
+            "context <query>`. "
+            "For remote/history inspection use `uv run python scripts/github_guard.py run -- gh ...` "
+            "or bounded `git log -S/-G` history queries."
+        )
     for match in re.finditer(r"(?<![a-zA-Z0-9_])(grep|rg)(\s|$)", command):
         before = command[: match.start()].rstrip()
         if not before.endswith("|"):
             return (
-                "Use the Grep tool instead of grep/rg in Bash. This enforces token-efficient search "
-                "and consistent tool usage."
+                "Direct grep/rg Bash search is denied. Use `uv run python scripts/read_code.py "
+                "context <query>` for repo lookup."
             )
     return None
 

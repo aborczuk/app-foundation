@@ -91,6 +91,26 @@ def _vector_match(line_num: int, signature: str, *, confidence: int = 100) -> ob
     )
 
 
+def _vector_match_at_path(path: Path, line_num: int, signature: str, *, confidence: int = 100) -> object:
+    """Build a minimal ranked vector match pinned to a specific file path."""
+    return read_code._VectorMatch(
+        unit_id=f"test:{signature}:{path}",
+        symbol_name=signature,
+        qualified_name=signature,
+        line_num=line_num,
+        line_end=line_num,
+        raw_score=1.0,
+        cosine_similarity=confidence,
+        symbol_type="function",
+        has_body=True,
+        has_docstring=False,
+        body=f"{signature}\n    pass",
+        preview=signature,
+        signature=signature,
+        file_path=path,
+    )
+
+
 def test_vector_query_candidates_passes_file_path_to_indexer(monkeypatch, tmp_path: Path) -> None:
     """Semantic query subprocess calls should include the target file-path filter."""
     code_file = tmp_path / "sample.py"
@@ -1023,6 +1043,87 @@ def test_select_semantic_anchor_candidate_returns_requested_index() -> None:
     assert error is None
     assert selected is not None
     assert selected.line_num == 20
+
+
+def test_parse_context_args_accepts_content_type_filter(tmp_path: Path) -> None:
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def sample() -> int:\n    return 1\n", encoding="utf-8")
+
+    parsed = read_code._parse_context_args(["sample", "--path", str(code_file), "--content-type", "tests"])
+
+    assert parsed is not None
+    assert parsed.file_path == code_file
+    assert parsed.content_type == "tests"
+
+
+def test_parse_context_args_rejects_invalid_content_type(capsys) -> None:
+    parsed = read_code._parse_context_args(["sample", "--content-type", "nonsense"])
+
+    captured = capsys.readouterr()
+    assert parsed is None
+    assert "--content-type expects one of: code, markdown, tests" in captured.err
+
+
+def test_query_semantic_anchor_candidate_filters_to_markdown(monkeypatch, tmp_path: Path) -> None:
+    code_file = tmp_path / "src" / "sample.py"
+    code_file.parent.mkdir(parents=True, exist_ok=True)
+    code_file.write_text("def sample() -> int:\n    return 1\n", encoding="utf-8")
+    markdown_file = tmp_path / "docs" / "guide.md"
+    markdown_file.parent.mkdir(parents=True, exist_ok=True)
+    markdown_file.write_text("# Guide\n", encoding="utf-8")
+
+    code_match = _vector_match_at_path(code_file, 3, "def sample():", confidence=80)
+    markdown_match = _vector_match_at_path(markdown_file, 1, "# Guide", confidence=90)
+
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda file_path, query, normalized, scope: [code_match] if scope == "code" else [markdown_match],
+    )
+
+    candidates, selected, ok = read_code._query_semantic_anchor_candidate(
+        None,
+        "Guide",
+        "Guide",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type="markdown",
+    )
+
+    assert ok is True
+    assert candidates == [markdown_match]
+    assert selected == markdown_match
+
+
+def test_query_semantic_anchor_candidate_filters_to_tests(monkeypatch, tmp_path: Path) -> None:
+    prod_file = tmp_path / "src" / "sample.py"
+    prod_file.parent.mkdir(parents=True, exist_ok=True)
+    prod_file.write_text("def sample() -> int:\n    return 1\n", encoding="utf-8")
+    test_file = tmp_path / "tests" / "test_sample.py"
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text("def test_sample() -> None:\n    pass\n", encoding="utf-8")
+
+    prod_match = _vector_match_at_path(prod_file, 3, "def sample():", confidence=80)
+    test_match = _vector_match_at_path(test_file, 1, "def test_sample():", confidence=90)
+
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda file_path, query, normalized, scope: [prod_match, test_match] if scope == "code" else [],
+    )
+
+    candidates, selected, ok = read_code._query_semantic_anchor_candidate(
+        None,
+        "sample",
+        "sample",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type="tests",
+    )
+
+    assert ok is True
+    assert candidates == [test_match]
+    assert selected == test_match
 
 
 def test_read_code_context_applies_asymmetric_window_bounds(monkeypatch, tmp_path: Path) -> None:
