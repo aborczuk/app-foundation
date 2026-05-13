@@ -10,6 +10,13 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from speckit_implement_contract import (
+    build_payload_run_id,
+    compute_payload_digest,
+    existing_payload_reasons,
+    utc_now_iso,
+)
+
 TASK_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(?P<task_id>T\d{3})\b(?P<rest>.*)$")
 PHASE_HEADER_RE = re.compile(r"^\s*##\s+(?P<title>.+?)\s*$")
 
@@ -128,7 +135,22 @@ def _extract_primary_file_from_hud(hud_path: Path) -> str | None:
 
 
 def _changed_files_from_head(repo_root: Path) -> list[str]:
-    """Return the unique file list changed in HEAD."""
+    """Return workspace changes first, then fall back to files changed in HEAD."""
+    code, out, _ = _run(["git", "status", "--short"], cwd=repo_root)
+    if code == 0 and out.strip():
+        files: list[str] = []
+        for raw_line in out.splitlines():
+            line = raw_line.rstrip()
+            if len(line) < 3:
+                continue
+            path_fragment = line[2:].strip()
+            if " -> " in path_fragment:
+                path_fragment = path_fragment.split(" -> ", 1)[1].strip()
+            if path_fragment:
+                files.append(path_fragment)
+        if files:
+            return sorted(dict.fromkeys(files))
+
     code, out, _ = _run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo_root)
     if code != 0:
         return []
@@ -178,7 +200,15 @@ def _build_test_runs(repo_root: Path, feature_id: str, task_id: str) -> list[dic
 
 
 def _diff_summary(repo_root: Path) -> str:
-    """Summarize the current HEAD diff for the offline QA payload."""
+    """Summarize workspace changes first, then fall back to the last commit diff."""
+    code, out, _ = _run(["git", "diff", "--stat", "--no-color", "HEAD", "--"], cwd=repo_root)
+    if code == 0 and out.strip():
+        return out.strip()
+
+    code, out, _ = _run(["git", "status", "--short"], cwd=repo_root)
+    if code == 0 and out.strip():
+        return out.strip()
+
     code, out, _ = _run(["git", "show", "--stat", "--oneline", "--no-color", "HEAD"], cwd=repo_root)
     if code == 0 and out.strip():
         return out.strip()
@@ -218,13 +248,24 @@ def main(argv: list[str] | None = None) -> int:
         "ok": False,
     }
 
-    if payload_path.exists() and not args.force:
-        result["ok"] = True
-        result["created"] = False
-        _json_print(result, as_json=bool(args.json))
-        return 0
-
     try:
+        if payload_path.exists() and not args.force:
+            existing_payload = json.loads(payload_path.read_text(encoding="utf-8"))
+            reuse_reasons = existing_payload_reasons(
+                existing_payload,
+                feature_id=args.feature_id,
+                task_id=args.task_id,
+                attempt=args.attempt,
+            )
+            if not reuse_reasons:
+                result["ok"] = True
+                result["created"] = False
+                result["payload_run_id"] = existing_payload.get("payload_run_id")
+                result["payload_digest"] = existing_payload.get("payload_digest")
+                _json_print(result, as_json=bool(args.json))
+                return 0
+            result["warnings"] = reuse_reasons
+
         feature_dir = _find_feature_dir(repo_root, args.feature_id)
         tasks_file = feature_dir / "tasks.md"
         if not tasks_file.exists():
@@ -243,6 +284,9 @@ def main(argv: list[str] | None = None) -> int:
         payload_obj = {
             "feature_id": args.feature_id,
             "task_id": args.task_id,
+            "attempt": args.attempt,
+            "payload_generated_at": utc_now_iso(),
+            "payload_run_id": build_payload_run_id(args.task_id, args.attempt),
             "hud_path": str(hud_path.relative_to(repo_root)),
             "diff": _diff_summary(repo_root),
             "acceptance_criteria": acceptance,
@@ -254,11 +298,14 @@ def main(argv: list[str] | None = None) -> int:
                 task_desc,
             ],
         }
+        payload_obj["payload_digest"] = compute_payload_digest(payload_obj)
 
         payload_path.parent.mkdir(parents=True, exist_ok=True)
         payload_path.write_text(json.dumps(payload_obj, indent=2, sort_keys=True), encoding="utf-8")
         result["ok"] = True
         result["created"] = True
+        result["payload_run_id"] = payload_obj["payload_run_id"]
+        result["payload_digest"] = payload_obj["payload_digest"]
     except Exception as exc:  # pragma: no cover - defensive for hook/runtime reliability
         result["reasons"].append(str(exc))
         _json_print(result, as_json=bool(args.json))

@@ -218,6 +218,56 @@ def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkey
     assert status == "healthy"
 
 
+def test_codegraph_status_payload_reports_stale_when_signatures_drift(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        read_code_health,
+        "codegraph_health_probe",
+        lambda project_root=None: read_code_health._CodegraphHealthProbe(
+            status="healthy",
+            detail="doctor healthy",
+            recovery_command="",
+        ),
+    )
+    monkeypatch.setattr(read_code_health, "codegraph_current_edit_signature", lambda project_root=None: "current")
+    monkeypatch.setattr(read_code_health, "codegraph_cached_edit_signature", lambda project_root=None: "cached")
+
+    payload = read_code_health.codegraph_status_payload(tmp_path)
+
+    assert payload["project_root"] == str(tmp_path.resolve())
+    assert payload["codegraph_status"] == "stale"
+    assert payload["codegraph_detail"] == "doctor healthy"
+
+
+def test_run_status_command_emits_json_payload(monkeypatch, capsys, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        read_code_health,
+        "codegraph_status_payload",
+        lambda project_root=None: {
+            "project_root": str((project_root or tmp_path).resolve()),
+            "codegraph_status": "healthy",
+            "codegraph_detail": "",
+            "codegraph_recovery_command": "",
+        },
+    )
+    monkeypatch.setattr(read_code_health, "vector_index_status", lambda project_root=None: "healthy")
+
+    exit_code = read_code_health.run_status_command(["--project-root", str(tmp_path), "--json"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project_root"] == str(tmp_path.resolve())
+    assert payload["codegraph_status"] == "healthy"
+    assert payload["vector_index_status"] == "healthy"
+
+
+def test_run_status_command_rejects_missing_project_root_value(capsys) -> None:
+    exit_code = read_code_health.run_status_command(["--project-root"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "requires a path" in captured.err
+
+
 def test_vector_refresh_if_needed_bootstraps_when_snapshot_is_missing(monkeypatch, tmp_path: Path) -> None:
     probes = iter(
         [
@@ -1046,7 +1096,7 @@ def test_read_code_context_skips_strict_when_semantic_anchor_is_strong(monkeypat
 
     assert exit_code == 0
 
-def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatch, tmp_path: Path) -> None:
+def test_read_code_window_reports_disabled_mode(monkeypatch, tmp_path: Path, capsys) -> None:
     code_file = tmp_path / "sample.py"
     code_file.write_text("line1\nline2\nline3\nline4\nline5\nline6\n", encoding="utf-8")
     monkeypatch.setattr(read_code_health, "_refresh_indexes_for_read", lambda file_path, **kwargs: True)
@@ -1057,18 +1107,11 @@ def test_read_code_window_skips_strict_when_semantic_anchor_is_strong(monkeypatc
     )
     monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda **kwargs: None)
 
-    rendered: dict[str, int] = {}
-
-    def fake_render(file_path: Path, start: int, end: int) -> None:
-        rendered["start"] = start
-        rendered["end"] = end
-
-    monkeypatch.setattr(read_code, "_render_numbered_window", fake_render)
-
     exit_code = read_code.read_code_window([str(code_file), "2", "3", "run_pipeline"])
 
-    assert exit_code == 0
-    assert rendered == {"start": 2, "end": 3}
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "window mode is disabled" in captured.err
 
 
 def test_read_code_context_returns_error_when_preflight_fails(monkeypatch, tmp_path: Path) -> None:

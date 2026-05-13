@@ -41,6 +41,30 @@ def _json_print(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _extract_section_body(content: str, heading: str) -> str:
+    """Return the raw body for a markdown heading if present."""
+    match = re.search(
+        rf"^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)",
+        content,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
+def _extract_bullets(section_body: str) -> list[str]:
+    """Extract non-empty markdown bullet text from a section body."""
+    bullets: list[str] = []
+    for line in section_body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            item = stripped[2:].strip()
+            if item:
+                bullets.append(item)
+    return bullets
+
+
 def _read_hud(hud_path: Path) -> dict[str, Any]:
     """Parse HUD markdown and extract key sections."""
     if not hud_path.exists():
@@ -54,13 +78,19 @@ def _read_hud(hud_path: Path) -> dict[str, Any]:
         "touched_symbols": [],
     }
 
-    # Extract acceptance criteria from Functional Goal section
+    # Extract acceptance criteria from the current HUD section shape first.
+    acceptance_section = _extract_section_body(content, "Acceptance Criteria")
+    acceptance_bullets = _extract_bullets(acceptance_section)
+    if acceptance_bullets:
+        hud["acceptance_criteria"] = "\n".join(acceptance_bullets)
+
+    # Fall back to the legacy Functional Goal section shape.
     ac_match = re.search(
         r"##\s+Functional Goal\s+.*?\*\*Acceptance Criteria\*\*:\s*(.*?)(?=\n##|\Z)",
         content,
         re.DOTALL,
     )
-    if ac_match:
+    if ac_match and not hud["acceptance_criteria"]:
         hud["acceptance_criteria"] = ac_match.group(1).strip()
 
     # Extract File:Symbol
@@ -68,18 +98,11 @@ def _read_hud(hud_path: Path) -> dict[str, Any]:
     if fs_match:
         hud["file_symbol"] = fs_match.group(1).strip()
 
-    # Extract quality guards
-    in_qg = False
-    for line in content.splitlines():
-        if line.strip().startswith("## Quality Guards"):
-            in_qg = True
-            continue
-        if in_qg and line.startswith("## "):
-            break
-        if in_qg and line.strip().startswith("-"):
-            guard = line.strip().lstrip("- ").strip()
-            if guard:
-                hud["quality_guards"].append(guard)
+    # Extract quality guards from either the legacy or current section naming.
+    quality_guards = _extract_bullets(_extract_section_body(content, "Quality Guards"))
+    if not quality_guards:
+        quality_guards = _extract_bullets(_extract_section_body(content, "Relevant Domains"))
+    hud["quality_guards"].extend(quality_guards)
 
     return hud
 
@@ -190,6 +213,35 @@ def _run_tests_for_files(
     return all_passed, test_runs, warnings
 
 
+def _payload_test_runs(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return valid payload-supplied test runs when explicit evidence is present."""
+    raw_runs = payload.get("test_runs")
+    if not isinstance(raw_runs, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for run in raw_runs:
+        if not isinstance(run, dict):
+            return []
+        command = run.get("command")
+        exit_code = run.get("exit_code")
+        output = run.get("output", "")
+        if not isinstance(command, str) or not command.strip():
+            return []
+        if not isinstance(exit_code, int):
+            return []
+        if not isinstance(output, str):
+            return []
+        normalized.append(
+            {
+                "command": command,
+                "exit_code": exit_code,
+                "output": output,
+            }
+        )
+    return normalized
+
+
 def _check_file_symbol_changed(
     repo_root: Path, changed_files: list[str], file_symbol: str
 ) -> tuple[bool, str]:
@@ -229,8 +281,9 @@ def _check_acceptance_in_diff(
 
     # Read changed files and look for keyword matches
     matched_any = False
+    eligible_suffixes = (".py", ".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")
     for cf in changed_files:
-        if not cf.endswith(".py"):
+        if not cf.endswith(eligible_suffixes):
             continue
         path = repo_root / cf
         if not path.exists():
@@ -331,8 +384,14 @@ def main(argv: list[str] | None = None) -> int:
         ac_ok, ac_findings = _check_acceptance_in_diff(repo_root, changed_files, acceptance)
         findings.extend(ac_findings)
 
-    # Run actual tests
-    if changed_files:
+    # Prefer explicit payload test evidence when present; otherwise discover tests from changed files.
+    payload_runs = _payload_test_runs(payload)
+    if payload_runs:
+        test_runs.extend(payload_runs)
+        warnings.append("Used payload-supplied test_runs for behavioral QA evidence.")
+        if any(run["exit_code"] != 0 for run in payload_runs):
+            findings.append("TESTS_FAILED: One or more payload test runs failed")
+    elif changed_files:
         tests_passed, runs, test_warnings = _run_tests_for_files(repo_root, changed_files, task_id)
         test_runs.extend(runs)
         warnings.extend(test_warnings)

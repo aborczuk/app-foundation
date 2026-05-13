@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Python entrypoint for code discovery and bounded function/class reads with semantic-first anchoring.
+"""Python entrypoint for code discovery with semantic-first anchoring.
 
 Code file read-efficiency contract:
 - Use this helper for code files (Python, shell, YAML, and related).
 - Prefer the helper over raw file reads so the read stays bounded by semantic intent.
-- Use semantic search first to locate the right anchor, then retrieve a bounded context window.
-- Two modes: context (semantic search + window), window (direct line-range read).
+- Use semantic search first to locate the right anchor, then step candidates as needed.
+- Active discovery modes are context, find, and analyze.
 - If you need only the relevant function body, pass the function name rather than scanning the whole file.
-- If semantic confidence is weak, step through candidates before falling back to exact symbol matching.
+- If semantic confidence is weak, step through candidates before broadening the query.
 
 How to use:
 1. Invoke the Python entrypoint directly: ``uv run python scripts/read_code.py <mode> [args]``.
@@ -16,14 +16,15 @@ How to use:
    - ``uv run python scripts/read_code.py context "<symbol>" --path <file>`` — scope to a specific file.
    - ``uv run python scripts/read_code.py context "<symbol>" --inline-body`` — get full function body.
    - ``uv run python scripts/read_code.py context "<symbol>" --next-candidate`` — step ranked candidates.
-3. Use **window mode** when you know the exact file and line range:
-   - ``uv run python scripts/read_code.py window <file> <start_line> [line_count]`` — direct window read.
-   - add ``--verbose`` to keep full vector preflight diagnostics instead of the terse stale warning.
-4. Let the helper anchor the seam semantically and print only the relevant window.
+3. Use **find/analyze stepping** when the first semantic candidate is not the right seam:
+   - ``uv run python scripts/read_code.py find <command> <query> --next-candidate`` — structural shortlist stepping.
+   - ``uv run python scripts/read_code.py analyze <command> <query> --next-candidate`` — graph shortlist stepping.
+   - add ``--verbose`` to keep full backend diagnostics instead of the terse shortlist output.
+4. Let the helper anchor the seam semantically and print only the selected match.
 
 Validation:
 - If the symbol does not resolve, the helper prints a clear not-found error and shows ranked candidates.
-- The helper keeps the read window bounded (default 60 lines, max 80 per settings).
+- The helper keeps semantic output bounded and candidate-driven.
 - Confidence scores guide candidate selection when multiple matches exist.
 """
 
@@ -133,6 +134,47 @@ class _WindowArgs:
     allow_fallback: bool
 
 
+@dataclass(frozen=True)
+class _FindArgs:
+    """Parsed and validated arguments for read_code_find."""
+
+    command: str
+    forwarded_args: list[str]
+    candidate_index: int
+    show_shortlist: bool
+
+
+@dataclass(frozen=True)
+class _FindMatch:
+    """Compact representation of a parsed cgc find row."""
+
+    name: str
+    symbol_type: str
+    location: str
+    path: Path | None
+    line_num: int | None
+
+
+@dataclass(frozen=True)
+class _AnalyzeArgs:
+    """Parsed and validated arguments for read_code_analyze."""
+
+    command: str
+    forwarded_args: list[str]
+    candidate_index: int
+    show_shortlist: bool
+
+
+@dataclass(frozen=True)
+class _AnalyzeMatch:
+    """Compact representation of a parsed cgc analyze row."""
+
+    columns: dict[str, str]
+    location: str
+    path: Path | None
+    line_num: int | None
+
+
 
 
 
@@ -148,6 +190,14 @@ def _split_verbose_flag(argv: list[str]) -> tuple[list[str], bool]:
             continue
         filtered.append(token)
     return filtered, verbose
+
+
+def _cgc_capture_env() -> dict[str, str]:
+    """Return a stable environment for captured cgc output without narrow-table truncation."""
+    env = os.environ.copy()
+    env.setdefault("COLUMNS", "240")
+    env.setdefault("NO_COLOR", "1")
+    return env
 
 
 def _emit_vector_fallback_notice(
@@ -532,6 +582,77 @@ def _render_candidate_body(candidate: _VectorMatch) -> None:
     print(candidate.body.rstrip())
 
 
+def _render_find_shortlist(matches: list[_FindMatch], command: str, query: str) -> None:
+    """Render a bounded shortlist of parsed find matches."""
+    if not matches:
+        return
+    print(f"# shortlist for find {command}: {query}")
+    print("# index\tname\ttype\tlocation")
+    for index, match in enumerate(matches[:5]):
+        print(f"{index}\t{match.name}\t{match.symbol_type}\t{match.location}")
+
+
+def _render_compact_find_match(
+    match: _FindMatch,
+    *,
+    command: str,
+    query: str,
+    candidate_index: int,
+    total_matches: int,
+    has_more_candidates: bool,
+) -> None:
+    """Render a selected find result using the same stepwise dig language as context."""
+    output = f"find_command: {command}"
+    output += f"\nquery: {query}"
+    output += f"\nname: {match.name}"
+    output += f"\ntype: {match.symbol_type}"
+    output += f"\nlocation: {match.location}"
+    output += f"\nmatch_index: {candidate_index}/{total_matches - 1}"
+
+    hints = []
+    if has_more_candidates:
+        hints.append("--next-candidate for the next ranked match")
+    hints.append("--show-shortlist to inspect ranked matches")
+    hints.append("--verbose for raw cgc output")
+    output += f"\n# {', '.join(hints)}"
+    print(output)
+
+
+def _render_analyze_shortlist(matches: list[_AnalyzeMatch], command: str, query: str) -> None:
+    """Render a bounded shortlist of parsed analyze matches."""
+    if not matches:
+        return
+    print(f"# shortlist for analyze {command}: {query}")
+    print("# index\tlocation")
+    for index, match in enumerate(matches[:5]):
+        print(f"{index}\t{match.location}")
+
+
+def _render_compact_analyze_match(
+    match: _AnalyzeMatch,
+    *,
+    command: str,
+    query: str,
+    candidate_index: int,
+    total_matches: int,
+    has_more_candidates: bool,
+) -> None:
+    """Render a selected analyze result with stepwise dig hints."""
+    output = f"analyze_command: {command}"
+    output += f"\nquery: {query}"
+    for key, value in match.columns.items():
+        label = key.lower().replace(" ", "_")
+        output += f"\n{label}: {value}"
+    output += f"\nmatch_index: {candidate_index}/{total_matches - 1}"
+    hints = []
+    if has_more_candidates:
+        hints.append("--next-candidate for the next ranked match")
+    hints.append("--show-shortlist to inspect ranked matches")
+    hints.append("--verbose for raw cgc output")
+    output += f"\n# {', '.join(hints)}"
+    print(output)
+
+
 def candidate_body_helper(candidates: list[_VectorMatch], index: int) -> str | None:
     """Return a non-top shortlist candidate body through a bounded lookup."""
     if index < 0 or index >= len(candidates):
@@ -599,6 +720,7 @@ def _resolve_pattern_anchor(
     show_shortlist_hint: bool,
 ) -> _AnchorResolution | None:
     if _is_markdown(file_path):
+        assert file_path is not None
         line_num = _resolve_markdown_anchor_vector(file_path, pattern)
         if line_num is None:
             line_num = _resolve_markdown_anchor_fallback(file_path, pattern)
@@ -729,6 +851,7 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
 
     first_arg = argv[0]
     first_is_file = False
+    first_path: Path | None = None
     try:
         first_path = Path(first_arg)
         first_is_file = first_path.is_file()
@@ -737,6 +860,7 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
 
     if first_is_file and len(argv) >= 2:
         # Old syntax: read_code context <file_path> <query> [...]
+        assert first_path is not None
         file_path = first_path
         pattern = argv[1]
         extra = argv[2:]
@@ -878,6 +1002,238 @@ def _parse_window_args(argv: list[str]) -> _WindowArgs | None:
     )
 
 
+def _parse_find_args(argv: list[str]) -> _FindArgs | None:
+    """Parse read_code_find arguments while preserving cgc flags."""
+    if not argv:
+        print("ERROR: find mode requires a command (e.g. name, pattern)", file=sys.stderr)
+        return None
+
+    command = argv[0]
+    if len(argv) == 1 or "--help" in argv[1:]:
+        return _FindArgs(
+            command=command,
+            forwarded_args=argv[1:],
+            candidate_index=0,
+            show_shortlist=False,
+        )
+
+    candidate_index = 0
+    show_shortlist = False
+    expect_candidate_index = False
+    forwarded_args: list[str] = []
+
+    for token in argv[1:]:
+        if expect_candidate_index:
+            if not token.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {token}", file=sys.stderr)
+                return None
+            candidate_index = int(token, 10)
+            expect_candidate_index = False
+            continue
+        if token == "--show-shortlist":
+            show_shortlist = True
+            continue
+        if token == "--next-candidate":
+            candidate_index += 1
+            continue
+        if token == "--candidate-index":
+            expect_candidate_index = True
+            continue
+        if token.startswith("--candidate-index="):
+            _, _, value = token.partition("=")
+            if not value.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
+                return None
+            candidate_index = int(value, 10)
+            continue
+        forwarded_args.append(token)
+
+    if expect_candidate_index:
+        print("ERROR: --candidate-index requires a value", file=sys.stderr)
+        return None
+
+    return _FindArgs(
+        command=command,
+        forwarded_args=forwarded_args,
+        candidate_index=candidate_index,
+        show_shortlist=show_shortlist,
+    )
+
+
+def _parse_analyze_args(argv: list[str]) -> _AnalyzeArgs | None:
+    """Parse read_code_analyze arguments while preserving cgc flags."""
+    if not argv:
+        print("ERROR: analyze mode requires a command (e.g. callers, deps)", file=sys.stderr)
+        return None
+
+    command = argv[0]
+    if len(argv) == 1 or "--help" in argv[1:]:
+        return _AnalyzeArgs(
+            command=command,
+            forwarded_args=argv[1:],
+            candidate_index=0,
+            show_shortlist=False,
+        )
+
+    candidate_index = 0
+    show_shortlist = False
+    expect_candidate_index = False
+    forwarded_args: list[str] = []
+    for token in argv[1:]:
+        if expect_candidate_index:
+            if not token.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {token}", file=sys.stderr)
+                return None
+            candidate_index = int(token, 10)
+            expect_candidate_index = False
+            continue
+        if token == "--show-shortlist":
+            show_shortlist = True
+            continue
+        if token == "--next-candidate":
+            candidate_index += 1
+            continue
+        if token == "--candidate-index":
+            expect_candidate_index = True
+            continue
+        if token.startswith("--candidate-index="):
+            _, _, value = token.partition("=")
+            if not value.isdigit():
+                print(f"ERROR: --candidate-index expects a non-negative integer: {value}", file=sys.stderr)
+                return None
+            candidate_index = int(value, 10)
+            continue
+        forwarded_args.append(token)
+    if expect_candidate_index:
+        print("ERROR: --candidate-index requires a value", file=sys.stderr)
+        return None
+    return _AnalyzeArgs(
+        command=command,
+        forwarded_args=forwarded_args,
+        candidate_index=candidate_index,
+        show_shortlist=show_shortlist,
+    )
+
+
+def _repo_local_find_path(path: Path | None) -> bool:
+    """Return whether a parsed find location points at repo-owned source content."""
+    if path is None:
+        return False
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    repo_root = REPO_ROOT.resolve()
+    if not str(resolved).startswith(str(repo_root)):
+        return False
+    relative = resolved.relative_to(repo_root)
+    return bool(relative.parts) and relative.parts[0] not in {".venv", ".uv-cache"}
+
+
+def _parse_find_location(location: str) -> tuple[Path | None, int | None]:
+    """Parse a cgc find location cell into a file path and optional line number."""
+    if ":" not in location:
+        return None, None
+    raw_path, _, raw_line = location.rpartition(":")
+    if not raw_line.isdigit():
+        return Path(location), None
+    return Path(raw_path), int(raw_line, 10)
+
+
+def _parse_cgc_find_output(raw_output: str) -> list[_FindMatch]:
+    """Parse the rich table emitted by cgc find into compact repo-local matches."""
+    matches: list[_FindMatch] = []
+    current_name = ""
+    current_type = ""
+    current_location = ""
+
+    def flush_current() -> None:
+        nonlocal current_name, current_type, current_location
+        if not current_location:
+            return
+        path, line_num = _parse_find_location(current_location)
+        match = _FindMatch(
+            name=current_name,
+            symbol_type=current_type or "symbol",
+            location=current_location,
+            path=path,
+            line_num=line_num,
+        )
+        if _repo_local_find_path(match.path):
+            matches.append(match)
+        current_name = ""
+        current_type = ""
+        current_location = ""
+
+    for raw_line in raw_output.splitlines():
+        stripped = raw_line.rstrip()
+        if not stripped.startswith("│"):
+            continue
+        parts = [part.strip() for part in stripped.split("│")[1:-1]]
+        if len(parts) < 3:
+            continue
+        name_cell, type_cell, location_cell = parts[:3]
+        if name_cell == "Name" and type_cell == "Type":
+            continue
+        if name_cell or type_cell:
+            flush_current()
+            current_name = name_cell
+            current_type = type_cell
+            current_location = location_cell
+            continue
+        if location_cell:
+            current_location += location_cell
+
+    flush_current()
+    return matches
+
+
+def _parse_cgc_analyze_output(raw_output: str) -> list[_AnalyzeMatch]:
+    """Parse a cgc analyze rich table into compact repo-local matches."""
+    headers: list[str] = []
+    matches: list[_AnalyzeMatch] = []
+    current_values: list[str] | None = None
+
+    def flush_current() -> None:
+        nonlocal current_values
+        if not headers or current_values is None:
+            return
+        row = dict(zip(headers, current_values, strict=False))
+        location = row.get("Location", "")
+        path, line_num = _parse_find_location(location)
+        match = _AnalyzeMatch(
+            columns=row,
+            location=location,
+            path=path,
+            line_num=line_num,
+        )
+        if _repo_local_find_path(match.path):
+            matches.append(match)
+        current_values = None
+
+    for raw_line in raw_output.splitlines():
+        stripped = raw_line.rstrip()
+        if not stripped.startswith("│"):
+            continue
+        parts = [part.strip() for part in stripped.split("│")[1:-1]]
+        if len(parts) < 2:
+            continue
+        if not headers:
+            headers = parts
+            continue
+        if current_values is None:
+            current_values = parts
+            continue
+        if any(parts[index] for index in range(len(parts) - 1)):
+            flush_current()
+            current_values = parts
+            continue
+        current_values[-1] += parts[-1]
+
+    flush_current()
+    return [match for match in matches if match.location]
+
+
 def _render_resolution_extras(
     pattern: str,
     vector_candidates: list[_VectorMatch],
@@ -952,33 +1308,13 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
 
 
 def read_code_window(argv: list[str], *, verbose: bool = False) -> int:
-    """Print a numbered bounded window and ignore out-of-window semantic anchors."""
-    parsed = _parse_window_args(argv)
-    if parsed is None:
-        return 1
-
-    if parsed.pattern:
-        if not _refresh_indexes_for_read(parsed.file_path, verbose=verbose):
-            return 1
-        normalized_pattern = normalize_symbol_pattern(parsed.pattern)
-        resolution = _resolve_pattern_anchor(
-            parsed.file_path,
-            parsed.pattern,
-            normalized_pattern,
-            candidate_index=0,
-            allow_fallback=parsed.allow_fallback,
-            show_shortlist_hint=False,
-        )
-        if resolution is None:
-            return 1
-        line_num = resolution.line_num
-
-        if line_num is None:
-            print(f"ERROR: No match found for '{parsed.pattern}'", file=sys.stderr)
-            return 1
-
-    _render_numbered_window(parsed.file_path, parsed.start_line, parsed.end_line)
-    return 0
+    """Reject direct window reads and force semantic-first discovery."""
+    _ = (argv, verbose)
+    print(
+        "ERROR: window mode is disabled. Use read_code.py context/find/analyze instead.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def read_code_headings(argv: list[str], *, verbose: bool = False) -> int:
@@ -1003,26 +1339,110 @@ def read_code_headings(argv: list[str], *, verbose: bool = False) -> int:
     return 0
 
 
-def read_code_analyze(argv: list[str]) -> int:
-    """Proxy to codegraph (cgc) analyze commands."""
-    if not argv:
-        print("ERROR: analyze mode requires a command (e.g. callers, deps)", file=sys.stderr)
+def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
+    """Run cgc analyze and present repo-local table rows as a stepwise shortlist."""
+    parsed = _parse_analyze_args(argv)
+    if parsed is None:
         return 1
-    
+
     init_codegraph_env()
-    cmd = ["uv", "run", "cgc", "analyze"] + argv
-    return subprocess.run(cmd, check=False).returncode
+    cmd = ["uv", "run", "cgc", "analyze", parsed.command] + parsed.forwarded_args
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_cgc_capture_env(),
+    )
+    raw_output = ((result.stdout or "") + (result.stderr or "")).rstrip()
+
+    if result.returncode != 0 or "--help" in parsed.forwarded_args:
+        if raw_output:
+            print(raw_output)
+        return result.returncode
+
+    matches = _parse_cgc_analyze_output(raw_output)
+    if not matches:
+        if raw_output:
+            print(raw_output)
+        return result.returncode
+
+    if parsed.candidate_index < 0 or parsed.candidate_index >= len(matches):
+        print(
+            f"ERROR: candidate index {parsed.candidate_index} is out of range (available: 0..{len(matches) - 1})",
+            file=sys.stderr,
+        )
+        print("Hint: re-run with --show-shortlist to inspect ranked matches.", file=sys.stderr)
+        return 1
+
+    query = " ".join(parsed.forwarded_args)
+    if parsed.show_shortlist:
+        _render_analyze_shortlist(matches, parsed.command, query)
+    _render_compact_analyze_match(
+        matches[parsed.candidate_index],
+        command=parsed.command,
+        query=query,
+        candidate_index=parsed.candidate_index,
+        total_matches=len(matches),
+        has_more_candidates=parsed.candidate_index < len(matches) - 1,
+    )
+    if verbose and raw_output:
+        print("# raw_cgc_output")
+        print(raw_output)
+    return result.returncode
 
 
-def read_code_find(argv: list[str]) -> int:
-    """Proxy to codegraph (cgc) find commands."""
-    if not argv:
-        print("ERROR: find mode requires a command (e.g. name, pattern)", file=sys.stderr)
+def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
+    """Run cgc find and present repo-local matches as a stepwise shortlist."""
+    parsed = _parse_find_args(argv)
+    if parsed is None:
         return 1
-    
+
     init_codegraph_env()
-    cmd = ["uv", "run", "cgc", "find"] + argv
-    return subprocess.run(cmd, check=False).returncode
+    cmd = ["uv", "run", "cgc", "find", parsed.command] + parsed.forwarded_args
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_cgc_capture_env(),
+    )
+    raw_output = ((result.stdout or "") + (result.stderr or "")).rstrip()
+
+    if result.returncode != 0 or "--help" in parsed.forwarded_args:
+        if raw_output:
+            print(raw_output)
+        return result.returncode
+
+    matches = _parse_cgc_find_output(raw_output)
+    if not matches:
+        if raw_output:
+            print(raw_output)
+        return result.returncode
+
+    if parsed.candidate_index < 0 or parsed.candidate_index >= len(matches):
+        print(
+            f"ERROR: candidate index {parsed.candidate_index} is out of range (available: 0..{len(matches) - 1})",
+            file=sys.stderr,
+        )
+        print("Hint: re-run with --show-shortlist to inspect ranked matches.", file=sys.stderr)
+        return 1
+
+    query = " ".join(parsed.forwarded_args)
+    if parsed.show_shortlist:
+        _render_find_shortlist(matches, parsed.command, query)
+    _render_compact_find_match(
+        matches[parsed.candidate_index],
+        command=parsed.command,
+        query=query,
+        candidate_index=parsed.candidate_index,
+        total_matches=len(matches),
+        has_more_candidates=parsed.candidate_index < len(matches) - 1,
+    )
+    if verbose and raw_output:
+        print("# raw_cgc_output")
+        print(raw_output)
+    return result.returncode
 
 
 def _print_usage() -> None:
@@ -1031,24 +1451,20 @@ def _print_usage() -> None:
         "  read_code context <file_path> <symbol_or_pattern> [--inline-body] [...]"
     )
     print(
-        "  read_code window  <file_path> <start_line> <end_line>"
-    )
-    print(
         "  read_code headings <markdown_file>"
     )
     print(
-        "  read_code analyze <command> <symbol> [...]"
+        "  read_code analyze <command> <symbol> [--show-shortlist] [--next-candidate] [...]"
     )
     print(
-        "  read_code find    <command> <pattern> [...]"
+        "  read_code find    <command> <pattern> [--show-shortlist] [--next-candidate] [...]"
     )
     print("  --verbose / -v    show detailed vector preflight diagnostics")
     print("\nModes:")
     print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
-    print("  window:   Show a raw numbered line window.")
     print("  headings: List markdown headings with line numbers.")
-    print("  analyze:  Graph discovery via CodeGraph (callers, deps, dead-code, etc.).")
-    print("  find:     Structural search via CodeGraph (name, pattern, type, etc.).")
+    print("  analyze:  Graph discovery via CodeGraph with one-match-at-a-time shortlist stepping when table output is available.")
+    print("  find:     Structural search via CodeGraph with one-match-at-a-time shortlist stepping.")
 
 
 def main(argv: list[str]) -> int:
@@ -1083,9 +1499,9 @@ def main(argv: list[str]) -> int:
     if mode == "headings":
         return read_code_headings(args, verbose=verbose)
     if mode == "analyze":
-        return read_code_analyze(args)
+        return read_code_analyze(args, verbose=verbose)
     if mode == "find":
-        return read_code_find(args)
+        return read_code_find(args, verbose=verbose)
 
     print(f"ERROR: Unknown mode '{mode}'. Use: context | window | headings | analyze | find", file=sys.stderr)
     return 1

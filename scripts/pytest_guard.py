@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -17,6 +18,8 @@ DEFAULT_LOG_DIR = REPO_ROOT / ".speckit" / "test-logs"
 FORCED_PYTEST_FLAGS = ("-q", "--maxfail=1", "--tb=short")
 SUMMARY_LINE_PATTERN = re.compile(r"=+ .* in [0-9.]+s =+")
 FAILURE_HEADER_PATTERN = re.compile(r"^_{3,} .+ _{3,}$")
+MAX_FIRST_FAILURE_LINES_ENV = "PYTEST_GUARD_MAX_FIRST_FAILURE_LINES"
+DEFAULT_MAX_FIRST_FAILURE_LINES = 40
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -143,6 +146,40 @@ def _first_failure_block(output: str) -> str:
     return block
 
 
+def _max_first_failure_lines() -> int:
+    """Return the line cap for compact first-failure rendering."""
+    raw = (os.environ.get(MAX_FIRST_FAILURE_LINES_ENV) or "").strip()
+    if not raw:
+        return DEFAULT_MAX_FIRST_FAILURE_LINES
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_FIRST_FAILURE_LINES
+    return max(1, value)
+
+
+def _emit_first_failure(first_failure: str, *, cap: int) -> None:
+    """Print a bounded first-failure block and summarize omitted lines when truncated."""
+    lines = first_failure.splitlines()
+    if len(lines) <= cap:
+        print("--- first_failure ---")
+        print(first_failure)
+        print("--- end_first_failure ---")
+        return
+
+    visible = lines[:cap]
+    omitted = len(lines) - cap
+    print("--- first_failure ---")
+    print("\n".join(visible))
+    print(
+        (
+            f"... first_failure truncated by pytest_guard ({omitted} lines omitted; "
+            f"set {MAX_FIRST_FAILURE_LINES_ENV} to adjust cap)"
+        )
+    )
+    print("--- end_first_failure ---")
+
+
 def _resolve_log_dir(log_dir: Path) -> Path:
     """Resolve and create the log directory for guarded pytest output."""
     resolved = log_dir.expanduser()
@@ -216,9 +253,7 @@ def _run_guarded_pytest(args: argparse.Namespace) -> int:
 
     first_failure = _first_failure_block(output)
     if completed.returncode != 0 and first_failure:
-        print("--- first_failure ---")
-        print(first_failure)
-        print("--- end_first_failure ---")
+        _emit_first_failure(first_failure, cap=_max_first_failure_lines())
 
     return completed.returncode
 
@@ -247,9 +282,7 @@ def _show_log(args: argparse.Namespace) -> int:
     print(f"summary: {summary}")
     print(f"log_file: {log_file}")
     if first_failure:
-        print("--- first_failure ---")
-        print(first_failure)
-        print("--- end_first_failure ---")
+        _emit_first_failure(first_failure, cap=_max_first_failure_lines())
     return 0
 
 

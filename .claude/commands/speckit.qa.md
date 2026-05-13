@@ -68,9 +68,11 @@ The QA subagent emits a JSON result back to the orchestrator:
   "mode": "behavioral_qa",
   "feature_id": "023",
   "task_id": "T001",
+  "qa_run_id": "implement-qa-20260511T120000Z",
   "verdict": "PASS",
   "findings": [],
   "warnings": [],
+  "changed_files_considered": ["src/example.py"],
   "test_runs": [...],
   "acceptance_criteria": "...",
   "file_symbol": "..."
@@ -87,6 +89,8 @@ Findings are specific and actionable:
 - `IMPLEMENTATION_DRIFT` — changed files don't match HUD file:symbol
 - `TESTS_FAILED` — one or more test runs failed
 - `MISSING_TEST_EVIDENCE` — no tests found or run
+- `INVALID_COMPLETION` — missing required result fields or empty completion payload
+- `TASK_SCOPE_MISMATCH` — result task id or run id does not match the active orchestrator task/run
 
 ### 6. Integration with offline QA
 
@@ -95,6 +99,16 @@ This QA subagent is the orchestrator-facing reviewer inside `/speckit.implement`
 - `scripts/speckit_closeout_task.py`
 
 The behavioral QA agent invoked by `offline_qa.py` after schema validation remains the canonical downstream check. The combined result includes both schema and behavioral findings.
+
+The orchestrator must treat the QA result as invalid, not as a verdict, when:
+- `qa_run_id` is missing
+- `task_id` does not match the active task
+- `changed_files_considered` is missing when changed files were part of the payload
+- the completion payload is empty/null
+
+When that happens:
+- retry once against the same QA subagent with a stricter response instruction
+- if the retry is still invalid, respawn the QA subagent and rerun the review for the same task
 
 To skip behavioral QA (e.g., for legacy specs without HUDs):
 ```bash
@@ -109,3 +123,5 @@ python scripts/offline_qa.py --payload-file ... --skip-behavioral
 - Keep findings specific and actionable (file names, symbol names, test names).
 - Emit warnings for non-blocking issues (e.g., missing HUD but tasks.md has criteria).
 - Do not append ledger events, close tasks, or emit phase-completion events.
+- Do not emit an empty/null completion; that is `INVALID_COMPLETION`.
+- Do not emit a QA result for the wrong `task_id` or stale `qa_run_id`.

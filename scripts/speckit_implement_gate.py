@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import task_ledger
+from speckit_implement_contract import compute_payload_digest
 
 TASK_LINE_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]\s+(?P<task_id>T\d{3})\b")
 CHECKBOX_RE = re.compile(r"^\s*-\s*\[(?P<state>[ xX])\]")
@@ -71,6 +72,13 @@ def _extract_task_ids(lines: list[str]) -> list[str]:
         if match:
             task_ids.append(match.group("task_id"))
     return task_ids
+
+
+def _ordered_task_ids_from_tasks_file(tasks_file: Path) -> list[str]:
+    """Return ordered task IDs from the current feature tasks file."""
+    if not tasks_file.exists():
+        return []
+    return _extract_task_ids(tasks_file.read_text(encoding="utf-8").splitlines())
 
 
 def _task_exists_on_main(tasks_file: Path, task_id: str) -> bool | None:
@@ -194,9 +202,12 @@ def _offline_qa_payload(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             },
         )
 
-    for field in ("feature_id", "task_id", "hud_path", "diff"):
+    for field in ("feature_id", "task_id", "hud_path", "diff", "payload_run_id", "payload_digest"):
         if not _nonempty_string(data.get(field)):
             reasons.append(f"invalid_{field}")
+    if _nonempty_string(data.get("payload_digest")):
+        if compute_payload_digest(data) != data.get("payload_digest"):
+            reasons.append("invalid_payload_digest")
 
     if not _string_list(data.get("acceptance_criteria"), allow_empty=False):
         reasons.append("invalid_acceptance_criteria")
@@ -442,6 +453,7 @@ def _emit_implementation_completed_once(
 def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     """Check the ledger for open tasks and emit completion once empty."""
     feature_dir = Path(args.feature_dir).resolve()
+    tasks_file = feature_dir / "tasks.md"
     repo_root = Path(__file__).resolve().parent.parent
     feature_id = feature_dir.name.split("-", 1)[0]
     reasons: list[str] = []
@@ -457,13 +469,22 @@ def _phase_gate(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     if errors:
         reasons.append("task_ledger_invalid")
 
+    ordered_task_ids = _ordered_task_ids_from_tasks_file(tasks_file)
     open_task_ids: list[str] = []
     closed_task_ids: list[str] = []
-    for task_id, task_state in feature_state.tasks.items():
-        if task_state.closed:
-            closed_task_ids.append(task_id)
-        else:
-            open_task_ids.append(task_id)
+    if ordered_task_ids:
+        for task_id in ordered_task_ids:
+            task_state = feature_state.tasks.get(task_id, task_ledger.TaskState())
+            if task_state.closed:
+                closed_task_ids.append(task_id)
+            else:
+                open_task_ids.append(task_id)
+    else:
+        for task_id, task_state in feature_state.tasks.items():
+            if task_state.closed:
+                closed_task_ids.append(task_id)
+            else:
+                open_task_ids.append(task_id)
 
     continuation_task_id = open_task_ids[0] if open_task_ids else None
 
