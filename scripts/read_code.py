@@ -550,11 +550,12 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
     """Render a bounded shortlist of ranked vector candidates."""
     if not candidates:
         return
+    limit = 3
     print(f"# shortlist for: {query}")
     print(
         "# cosine_similarity\tfile_path\tunit_id\tline_num-line_end\ttype\tbody\tdocstring\traw"
     )
-    for candidate in candidates[:5]:
+    for candidate in candidates[:limit]:
         print(
             "\t".join(
                 [
@@ -568,6 +569,10 @@ def _render_candidate_shortlist(candidates: list[_VectorMatch], query: str) -> N
                     f"{candidate.raw_score:.3f}",
                 ]
             )
+        )
+    if len(candidates) > limit:
+        print(
+            f"# shortlist truncated to top {limit}; use --next-candidate or --candidate-index N to step further"
         )
 
 
@@ -601,14 +606,32 @@ def _render_candidate_body(candidate: _VectorMatch) -> None:
     print(candidate.body.rstrip())
 
 
-def _render_find_shortlist(matches: list[_FindMatch], command: str, query: str) -> None:
+def _find_shortlist_limit(command: str) -> int:
+    """Return the bounded shortlist size for a find subcommand."""
+    return 3 if command == "content" else 5
+
+
+def _analyze_shortlist_limit() -> int:
+    """Return the bounded shortlist size for analyze discovery output."""
+    return 3
+
+
+def _render_find_shortlist(
+    matches: list[_FindMatch],
+    command: str,
+    query: str,
+    *,
+    limit: int,
+) -> None:
     """Render a bounded shortlist of parsed find matches."""
     if not matches:
         return
     print(f"# shortlist for find {command}: {query}")
     print("# index\tname\ttype\tlocation")
-    for index, match in enumerate(matches[:5]):
+    for index, match in enumerate(matches[:limit]):
         print(f"{index}\t{match.name}\t{match.symbol_type}\t{match.location}")
+    if len(matches) > limit:
+        print(f"# shortlist truncated to top {limit}; use --next-candidate or --candidate-index N to step further")
 
 
 def _render_compact_find_match(
@@ -641,10 +664,15 @@ def _render_analyze_shortlist(matches: list[_AnalyzeMatch], command: str, query:
     """Render a bounded shortlist of parsed analyze matches."""
     if not matches:
         return
+    limit = _analyze_shortlist_limit()
     print(f"# shortlist for analyze {command}: {query}")
     print("# index\tlocation")
-    for index, match in enumerate(matches[:5]):
+    for index, match in enumerate(matches[:limit]):
         print(f"{index}\t{match.location}")
+    if len(matches) > limit:
+        print(
+            f"# shortlist truncated to top {limit}; use --next-candidate or --candidate-index N to step further"
+        )
 
 
 def _render_compact_analyze_match(
@@ -1413,8 +1441,15 @@ def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
 
     matches = _parse_cgc_analyze_output(raw_output)
     if not matches:
-        if raw_output:
+        if verbose and raw_output:
+            print("# raw_cgc_output")
             print(raw_output)
+        else:
+            query = " ".join(parsed.forwarded_args)
+            print(f"analyze_command: {parsed.command}")
+            print(f"query: {query}")
+            print("match_count: 0")
+            print("# no parsed analyze matches; rerun with --verbose for raw cgc output")
         return result.returncode
 
     if parsed.candidate_index < 0 or parsed.candidate_index >= len(matches):
@@ -1466,8 +1501,15 @@ def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
 
     matches = _parse_cgc_find_output(raw_output)
     if not matches:
-        if raw_output:
+        if verbose and raw_output:
+            print("# raw_cgc_output")
             print(raw_output)
+        else:
+            query = " ".join(parsed.forwarded_args)
+            print(f"find_command: {parsed.command}")
+            print(f"query: {query}")
+            print("match_count: 0")
+            print("# no parsed find matches; rerun with --verbose for raw cgc output")
         return result.returncode
 
     if parsed.candidate_index < 0 or parsed.candidate_index >= len(matches):
@@ -1480,7 +1522,12 @@ def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
 
     query = " ".join(parsed.forwarded_args)
     if parsed.show_shortlist:
-        _render_find_shortlist(matches, parsed.command, query)
+        _render_find_shortlist(
+            matches,
+            parsed.command,
+            query,
+            limit=_find_shortlist_limit(parsed.command),
+        )
     _render_compact_find_match(
         matches[parsed.candidate_index],
         command=parsed.command,

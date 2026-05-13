@@ -61,6 +61,7 @@ uv run python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR
    - Do not use `fork_context: true`.
    - Pass a focused prompt and the specific file references the subagent needs.
    - Set `model: gpt-5.4-mini`.
+   - Use the `speckit.estimate` command contract and its manifest-declared estimate artifact/template; do not invent an ad hoc `estimates.md` shape during solution.
    - Instruct it to execute `/speckit.estimate` for this feature and report whether any tasks remain at `8` or `13`.
    - If any high-point tasks remain, spawn a `breakdown` subagent on `gpt-5.4-mini`.
    - Use `spawn_agent`.
@@ -176,4 +177,5 @@ The command ends by running `finalize`. The final response from this command mus
 - Do not treat `scripts/speckit_remake_huds.py` output as the final HUD content for code tasks.
 - Do not call `/speckit.tasking`.
 - Do not treat `spec.json` as optional inspiration; it is the machine-readable summary of the approved plan/spec details that must feed task and HUD generation.
+- Do not hand-roll `estimates.md`; use the `speckit.estimate` artifact contract declared in `command-manifest.yaml`.
 - Do not emit `solution_approved` before `finalize` completes.
