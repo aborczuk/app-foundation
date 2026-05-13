@@ -90,7 +90,7 @@ Run the index and query the doctor.
     assert markdown_results
     assert markdown_results[0].content.file_path == docs
     assert markdown_results[0].content.scope is IndexScope.MARKDOWN
-    assert markdown_results[0].body == "Run the index and query the doctor."
+    assert any(result.body == "Run the index and query the doctor." for result in markdown_results)
     assert markdown_results[0].content.content_hash
 
 
@@ -262,6 +262,61 @@ esac
     assert saw_run_refresh
     assert saw_script_block
     assert saw_function_body
+
+
+def test_store_query_uses_raw_similarity_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Query results should preserve raw distance-derived similarity scores."""
+    store = ChromaIndexStore(
+        IndexConfig(
+            repo_root=tmp_path,
+            db_path=Path(".codegraphcontext/global/db/vector-index"),
+            embedding_model="local-default",
+        )
+    )
+    metadata = IndexMetadata(
+        source_root=tmp_path,
+        indexed_commit="rev-a",
+        current_commit="rev-a",
+        indexed_at=datetime(2026, 4, 14, tzinfo=UTC),
+        entry_count=1,
+        code_symbol_count=1,
+        markdown_section_count=0,
+        embedding_model="local-default",
+        snapshot_path=str(tmp_path / "snapshot"),
+        collection_name="test-collection",
+    )
+    symbol = CodeSymbol(
+        symbol_name="main_guard",
+        qualified_name="sample.py::module:main_guard",
+        file_path=(tmp_path / "src" / "sample.py").resolve(),
+        line_start=1,
+        line_end=2,
+        signature='if __name__ == "__main__":',
+        preview='if __name__ == "__main__":',
+        body='if __name__ == "__main__":\n    run_main()\n',
+        symbol_type="module",
+        scope=IndexScope.CODE,
+    )
+
+    class _FakeCollection:
+        def query(self, **kwargs):
+            return {
+                "metadatas": [[{"file_path": symbol.file_path.as_posix()}]],
+                "distances": [[0.7]],
+                "documents": [[symbol.body]],
+            }
+
+    monkeypatch.setattr(store, "load_snapshot", lambda: (metadata, []))
+    monkeypatch.setattr(store, "_embed_texts", lambda texts: [[0.0, 1.0]])
+    monkeypatch.setattr(store, "_open_collection", lambda *args, **kwargs: _FakeCollection())
+    monkeypatch.setattr(store, "_close_collection", lambda collection: None)
+    monkeypatch.setattr(store, "_decode_content_unit", lambda metadata_payload, document=None: symbol)
+
+    results = store.query("main_guard", scope=IndexScope.CODE, top_k=1)
+
+    assert len(results) == 1
+    assert results[0].content == symbol
+    assert results[0].score == 0.3
 
 
 def test_refresh_embeds_only_changed_units(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

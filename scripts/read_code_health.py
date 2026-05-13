@@ -805,6 +805,22 @@ def codegraph_health_status(project_root: Path | None = None) -> str:
     return probe_status
 
 
+def codegraph_status_payload(project_root: Path | None = None) -> dict[str, object]:
+    """Return the current codegraph freshness payload for status reporting."""
+    root = project_root or REPO_ROOT
+    probe = codegraph_health_probe(root)
+    status = probe.status
+    if status == "healthy":
+        status = codegraph_health_status(root)
+    payload: dict[str, object] = {
+        "project_root": str(root.resolve()),
+        "codegraph_status": status,
+        "codegraph_detail": probe.detail,
+        "codegraph_recovery_command": probe.recovery_command,
+    }
+    return payload
+
+
 def codegraph_health_probe(project_root: Path | None = None) -> _CodegraphHealthProbe:
     """Return codegraph health status plus detail and recovery hint command."""
     root = project_root or REPO_ROOT
@@ -1360,6 +1376,45 @@ def run_codegraph_preflight_worker(argv: list[str]) -> int:
     return 0
 
 
+def run_status_command(argv: list[str]) -> int:
+    """Print vector/codegraph freshness status for the current or requested project root."""
+    emit_json = False
+    project_root: Path | None = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--json":
+            emit_json = True
+            index += 1
+            continue
+        if arg == "--project-root":
+            if index + 1 >= len(argv):
+                print("ERROR: status --project-root requires a path", file=sys.stderr)
+                return 1
+            project_root = Path(argv[index + 1]).expanduser()
+            index += 2
+            continue
+        print(f"ERROR: invalid status argument: {arg}", file=sys.stderr)
+        return 1
+
+    root = (project_root or REPO_ROOT).resolve()
+    payload = codegraph_status_payload(root)
+    payload["vector_index_status"] = vector_index_status(root)
+    if emit_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"project_root={payload['project_root']}")
+        print(f"codegraph_status={payload['codegraph_status']}")
+        print(f"vector_index_status={payload['vector_index_status']}")
+        detail = str(payload.get("codegraph_detail", "") or "").strip()
+        recovery = str(payload.get("codegraph_recovery_command", "") or "").strip()
+        if detail:
+            print(f"codegraph_detail={detail}")
+        if recovery:
+            print(f"codegraph_recovery_command={recovery}")
+    return 0
+
+
 def _ensure_codegraph_session_available(file_path: Path) -> bool:
     """Start async codegraph preflight once per session without blocking read preflight."""
     global _CODEGRAPH_SESSION_PROBE_DONE
@@ -1386,6 +1441,8 @@ if __name__ == "__main__":
     argv = sys.argv[1:]
     if argv and argv[0] == "codegraph-preflight-worker":
         raise SystemExit(run_codegraph_preflight_worker(argv[1:]))
+    if argv and argv[0] == "status":
+        raise SystemExit(run_status_command(argv[1:]))
     print(f"ERROR: unknown mode: {argv[0] if argv else '(none)'}", file=sys.stderr)
     raise SystemExit(1)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import gc
 import json
 import logging
-import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -37,9 +36,6 @@ except ImportError:  # pragma: no cover - handled with a clear runtime error
 _EMBEDDING_MODEL_ALIASES = {"local-default": DEFAULT_EMBEDDING_MODEL_NAME}
 _COSINE_COLLECTION_METADATA = {"hnsw:space": "cosine"}
 _NO_OP_TELEMETRY_IMPL = "src.mcp_codebase.index.telemetry.NoOpProductTelemetry"
-_MIN_QUERY_SCORE = 0.55
-_HIGH_CONFIDENCE_QUERY_SCORE = 0.8
-_MARKDOWN_COMMAND_DOC_PENALTY = 0.25
 _UPSERT_BATCH_SIZE_FALLBACK = 1000
 _EMBED_BATCH_SIZE = 256
 _MAX_STAGING_DIRS = 16
@@ -380,9 +376,7 @@ class ChromaIndexStore:
         for rank, metadata_payload in enumerate(metadatas, start=1):
             content = self._decode_content_unit(metadata_payload, documents[rank - 1] if rank - 1 < len(documents) else None)
             distance = distances[rank - 1] if rank - 1 < len(distances) else None
-            score = _score_query_result(_distance_to_score(distance), query_text, content)
-            if score < _MIN_QUERY_SCORE:
-                continue
+            score = _distance_to_score(distance)
             ranked.append(
                 QueryResult(
                     rank=rank,
@@ -750,30 +744,6 @@ def _distance_to_score(distance: float | None) -> float:
     if distance is None:
         return 0.0
     return round(max(0.0, 1.0 - float(distance)), 4)
-
-
-def _score_query_result(score: float, query_text: str, content: CodeSymbol | MarkdownSection) -> float:
-    overlap_count = _token_overlap_count(query_text, content)
-    if overlap_count == 0 and score < _HIGH_CONFIDENCE_QUERY_SCORE:
-        return 0.0
-    if content.scope is IndexScope.MARKDOWN and ".claude" in content.file_path.parts and "commands" in content.file_path.parts:
-        score -= _MARKDOWN_COMMAND_DOC_PENALTY
-    if overlap_count:
-        query_token_count = max(1, len(_tokenize_text(query_text)))
-        score += 0.15 * (overlap_count / query_token_count)
-    return round(min(1.0, max(0.0, score)), 4)
-
-
-def _token_overlap_count(query_text: str, content: CodeSymbol | MarkdownSection) -> int:
-    query_tokens = set(_tokenize_text(query_text))
-    if not query_tokens:
-        return 0
-    content_tokens = set(_tokenize_text(_embedding_text(content)))
-    return len(query_tokens & content_tokens)
-
-
-def _tokenize_text(text: str) -> list[str]:
-    return re.findall(r"[A-Za-z0-9_]+", text.lower())
 
 
 def _resolve_embedding_model_name(configured_model: str) -> str:
