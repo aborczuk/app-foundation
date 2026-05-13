@@ -82,7 +82,13 @@ _Artifact: `plan.md`_
 
 ## Design Slices
 
-[Kept for every non-duplicate plan. Include at least one tasking-ready slice with a PL identifier, low/medium/high estimate, and an implementation directive.]
+[Kept for every non-duplicate plan. Include at least one tasking-ready slice using this exact shape so finalize can validate it:
+
+### Slice PL-01 - [Title]
+- Estimate: [low/medium/high]
+- Implementation Directive: [Concrete tasking-ready directive]
+
+Add additional slices as `Slice PL-02`, `Slice PL-03`, etc. when needed.]
 
 ## Plan Completion Summary
 

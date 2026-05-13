@@ -1,0 +1,96 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/031-speed-up-vector-context/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Refactor scoped `read_code context` requests to classify early, avoid global vector freshness proof by default, skip markdown retrieval when it is irrelevant, and preserve current seam selection for the accepted scoped benchmark corpus.",
+      "slice_id": "PL-01",
+      "title": "Scoped Trust Fast Path",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Rework broad discovery to use session-level trust for healthy reads, preserve markdown-aware behavior questions, and make heavyweight freshness and fallback work conditional on stale, empty, weak, or ambiguous outcomes.",
+      "slice_id": "PL-02",
+      "title": "Broad Discovery and Conditional Escalation",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Add validation coverage and benchmark cases for scoped code queries, broad code-plus-markdown discovery, markdown-oriented reads, and stale-trust escalation so latency improvements are measured and correctness regressions are caught.",
+      "slice_id": "PL-03",
+      "title": "Benchmark and Regression Coverage",
+      "why": ""
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "caching": "The plan needs a session and scope trust model so healthy vector state can be reused without repeated heavyweight status probes.",
+      "code patterns": "The core work is a routing and control-flow refactor across preflight, query classification, and fallback sequencing.",
+      "resilience": "The plan must preserve safe escalation when trust is stale, weak, or ambiguous instead of trading correctness for speed.",
+      "testing": "The benchmark corpus and regression coverage must prove scoped, broad, and markdown-aware reads still return the intended seams."
+    },
+    "relevant": [
+      "caching",
+      "resilience",
+      "testing",
+      "code patterns"
+    ]
+  },
+  "feature_id": "031-speed-up-vector-context",
+  "risk": {
+    "external_dependency_uncertainty": "low",
+    "human_operator_dependency": "low",
+    "overall": "medium",
+    "repo_uncertainty": "medium",
+    "requirement_clarity": "medium",
+    "runtime_side_effect_risk": "medium",
+    "state_data_migration_risk": "low"
+  },
+  "routing": {
+    "architecture_diagram": false,
+    "external_research": false,
+    "plan_level": "core",
+    "relevant_domains": [
+      "caching",
+      "resilience",
+      "testing",
+      "code patterns"
+    ],
+    "routing_reason": "The plan needs explicit routing and trust strategy because the feature splits broad versus scoped queries, changes when freshness is proven, and constrains fallback and markdown scope behavior.",
+    "sketch_level": "expanded"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": false,
+    "architecture_strategy": true,
+    "expanded_design_notes": true,
+    "external_research": false,
+    "net_new_surface": false,
+    "strategy_reason": "The plan needs explicit routing and trust strategy because the feature splits broad versus scoped queries, changes when freshness is proven, and constrains fallback and markdown scope behavior."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [
+      "specs/020-codebase-vector-index/spec.md",
+      "specs/025-intent-anchor-routing/spec.md"
+    ],
+    "duplicate_reason": "Existing specs cover the vector index and intent anchoring separately, but none define the trust-routing and latency behavior for `read_code context` itself.",
+    "risk_level": "medium",
+    "tshirt_size": "m"
+  }
+}
