@@ -60,6 +60,10 @@
 <!-- speckit_implement_docs:entry_id=T013:runbook -->
 - T013 documented the settled scoped-versus-broad trust policy in read_code help text and the feature plan so maintainers can tell when markdown-aware broad discovery or escalation still applies.
 
+
+<!-- speckit_implement_docs:entry_id=T014:runbook -->
+- T014 recorded the settled validation commands and benchmark evidence note for the scoped, broad, and escalation corpus so the feature closes with an explicit rerun path.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -103,3 +107,6 @@
 
 <!-- speckit_implement_docs:entry_id=T013:decision_log -->
 - T013: aligned the local read_code help text and feature plan with the implemented routing contract for scoped trust reuse, mixed broad discovery, and conditional escalation.
+
+<!-- speckit_implement_docs:entry_id=T014:decision_log -->
+- T014: captured the post-change evidence bundle in the feature task artifact and anchored the integration performance module to the final benchmark context.
