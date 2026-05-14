@@ -40,6 +40,10 @@
 <!-- speckit_implement_docs:entry_id=T008:runbook -->
 - T008 added broad-discovery regression coverage so mixed code-plus-markdown queries and the offline vector index both preserve markdown-aware behavior before the broad-routing changes land.
 
+
+<!-- speckit_implement_docs:entry_id=T009:runbook -->
+- T009 let healthy broad discovery reads stay on the trusted mixed retrieval path by default, while preserving escalation for exceptional outcomes and keeping markdown-aware behavior intact.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -68,3 +72,6 @@
 
 <!-- speckit_implement_docs:entry_id=T008:decision_log -->
 - T008: expanded unit and integration regression coverage for broad discovery, including code-scope plus markdown-scope retrieval in the offline index harness and a broad markdown-aware shortlist case.
+
+<!-- speckit_implement_docs:entry_id=T009:decision_log -->
+- T009: routed the healthy broad-read happy path through trusted mixed retrieval in _resolve_pattern_anchor so ordinary broad discovery avoids unnecessary escalation while keeping the code-plus-markdown candidate path.

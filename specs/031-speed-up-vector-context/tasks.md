@@ -63,7 +63,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Rework broad-query routing so healthy-session trust can satisfy normal discovery reads in `scripts/read_code.py` and `scripts/read_code_health.py` — `scripts/read_code.py:_resolve_pattern_anchor`
+- [X] T009 [US2] Rework broad-query routing so healthy-session trust can satisfy normal discovery reads in `scripts/read_code.py` and `scripts/read_code_health.py` — `scripts/read_code.py:_resolve_pattern_anchor`
 - [ ] T010 [US2] Make broad fallback and recovery conditional on empty, weak, stale, or conflicting outcomes in `scripts/read_code.py` — `scripts/read_code.py:_resolve_pattern_anchor`
 
 ## Phase 5: User Story 3 - Clear Freshness Escalation (Priority: P3)

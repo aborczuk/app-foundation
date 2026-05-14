@@ -1421,3 +1421,10 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "031", "task_id": "T008", "timestamp_utc": "2026-05-14T14:20:03.432910Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "031", "qa_run_id": "offline-qa-t008-20260514T141946Z", "task_id": "T008", "timestamp_utc": "2026-05-14T14:20:03.473910Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "031", "task_id": "T008", "timestamp_utc": "2026-05-14T14:20:03.512108Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "031", "task_id": "T009", "timestamp_utc": "2026-05-14T14:20:45.129405Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "031", "task_id": "T009", "timestamp_utc": "2026-05-14T14:32:12.473254Z"}
+{"actor": "codex", "attempt": 1, "details": "IMPLEMENTATION_DRIFT: Primary file scripts/read_code.py NOT in changed_files: ['.speckit/task-ledger.jsonl', 'scripts/read_code_health.py', 'tests/unit/test_read_code_index_refresh.py']", "event": "offline_qa_failed", "feature_id": "031", "qa_run_id": "offline-qa-t009-20260514T143052Z", "task_id": "T009", "timestamp_utc": "2026-05-14T14:32:12.509958Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "031", "task_id": "T009", "timestamp_utc": "2026-05-14T14:37:39.243614Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "fda397d", "event": "commit_created", "feature_id": "031", "task_id": "T009", "timestamp_utc": "2026-05-14T14:37:39.313749Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "031", "qa_run_id": "offline-qa-t009-20260514T143711Z", "task_id": "T009", "timestamp_utc": "2026-05-14T14:37:39.364704Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "031", "task_id": "T009", "timestamp_utc": "2026-05-14T14:37:39.414999Z"}
