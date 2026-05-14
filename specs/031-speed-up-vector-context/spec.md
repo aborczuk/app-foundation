@@ -133,6 +133,7 @@ As a maintainer, I want freshness and fallback behavior to be predictable so I c
 - **FR-008**: The system MUST preserve current result correctness for representative scoped symbol lookups, broad discovery questions, and markdown-oriented reads.
 - **FR-009**: The system MUST keep `read_code context` output compatible with current downstream consumers while making escalation behavior observable.
 - **FR-010**: The system MUST ensure trusted session or scope state is invalidated when relevant local edits make that trust unsafe.
+- **FR-011**: The system MUST de-prioritize test-file candidates during regular `read_code context` discovery unless the request explicitly targets tests.
 
 ### Key Entities *(include if feature involves data)*
 

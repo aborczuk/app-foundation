@@ -28,6 +28,7 @@
 - [ ] T008 Replace the remaining host `python3` examples with `uv run python` in `docs/governance/how-to-add-speckit-step.md`
 - [ ] T009 Update `.github/workflows/ci.yml` to run task-ledger validation through `uv run python`
 - [ ] T010 Standardize remaining repo-owned host-python invocations in `scripts/e2e_020.sh` and `.github/workflows/ci.yml` to use `uv run python`
+- [ ] T011 Teach offline QA payload autobuild to accept a commit-backed change set in `scripts/speckit_offline_qa_handoff.py`, `scripts/speckit_build_offline_qa_payload.py`, `scripts/speckit_implement_contract.py`, and `.claude/commands/speckit.implement.md`
 
 ## Dependencies & Execution Order
 

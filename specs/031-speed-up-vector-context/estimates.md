@@ -142,6 +142,15 @@
 
 [For 1-2 point tasks: no detailed sketch required]
 
+### T015 — Solution Sketch
+
+**Modify**: `scripts/read_code.py:_vector_anchor_rank`, `tests/unit/test_read_code_shortlist.py` — down-rank test-file candidates during normal context discovery unless the request explicitly targets tests  
+**Create**: none  
+**Reuse**: existing candidate ranking signals, path metadata, and shortlist/context regression coverage  
+**Composition**: add a narrow ranking penalty or preference gate for test-file matches on regular discovery queries while preserving explicit test-targeted requests and keeping markdown-aware behavior intact  
+**Failing test assertion**: a mixed candidate set prefers implementation files over test files for a normal discovery query, but a test-targeted request can still surface test files first  
+**Domains touched**: `code patterns`, `testing`, `performance`
+
 ---
 
 ## Phase Totals
@@ -153,8 +162,8 @@
 | Phase 3: User Story 1 - Fast Scoped Context Reads (Priority: P1) 🎯 MVP | 14 | 4 | 1 |
 | Phase 4: User Story 2 - Efficient Broad Discovery (Priority: P2) | 11 | 3 | 1 |
 | Phase 5: User Story 3 - Clear Freshness Escalation (Priority: P3) | 8 | 3 | 2 |
-| Phase 6: Polish & Cross-Cutting Concerns | 2 | 1 | 0 |
-| **Total** | **45** | **15** | **6** |
+| Phase 6: Polish & Cross-Cutting Concerns | 5 | 2 | 1 |
+| **Total** | **48** | **16** | **7** |
 
 ---
 

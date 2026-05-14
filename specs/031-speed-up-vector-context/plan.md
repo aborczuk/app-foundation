@@ -153,6 +153,7 @@ Markdown behavior remains important for broad understanding queries because spec
 
 - Estimate: medium
 - Implementation Directive: Rework broad discovery to use session-level trust for healthy reads, preserve markdown-aware behavior questions, and make heavyweight freshness and fallback work conditional on stale, empty, weak, or ambiguous outcomes.
+- Ranking Note: regular broad discovery should de-prioritize test-file candidates unless the request is explicitly scoped to tests.
 
 ### Slice PL-03 - Benchmark and Regression Coverage
 

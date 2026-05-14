@@ -86,6 +86,7 @@
 **Purpose**: Lock the benchmark artifact and ensure the settled graph is ready for estimate, HUD, and implement phases.
 
 - [ ] T014 Capture the post-change benchmark evidence and accepted validation commands in `specs/031-speed-up-vector-context/tasks.md` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+- [ ] T015 De-prioritize test-file candidates in regular context discovery unless the request explicitly targets tests in `scripts/read_code.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_vector_anchor_rank`
 
 ## Dependencies & Execution Order
 
@@ -116,6 +117,7 @@
 - T005 and T006 should stay sequential because the scoped retrieval gate depends on the trust shortcut contract.
 - T008 and T011 can run in parallel after Phase 2 because they cover different outcome classes and test files.
 - T013 and T014 can run in parallel at the end once the implementation and benchmark outputs are stable.
+- T014 and T015 can run in parallel at the end because benchmark capture and test-candidate ranking polish touch different seams.
 
 ## Implementation Strategy
 

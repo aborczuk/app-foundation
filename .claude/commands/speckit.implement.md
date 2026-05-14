@@ -74,9 +74,11 @@ Before task execution or handoff:
 - Per task, the orchestrator must:
   1. send the selected task, HUD, and feature context to the builder
   2. collect the builder result
-  3. send the builder result, acceptance criteria, HUD seam, and test evidence to the QA subagent
+  3. send the builder result, acceptance criteria, HUD seam, and test evidence directly to the QA subagent
   4. if QA returns `FIX_REQUIRED`, send those findings back to the same builder and retry the same task
   5. once QA returns a pass-worthy handoff, stop the subagent loop for that task and let the script-owned QA/closeout path continue
+- The orchestrator may verify task identity, required artifacts, and evidence completeness before the QA handoff, but must not perform an additional correctness review or substitute its own QA judgment for the QA subagent verdict.
+- A builder result is not commit authorization. Implementation commits must wait until the QA subagent returns a pass-worthy verdict and the script-owned offline QA path passes.
 - Guard JSON payload/result handling actively:
   - extract a compact decision summary once rather than repeatedly rereading full payload/result JSON artifacts
   - QA payload minimum fields: `feature_id`, `task_id`, `changed_files`, `acceptance_criteria`, `test_runs`
