@@ -822,6 +822,30 @@ def _broad_read_trusts_vector_cache(
     )
 
 
+def _broad_read_needs_recovery(
+    file_path: Path | None,
+    vector_candidates: list[_VectorMatch],
+    vector_match: _VectorMatch | None,
+    *,
+    allow_fallback: bool,
+    request_scope: _ContextQueryScope | None,
+) -> bool:
+    """Return whether a broad read should escalate to codegraph recovery."""
+    if not allow_fallback or file_path is None:
+        return False
+    if request_scope is None or request_scope.is_scoped is True:
+        return False
+    if not _broad_read_trusts_vector_cache(file_path, request_scope):
+        return True
+    if vector_match is None:
+        return True
+    if vector_match.cosine_similarity < 80:
+        return True
+    if len(vector_candidates) > 1 and (vector_candidates[0].cosine_similarity - vector_candidates[1].cosine_similarity) <= 5:
+        return True
+    return False
+
+
 def _resolve_pattern_anchor(
     file_path: Path | None,
     pattern: str,
@@ -875,10 +899,23 @@ def _resolve_pattern_anchor(
     if not selection_ok:
         return None
 
-    line_num: int | None = None
-    if vector_match is not None:
-        line_num = vector_match.line_num
-    elif file_path is not None and not _broad_read_trusts_vector_cache(file_path, request_scope):
+    line_num: int | None = vector_match.line_num if vector_match is not None else None
+    needs_recovery = _broad_read_needs_recovery(
+        file_path,
+        vector_candidates,
+        vector_match,
+        allow_fallback=allow_fallback,
+        request_scope=request_scope,
+    )
+    emitted_fallback_notice = False
+    if file_path is not None and needs_recovery:
+        _emit_vector_fallback_notice(
+            file_path=file_path,
+            pattern=pattern,
+            vector_match=None,
+            resolved_line=line_num,
+        )
+        emitted_fallback_notice = True
         if codegraph_supports_file(file_path):
             discover_pattern = (
                 normalized_pattern
@@ -910,6 +947,13 @@ def _resolve_pattern_anchor(
                     line_num = vector_match.line_num
 
     if file_path is not None:
+        if emitted_fallback_notice:
+            return _AnchorResolution(
+                vector_candidates=vector_candidates,
+                vector_match=vector_match,
+                strict_status=0,
+                line_num=line_num,
+            )
         _emit_vector_fallback_notice(
             file_path=file_path,
             pattern=pattern,

@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_module(module_name: str, script_name: str):
     """Load a scripts module directly from the repo for unit testing."""
@@ -315,6 +317,229 @@ def test_resolve_pattern_anchor_skips_codegraph_discovery_for_trusted_broad_read
     assert resolution.vector_candidates == [vector_match]
     assert resolution.vector_match is None
     assert calls == []
+
+
+def test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recovery(monkeypatch) -> None:
+    """Satisfactory broad reads should not escalate when fallback is allowed."""
+    request_scope = read_code._ContextQueryScope(is_scoped=False, reason="broad prompt")
+    vector_match = read_code._VectorMatch(
+        unit_id="function:sample",
+        symbol_name="sample",
+        qualified_name="sample",
+        line_num=10,
+        line_end=12,
+        raw_score=0.95,
+        cosine_similarity=95,
+        file_path=Path("/tmp/example.py"),
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        read_code,
+        "_query_semantic_anchor_candidate",
+        lambda *args, **kwargs: ([vector_match], vector_match, True),
+    )
+    monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_discover_or_fail",
+        lambda *args, **kwargs: calls.append("discover") or True,
+    )
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: calls.append("notice"))
+
+    resolution = read_code._resolve_pattern_anchor(
+        Path("/tmp/example.py"),
+        "sample",
+        "sample",
+        candidate_index=0,
+        allow_fallback=True,
+        show_shortlist_hint=False,
+        content_type=None,
+        request_scope=request_scope,
+    )
+
+    assert resolution is not None
+    assert resolution.vector_candidates == [vector_match]
+    assert resolution.vector_match == vector_match
+    assert resolution.line_num == 10
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("initial_candidates", "initial_match"),
+    [
+        ([], None),
+        (
+            [
+                read_code._VectorMatch(
+                    unit_id="function:weak",
+                    symbol_name="weak",
+                    qualified_name="weak",
+                    line_num=10,
+                    line_end=12,
+                    raw_score=0.7,
+                    cosine_similarity=70,
+                    file_path=Path("/tmp/example.py"),
+                )
+            ],
+            read_code._VectorMatch(
+                unit_id="function:weak",
+                symbol_name="weak",
+                qualified_name="weak",
+                line_num=10,
+                line_end=12,
+                raw_score=0.7,
+                cosine_similarity=70,
+                file_path=Path("/tmp/example.py"),
+            ),
+        ),
+        (
+            [
+                read_code._VectorMatch(
+                    unit_id="function:top",
+                    symbol_name="top",
+                    qualified_name="top",
+                    line_num=10,
+                    line_end=12,
+                    raw_score=0.9,
+                    cosine_similarity=90,
+                    file_path=Path("/tmp/example.py"),
+                ),
+                read_code._VectorMatch(
+                    unit_id="function:runner_up",
+                    symbol_name="runner_up",
+                    qualified_name="runner_up",
+                    line_num=12,
+                    line_end=14,
+                    raw_score=0.88,
+                    cosine_similarity=88,
+                    file_path=Path("/tmp/example.py"),
+                ),
+            ],
+            read_code._VectorMatch(
+                unit_id="function:top",
+                symbol_name="top",
+                qualified_name="top",
+                line_num=10,
+                line_end=12,
+                raw_score=0.9,
+                cosine_similarity=90,
+                file_path=Path("/tmp/example.py"),
+            ),
+        ),
+    ],
+)
+def test_resolve_pattern_anchor_recovers_from_bad_broad_outcomes_when_fallback_allowed(
+    monkeypatch,
+    initial_candidates,
+    initial_match,
+) -> None:
+    """Broad reads should recover only from explicit bad outcomes when fallback is allowed."""
+    request_scope = read_code._ContextQueryScope(is_scoped=False, reason="broad prompt")
+    refresh_match = read_code._VectorMatch(
+        unit_id="function:refreshed",
+        symbol_name="refreshed",
+        qualified_name="refreshed",
+        line_num=20,
+        line_end=22,
+        raw_score=0.98,
+        cosine_similarity=98,
+        file_path=Path("/tmp/example.py"),
+    )
+    calls: list[str] = []
+    responses = [
+        (initial_candidates, initial_match, True),
+        ([refresh_match], refresh_match, True),
+    ]
+
+    def fake_query_semantic_anchor_candidate(*args, **kwargs):
+        return responses.pop(0)
+
+    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate", fake_query_semantic_anchor_candidate)
+    monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: calls.append("notice"))
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_discover_or_fail",
+        lambda *args, **kwargs: calls.append("discover") or True,
+    )
+
+    resolution = read_code._resolve_pattern_anchor(
+        Path("/tmp/example.py"),
+        "sample",
+        "sample",
+        candidate_index=0,
+        allow_fallback=True,
+        show_shortlist_hint=False,
+        content_type=None,
+        request_scope=request_scope,
+    )
+
+    assert resolution is not None
+    assert resolution.vector_candidates == [refresh_match]
+    assert resolution.vector_match == refresh_match
+    assert resolution.line_num == 20
+    assert calls == ["notice", "discover"]
+
+
+def test_resolve_pattern_anchor_recovers_from_stale_broad_reads_when_fallback_allowed(monkeypatch) -> None:
+    """Stale broad reads should recover through codegraph when fallback is allowed."""
+    request_scope = read_code._ContextQueryScope(is_scoped=False, reason="broad prompt")
+    initial_match = read_code._VectorMatch(
+        unit_id="function:sample",
+        symbol_name="sample",
+        qualified_name="sample",
+        line_num=10,
+        line_end=12,
+        raw_score=0.95,
+        cosine_similarity=95,
+        file_path=Path("/tmp/example.py"),
+    )
+    refresh_match = read_code._VectorMatch(
+        unit_id="function:refreshed",
+        symbol_name="refreshed",
+        qualified_name="refreshed",
+        line_num=22,
+        line_end=24,
+        raw_score=0.99,
+        cosine_similarity=99,
+        file_path=Path("/tmp/example.py"),
+    )
+    calls: list[str] = []
+    responses = [
+        ([initial_match], initial_match, True),
+        ([refresh_match], refresh_match, True),
+    ]
+
+    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate", lambda *args, **kwargs: responses.pop(0))
+    monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
+    monkeypatch.setattr(read_code, "_broad_read_trusts_vector_cache", lambda *args, **kwargs: False)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: calls.append("notice"))
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_discover_or_fail",
+        lambda *args, **kwargs: calls.append("discover") or True,
+    )
+
+    resolution = read_code._resolve_pattern_anchor(
+        Path("/tmp/example.py"),
+        "sample",
+        "sample",
+        candidate_index=0,
+        allow_fallback=True,
+        show_shortlist_hint=False,
+        content_type=None,
+        request_scope=request_scope,
+    )
+
+    assert resolution is not None
+    assert resolution.vector_candidates == [refresh_match]
+    assert resolution.vector_match == refresh_match
+    assert resolution.line_num == 22
+    assert calls == ["notice", "discover"]
 
 
 def test_query_semantic_anchor_candidate_skips_markdown_for_scoped_code_requests(monkeypatch) -> None:
