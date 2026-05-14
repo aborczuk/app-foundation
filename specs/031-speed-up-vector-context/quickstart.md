@@ -16,6 +16,10 @@
 <!-- speckit_implement_docs:entry_id=T002:runbook -->
 - T002 introduced request-scoped trust evaluation so read preflight can reuse trusted scoped vector state before the heavyweight refresh path, while preserving the existing hard failure for missing or probe-failed vector states.
 
+
+<!-- speckit_implement_docs:entry_id=T003:runbook -->
+- T003 threaded the explicit request-scope decision through read_code context preflight and anchor resolution, so later tasks can branch trust and retrieval behavior without reclassifying the request.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -26,3 +30,6 @@
 
 <!-- speckit_implement_docs:entry_id=T002:decision_log -->
 - T002: added a scoped vector trust helper in scripts/read_code_health.py and threaded request scope from scripts/read_code.py so read preflight can bypass the global status probe for trusted scoped reads; broad and failure paths remain on the existing hard-gate contract.
+
+<!-- speckit_implement_docs:entry_id=T003:decision_log -->
+- T003: wired the request scope from read_code_context into _resolve_pattern_anchor and downstream semantic anchor lookup so scoped versus broad routing now shares one explicit internal contract without changing the CLI surface.

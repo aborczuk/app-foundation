@@ -33,7 +33,7 @@
 
 - [X] T001 [P] Introduce early query-scope classification helpers for scoped versus broad `read_code context` requests in `scripts/read_code.py` — `scripts/read_code.py:read_code_context`
 - [X] T002 [P] Introduce request-scoped trust evaluation and fast-path freshness helpers in `scripts/read_code_health.py` — `scripts/read_code_health.py:_refresh_indexes_for_read`
-- [ ] T003 Wire the new query-scope and trust helpers into the existing preflight contract in `scripts/read_code.py` and `scripts/read_code_health.py` — `scripts/read_code.py:_resolve_pattern_anchor`
+- [X] T003 Wire the new query-scope and trust helpers into the existing preflight contract in `scripts/read_code.py` and `scripts/read_code_health.py` — `scripts/read_code.py:_resolve_pattern_anchor`
 
 ## Phase 3: User Story 1 - Fast Scoped Context Reads (Priority: P1) 🎯 MVP
 
