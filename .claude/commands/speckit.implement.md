@@ -72,8 +72,11 @@ Before task execution or handoff:
   - check the next eligible task/start gate
   - send the next task HUD to the builder
   - forward the builder result to QA
-  - run the script-owned offline QA + closeout path
+  - when QA returns a pass-worthy offline-QA result, create the implementation commit and run closeout
   - advance to the next task
+- When the builder finishes a task and that task moves into QA/offline-QA, do not idle the builder if another task is already ledger-eligible.
+- If `assert-can-start` allows a parallel or otherwise dependency-safe next task, send that next task HUD to the builder while QA/offline-QA continues on the previous task.
+- Preserve task-ledger and dependency gates exactly; parallel continuation is allowed only when the ledger says the next task can start.
 - In the normal case, the orchestrator role is managerial rather than implementation-focused. Do not add extra repo exploration, seam rereads, or independent code analysis before every task handoff.
 - Additional orchestrator investigation is only justified on concrete signals such as:
   - invalid or empty builder/QA completion
@@ -86,18 +89,23 @@ Before task execution or handoff:
 - Only add extra context when the builder explicitly asks for it or a concrete failure requires it.
 - Any extra context must stay narrow and task-local.
 - The QA subagent may use `.claude/commands/speckit.qa.md` as its standing review contract because it is a task reviewer rather than the implementation worker.
+- The orchestrator's QA handoff template must explicitly instruct:
+  - run `scripts/speckit_offline_qa_handoff.py` first for the active task
+  - then apply the `/speckit.qa` behavioral review rules to interpret that canonical result
+  - only do deeper manual inspection when the offline-QA result fails, is invalid, or needs explanation for a builder retry
 - Per task, the orchestrator must:
   1. send the selected task, HUD, and feature context to the builder
   2. collect the builder result
-  3. send the builder result, acceptance criteria, HUD seam, and test evidence directly to the QA subagent
-  4. if QA returns `FIX_REQUIRED`, send those findings back to the same builder and retry the same task
-  5. once QA returns a pass-worthy handoff, stop the subagent loop for that task and let the script-owned QA/closeout path continue
+  3. send the builder result, task id, HUD path, changed files, and test evidence to the QA subagent
+  4. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
+  5. if QA returns `FIX_REQUIRED`, send those findings back to the same builder and retry the same task
+  6. once QA returns a pass-worthy offline-QA result, stop the subagent loop for that task, create the implementation commit, and run `scripts/speckit_closeout_task.py`
 - The orchestrator may verify task identity, required artifacts, and evidence completeness before the QA handoff, but must not perform an additional correctness review or substitute its own QA judgment for the QA subagent verdict.
-- A builder result is not commit authorization. Implementation commits must wait until the QA subagent returns a pass-worthy verdict and the script-owned offline QA path passes.
+- A builder result is not commit authorization. Implementation commits must wait until the QA subagent returns a pass-worthy offline-QA result for the active task.
 - Guard JSON payload/result handling actively:
   - extract a compact decision summary once rather than repeatedly rereading full payload/result JSON artifacts
   - QA payload minimum fields: `feature_id`, `task_id`, `changed_files`, `acceptance_criteria`, `test_runs`
-  - QA result minimum fields: `qa_run_id`, `task_id`, `verdict`, `findings`, `changed_files_considered`
+  - QA result minimum fields: `qa_run_id`, `task_id`, `verdict`, `findings`, `changed_files_considered`, `payload_file`, `result_file`
   - reject a QA payload/result as invalid if the current task id does not match, required fields are missing, or the result run id is older than the active payload/run
   - only reread a full QA payload/result artifact if the file changed, a new run id was produced, or a downstream gate contradicted the cached summary
 - Use an explicit wait budget before declaring a subagent stalled:
@@ -114,8 +122,8 @@ Before task execution or handoff:
 - Emit required task-ledger progression events via `scripts/task_ledger.py`.
 - Run targeted verification before closeout (tests/diagnostics/gates required by task scope).
 - Use canonical script-owned QA + closeout path:
-  - `scripts/speckit_offline_qa_handoff.py`
   - `scripts/speckit_closeout_task.py`
+- The QA subagent, not the orchestrator, owns invoking `scripts/speckit_offline_qa_handoff.py` for the active task.
 - Subagents do not append ledger events, close tasks, or emit phase-completion events.
 
 ### 4. Documentation step (runner-owned until fully centralized)
