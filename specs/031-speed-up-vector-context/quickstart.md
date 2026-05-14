@@ -32,6 +32,10 @@
 <!-- speckit_implement_docs:entry_id=T006:runbook -->
 - T006 let scoped reads reuse trusted freshness in vector_refresh_by_state so narrow requests can bypass the global probe while stale, broad, and failure states still use the existing escalation path.
 
+
+<!-- speckit_implement_docs:entry_id=T007:runbook -->
+- T007 stabilized the visible read_code context path by preserving compact output and inline-body rendering while the scoped fast path now runs underneath it.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -54,3 +58,6 @@
 
 <!-- speckit_implement_docs:entry_id=T006:decision_log -->
 - T006: applied the T002 trust contract inside vector_refresh_by_state so trusted scoped reads return early before vector_index_probe(REPO_ROOT), while broad and stale flows continue through the existing dispatch logic.
+
+<!-- speckit_implement_docs:entry_id=T007:decision_log -->
+- T007: extracted the inline-body rendering branch in read_code_context so the scoped fast-path changes keep the same visible seam selection and window behavior for accepted scoped queries.
