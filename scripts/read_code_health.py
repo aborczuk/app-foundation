@@ -607,8 +607,7 @@ def _remember_healthy_vector_probe(session_id: str | None = None) -> None:
     """Persist a healthy vector probe after a successful refresh completes."""
     active_session = session_id or _read_code_session_id()
     current_signature = codegraph_current_edit_signature(REPO_ROOT)
-    if current_signature:
-        _persist_vector_edit_signature(current_signature, REPO_ROOT)
+    _persist_vector_edit_signature(current_signature, REPO_ROOT)
     _remember_vector_probe(
         active_session,
         _VectorIndexProbe(

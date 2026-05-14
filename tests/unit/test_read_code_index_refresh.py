@@ -895,6 +895,19 @@ def test_vector_refresh_synchronous_marks_probe_cache_healthy(monkeypatch, tmp_p
     assert read_code_health.vector_cached_edit_signature(tmp_path) == " M src/sample.py"
 
 
+def test_vector_refresh_synchronous_persists_clean_signature_baseline(monkeypatch, tmp_path: Path) -> None:
+    """Clean worktrees should still persist an empty vector signature baseline."""
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setenv("READ_CODE_SESSION_ID", "clean-refresh-session")
+    monkeypatch.setattr(read_code_health, "_run_command_capture", lambda cmd, **kwargs: _completed(0))
+    monkeypatch.setattr(read_code_health, "codegraph_current_edit_signature", lambda project_root=None: "")
+
+    target = tmp_path / "src" / "sample.py"
+    assert read_code_health.vector_refresh_synchronous([target]) is True
+    assert read_code_health.vector_edit_signature_file(tmp_path).is_file()
+    assert read_code_health.vector_cached_edit_signature(tmp_path) == ""
+
+
 def test_vector_refresh_if_needed_launches_when_overlap_is_unknown(
     monkeypatch,
     tmp_path: Path,
