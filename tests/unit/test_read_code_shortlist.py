@@ -484,6 +484,26 @@ def test_resolve_pattern_anchor_recovers_from_bad_broad_outcomes_when_fallback_a
     assert calls == ["notice", "discover"]
 
 
+def test_emit_vector_fallback_notice_surfaces_trust_escalation_note(monkeypatch, capsys) -> None:
+    """Escalation notes should read as explicit trust warnings."""
+    monkeypatch.setattr(
+        read_code,
+        "_consume_vector_runtime_note",
+        lambda: "vector trust invalidated: stale drift overlaps requested scope",
+    )
+
+    read_code._emit_vector_fallback_notice(
+        file_path=Path("/tmp/example.py"),
+        pattern="sample",
+        vector_match=None,
+        resolved_line=None,
+    )
+
+    captured = capsys.readouterr()
+    assert "Vector trust escalated" in captured.err
+    assert "stale drift overlaps requested scope" in captured.err
+
+
 def test_resolve_pattern_anchor_recovers_from_stale_broad_reads_when_fallback_allowed(monkeypatch) -> None:
     """Stale broad reads should recover through codegraph when fallback is allowed."""
     request_scope = read_code._ContextQueryScope(is_scoped=False, reason="broad prompt")

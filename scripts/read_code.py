@@ -224,22 +224,25 @@ def _emit_vector_fallback_notice(
         return
 
     runtime_note = _consume_vector_runtime_note()
+    prefix = "Vector semantic anchor unavailable"
+    if runtime_note and runtime_note.startswith("vector trust "):
+        prefix = "Vector trust escalated"
     if resolved_line is not None:
         if runtime_note:
             print(
-                f"WARN: Vector semantic anchor unavailable ({runtime_note}); using strict/local anchor for '{pattern}' in {file_path}.",
+                f"WARN: {prefix} ({runtime_note}); using strict/local anchor for '{pattern}' in {file_path}.",
                 file=sys.stderr,
             )
         else:
             print(
-                f"WARN: Vector semantic anchor not found for '{pattern}' in {file_path}; using strict/local anchor.",
+                f"WARN: {prefix} for '{pattern}' in {file_path}; using strict/local anchor.",
                 file=sys.stderr,
             )
         return
 
     if runtime_note:
         print(
-            f"WARN: Vector semantic anchor unavailable ({runtime_note}) for '{pattern}' in {file_path}.",
+            f"WARN: {prefix} ({runtime_note}) for '{pattern}' in {file_path}.",
             file=sys.stderr,
         )
 

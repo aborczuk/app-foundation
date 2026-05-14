@@ -60,7 +60,23 @@ def _vector_probe(
     stale_signal_source: str = "git",
     stale_signal_available: bool = True,
     stale_signal_error: str = "",
+    trust_state: str | None = None,
+    escalation_state: str | None = None,
 ) -> object:
+    derived_trust_state = {
+        "healthy": "reused",
+        "stale": "invalidated",
+        "missing": "invalidated",
+        "unavailable": "invalidated",
+        "probe-failed": "invalidated",
+    }.get(status, "unknown")
+    derived_escalation_state = {
+        "healthy": "none",
+        "stale": "refresh",
+        "missing": "bootstrap",
+        "unavailable": "recover",
+        "probe-failed": "recover",
+    }.get(status, "unknown")
     return read_code_health._VectorIndexProbe(
         status=status,
         stale_reason=stale_reason,
@@ -69,6 +85,8 @@ def _vector_probe(
         stale_signal_source=stale_signal_source,
         stale_signal_available=stale_signal_available,
         stale_signal_error=stale_signal_error,
+        trust_state=trust_state or derived_trust_state,
+        escalation_state=escalation_state or derived_escalation_state,
     )
 
 
@@ -184,6 +202,8 @@ def test_vector_index_probe_parses_stale_payload_with_cause_details(monkeypatch)
     assert probe.stale_reason_class == "git-path-drift"
     assert probe.stale_drift_paths == ("src/sample.py",)
     assert "src/sample.py" in probe.stale_reason
+    assert probe.trust_state == "invalidated"
+    assert probe.escalation_state == "refresh"
 
 
 def test_vector_index_probe_parses_coverage_gap_payload(monkeypatch) -> None:
@@ -209,6 +229,57 @@ def test_vector_index_probe_parses_coverage_gap_payload(monkeypatch) -> None:
     assert probe.stale_drift_paths == ("src/new_feature.py",)
     assert probe.stale_signal_source == "coverage"
     assert "src/new_feature.py" in probe.stale_reason
+    assert probe.trust_state == "invalidated"
+    assert probe.escalation_state == "refresh"
+
+
+@pytest.mark.parametrize(
+    ("probe", "expected_trust_state", "expected_escalation_state"),
+    [
+        (_vector_probe(status="healthy"), "reused", "none"),
+        (_vector_probe(status="missing", stale_reason="snapshot missing"), "invalidated", "bootstrap"),
+        (_vector_probe(status="unavailable", stale_reason="uv is not available"), "invalidated", "recover"),
+    ],
+)
+def test_vector_index_probe_exposes_explicit_state_labels(
+    monkeypatch, probe: object, expected_trust_state: str, expected_escalation_state: str
+) -> None:
+    monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: probe,
+    )
+
+    resolved = read_code_health.vector_index_probe()
+
+    assert resolved.trust_state == expected_trust_state
+    assert resolved.escalation_state == expected_escalation_state
+
+
+def test_vector_trust_decision_reports_explicit_escalation_state(monkeypatch, tmp_path: Path) -> None:
+    """Scoped stale overlap should produce an explicit invalidation decision."""
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    read_code_health._remember_vector_probe(
+        "test-session",
+        _vector_probe(
+            status="stale",
+            stale_reason="indexable git drift paths: src/sample.py",
+            stale_reason_class="git-path-drift",
+            stale_drift_paths=("src/sample.py",),
+            trust_state="invalidated",
+            escalation_state="refresh",
+        ),
+    )
+
+    decision = read_code_health._vector_trust_decision(scope_path, request_is_scoped=True)
+
+    assert decision.trusted is False
+    assert decision.trust_state == "invalidated"
+    assert decision.escalation_state == "refresh"
+    assert "stale drift overlaps requested scope" in decision.runtime_note
 
 
 def test_vector_index_probe_uses_short_ttl_cache(monkeypatch) -> None:
@@ -452,7 +523,11 @@ def test_run_status_command_emits_json_payload(monkeypatch, capsys, tmp_path: Pa
             "codegraph_recovery_command": "",
         },
     )
-    monkeypatch.setattr(read_code_health, "vector_index_status", lambda project_root=None: "healthy")
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(status="healthy", trust_state="reused", escalation_state="none"),
+    )
 
     exit_code = read_code_health.run_status_command(["--project-root", str(tmp_path), "--json"])
 
@@ -461,6 +536,34 @@ def test_run_status_command_emits_json_payload(monkeypatch, capsys, tmp_path: Pa
     assert payload["project_root"] == str(tmp_path.resolve())
     assert payload["codegraph_status"] == "healthy"
     assert payload["vector_index_status"] == "healthy"
+    assert payload["vector_trust_state"] == "reused"
+    assert payload["vector_escalation_state"] == "none"
+
+
+def test_run_status_command_emits_vector_state_in_plain_text(monkeypatch, capsys, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        read_code_health,
+        "codegraph_status_payload",
+        lambda project_root=None: {
+            "project_root": str((project_root or tmp_path).resolve()),
+            "codegraph_status": "healthy",
+            "codegraph_detail": "",
+            "codegraph_recovery_command": "",
+        },
+    )
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(status="stale", trust_state="invalidated", escalation_state="refresh"),
+    )
+
+    exit_code = read_code_health.run_status_command(["--project-root", str(tmp_path)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "vector_index_status=stale" in output
+    assert "vector_trust_state=invalidated" in output
+    assert "vector_escalation_state=refresh" in output
 
 
 def test_run_status_command_rejects_missing_project_root_value(capsys) -> None:

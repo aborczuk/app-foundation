@@ -65,6 +65,18 @@ class _VectorIndexProbe:
     stale_signal_source: str
     stale_signal_available: bool
     stale_signal_error: str
+    trust_state: str = "unknown"
+    escalation_state: str = "unknown"
+
+
+@dataclass(frozen=True)
+class _VectorTrustDecision:
+    """Request-scoped trust outcome with explicit escalation state."""
+
+    trusted: bool
+    trust_state: str
+    escalation_state: str
+    runtime_note: str = ""
 
 
 _VECTOR_RUNTIME_NOTE: str | None = None
@@ -444,8 +456,11 @@ def _make_vector_probe(
     stale_signal_source: str = "git",
     stale_signal_available: bool = True,
     stale_signal_error: str = "",
+    trust_state: str | None = None,
+    escalation_state: str | None = None,
 ) -> _VectorIndexProbe:
     """Construct a normalized vector probe payload with consistent defaults."""
+    derived_trust_state, derived_escalation_state = _vector_probe_state(status)
     return _VectorIndexProbe(
         status=status,
         stale_reason=str(stale_reason or ""),
@@ -454,7 +469,22 @@ def _make_vector_probe(
         stale_signal_source=str(stale_signal_source or "git"),
         stale_signal_available=bool(stale_signal_available),
         stale_signal_error=str(stale_signal_error or ""),
+        trust_state=str(trust_state or derived_trust_state),
+        escalation_state=str(escalation_state or derived_escalation_state),
     )
+
+
+def _vector_probe_state(status: str) -> tuple[str, str]:
+    """Return coarse trust and escalation labels for a probe status."""
+    if status == "healthy":
+        return "reused", "none"
+    if status == "stale":
+        return "invalidated", "refresh"
+    if status == "missing":
+        return "invalidated", "bootstrap"
+    if status in {"unavailable", "probe-failed"}:
+        return "invalidated", "recover"
+    return "unknown", "unknown"
 
 
 def _vector_probe_from_payload(payload: object) -> _VectorIndexProbe | None:
@@ -470,6 +500,8 @@ def _vector_probe_from_payload(payload: object) -> _VectorIndexProbe | None:
     stale_signal_available = payload.get("stale_signal_available", True)
     stale_signal_error = payload.get("stale_signal_error", "")
     stale_drift_paths = payload.get("stale_drift_paths", [])
+    trust_state = payload.get("trust_state")
+    escalation_state = payload.get("escalation_state")
     return _make_vector_probe(
         status=status,
         stale_reason=stale_reason,
@@ -478,6 +510,8 @@ def _vector_probe_from_payload(payload: object) -> _VectorIndexProbe | None:
         stale_signal_source=stale_signal_source,
         stale_signal_available=stale_signal_available,
         stale_signal_error=stale_signal_error,
+        trust_state=trust_state if isinstance(trust_state, str) else None,
+        escalation_state=escalation_state if isinstance(escalation_state, str) else None,
     )
 
 
@@ -522,16 +556,18 @@ def _remember_vector_probe(session_id: str, probe: _VectorIndexProbe) -> _Vector
     cache_path = _vector_session_probe_cache_path(session_id)
     payload = {
         "cached_at": now,
-        "probe": {
-            "status": probe.status,
-            "stale_reason": probe.stale_reason,
-            "stale_reason_class": probe.stale_reason_class,
-            "stale_drift_paths": list(probe.stale_drift_paths),
-            "stale_signal_source": probe.stale_signal_source,
-            "stale_signal_available": probe.stale_signal_available,
-            "stale_signal_error": probe.stale_signal_error,
-        },
-    }
+            "probe": {
+                "status": probe.status,
+                "stale_reason": probe.stale_reason,
+                "stale_reason_class": probe.stale_reason_class,
+                "stale_drift_paths": list(probe.stale_drift_paths),
+                "stale_signal_source": probe.stale_signal_source,
+                "stale_signal_available": probe.stale_signal_available,
+                "stale_signal_error": probe.stale_signal_error,
+                "trust_state": probe.trust_state,
+                "escalation_state": probe.escalation_state,
+            },
+        }
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -1076,6 +1112,77 @@ def vector_index_status(project_root: Path | None = None) -> str:
     return vector_index_probe(project_root).status
 
 
+def _vector_trust_decision(
+    scope_path: Path,
+    *,
+    request_is_scoped: bool | None = None,
+) -> _VectorTrustDecision:
+    """Return the explicit trust outcome for one read request."""
+    probe = _load_vector_probe_cache(_read_code_session_id())
+    if probe is None:
+        return _VectorTrustDecision(
+            trusted=False,
+            trust_state="invalidated",
+            escalation_state="recover",
+            runtime_note="vector trust invalidated: no cached probe available",
+        )
+    if request_is_scoped is False:
+        if probe.status == "healthy":
+            return _VectorTrustDecision(trusted=True, trust_state="reused", escalation_state="none")
+        if probe.status in {"missing", "unavailable", "probe-failed"}:
+            return _VectorTrustDecision(
+                trusted=False,
+                trust_state="invalidated",
+                escalation_state=probe.escalation_state,
+                runtime_note=f"vector trust invalidated: status is {probe.status}",
+            )
+        return _VectorTrustDecision(
+            trusted=False,
+            trust_state="invalidated",
+            escalation_state=probe.escalation_state,
+            runtime_note="vector trust invalidated: broad read requires recovery",
+        )
+    if request_is_scoped is not True:
+        return _VectorTrustDecision(
+            trusted=False,
+            trust_state="invalidated",
+            escalation_state="unknown",
+            runtime_note="vector trust invalidated: request scope unavailable",
+        )
+    if probe.status in {"missing", "unavailable", "probe-failed"}:
+        return _VectorTrustDecision(
+            trusted=False,
+            trust_state="invalidated",
+            escalation_state=probe.escalation_state,
+            runtime_note=f"vector trust invalidated: status is {probe.status}",
+        )
+    if probe.status == "healthy":
+        return _VectorTrustDecision(trusted=True, trust_state="reused", escalation_state="none")
+    if probe.status != "stale":
+        return _VectorTrustDecision(
+            trusted=False,
+            trust_state="invalidated",
+            escalation_state="unknown",
+            runtime_note=f"vector trust invalidated: status is {probe.status}",
+        )
+    overlap = _scope_needs_vector_refresh(scope_path, probe.stale_drift_paths)
+    if overlap is False:
+        return _VectorTrustDecision(trusted=True, trust_state="reused", escalation_state="none")
+    if overlap is True:
+        return _VectorTrustDecision(
+            trusted=False,
+            trust_state="invalidated",
+            escalation_state=probe.escalation_state,
+            runtime_note="vector trust invalidated: stale drift overlaps requested scope",
+        )
+    return _VectorTrustDecision(
+        trusted=False,
+        trust_state="invalidated",
+        escalation_state=probe.escalation_state,
+        runtime_note="vector trust invalidated: stale overlap unknown",
+    )
+
+
 def _scope_needs_vector_refresh(scope_path: Path, drift_paths: tuple[str, ...]) -> bool | None:
     """Return overlap decision for a requested scope against stale drift paths."""
     if not drift_paths:
@@ -1119,7 +1226,10 @@ def _read_request_trusts_vector_cache(scope_path: Path, *, request_is_scoped: bo
 
 def evaluate_read_vector_trust(scope_path: Path, *, request_is_scoped: bool | None = None) -> bool:
     """Return whether a read can trust cached vector freshness for the requested scope."""
-    return _read_request_trusts_vector_cache(scope_path, request_is_scoped=request_is_scoped)
+    decision = _vector_trust_decision(scope_path, request_is_scoped=request_is_scoped)
+    if decision.runtime_note:
+        _set_vector_runtime_note(decision.runtime_note)
+    return decision.trusted
 
 
 def _vector_stale_warning_message(
@@ -1436,13 +1546,18 @@ def run_status_command(argv: list[str]) -> int:
 
     root = (project_root or REPO_ROOT).resolve()
     payload = codegraph_status_payload(root)
-    payload["vector_index_status"] = vector_index_status(root)
+    vector_probe = vector_index_probe(root)
+    payload["vector_index_status"] = vector_probe.status
+    payload["vector_trust_state"] = vector_probe.trust_state
+    payload["vector_escalation_state"] = vector_probe.escalation_state
     if emit_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(f"project_root={payload['project_root']}")
         print(f"codegraph_status={payload['codegraph_status']}")
         print(f"vector_index_status={payload['vector_index_status']}")
+        print(f"vector_trust_state={payload['vector_trust_state']}")
+        print(f"vector_escalation_state={payload['vector_escalation_state']}")
         detail = str(payload.get("codegraph_detail", "") or "").strip()
         recovery = str(payload.get("codegraph_recovery_command", "") or "").strip()
         if detail:
