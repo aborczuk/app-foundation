@@ -64,6 +64,10 @@
 <!-- speckit_implement_docs:entry_id=T014:runbook -->
 - T014 recorded the settled validation commands and benchmark evidence note for the scoped, broad, and escalation corpus so the feature closes with an explicit rerun path.
 
+
+<!-- speckit_implement_docs:entry_id=T015:runbook -->
+- T015 updated default context ranking so ordinary discovery prefers implementation files over tests while explicit test-targeted requests can still keep test candidates competitive.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -110,3 +114,6 @@
 
 <!-- speckit_implement_docs:entry_id=T014:decision_log -->
 - T014: captured the post-change evidence bundle in the feature task artifact and anchored the integration performance module to the final benchmark context.
+
+<!-- speckit_implement_docs:entry_id=T015:decision_log -->
+- T015: added a narrow test-file ranking penalty in regular discovery and preserved test-first behavior for explicit test targets without widening freshness or fallback behavior.

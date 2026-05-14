@@ -91,7 +91,7 @@
     - `uv run --no-sync python scripts/pytest_guard.py run -- tests/unit/test_read_code_index_refresh.py tests/unit/test_read_code_shortlist.py -k escalation`
     - `uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py -k 'invalidation or timing'`
     - `uv run python scripts/ruff_guard.py scripts/read_code_health.py scripts/read_code.py tests/unit/test_read_code_index_refresh.py tests/unit/test_read_code_shortlist.py tests/integration/test_codebase_vector_index_performance.py`
-- [ ] T015 De-prioritize test-file candidates in regular context discovery unless the request explicitly targets tests in `scripts/read_code.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_vector_anchor_rank`
+- [X] T015 De-prioritize test-file candidates in regular context discovery unless the request explicitly targets tests in `scripts/read_code.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_vector_anchor_rank`
 
 ## Dependencies & Execution Order
 
