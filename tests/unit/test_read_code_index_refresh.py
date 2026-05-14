@@ -416,6 +416,41 @@ def test_vector_refresh_if_needed_skips_when_index_is_healthy(monkeypatch, tmp_p
     assert called["value"] is False
 
 
+def test_vector_refresh_by_state_returns_early_for_trusted_scoped_read(monkeypatch, tmp_path: Path) -> None:
+    """Trusted scoped reads should bypass the slow vector probe path."""
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    read_code_health._remember_vector_probe("test-session", _vector_probe(status="healthy"))
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: (_ for _ in ()).throw(AssertionError("slow probe should be skipped")),
+    )
+
+    assert read_code_health.vector_refresh_by_state(scope_path, request_is_scoped=True) is True
+
+
+def test_vector_refresh_by_state_keeps_hard_failure_for_unavailable_status(monkeypatch, tmp_path: Path, capsys) -> None:
+    """Untrusted unavailable states should still fail through the normal slow path."""
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(
+            status="unavailable",
+            stale_reason="uv is not available",
+            stale_reason_class="probe-unavailable",
+        ),
+    )
+
+    result = read_code_health.vector_refresh_by_state(scope_path, request_is_scoped=True)
+    captured = capsys.readouterr()
+
+    assert result is False
+    assert "status is unavailable" in captured.err
+
+
 def test_vector_refresh_if_needed_refreshes_stale_index_for_overlap(monkeypatch, tmp_path: Path, capsys) -> None:
     target = tmp_path / "src" / "sample.py"
     target.parent.mkdir(parents=True, exist_ok=True)

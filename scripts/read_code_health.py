@@ -1116,6 +1116,11 @@ def _read_request_trusts_vector_cache(scope_path: Path, *, request_is_scoped: bo
     return _scope_needs_vector_refresh(scope_path, probe.stale_drift_paths) is False
 
 
+def evaluate_read_vector_trust(scope_path: Path, *, request_is_scoped: bool | None = None) -> bool:
+    """Return whether a read can trust cached vector freshness for the requested scope."""
+    return _read_request_trusts_vector_cache(scope_path, request_is_scoped=request_is_scoped)
+
+
 def _vector_stale_warning_message(
     path: Path,
     probe: _VectorIndexProbe,
@@ -1226,9 +1231,16 @@ def _dispatch_refresh_by_state(
     return True
 
 
-def vector_refresh_by_state(scope_path: Path | None = None, *, verbose: bool = False) -> bool:
+def vector_refresh_by_state(
+    scope_path: Path | None = None,
+    *,
+    verbose: bool = False,
+    request_is_scoped: bool | None = None,
+) -> bool:
     """Require a healthy vector index with scoped refresh and missing bootstrap."""
     path = scope_path or REPO_ROOT
+    if evaluate_read_vector_trust(path, request_is_scoped=request_is_scoped):
+        return True
     probe = vector_index_probe(REPO_ROOT)
     status = probe.status
     if status == "healthy":
@@ -1282,7 +1294,7 @@ def _refresh_indexes_for_read(
     _ensure_codegraph_session_available(file_path)
     if _read_request_trusts_vector_cache(file_path, request_is_scoped=request_is_scoped):
         return True
-    if not vector_refresh_by_state(file_path, verbose=verbose):
+    if not vector_refresh_by_state(file_path, verbose=verbose, request_is_scoped=request_is_scoped):
         runtime_note = _consume_vector_runtime_note()
         if runtime_note:
             print(f"ERROR: {runtime_note}", file=sys.stderr)
