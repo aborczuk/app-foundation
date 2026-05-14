@@ -269,6 +269,83 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
     assert captured["request_scope"] == request_scope
 
 
+def test_query_semantic_anchor_candidate_skips_markdown_for_scoped_code_requests(monkeypatch) -> None:
+    """Scoped code requests should only query code candidates."""
+    scopes: list[str] = []
+    request_scope = read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
+
+    def fake_vector_find_candidates(file_path, pattern, normalized_pattern, scope):
+        scopes.append(scope)
+        return [
+            read_code._VectorMatch(
+                unit_id=f"{scope}:top",
+                symbol_name="top",
+                qualified_name="top",
+                line_num=10,
+                line_end=12,
+                raw_score=0.9,
+                cosine_similarity=90,
+                file_path=Path("/tmp/example.py"),
+            )
+        ]
+
+    monkeypatch.setattr(read_code, "_vector_find_candidates", fake_vector_find_candidates)
+
+    candidates, selected, ok = read_code._query_semantic_anchor_candidate(
+        Path("/tmp/example.py"),
+        "top",
+        "top",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type="code",
+        request_scope=request_scope,
+    )
+
+    assert ok is True
+    assert scopes == ["code"]
+    assert len(candidates) == 1
+    assert selected is not None
+    assert selected.symbol_name == "top"
+
+
+def test_query_semantic_anchor_candidate_keeps_markdown_for_broad_requests(monkeypatch) -> None:
+    """Broad requests should still query both code and markdown candidates."""
+    scopes: list[str] = []
+
+    def fake_vector_find_candidates(file_path, pattern, normalized_pattern, scope):
+        scopes.append(scope)
+        return [
+            read_code._VectorMatch(
+                unit_id=f"{scope}:top",
+                symbol_name="top",
+                qualified_name="top",
+                line_num=10,
+                line_end=12,
+                raw_score=0.9,
+                cosine_similarity=90,
+                file_path=Path("/tmp/example.py") if scope == "code" else Path("/tmp/example.md"),
+            )
+        ]
+
+    monkeypatch.setattr(read_code, "_vector_find_candidates", fake_vector_find_candidates)
+
+    candidates, selected, ok = read_code._query_semantic_anchor_candidate(
+        Path("/tmp/example.py"),
+        "top",
+        "top",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type="code",
+        request_scope=read_code._ContextQueryScope(is_scoped=False, reason="broad prompt"),
+    )
+
+    assert ok is True
+    assert scopes == ["code", "markdown"]
+    assert len(candidates) == 1
+    assert selected is not None
+    assert selected.symbol_name == "top"
+
+
 def test_read_code_context_keeps_top_candidate_for_exact_symbol_scope(monkeypatch) -> None:
     """Exact-symbol reads should stay scoped and keep the same top shortlist candidate."""
     calls: dict[str, object] = {}

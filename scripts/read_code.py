@@ -762,6 +762,16 @@ def _select_semantic_anchor_candidate(
     return selected, error
 
 
+def _semantic_anchor_candidate_scopes(
+    request_scope: _ContextQueryScope | None,
+    content_type: str | None,
+) -> tuple[str, ...]:
+    """Return the candidate scopes needed for semantic anchor retrieval."""
+    if request_scope is not None and request_scope.is_scoped and content_type != "markdown":
+        return ("code",)
+    return ("code", "markdown")
+
+
 def _query_semantic_anchor_candidate(
     file_path: Path | None,
     pattern: str,
@@ -773,8 +783,13 @@ def _query_semantic_anchor_candidate(
     request_scope: _ContextQueryScope | None = None,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
     """Query ranked candidates and select a semantic anchor with standardized error handling."""
+    candidate_scopes = _semantic_anchor_candidate_scopes(request_scope, content_type)
     code_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
-    markdown_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "markdown")
+    markdown_candidates = (
+        _vector_find_candidates(file_path, pattern, normalized_pattern, "markdown")
+        if "markdown" in candidate_scopes
+        else []
+    )
     vector_candidates = sorted(
         [
             candidate
