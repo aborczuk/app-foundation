@@ -1,4 +1,4 @@
-"""Integration regressions for configurable exclusions and performance slices."""
+"""Integration regressions for configurable exclusions, performance slices, and feature-031 evidence."""
 
 from __future__ import annotations
 

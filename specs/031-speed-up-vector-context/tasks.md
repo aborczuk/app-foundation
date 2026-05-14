@@ -85,7 +85,12 @@
 
 **Purpose**: Lock the benchmark artifact and ensure the settled graph is ready for estimate, HUD, and implement phases.
 
-- [ ] T014 Capture the post-change benchmark evidence and accepted validation commands in `specs/031-speed-up-vector-context/tasks.md` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+- [X] T014 Capture the post-change benchmark evidence and accepted validation commands in `specs/031-speed-up-vector-context/tasks.md` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+  - Evidence corpus: scoped exact-path / exact-symbol reads, broad code-plus-markdown discovery, markdown-first reads, and stale/escalation cases remain covered by the existing performance and regression suite.
+  - Validation commands:
+    - `uv run --no-sync python scripts/pytest_guard.py run -- tests/unit/test_read_code_index_refresh.py tests/unit/test_read_code_shortlist.py -k escalation`
+    - `uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py -k 'invalidation or timing'`
+    - `uv run python scripts/ruff_guard.py scripts/read_code_health.py scripts/read_code.py tests/unit/test_read_code_index_refresh.py tests/unit/test_read_code_shortlist.py tests/integration/test_codebase_vector_index_performance.py`
 - [ ] T015 De-prioritize test-file candidates in regular context discovery unless the request explicitly targets tests in `scripts/read_code.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_vector_anchor_rank`
 
 ## Dependencies & Execution Order
