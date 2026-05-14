@@ -47,7 +47,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Restrict scoped code queries so irrelevant markdown retrieval is skipped in `scripts/read_code.py` — `scripts/read_code.py:_query_semantic_anchor_candidate`
+- [X] T005 [US1] Restrict scoped code queries so irrelevant markdown retrieval is skipped in `scripts/read_code.py` — `scripts/read_code.py:_query_semantic_anchor_candidate`
 - [ ] T006 [US1] Apply scope-local or session-trusted freshness shortcuts for scoped reads in `scripts/read_code_health.py` — `scripts/read_code_health.py:vector_refresh_by_state`
 - [ ] T007 [US1] Update `read_code context` output and inline behavior to preserve current seam selection while using the scoped fast path in `scripts/read_code.py` — `scripts/read_code.py:read_code_context`
 

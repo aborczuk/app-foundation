@@ -24,6 +24,10 @@
 <!-- speckit_implement_docs:entry_id=T004:runbook -->
 - T004 added unit regression coverage for exact-symbol and file-local scoped reads, including scoped trust routing assertions in the shortlist and index-refresh test modules.
 
+
+<!-- speckit_implement_docs:entry_id=T005:runbook -->
+- T005 taught scoped non-markdown context queries to skip the markdown candidate branch while preserving mixed code-plus-markdown retrieval for broad and markdown-oriented requests.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -40,3 +44,6 @@
 
 <!-- speckit_implement_docs:entry_id=T004:decision_log -->
 - T004: locked in the scoped fast-path regression harness in tests/unit/test_read_code_shortlist.py and tests/unit/test_read_code_index_refresh.py so later scoped retrieval and trust changes have explicit unit guards before behavior shifts.
+
+<!-- speckit_implement_docs:entry_id=T005:decision_log -->
+- T005: narrowed _query_semantic_anchor_candidate to conditionally skip markdown retrieval for scoped code queries using the routed scope signal, while keeping the mixed candidate path for broad discovery intact.
