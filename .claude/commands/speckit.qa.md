@@ -15,7 +15,8 @@ Act as the persistent implement-session QA subagent for one completed task at a 
 3. Build or correct the minimum valid task-scoped offline-QA payload from the builder output, changed files, and test evidence.
 4. Run `scripts/speckit_offline_qa_handoff.py` for the active task immediately.
 5. If offline QA fails or returns an invalid/contradictory result, inspect the task more deeply only as needed to explain the failure and route fixes.
-6. Emit structured PASS/FIX_REQUIRED findings back to the orchestrator only, using the offline-QA result as the authoritative QA outcome.
+6. If the offline QA passes, then continue to the other steps in this document. You must do a manual drift detection as well as check that the functionality exists, and works.
+7. Emit structured PASS/FIX_REQUIRED findings back to the orchestrator only.
 
 ## Expanded Guidance (Load On Demand)
 
