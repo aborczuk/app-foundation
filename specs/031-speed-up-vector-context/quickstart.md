@@ -52,6 +52,10 @@
 <!-- speckit_implement_docs:entry_id=T011:runbook -->
 - T011 added stale-trust, invalidation, and escalation regression coverage in both the unit refresh suite and the vector-index performance harness before the explicit signaling work lands.
 
+
+<!-- speckit_implement_docs:entry_id=T012:runbook -->
+- T012 made trust invalidation and escalation state explicit through probe labels, runtime-note propagation, and bounded fallback notices so maintainers can tell when fast-path trust was reused versus escalated.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -89,3 +93,6 @@
 
 <!-- speckit_implement_docs:entry_id=T011:decision_log -->
 - T011: locked in stale/invalidation coverage for the trust helpers and refresh path, plus an integration invalidation regression in the vector-index performance suite so later signaling changes stay observable.
+
+<!-- speckit_implement_docs:entry_id=T012:decision_log -->
+- T012: surfaced explicit trust and escalation state in the health contract and existing notice channels without changing the compact read_code context result payload.
