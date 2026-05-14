@@ -238,6 +238,55 @@ def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkey
     assert status == "healthy"
 
 
+@pytest.mark.parametrize(
+    ("probe", "request_is_scoped", "expected"),
+    [
+        (_vector_probe(status="healthy"), True, True),
+        (
+            _vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: docs/guide.md",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=("docs/guide.md",),
+            ),
+            True,
+            True,
+        ),
+        (
+            _vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: src/sample.py",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=("src/sample.py",),
+            ),
+            True,
+            False,
+        ),
+        (_vector_probe(status="missing", stale_reason="snapshot missing"), True, False),
+        (_vector_probe(status="healthy"), False, False),
+    ],
+)
+def test_read_request_trusts_vector_cache_for_scoped_reads(
+    monkeypatch,
+    tmp_path: Path,
+    probe: object,
+    request_is_scoped: bool,
+    expected: bool,
+) -> None:
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    read_code_health._remember_vector_probe("test-session", probe)
+
+    assert (
+        read_code_health._read_request_trusts_vector_cache(
+            scope_path,
+            request_is_scoped=request_is_scoped,
+        )
+        is expected
+    )
+
+
 def test_codegraph_status_payload_reports_stale_when_signatures_drift(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         read_code_health,
@@ -994,11 +1043,11 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
     code_file = tmp_path / "sample.py"
     code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
 
-    calls: list[Path] = []
+    calls: list[tuple[Path, dict[str, object]]] = []
     monkeypatch.setattr(
         read_code,
         "_refresh_indexes_for_read",
-        lambda file_path, **kwargs: (calls.append(file_path), True)[1],
+        lambda file_path, **kwargs: (calls.append((file_path, kwargs)), True)[1],
     )
     monkeypatch.setattr(
         read_code,
@@ -1011,7 +1060,55 @@ def test_read_code_context_runs_index_preflight_before_anchor_resolution(monkeyp
     exit_code = read_code.read_code_context([str(code_file), "run_pipeline", "0"])
 
     assert exit_code == 0
-    assert calls == [code_file]
+    assert calls == [(code_file, {"verbose": False, "request_is_scoped": True})]
+
+
+def test_refresh_indexes_for_read_skips_vector_refresh_for_trusted_scoped_request(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code_health, "_ensure_codegraph_session_available", lambda file_path: True)
+    read_code_health._remember_vector_probe(
+        "test-session",
+        _vector_probe(
+            status="stale",
+            stale_reason="indexable git drift paths: docs/guide.md",
+            stale_reason_class="git-path-drift",
+            stale_drift_paths=("docs/guide.md",),
+        ),
+    )
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_refresh_by_state",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("heavy vector refresh should be skipped")),
+    )
+
+    assert read_code_health._refresh_indexes_for_read(scope_path, request_is_scoped=True) is True
+
+
+def test_refresh_indexes_for_read_forwards_unscoped_request_to_vector_refresh(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code_health, "_ensure_codegraph_session_available", lambda file_path: True)
+    read_code_health._remember_vector_probe("test-session", _vector_probe(status="healthy"))
+
+    called = {"value": False}
+
+    def fake_vector_refresh_by_state(file_path: Path, *, verbose: bool = False) -> bool:
+        called["value"] = True
+        return True
+
+    monkeypatch.setattr(read_code_health, "vector_refresh_by_state", fake_vector_refresh_by_state)
+
+    assert read_code_health._refresh_indexes_for_read(scope_path, request_is_scoped=False) is True
+    assert called["value"] is True
 
 
 def test_split_context_window_biases_post_anchor_budget() -> None:

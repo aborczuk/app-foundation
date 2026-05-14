@@ -1099,6 +1099,23 @@ def _scope_needs_vector_refresh(scope_path: Path, drift_paths: tuple[str, ...]) 
     return False
 
 
+def _read_request_trusts_vector_cache(scope_path: Path, *, request_is_scoped: bool | None = None) -> bool:
+    """Return whether this scoped read can skip the heavyweight vector refresh path."""
+    if request_is_scoped is not True:
+        return False
+
+    probe = _load_vector_probe_cache(_read_code_session_id())
+    if probe is None:
+        return False
+    if probe.status in {"missing", "unavailable", "probe-failed"}:
+        return False
+    if probe.status == "healthy":
+        return True
+    if probe.status != "stale":
+        return False
+    return _scope_needs_vector_refresh(scope_path, probe.stale_drift_paths) is False
+
+
 def _vector_stale_warning_message(
     path: Path,
     probe: _VectorIndexProbe,
@@ -1253,11 +1270,18 @@ def vector_refresh_by_state(scope_path: Path | None = None, *, verbose: bool = F
     )
 
 
-def _refresh_indexes_for_read(file_path: Path, *, verbose: bool = False) -> bool:
-    """Run read preflight checks with vector hard-gate and session-scoped codegraph probe."""
+def _refresh_indexes_for_read(
+    file_path: Path,
+    *,
+    verbose: bool = False,
+    request_is_scoped: bool | None = None,
+) -> bool:
+    """Run read preflight with a scoped trust fast path before the vector hard-gate."""
     if not _is_repo_local_path(file_path):
         return True
     _ensure_codegraph_session_available(file_path)
+    if _read_request_trusts_vector_cache(file_path, request_is_scoped=request_is_scoped):
+        return True
     if not vector_refresh_by_state(file_path, verbose=verbose):
         runtime_note = _consume_vector_runtime_note()
         if runtime_note:

@@ -1366,7 +1366,11 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
 
     request_scope = _classify_context_query_scope(parsed)
     preflight_path = parsed.file_path or Path.cwd()
-    if not _refresh_indexes_for_read(preflight_path, verbose=verbose):
+    if not _refresh_indexes_for_read(
+        preflight_path,
+        verbose=verbose,
+        request_is_scoped=request_scope.is_scoped,
+    ):
         return 1
     normalized_pattern = normalize_symbol_pattern(parsed.pattern)
     resolution = _resolve_pattern_anchor(
