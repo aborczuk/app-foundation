@@ -442,3 +442,113 @@ def test_read_code_context_keeps_top_candidate_for_file_local_scope(monkeypatch,
     assert read_code.read_code_context([str(code_file), "how does this work"]) == 0
     assert calls["request_is_scoped"] is True
     assert calls["selected"].symbol_name == "top"
+
+
+def test_read_code_context_keeps_inline_body_window_for_code_results(monkeypatch, tmp_path: Path) -> None:
+    """Code inline-body rendering should keep the same window bounds."""
+    code_file = tmp_path / "example.py"
+    code_file.write_text("line1\nline2\nline3\nline4\nline5\n", encoding="utf-8")
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: True,
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_pattern_anchor",
+        lambda *args, **kwargs: read_code._AnchorResolution(
+            vector_candidates=[
+                read_code._VectorMatch(
+                    unit_id="function:sample",
+                    symbol_name="sample",
+                    qualified_name="sample",
+                    line_num=3,
+                    line_end=3,
+                    raw_score=1.0,
+                    cosine_similarity=100,
+                    file_path=code_file,
+                )
+            ],
+            vector_match=read_code._VectorMatch(
+                unit_id="function:sample",
+                symbol_name="sample",
+                qualified_name="sample",
+                line_num=3,
+                line_end=3,
+                raw_score=1.0,
+                cosine_similarity=100,
+                file_path=code_file,
+            ),
+            strict_status=0,
+            line_num=3,
+        ),
+    )
+    monkeypatch.setattr(read_code, "_render_compact_match", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        read_code,
+        "_render_numbered_window",
+        lambda file_path, start, end: calls.update({"file_path": file_path, "start": start, "end": end}),
+    )
+
+    assert read_code.read_code_context([str(code_file), "sample", "--inline-body"]) == 0
+    assert calls == {"file_path": code_file, "start": 1, "end": 57}
+
+
+def test_read_code_context_keeps_inline_body_window_for_markdown_results(monkeypatch, tmp_path: Path) -> None:
+    """Markdown inline-body rendering should keep the same section window."""
+    markdown_file = tmp_path / "example.md"
+    markdown_file.write_text("# Title\n\n## Section\nbody\n", encoding="utf-8")
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: True,
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_pattern_anchor",
+        lambda *args, **kwargs: read_code._AnchorResolution(
+            vector_candidates=[
+                read_code._VectorMatch(
+                    unit_id="markdown",
+                    symbol_name="Section",
+                    qualified_name=f"{markdown_file}:Section",
+                    line_num=3,
+                    line_end=3,
+                    raw_score=1.0,
+                    cosine_similarity=100,
+                    file_path=markdown_file,
+                    signature="## Section",
+                    docstring="",
+                )
+            ],
+            vector_match=read_code._VectorMatch(
+                unit_id="markdown",
+                symbol_name="Section",
+                qualified_name=f"{markdown_file}:Section",
+                line_num=3,
+                line_end=3,
+                raw_score=1.0,
+                cosine_similarity=100,
+                file_path=markdown_file,
+                signature="## Section",
+                docstring="",
+            ),
+            strict_status=0,
+            line_num=3,
+        ),
+    )
+    monkeypatch.setattr(read_code, "_render_compact_match", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        read_code,
+        "_render_numbered_window",
+        lambda file_path, start, end: calls.update({"file_path": file_path, "start": start, "end": end}),
+    )
+
+    assert read_code.read_code_context([str(markdown_file), "Section", "--inline-body"]) == 0
+    assert calls == {"file_path": markdown_file, "start": 3, "end": 4}

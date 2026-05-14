@@ -910,6 +910,20 @@ def _resolve_pattern_anchor(
     )
 
 
+def _render_read_context_inline_body(vector_match: _VectorMatch, line_num: int, context: int) -> None:
+    """Render the existing inline-body window for a resolved read context."""
+    start = 1
+    end = 1
+    if _is_markdown(vector_match.file_path):
+        start = line_num
+        end = _find_markdown_section_end(vector_match.file_path, line_num)
+    else:
+        pre_lines, post_lines = _split_context_window(context)
+        start = max(1, line_num - pre_lines)
+        end = line_num + post_lines
+    _render_numbered_window(vector_match.file_path, start, end)
+
+
 def _validate_file_and_positive_int(
     file_arg: str,
     value_raw: str,
@@ -1426,16 +1440,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     )
 
     if parsed.inline_body:
-        start = 1
-        end = 1
-        if _is_markdown(vector_match.file_path):
-            start = line_num
-            end = _find_markdown_section_end(vector_match.file_path, line_num)
-        else:
-            pre_lines, post_lines = _split_context_window(parsed.context)
-            start = max(1, line_num - pre_lines)
-            end = line_num + post_lines
-        _render_numbered_window(vector_match.file_path, start, end)
+        _render_read_context_inline_body(vector_match, line_num, parsed.context)
 
     return 0
 
