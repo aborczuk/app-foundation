@@ -59,7 +59,7 @@
 
 ### Tests for User Story 2
 
-- [ ] T008 [P] [US2] Add broad discovery and mixed code-plus-markdown coverage in `tests/unit/test_read_code_shortlist.py` and `tests/integration/test_codebase_vector_index.py` — `tests/integration/test_codebase_vector_index.py:test_code_symbol_lookup_returns_metadata`
+- [X] T008 [P] [US2] Add broad discovery and mixed code-plus-markdown coverage in `tests/unit/test_read_code_shortlist.py` and `tests/integration/test_codebase_vector_index.py` — `tests/integration/test_codebase_vector_index.py:test_code_symbol_lookup_returns_metadata`
 
 ### Implementation for User Story 2
 
