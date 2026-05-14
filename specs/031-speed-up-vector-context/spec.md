@@ -158,6 +158,23 @@ As a maintainer, I want freshness and fallback behavior to be predictable so I c
 - The vector freshness path was dominated by the vector status probe at about `5.63s`, while the codegraph session check was effectively negligible at about `0.003s`.
 - The scoped semantic query path spent about `1.32s` on the code search and about `1.30s` on the markdown search for an exact code symbol, with the markdown branch returning no results in that benchmark.
 - Direct indexer subprocess timings on the same benchmark were about `6.39s` for `status`, `1.93s` for the scoped code query, and `2.07s` for the scoped markdown query.
+- Current post-implementation spot checks are still materially worse than the original target and must be treated as explicit follow-up regression cases.
+- The prior `~9.6s` to `~9.9s` spot checks were taken with `--inline-body`, so they include an unnecessarily expensive output mode and should not be treated as the ordinary `context` latency baseline.
+- The concrete post-change latency regression set for this feature should use ordinary `context` reads without `--inline-body`:
+  - `uv run python scripts/read_code.py context "_resolve_pattern_anchor" --path scripts/read_code.py`
+  - `uv run python scripts/read_code.py context "_vector_trust_decision" --path scripts/read_code_health.py`
+  - `uv run python scripts/read_code.py context "test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recovery" --path tests/unit/test_read_code_shortlist.py`
+- Post-fix spot checks on those commands show the cache reuse path is now working for repeated reads in the same session:
+  - `_resolve_pattern_anchor`
+    - first run after stale overlap refresh: about `14.953s`
+    - immediate second run: about `1.35s`
+  - `_vector_trust_decision`
+    - first run: about `7.640s`
+    - immediate second run: about `1.434s`
+  - `test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recovery`
+    - first run: about `7.912s`
+    - immediate second run: about `1.420s`
+- These three non-`--inline-body` commands should be rerun when validating whether the fast-path wiring is actually eliminating the heavyweight preflight cost.
 - These numbers serve as the current baseline for plan and implementation prioritization and must be updated if later measurement shows materially different timings on the accepted benchmark corpus.
 
 ## Definition of Done *(mandatory)*

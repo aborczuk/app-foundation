@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -298,6 +299,81 @@ def test_vector_index_probe_uses_short_ttl_cache(monkeypatch) -> None:
     assert first.status == "healthy"
     assert second.status == "healthy"
     assert calls["count"] == 1
+
+
+def test_vector_index_probe_uses_cached_vector_edit_signature_before_status_probe(monkeypatch, tmp_path: Path) -> None:
+    """Healthy vector signatures should bypass the external status probe on first read."""
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(read_code_health, "codegraph_current_edit_signature", lambda project_root=None: "M scripts/read_code.py")
+    monkeypatch.setattr(read_code_health, "vector_cached_edit_signature", lambda project_root=None: "M scripts/read_code.py")
+    monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code_health,
+        "_run_command_capture",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("status probe should not run")),
+    )
+
+    probe = read_code_health.vector_index_probe()
+
+    assert probe.status == "healthy"
+    assert probe.trust_state == "reused"
+    assert probe.escalation_state == "none"
+
+
+def test_vector_index_probe_derives_local_stale_drift_from_vector_edit_signature(monkeypatch, tmp_path: Path) -> None:
+    """Vector reads should derive local drift paths before shelling out to the status probe."""
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        read_code_health,
+        "codegraph_current_edit_signature",
+        lambda project_root=None: " M scripts/read_code.py\n M docs/guide.md",
+    )
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_cached_edit_signature",
+        lambda project_root=None: " M docs/guide.md",
+    )
+    monkeypatch.setattr(read_code_health, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code_health,
+        "_run_command_capture",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("status probe should not run")),
+    )
+
+    probe = read_code_health.vector_index_probe()
+
+    assert probe.status == "stale"
+    assert probe.stale_reason_class == "git-path-drift"
+    assert probe.stale_drift_paths == ("scripts/read_code.py",)
+
+
+def test_read_code_session_id_fallback_is_stable_when_parent_pid_changes(monkeypatch, tmp_path: Path) -> None:
+    """Fallback session ids should stay stable across CLI invocations with different uv parent pids."""
+    monkeypatch.delenv("READ_CODE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TERM_SESSION_ID", raising=False)
+    monkeypatch.delenv("WT_SESSION", raising=False)
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("STY", raising=False)
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+
+    monkeypatch.setattr(read_code_health.os, "getppid", lambda: 111)
+    first = read_code_health._read_code_session_id()
+
+    monkeypatch.setattr(read_code_health.os, "getppid", lambda: 222)
+    second = read_code_health._read_code_session_id()
+
+    assert first == second
+    assert first.startswith("repo-")
+
+
+def test_read_code_main_seeds_session_id_from_stable_helper(monkeypatch) -> None:
+    """CLI entrypoint should reuse the stable helper when no session id is preset."""
+    monkeypatch.delenv("READ_CODE_SESSION_ID", raising=False)
+    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: "repo-stable-session")
+    monkeypatch.setattr(read_code, "read_code_context", lambda args, *, verbose=False: 0)
+
+    assert read_code.main(["context", "_resolve_pattern_anchor"]) == 0
+    assert os.environ["READ_CODE_SESSION_ID"] == "repo-stable-session"
 
 
 def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkeypatch) -> None:
@@ -795,7 +871,7 @@ def test_vector_refresh_if_needed_dedupes_sync_refresh_for_overlap(monkeypatch, 
     assert calls[0] == read_code_health._vector_indexer_cmd(tmp_path, "refresh", str(target))
 
 
-def test_vector_refresh_synchronous_invalidates_stale_probe_cache(monkeypatch, tmp_path: Path) -> None:
+def test_vector_refresh_synchronous_marks_probe_cache_healthy(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
     monkeypatch.setenv("READ_CODE_SESSION_ID", "sync-refresh-session")
     stale_probe = _vector_probe(
@@ -808,10 +884,15 @@ def test_vector_refresh_synchronous_invalidates_stale_probe_cache(monkeypatch, t
     assert read_code_health._load_vector_probe_cache("sync-refresh-session") == stale_probe
 
     monkeypatch.setattr(read_code_health, "_run_command_capture", lambda cmd, **kwargs: _completed(0))
+    monkeypatch.setattr(read_code_health, "codegraph_current_edit_signature", lambda project_root=None: " M src/sample.py")
 
     target = tmp_path / "src" / "sample.py"
     assert read_code_health.vector_refresh_synchronous([target]) is True
-    assert read_code_health._load_vector_probe_cache("sync-refresh-session") is None
+    refreshed = read_code_health._load_vector_probe_cache("sync-refresh-session")
+    assert refreshed is not None
+    assert refreshed.status == "healthy"
+    assert refreshed.stale_drift_paths == ()
+    assert read_code_health.vector_cached_edit_signature(tmp_path) == " M src/sample.py"
 
 
 def test_vector_refresh_if_needed_launches_when_overlap_is_unknown(

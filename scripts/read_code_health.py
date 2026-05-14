@@ -7,6 +7,7 @@ the overlapping drift paths instead of blocking on a full rebuild.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -30,6 +31,7 @@ IGNORE_DIRS_DEFAULT = (
     "__pycache__,.uv-cache,logs,shadow-runs"
 )
 LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-edit-signature.txt"
+VECTOR_LAST_EDIT_SIGNATURE_FILE = CODEGRAPH_CONTEXT_DIR / "last-vector-edit-signature.txt"
 CODEGRAPH_LOCK_RETRY_ATTEMPTS = int(os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_ATTEMPTS", "2") or "2")
 CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS = float(
     os.environ.get("SPECKIT_CODEGRAPH_LOCK_RETRY_SLEEP_SECONDS", "0.5") or "0.5"
@@ -113,7 +115,16 @@ def _read_code_session_id() -> str:
     configured = os.environ.get("READ_CODE_SESSION_ID", "").strip()
     if configured:
         return configured
-    return str(os.getppid())
+    terminal_session = (
+        os.environ.get("TERM_SESSION_ID", "").strip()
+        or os.environ.get("WT_SESSION", "").strip()
+        or os.environ.get("TMUX", "").strip()
+        or os.environ.get("STY", "").strip()
+    )
+    if terminal_session:
+        return terminal_session
+    repo_key = hashlib.sha1(str(REPO_ROOT).encode("utf-8")).hexdigest()[:16]
+    return f"repo-{repo_key}"
 
 
 def _session_safe_key(session_id: str) -> str:
@@ -350,7 +361,7 @@ def vector_refresh_synchronous(paths: Sequence[Path]) -> bool:
             _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
         print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
         return False
-    _invalidate_vector_probe_cache()
+    _remember_healthy_vector_probe()
     return True
 
 
@@ -592,6 +603,28 @@ def _invalidate_vector_probe_cache(session_id: str | None = None) -> None:
         return
 
 
+def _remember_healthy_vector_probe(session_id: str | None = None) -> None:
+    """Persist a healthy vector probe after a successful refresh completes."""
+    active_session = session_id or _read_code_session_id()
+    current_signature = codegraph_current_edit_signature(REPO_ROOT)
+    if current_signature:
+        _persist_vector_edit_signature(current_signature, REPO_ROOT)
+    _remember_vector_probe(
+        active_session,
+        _VectorIndexProbe(
+            status="healthy",
+            stale_reason="",
+            stale_reason_class="none",
+            stale_drift_paths=(),
+            stale_signal_source="git",
+            stale_signal_available=True,
+            stale_signal_error="",
+            trust_state="reused",
+            escalation_state="none",
+        ),
+    )
+
+
 def _load_codegraph_session_probe_cache(session_id: str) -> bool | None:
     """Load cached session probe availability when present."""
     cache_file = _codegraph_session_probe_cache_path(session_id)
@@ -712,6 +745,33 @@ def codegraph_cached_edit_signature(project_root: Path | None = None) -> str:
         return marker_file.read_text(encoding="utf-8").rstrip("\n")
     except OSError:
         return ""
+
+
+def vector_edit_signature_file(project_root: Path | None = None) -> Path:
+    """Return the cached vector edit-signature marker path."""
+    root = project_root or REPO_ROOT
+    return root / ".codegraphcontext" / VECTOR_LAST_EDIT_SIGNATURE_FILE.name
+
+
+def vector_cached_edit_signature(project_root: Path | None = None) -> str:
+    """Read the cached vector edit signature if it exists."""
+    marker_file = vector_edit_signature_file(project_root)
+    if not marker_file.is_file():
+        return ""
+    try:
+        return marker_file.read_text(encoding="utf-8").rstrip("\n")
+    except OSError:
+        return ""
+
+
+def _persist_vector_edit_signature(signature: str, project_root: Path | None = None) -> None:
+    """Persist the vector edit signature associated with the latest healthy snapshot."""
+    marker_file = vector_edit_signature_file(project_root)
+    try:
+        marker_file.parent.mkdir(parents=True, exist_ok=True)
+        marker_file.write_text(signature, encoding="utf-8")
+    except OSError:
+        return
 
 
 def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
@@ -1012,6 +1072,35 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
     cached_probe = _load_vector_probe_cache(session_id)
     if cached_probe is not None:
         return cached_probe
+    current_signature = codegraph_current_edit_signature(root)
+    cached_signature = vector_cached_edit_signature(root)
+    if current_signature and cached_signature:
+        if current_signature == cached_signature:
+            return _remember_vector_probe(
+                session_id,
+                _make_vector_probe(
+                    status="healthy",
+                    stale_reason="",
+                    stale_reason_class="none",
+                    stale_drift_paths=(),
+                    stale_signal_source="git",
+                    stale_signal_available=True,
+                    stale_signal_error="",
+                ),
+            )
+        drift_paths = tuple(sorted(_signature_paths(current_signature).symmetric_difference(_signature_paths(cached_signature))))
+        return _remember_vector_probe(
+            session_id,
+            _make_vector_probe(
+                status="stale",
+                stale_reason="indexable git drift paths: " + ", ".join(drift_paths) if drift_paths else "working tree edits changed since the last vector snapshot",
+                stale_reason_class="git-path-drift",
+                stale_drift_paths=drift_paths,
+                stale_signal_source="git",
+                stale_signal_available=True,
+                stale_signal_error="",
+            ),
+        )
     if not _command_exists("uv"):
         _set_vector_runtime_note("uv is not available")
         return _remember_vector_probe(

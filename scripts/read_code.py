@@ -51,6 +51,7 @@ from read_code_health import (
     _consume_vector_runtime_note,
     _find_markdown_section_end,
     _markdown_heading_lines,
+    _read_code_session_id,
     _refresh_indexes_for_read,
     _resolve_markdown_anchor_fallback,
     _resolve_markdown_anchor_vector,
@@ -1733,13 +1734,7 @@ def main(argv: list[str]) -> int:
     from pathlib import Path
 
     if not os.environ.get("READ_CODE_SESSION_ID"):
-        session_id = (
-            os.environ.get("CODEX_SESSION_ID")
-            or os.environ.get("TERM_SESSION_ID")
-            or str(os.getppid())
-            or str(os.getpid())
-        )
-        os.environ["READ_CODE_SESSION_ID"] = session_id
+        os.environ["READ_CODE_SESSION_ID"] = _read_code_session_id()
 
     if not os.environ.get("UV_CACHE_DIR"):
         repo_root = Path(__file__).parent.parent
