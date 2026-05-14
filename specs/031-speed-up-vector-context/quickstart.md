@@ -28,6 +28,10 @@
 <!-- speckit_implement_docs:entry_id=T005:runbook -->
 - T005 taught scoped non-markdown context queries to skip the markdown candidate branch while preserving mixed code-plus-markdown retrieval for broad and markdown-oriented requests.
 
+
+<!-- speckit_implement_docs:entry_id=T006:runbook -->
+- T006 let scoped reads reuse trusted freshness in vector_refresh_by_state so narrow requests can bypass the global probe while stale, broad, and failure states still use the existing escalation path.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -47,3 +51,6 @@
 
 <!-- speckit_implement_docs:entry_id=T005:decision_log -->
 - T005: narrowed _query_semantic_anchor_candidate to conditionally skip markdown retrieval for scoped code queries using the routed scope signal, while keeping the mixed candidate path for broad discovery intact.
+
+<!-- speckit_implement_docs:entry_id=T006:decision_log -->
+- T006: applied the T002 trust contract inside vector_refresh_by_state so trusted scoped reads return early before vector_index_probe(REPO_ROOT), while broad and stale flows continue through the existing dispatch logic.
