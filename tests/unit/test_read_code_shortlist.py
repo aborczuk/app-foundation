@@ -86,3 +86,118 @@ def test_vector_anchor_rank_prefers_higher_similarity() -> None:
     )
 
     assert read_code._vector_anchor_rank(higher) > read_code._vector_anchor_rank(lower)
+
+
+def test_context_scope_classifier_marks_scoped_requests() -> None:
+    """Exact-symbol and file-local requests should classify as scoped."""
+    symbol_scope = read_code._classify_context_query_scope(
+        read_code._ContextArgs(
+            file_path=None,
+            pattern="def read_code_context(",
+            context=60,
+            allow_fallback=False,
+            show_shortlist=False,
+            inline_body=False,
+            candidate_index=0,
+            content_type=None,
+        )
+    )
+    file_scope = read_code._classify_context_query_scope(
+        read_code._ContextArgs(
+            file_path=Path("/tmp/example.py"),
+            pattern="how does this work",
+            context=60,
+            allow_fallback=False,
+            show_shortlist=False,
+            inline_body=False,
+            candidate_index=0,
+            content_type=None,
+        )
+    )
+
+    assert symbol_scope.is_scoped
+    assert file_scope.is_scoped
+
+
+def test_context_scope_classifier_marks_broad_prompts() -> None:
+    """Broad natural-language prompts should remain broad."""
+    broad_scope = read_code._classify_context_query_scope(
+        read_code._ContextArgs(
+            file_path=None,
+            pattern="how does this work",
+            context=60,
+            allow_fallback=False,
+            show_shortlist=False,
+            inline_body=False,
+            candidate_index=0,
+            content_type=None,
+        )
+    )
+
+    assert not broad_scope.is_scoped
+
+
+def test_read_code_context_classifies_before_refresh_and_resolution(monkeypatch) -> None:
+    """The scope classifier should run before preflight and anchor resolution."""
+    calls: list[str] = []
+
+    def fake_parse_context_args(argv: list[str]) -> read_code._ContextArgs | None:
+        calls.append("parse")
+        return read_code._ContextArgs(
+            file_path=Path("/tmp/example.py"),
+            pattern="def sample(",
+            context=60,
+            allow_fallback=False,
+            show_shortlist=False,
+            inline_body=False,
+            candidate_index=0,
+            content_type=None,
+        )
+
+    def fake_classify_context_query_scope(parsed: read_code._ContextArgs) -> read_code._ContextQueryScope:
+        calls.append("classify")
+        return read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
+
+    def fake_refresh_indexes_for_read(preflight_path: Path, *, verbose: bool = False) -> bool:
+        calls.append("refresh")
+        return True
+
+    def fake_resolve_pattern_anchor(
+        file_path: Path | None,
+        pattern: str,
+        normalized_pattern: str,
+        *,
+        candidate_index: int,
+        allow_fallback: bool,
+        show_shortlist_hint: bool,
+        content_type: str | None,
+        request_scope: read_code._ContextQueryScope | None = None,
+    ) -> read_code._AnchorResolution:
+        calls.append("resolve")
+        vector_match = read_code._VectorMatch(
+            unit_id="function:sample",
+            symbol_name="sample",
+            qualified_name="sample",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            file_path=Path("/tmp/example.py"),
+        )
+        return read_code._AnchorResolution(
+            vector_candidates=[vector_match],
+            vector_match=vector_match,
+            strict_status=0,
+            line_num=10,
+        )
+
+    monkeypatch.setattr(read_code, "_parse_context_args", fake_parse_context_args)
+    monkeypatch.setattr(read_code, "_classify_context_query_scope", fake_classify_context_query_scope)
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", fake_refresh_indexes_for_read)
+    monkeypatch.setattr(read_code, "_resolve_pattern_anchor", fake_resolve_pattern_anchor)
+    monkeypatch.setattr(read_code, "_render_compact_match", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    assert read_code.read_code_context(["sample"]) == 0
+    assert calls == ["parse", "classify", "refresh", "resolve"]

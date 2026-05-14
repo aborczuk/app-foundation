@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -121,6 +122,14 @@ class _ContextArgs:
     inline_body: bool
     candidate_index: int
     content_type: str | None
+
+
+@dataclass(frozen=True)
+class _ContextQueryScope:
+    """Stable request-scope classification for read_code_context."""
+
+    is_scoped: bool
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -301,6 +310,27 @@ def normalize_symbol_pattern(raw: str) -> str:
     normalized = normalized.split(":", 1)[0]
     normalized = normalized.split(maxsplit=1)[0] if normalized else normalized
     return normalized
+
+
+def _is_scoped_context_pattern(pattern: str) -> bool:
+    """Return whether a context query is shaped like a scoped symbol lookup."""
+    if not pattern:
+        return False
+    normalized_pattern = normalize_symbol_pattern(pattern)
+    if pattern.startswith(("async def ", "def ", "class ")):
+        return bool(normalized_pattern)
+    if any(char.isspace() for char in pattern):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.:-]*", normalized_pattern))
+
+
+def _classify_context_query_scope(parsed: _ContextArgs) -> _ContextQueryScope:
+    """Classify a parsed read_code_context request as scoped or broad."""
+    if parsed.file_path is not None:
+        return _ContextQueryScope(is_scoped=True, reason="file-path supplied")
+    if _is_scoped_context_pattern(parsed.pattern):
+        return _ContextQueryScope(is_scoped=True, reason="symbol-shaped pattern")
+    return _ContextQueryScope(is_scoped=False, reason="broad natural-language pattern")
 
 
 def _candidate_nested_value(item: dict[str, object], key: str) -> object | None:
@@ -771,6 +801,7 @@ def _resolve_pattern_anchor(
     allow_fallback: bool,
     show_shortlist_hint: bool,
     content_type: str | None,
+    request_scope: _ContextQueryScope | None = None,
 ) -> _AnchorResolution | None:
     if _is_markdown(file_path):
         assert file_path is not None
@@ -1333,6 +1364,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     if parsed is None:
         return 1
 
+    request_scope = _classify_context_query_scope(parsed)
     preflight_path = parsed.file_path or Path.cwd()
     if not _refresh_indexes_for_read(preflight_path, verbose=verbose):
         return 1
@@ -1345,6 +1377,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         allow_fallback=parsed.allow_fallback,
         show_shortlist_hint=True,
         content_type=parsed.content_type,
+        request_scope=request_scope,
     )
     if resolution is None:
         return 1
