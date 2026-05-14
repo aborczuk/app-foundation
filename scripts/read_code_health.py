@@ -8,6 +8,7 @@ the overlapping drift paths instead of blocking on a full rebuild.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -347,22 +348,73 @@ def codegraph_scoped_refresh_targets(paths: Iterable[Path]) -> list[Path]:
     return sorted(targets)
 
 
-def vector_refresh_synchronous(paths: Sequence[Path]) -> bool:
-    """Refresh the exact vector paths synchronously."""
+def _refresh_request_payload(
+    paths: Sequence[Path],
+    *,
+    refresh_codegraph: bool,
+    refresh_vector: bool,
+) -> dict[str, object]:
+    """Build the shared hook-style refresh payload for the requested paths."""
+    return {
+        "tool_input": {
+            "paths": [str(path) for path in paths],
+            "refresh_codegraph": refresh_codegraph,
+            "refresh_vector": refresh_vector,
+        }
+    }
+
+
+def _refresh_orchestrator():
+    """Load the shared refresh orchestrator used by hooks and read-time repair."""
+    try:
+        return importlib.import_module("scripts.hook_refresh_indexes")
+    except ModuleNotFoundError:
+        return importlib.import_module("hook_refresh_indexes")
+
+
+def _run_refresh_request(
+    paths: Sequence[Path],
+    *,
+    refresh_codegraph: bool,
+    refresh_vector: bool,
+) -> bool:
+    """Run the shared refresh orchestrator synchronously for the requested indexes."""
     if not paths:
         return False
-    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", *[str(path) for path in paths])
-    proc = _run_command_capture(cmd, env=_vector_command_env())
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        if stderr:
-            _set_vector_runtime_note(f"index refresh failed: {stderr.splitlines()[0]}")
-        else:
-            _set_vector_runtime_note(f"index refresh failed with exit code {proc.returncode}")
-        print("ERROR: vector preflight failed: targeted refresh did not complete", file=sys.stderr)
+    payload = _refresh_request_payload(
+        paths,
+        refresh_codegraph=refresh_codegraph,
+        refresh_vector=refresh_vector,
+    )
+    failures = _refresh_orchestrator().run_refresh_request(payload)
+    if failures:
+        if refresh_vector:
+            _set_vector_runtime_note(failures[0])
+        print(f"ERROR: {failures[0]}", file=sys.stderr)
         return False
-    _remember_healthy_vector_probe()
     return True
+
+
+def _launch_refresh_request(
+    paths: Sequence[Path],
+    *,
+    refresh_codegraph: bool,
+    refresh_vector: bool,
+) -> bool:
+    """Launch the shared refresh orchestrator asynchronously for the requested indexes."""
+    if not paths:
+        return False
+    payload = _refresh_request_payload(
+        paths,
+        refresh_codegraph=refresh_codegraph,
+        refresh_vector=refresh_vector,
+    )
+    return bool(_refresh_orchestrator().launch_refresh_request(payload))
+
+
+def vector_refresh_synchronous(paths: Sequence[Path]) -> bool:
+    """Refresh the exact vector paths synchronously."""
+    return _run_refresh_request(paths, refresh_codegraph=False, refresh_vector=True)
 
 
 def vector_scoped_refresh_paths(scope_path: Path, probe: _VectorIndexProbe) -> list[Path]:
@@ -376,68 +428,25 @@ def vector_refresh_background(scope_path: Path, paths: Sequence[Path]) -> bool:
     """Launch a scoped vector refresh in the background for the requested scope."""
     if not _should_launch_background_refresh(scope_path, channel="vector"):
         return False
-    cmd = _vector_indexer_cmd(REPO_ROOT, "refresh", *[str(path) for path in paths])
-    try:
-        subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            env=_vector_command_env(),
-        )
-    except OSError as exc:
-        print(f"WARN: vector background refresh could not start: {exc}", file=sys.stderr)
-        return False
-    return True
+    if _launch_refresh_request(paths, refresh_codegraph=False, refresh_vector=True):
+        return True
+    print("WARN: vector background refresh could not start", file=sys.stderr)
+    return False
 
 
 def codegraph_refresh_synchronous(paths: Sequence[Path]) -> bool:
     """Refresh the exact codegraph targets synchronously."""
-    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
-    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
-        print(f"ERROR: codegraph preflight failed: missing safe index script at {safe_index}", file=sys.stderr)
-        return False
-
-    for target in codegraph_scoped_refresh_targets(paths):
-        proc = _run_command_capture([str(safe_index), str(target)])
-        if proc.returncode != 0:
-            stderr = (proc.stderr or "").strip()
-            if stderr:
-                print(f"ERROR: codegraph refresh failed: {stderr.splitlines()[-1]}", file=sys.stderr)
-            else:
-                print(f"ERROR: codegraph refresh failed with exit code {proc.returncode}", file=sys.stderr)
-            print(f"ERROR: remediation: {safe_index} {target}", file=sys.stderr)
-            return False
-    return True
+    return _run_refresh_request(paths, refresh_codegraph=True, refresh_vector=False)
 
 
 def codegraph_refresh_background(scope_path: Path, paths: Sequence[Path]) -> bool:
     """Launch a scoped codegraph refresh in the background for the requested scope."""
     if not _should_launch_background_refresh(scope_path, channel="codegraph"):
         return False
-
-    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
-    if not (safe_index.is_file() and os.access(safe_index, os.X_OK)):
-        print(
-            f"WARN: codegraph background refresh skipped: missing safe index script at {safe_index}",
-            file=sys.stderr,
-        )
-        return False
-
-    launched = False
-    for target in codegraph_scoped_refresh_targets(paths):
-        try:
-            subprocess.Popen(
-                [str(safe_index), str(target)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except OSError as exc:
-            print(f"WARN: codegraph background refresh could not start: {exc}", file=sys.stderr)
-            return False
-        launched = True
-    return launched
+    if _launch_refresh_request(paths, refresh_codegraph=True, refresh_vector=False):
+        return True
+    print("WARN: codegraph background refresh could not start", file=sys.stderr)
+    return False
 
 
 def _launch_scoped_refresh_background(scope_path: Path, *, channel: str, cmd: list[str]) -> bool:
@@ -1068,12 +1077,10 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
     """Return parsed vector freshness payload for deterministic refresh decisions."""
     root = project_root or REPO_ROOT
     session_id = _read_code_session_id()
-    cached_probe = _load_vector_probe_cache(session_id)
-    if cached_probe is not None:
-        return cached_probe
+    marker_exists = vector_edit_signature_file(root).is_file()
     current_signature = codegraph_current_edit_signature(root)
     cached_signature = vector_cached_edit_signature(root)
-    if current_signature and cached_signature:
+    if marker_exists:
         if current_signature == cached_signature:
             return _remember_vector_probe(
                 session_id,
@@ -1100,6 +1107,9 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
                 stale_signal_error="",
             ),
         )
+    cached_probe = _load_vector_probe_cache(session_id)
+    if cached_probe is not None:
+        return cached_probe
     if not _command_exists("uv"):
         _set_vector_runtime_note("uv is not available")
         return _remember_vector_probe(
@@ -1491,7 +1501,10 @@ def _refresh_indexes_for_read(
     if not _is_repo_local_path(file_path):
         return True
     _ensure_codegraph_session_available(file_path)
-    if _read_request_trusts_vector_cache(file_path, request_is_scoped=request_is_scoped):
+    if request_is_scoped is not False and _read_request_trusts_vector_cache(
+        file_path,
+        request_is_scoped=request_is_scoped,
+    ):
         return True
     if not vector_refresh_by_state(file_path, verbose=verbose, request_is_scoped=request_is_scoped):
         runtime_note = _consume_vector_runtime_note()

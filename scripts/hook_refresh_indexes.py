@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -256,7 +257,7 @@ def _resolve_embedding_model_availability(root: Path) -> tuple[bool, str]:
 
 def _refresh_vector(paths: Iterable[Path]) -> list[str]:
     """Refresh vector embeddings only for file types the indexer can ingest."""
-    vector_paths = [path for path in paths if path.suffix.lower() in VECTOR_SUFFIXES]
+    vector_paths = _vector_refresh_paths(paths)
     if not vector_paths:
         return []
 
@@ -287,26 +288,100 @@ def _refresh_vector(paths: Iterable[Path]) -> list[str]:
     return [error] if error else []
 
 
-def main() -> int:
-    """Consume the hook payload and fan out to codegraph/vector refreshes."""
-    try:
-        payload = json.load(sys.stdin)
-    except Exception:
-        return 0
+def _vector_refresh_paths(paths: Iterable[Path]) -> list[Path]:
+    """Return the subset of changed paths that the vector indexer can ingest."""
+    return [path for path in paths if path.suffix.lower() in VECTOR_SUFFIXES]
 
-    # Non-JSON payloads are ignored so the hook stays non-blocking in callers.
+
+def _refresh_flags(payload: dict) -> tuple[bool, bool]:
+    """Return whether codegraph/vector refreshes are enabled for this request."""
+    tool_input = payload.get("tool_input") or {}
+    refresh_codegraph = tool_input.get("refresh_codegraph", True)
+    refresh_vector = tool_input.get("refresh_vector", True)
+    return bool(refresh_codegraph), bool(refresh_vector)
+
+
+def _record_refresh_side_effects(*, paths: list[Path], refreshed_vector: bool) -> None:
+    """Persist shared healthy-state side effects after a successful refresh request."""
+    if not refreshed_vector or not _vector_refresh_paths(paths):
+        return
+    from scripts import read_code_health
+
+    read_code_health._remember_healthy_vector_probe()
+
+
+def run_refresh_request(payload: dict) -> list[str]:
+    """Refresh codegraph/vector indexes for the request payload and return any failures."""
     changed_paths = _collect_changed_paths(payload)
     if not changed_paths:
-        return 0
+        return []
 
-    # Codegraph refresh runs for every changed path; vector refresh runs for supported text/code files.
-    failures = _refresh_codegraph(changed_paths)
-    failures.extend(_refresh_vector(changed_paths))
-    if failures:
-        for failure in failures:
-            _emit_error(failure)
-        return 1
-    return 0
+    refresh_codegraph, refresh_vector = _refresh_flags(payload)
+    failures: list[str] = []
+    if refresh_codegraph:
+        failures.extend(_refresh_codegraph(changed_paths))
+    vector_failures: list[str] = []
+    if refresh_vector:
+        vector_failures = _refresh_vector(changed_paths)
+        failures.extend(vector_failures)
+    if not failures:
+        _record_refresh_side_effects(paths=changed_paths, refreshed_vector=refresh_vector)
+    return failures
+
+
+def launch_refresh_request(payload: dict) -> bool:
+    """Launch a detached refresh request through this hook script."""
+    root = _repo_root()
+    request_dir = _repo_uv_cache_dir(root) / "hook-refresh" / "requests"
+    request_path = request_dir / f"request-{time.time_ns()}.json"
+    try:
+        request_dir.mkdir(parents=True, exist_ok=True)
+        request_path.write_text(json.dumps(payload), encoding="utf-8")
+    except OSError:
+        return False
+
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--payload-file", str(request_path)]
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=_refresh_env(root=root),
+        )
+    except OSError:
+        try:
+            request_path.unlink()
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def main() -> int:
+    """Consume the hook payload and fan out to codegraph/vector refreshes."""
+    if len(sys.argv) == 3 and sys.argv[1] == "--payload-file":
+        try:
+            payload = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+        except Exception:
+            return 0
+        finally:
+            try:
+                Path(sys.argv[2]).unlink()
+            except OSError:
+                pass
+    else:
+        try:
+            payload = json.load(sys.stdin)
+        except Exception:
+            return 0
+
+    failures = run_refresh_request(payload)
+    if not failures:
+        return 0
+    for failure in failures:
+        _emit_error(failure)
+    return 1
 
 
 if __name__ == "__main__":

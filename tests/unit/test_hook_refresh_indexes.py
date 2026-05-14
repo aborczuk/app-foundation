@@ -215,3 +215,57 @@ def test_main_returns_nonzero_when_refresh_fails(monkeypatch) -> None:
     exit_code = hook.main()
 
     assert exit_code == 1
+
+
+def test_run_refresh_request_respects_refresh_flags(monkeypatch, tmp_path) -> None:
+    """Allow callers like read preflight to request only one index family."""
+    hook = _load_hook_module()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    target = repo_root / "scripts" / "example.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("print('x')\n", encoding="utf-8")
+    calls: list[str] = []
+
+    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
+    monkeypatch.setattr(hook, "_refresh_codegraph", lambda paths: calls.append("codegraph") or [])
+    monkeypatch.setattr(hook, "_refresh_vector", lambda paths: calls.append("vector") or [])
+    monkeypatch.setattr(hook, "_record_refresh_side_effects", lambda **kwargs: None)
+
+    failures = hook.run_refresh_request(
+        {
+            "tool_input": {
+                "paths": [str(target)],
+                "refresh_codegraph": False,
+                "refresh_vector": True,
+            }
+        }
+    )
+
+    assert failures == []
+    assert calls == ["vector"]
+
+
+def test_run_refresh_request_records_vector_side_effects_after_success(monkeypatch, tmp_path) -> None:
+    """Successful vector refreshes should persist the healthy vector baseline."""
+    hook = _load_hook_module()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    target = repo_root / "scripts" / "example.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("print('x')\n", encoding="utf-8")
+    side_effects: list[tuple[list[Path], bool]] = []
+
+    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
+    monkeypatch.setattr(hook, "_refresh_codegraph", lambda paths: [])
+    monkeypatch.setattr(hook, "_refresh_vector", lambda paths: [])
+    monkeypatch.setattr(
+        hook,
+        "_record_refresh_side_effects",
+        lambda *, paths, refreshed_vector: side_effects.append((list(paths), refreshed_vector)),
+    )
+
+    failures = hook.run_refresh_request({"tool_input": {"paths": [str(target)]}})
+
+    assert failures == []
+    assert side_effects == [([target], True)]
