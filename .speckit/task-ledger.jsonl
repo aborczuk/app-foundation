@@ -1379,3 +1379,9 @@
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from specs/000-universal-backlog/tasks.md", "event": "task_registered", "feature_id": "000", "task_id": "T009", "timestamp_utc": "2026-05-14T01:26:06.290524Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from specs/000-universal-backlog/tasks.md", "event": "task_registered", "feature_id": "000", "task_id": "T010", "timestamp_utc": "2026-05-14T01:26:06.300656Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from specs/000-universal-backlog/tasks.md", "event": "task_registered", "feature_id": "000", "task_id": "T011", "timestamp_utc": "2026-05-14T01:26:06.309427Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "031", "task_id": "T002", "timestamp_utc": "2026-05-14T01:33:15.734825Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "031", "task_id": "T002", "timestamp_utc": "2026-05-14T01:44:39.058022Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "a37debc", "event": "commit_created", "feature_id": "031", "task_id": "T002", "timestamp_utc": "2026-05-14T01:44:39.111715Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "031", "task_id": "T002", "timestamp_utc": "2026-05-14T01:44:39.165005Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "031", "qa_run_id": "offline-qa-t002-20260514T014425Z", "task_id": "T002", "timestamp_utc": "2026-05-14T01:44:39.214287Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "031", "task_id": "T002", "timestamp_utc": "2026-05-14T01:44:39.259547Z"}
