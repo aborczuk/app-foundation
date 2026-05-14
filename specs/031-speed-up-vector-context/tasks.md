@@ -79,7 +79,7 @@
 ### Implementation for User Story 3
 
 - [X] T012 [US3] Implement explicit trust invalidation and escalation-state signaling in `scripts/read_code_health.py` and `scripts/read_code.py` — `scripts/read_code_health.py:vector_index_probe`
-- [ ] T013 [P] [US3] Update read-code help text or command documentation to describe the new broad-versus-scoped trust behavior in `scripts/read_code.py` and `specs/031-speed-up-vector-context/plan.md` — `scripts/read_code.py:module:docstring`
+- [X] T013 [P] [US3] Update read-code help text or command documentation to describe the new broad-versus-scoped trust behavior in `scripts/read_code.py` and `specs/031-speed-up-vector-context/plan.md` — `scripts/read_code.py:module:docstring`
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 

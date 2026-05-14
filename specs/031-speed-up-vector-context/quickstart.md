@@ -56,6 +56,10 @@
 <!-- speckit_implement_docs:entry_id=T012:runbook -->
 - T012 made trust invalidation and escalation state explicit through probe labels, runtime-note propagation, and bounded fallback notices so maintainers can tell when fast-path trust was reused versus escalated.
 
+
+<!-- speckit_implement_docs:entry_id=T013:runbook -->
+- T013 documented the settled scoped-versus-broad trust policy in read_code help text and the feature plan so maintainers can tell when markdown-aware broad discovery or escalation still applies.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -96,3 +100,6 @@
 
 <!-- speckit_implement_docs:entry_id=T012:decision_log -->
 - T012: surfaced explicit trust and escalation state in the health contract and existing notice channels without changing the compact read_code context result payload.
+
+<!-- speckit_implement_docs:entry_id=T013:decision_log -->
+- T013: aligned the local read_code help text and feature plan with the implemented routing contract for scoped trust reuse, mixed broad discovery, and conditional escalation.
