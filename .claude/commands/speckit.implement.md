@@ -68,12 +68,23 @@ Before task execution or handoff:
   - builder subagent
   - QA subagent
 - The orchestrator agent is the mediator. Do not let the subagents coordinate closeout directly.
+- The orchestrator default is intentionally minimal:
+  - check the next eligible task/start gate
+  - send the next task HUD to the builder
+  - forward the builder result to QA
+  - run the script-owned offline QA + closeout path
+  - advance to the next task
+- In the normal case, the orchestrator role is managerial rather than implementation-focused. Do not add extra repo exploration, seam rereads, or independent code analysis before every task handoff.
+- Additional orchestrator investigation is only justified on concrete signals such as:
+  - invalid or empty builder/QA completion
+  - QA findings that need clarification before retry
+  - offline QA / closeout contradictions
+  - a builder request for more bounded context
+- The orchestrator should not be the source of routine delay. When the task packet is already clear enough, pass it through immediately instead of expanding the context on the orchestrator side.
 - Do not send the full implement command doc as the builder subagent prompt.
-- The builder subagent must receive a task-local implementation packet from the orchestrator that includes only:
-  - selected task id and task text
-  - HUD objective, required edits, acceptance criteria, constraints, and test command
-  - bounded seam context already gathered by the orchestrator
-  - explicit builder role limits: implement only the active task, do not emit ledger events, do not close tasks, do not commit
+- The builder subagent should receive the selected task HUD as the default implementation packet.
+- Only add extra context when the builder explicitly asks for it or a concrete failure requires it.
+- Any extra context must stay narrow and task-local.
 - The QA subagent may use `.claude/commands/speckit.qa.md` as its standing review contract because it is a task reviewer rather than the implementation worker.
 - Per task, the orchestrator must:
   1. send the selected task, HUD, and feature context to the builder
