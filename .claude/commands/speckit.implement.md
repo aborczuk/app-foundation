@@ -68,9 +68,13 @@ Before task execution or handoff:
   - builder subagent
   - QA subagent
 - The orchestrator agent is the mediator. Do not let the subagents coordinate closeout directly.
-- Use the command docs themselves as the subagent prompts:
-  - builder prompt: `.claude/commands/speckit.implement.md`
-  - QA prompt: `.claude/commands/speckit.qa.md`
+- Do not send the full implement command doc as the builder subagent prompt.
+- The builder subagent must receive a task-local implementation packet from the orchestrator that includes only:
+  - selected task id and task text
+  - HUD objective, required edits, acceptance criteria, constraints, and test command
+  - bounded seam context already gathered by the orchestrator
+  - explicit builder role limits: implement only the active task, do not emit ledger events, do not close tasks, do not commit
+- The QA subagent may use `.claude/commands/speckit.qa.md` as its standing review contract because it is a task reviewer rather than the implementation worker.
 - Per task, the orchestrator must:
   1. send the selected task, HUD, and feature context to the builder
   2. collect the builder result
