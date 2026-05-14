@@ -20,6 +20,10 @@
 <!-- speckit_implement_docs:entry_id=T003:runbook -->
 - T003 threaded the explicit request-scope decision through read_code context preflight and anchor resolution, so later tasks can branch trust and retrieval behavior without reclassifying the request.
 
+
+<!-- speckit_implement_docs:entry_id=T004:runbook -->
+- T004 added unit regression coverage for exact-symbol and file-local scoped reads, including scoped trust routing assertions in the shortlist and index-refresh test modules.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -33,3 +37,6 @@
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
 - T003: wired the request scope from read_code_context into _resolve_pattern_anchor and downstream semantic anchor lookup so scoped versus broad routing now shares one explicit internal contract without changing the CLI surface.
+
+<!-- speckit_implement_docs:entry_id=T004:decision_log -->
+- T004: locked in the scoped fast-path regression harness in tests/unit/test_read_code_shortlist.py and tests/unit/test_read_code_index_refresh.py so later scoped retrieval and trust changes have explicit unit guards before behavior shifts.

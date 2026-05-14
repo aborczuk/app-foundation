@@ -43,7 +43,7 @@
 
 ### Tests for User Story 1
 
-- [ ] T004 [P] [US1] Add scoped fast-path regression coverage for exact-symbol and file-local context reads in `tests/unit/test_read_code_shortlist.py` and `tests/unit/test_read_code_index_refresh.py` — `tests/unit/test_read_code_shortlist.py:_query_semantic_anchor_candidate`
+- [X] T004 [P] [US1] Add scoped fast-path regression coverage for exact-symbol and file-local context reads in `tests/unit/test_read_code_shortlist.py` and `tests/unit/test_read_code_index_refresh.py` — `tests/unit/test_read_code_shortlist.py:_query_semantic_anchor_candidate`
 
 ### Implementation for User Story 1
 
