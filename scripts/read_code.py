@@ -415,8 +415,17 @@ def _candidate_raw_score(item: dict[str, object]) -> float:
     return 0.0
 
 
-def _vector_anchor_rank(match: _VectorMatch) -> tuple[int]:
-    return (match.cosine_similarity,)
+def _vector_anchor_rank(match: _VectorMatch, *, allow_test_files: bool = False) -> tuple[int, int]:
+    """Rank semantic anchors with a mild default penalty for test-file candidates."""
+    return (
+        match.cosine_similarity,
+        0 if allow_test_files or not _is_test_path(match.file_path) else -1,
+    )
+
+
+def _is_explicit_test_targeting(file_path: Path | None, content_type: str | None) -> bool:
+    """Return whether a discovery request is explicitly aimed at tests."""
+    return content_type == "tests" or (file_path is not None and _is_test_path(file_path))
 
 
 def _is_test_path(path: Path) -> bool:
@@ -477,6 +486,8 @@ def _vector_query_candidates(
     query: str,
     normalized_query: str,
     scope: str,
+    *,
+    allow_test_files: bool = False,
 ) -> list[_VectorMatch]:
     if not query or not scope:
         return []
@@ -542,7 +553,7 @@ def _vector_query_candidates(
             continue
         matches.append(match)
 
-    return sorted(matches, key=_vector_anchor_rank, reverse=True)[:5]
+    return sorted(matches, key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files), reverse=True)[:5]
 
 
 def _vector_find_candidates(
@@ -550,14 +561,28 @@ def _vector_find_candidates(
     raw_pattern: str,
     normalized_pattern: str,
     scope: str,
+    *,
+    allow_test_files: bool = False,
 ) -> list[_VectorMatch]:
     """Return the bounded shortlist for a query using raw and normalized probes."""
     _clear_vector_runtime_note()
     candidates: list[_VectorMatch] = []
     if raw_pattern:
-        candidates = _vector_query_candidates(file_path, raw_pattern, normalized_pattern, scope)
+        candidates = _vector_query_candidates(
+            file_path,
+            raw_pattern,
+            normalized_pattern,
+            scope,
+            allow_test_files=allow_test_files,
+        )
     if not candidates and normalized_pattern and normalized_pattern != raw_pattern:
-        candidates = _vector_query_candidates(file_path, normalized_pattern, normalized_pattern, scope)
+        candidates = _vector_query_candidates(
+            file_path,
+            normalized_pattern,
+            normalized_pattern,
+            scope,
+            allow_test_files=allow_test_files,
+        )
     return candidates
 
 
@@ -792,9 +817,22 @@ def _query_semantic_anchor_candidate(
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
     """Query ranked candidates and select a semantic anchor with standardized error handling."""
     candidate_scopes = _semantic_anchor_candidate_scopes(request_scope, content_type)
-    code_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
+    allow_test_files = _is_explicit_test_targeting(file_path, content_type)
+    code_candidates = _vector_find_candidates(
+        file_path,
+        pattern,
+        normalized_pattern,
+        "code",
+        allow_test_files=allow_test_files,
+    )
     markdown_candidates = (
-        _vector_find_candidates(file_path, pattern, normalized_pattern, "markdown")
+        _vector_find_candidates(
+            file_path,
+            pattern,
+            normalized_pattern,
+            "markdown",
+            allow_test_files=allow_test_files,
+        )
         if "markdown" in candidate_scopes
         else []
     )
@@ -804,7 +842,7 @@ def _query_semantic_anchor_candidate(
             for candidate in (code_candidates + markdown_candidates)
             if _matches_context_content_type(candidate, content_type)
         ],
-        key=_vector_anchor_rank,
+        key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
         reverse=True,
     )[:5]
     vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)

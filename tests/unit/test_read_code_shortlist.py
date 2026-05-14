@@ -90,6 +90,87 @@ def test_vector_anchor_rank_prefers_higher_similarity() -> None:
     assert read_code._vector_anchor_rank(higher) > read_code._vector_anchor_rank(lower)
 
 
+def test_vector_anchor_rank_downranks_test_files_for_regular_context() -> None:
+    """Regular discovery should prefer implementation files over test files."""
+    implementation = read_code._VectorMatch(
+        unit_id="function:impl",
+        symbol_name="impl",
+        qualified_name="impl",
+        line_num=1,
+        line_end=1,
+        raw_score=0.90,
+        cosine_similarity=90,
+        file_path=Path("/repo/src/module.py"),
+    )
+    test_candidate = read_code._VectorMatch(
+        unit_id="function:test",
+        symbol_name="test",
+        qualified_name="test",
+        line_num=2,
+        line_end=2,
+        raw_score=0.90,
+        cosine_similarity=90,
+        file_path=Path("/repo/tests/test_module.py"),
+    )
+
+    assert read_code._vector_anchor_rank(implementation) > read_code._vector_anchor_rank(test_candidate)
+
+
+def test_query_semantic_anchor_candidate_keeps_tests_first_for_explicit_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit test-targeted requests should keep test candidates competitive."""
+    test_candidate = read_code._VectorMatch(
+        unit_id="function:test",
+        symbol_name="test",
+        qualified_name="test",
+        line_num=2,
+        line_end=2,
+        raw_score=0.90,
+        cosine_similarity=90,
+        file_path=Path("/repo/tests/test_module.py"),
+    )
+    implementation = read_code._VectorMatch(
+        unit_id="function:impl",
+        symbol_name="impl",
+        qualified_name="impl",
+        line_num=1,
+        line_end=1,
+        raw_score=0.90,
+        cosine_similarity=90,
+        file_path=Path("/repo/src/module.py"),
+    )
+    seen_allow_test_files: list[bool] = []
+
+    def _fake_vector_find_candidates(
+        file_path: Path | None,
+        raw_pattern: str,
+        normalized_pattern: str,
+        scope: str,
+        *,
+        allow_test_files: bool = False,
+    ) -> list[read_code._VectorMatch]:
+        seen_allow_test_files.append(allow_test_files)
+        return [test_candidate, implementation]
+
+    monkeypatch.setattr(read_code, "_semantic_anchor_candidate_scopes", lambda _request_scope, _content_type: ("code",))
+    monkeypatch.setattr(read_code, "_vector_find_candidates", _fake_vector_find_candidates)
+
+    vector_candidates, vector_match, ok = read_code._query_semantic_anchor_candidate(
+        Path("/repo/tests/test_module.py"),
+        "test query",
+        "test query",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type=None,
+    )
+
+    assert ok is True
+    assert vector_match == test_candidate
+    assert vector_candidates[0] == test_candidate
+    assert seen_allow_test_files == [True]
+
+
 def test_context_scope_classifier_marks_scoped_requests() -> None:
     """Exact-symbol and file-local requests should classify as scoped."""
     symbol_scope = read_code._classify_context_query_scope(
@@ -567,7 +648,7 @@ def test_query_semantic_anchor_candidate_skips_markdown_for_scoped_code_requests
     scopes: list[str] = []
     request_scope = read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
 
-    def fake_vector_find_candidates(file_path, pattern, normalized_pattern, scope):
+    def fake_vector_find_candidates(file_path, pattern, normalized_pattern, scope, **kwargs):
         scopes.append(scope)
         return [
             read_code._VectorMatch(
@@ -605,7 +686,7 @@ def test_query_semantic_anchor_candidate_keeps_markdown_for_broad_requests(monke
     """Broad requests should still query both code and markdown candidates."""
     scopes: list[str] = []
 
-    def fake_vector_find_candidates(file_path, pattern, normalized_pattern, scope):
+    def fake_vector_find_candidates(file_path, pattern, normalized_pattern, scope, **kwargs):
         scopes.append(scope)
         return [
             read_code._VectorMatch(
@@ -637,6 +718,186 @@ def test_query_semantic_anchor_candidate_keeps_markdown_for_broad_requests(monke
     assert len(candidates) == 1
     assert selected is not None
     assert selected.symbol_name == "top"
+
+
+def test_vector_anchor_rank_penalizes_test_files_for_regular_context(monkeypatch) -> None:
+    """Regular discovery should prefer implementation files over test files."""
+    implementation = Path("/tmp/example.py")
+    test_file = Path("/tmp/tests/test_example.py")
+
+    impl_rank = read_code._vector_anchor_rank(
+        read_code._VectorMatch(
+            unit_id="function:impl",
+            symbol_name="impl",
+            qualified_name="impl",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            file_path=implementation,
+        ),
+    )
+    test_rank = read_code._vector_anchor_rank(
+        read_code._VectorMatch(
+            unit_id="function:test",
+            symbol_name="test",
+            qualified_name="test",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            file_path=test_file,
+        ),
+    )
+
+    assert impl_rank > test_rank
+
+
+def test_vector_anchor_rank_preserves_test_files_for_explicit_test_targeting(monkeypatch) -> None:
+    """Explicit test targeting should not down-rank test files."""
+    test_file = Path("/tmp/tests/test_example.py")
+    impl_rank = read_code._vector_anchor_rank(
+        read_code._VectorMatch(
+            unit_id="function:impl",
+            symbol_name="impl",
+            qualified_name="impl",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            file_path=Path("/tmp/example.py"),
+        ),
+        allow_test_files=True,
+    )
+    test_rank = read_code._vector_anchor_rank(
+        read_code._VectorMatch(
+            unit_id="function:test",
+            symbol_name="test",
+            qualified_name="test",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            file_path=test_file,
+        ),
+        allow_test_files=True,
+    )
+
+    assert impl_rank == test_rank
+
+
+def test_vector_query_candidates_prefers_implementation_files_by_default(monkeypatch) -> None:
+    """Ordinary candidate selection should prefer implementation files over tests."""
+    test_match = read_code._VectorMatch(
+        unit_id="function:test",
+        symbol_name="test",
+        qualified_name="test",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=90,
+        file_path=Path("/tmp/tests/test_example.py"),
+    )
+    impl_match = read_code._VectorMatch(
+        unit_id="function:impl",
+        symbol_name="impl",
+        qualified_name="impl",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=90,
+        file_path=Path("/tmp/example.py"),
+    )
+
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code,
+        "_run_command_capture",
+        lambda *args, **kwargs: read_code.subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=read_code.json.dumps(
+                [
+                    {"kind": "test", "file_path": "/tmp/tests/test_example.py", "line_start": 10, "score": 0.9},
+                    {"kind": "impl", "file_path": "/tmp/example.py", "line_start": 10, "score": 0.9},
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_vector_match_for_item",
+        lambda item, query, normalized_query: test_match if item["kind"] == "test" else impl_match,
+    )
+
+    candidates = read_code._vector_query_candidates(
+        None,
+        "impl",
+        "impl",
+        "code",
+        allow_test_files=False,
+    )
+
+    assert candidates
+    assert candidates[0].file_path == Path("/tmp/example.py")
+
+
+def test_vector_query_candidates_preserves_test_files_for_explicit_test_targeting(monkeypatch) -> None:
+    """Explicit test-targeted discovery should keep test candidates eligible."""
+    test_match = read_code._VectorMatch(
+        unit_id="function:test",
+        symbol_name="test",
+        qualified_name="test",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=90,
+        file_path=Path("/tmp/tests/test_example.py"),
+    )
+    impl_match = read_code._VectorMatch(
+        unit_id="function:impl",
+        symbol_name="impl",
+        qualified_name="impl",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=90,
+        file_path=Path("/tmp/example.py"),
+    )
+
+    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    monkeypatch.setattr(
+        read_code,
+        "_run_command_capture",
+        lambda *args, **kwargs: read_code.subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=read_code.json.dumps(
+                [
+                    {"kind": "test", "file_path": "/tmp/tests/test_example.py", "line_start": 10, "score": 0.9},
+                    {"kind": "impl", "file_path": "/tmp/example.py", "line_start": 10, "score": 0.9},
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_vector_match_for_item",
+        lambda item, query, normalized_query: test_match if item["kind"] == "test" else impl_match,
+    )
+
+    candidates = read_code._vector_query_candidates(
+        None,
+        "test",
+        "test",
+        "code",
+        allow_test_files=True,
+    )
+
+    assert candidates
+    assert candidates[0].file_path == Path("/tmp/tests/test_example.py")
 
 
 def test_read_code_context_keeps_top_candidate_for_exact_symbol_scope(monkeypatch) -> None:
