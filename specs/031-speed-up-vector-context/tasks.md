@@ -25,7 +25,7 @@
 
 **Purpose**: Capture the benchmark corpus and shared validation seams before routing changes begin.
 
-- [ ] T000 Define the accepted scoped, broad, and markdown benchmark corpus in `specs/031-speed-up-vector-context/tasks.md` and `specs/031-speed-up-vector-context/plan.md` — `specs/031-speed-up-vector-context/plan.md:Research Baseline`
+- [X] T000 Define the accepted scoped, broad, and markdown benchmark corpus in `specs/031-speed-up-vector-context/tasks.md` and `specs/031-speed-up-vector-context/plan.md` — `specs/031-speed-up-vector-context/plan.md:Research Baseline`
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
