@@ -8,19 +8,23 @@ Code file read-efficiency contract:
 - Active discovery modes are context, find, and analyze.
 - If you need only the relevant function body, pass the function name rather than scanning the whole file.
 - If semantic confidence is weak, step through candidates before broadening the query.
+- Scoped reads that include a file path stay on the scoped trust fast path.
+- Broad reads keep mixed code-plus-markdown discovery and escalate only on explicit bad outcomes.
+- Markdown targets remain markdown-aware in either mode.
 
 How to use:
 1. Invoke the Python entrypoint directly: ``uv run python scripts/read_code.py <mode> [args]``.
 2. Use **context mode** when the target is a natural-language query or symbol name:
    - ``uv run python scripts/read_code.py context "<query>"`` — semantic search + bounded window.
-   - ``uv run python scripts/read_code.py context "<symbol>" --path <file>`` — scope to a specific file.
+   - ``uv run python scripts/read_code.py context "<symbol>" --path <file>`` — scope to a specific file and use scoped trust routing.
    - ``uv run python scripts/read_code.py context "<symbol>" --inline-body`` — get full function body.
    - ``uv run python scripts/read_code.py context "<symbol>" --next-candidate`` — step ranked candidates.
 3. Use **find/analyze stepping** when the first semantic candidate is not the right seam:
    - ``uv run python scripts/read_code.py find <command> <query> --next-candidate`` — structural shortlist stepping.
    - ``uv run python scripts/read_code.py analyze <command> <query> --next-candidate`` — graph shortlist stepping.
    - add ``--verbose`` to keep full backend diagnostics instead of the terse shortlist output.
-4. Let the helper anchor the seam semantically and print only the selected match.
+4. Use broad context queries without ``--path`` when you want mixed code-plus-markdown discovery; the helper will escalate only if the broad result is empty, weak, stale, or conflicting.
+5. Let the helper anchor the seam semantically and print only the selected match.
 
 Validation:
 - If the symbol does not resolve, the helper prints a clear not-found error and shows ranked candidates.
