@@ -770,6 +770,7 @@ def _query_semantic_anchor_candidate(
     candidate_index: int,
     show_shortlist_hint: bool,
     content_type: str | None,
+    request_scope: _ContextQueryScope | None = None,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
     """Query ranked candidates and select a semantic anchor with standardized error handling."""
     code_candidates = _vector_find_candidates(file_path, pattern, normalized_pattern, "code")
@@ -840,6 +841,7 @@ def _resolve_pattern_anchor(
         candidate_index=candidate_index,
         show_shortlist_hint=show_shortlist_hint,
         content_type=content_type,
+        request_scope=request_scope,
     )
     if not selection_ok:
         return None
@@ -868,6 +870,7 @@ def _resolve_pattern_anchor(
                 candidate_index=candidate_index,
                 show_shortlist_hint=show_shortlist_hint,
                 content_type=content_type,
+                request_scope=request_scope,
             )
             if not selection_ok:
                 return None

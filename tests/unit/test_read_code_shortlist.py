@@ -140,6 +140,8 @@ def test_context_scope_classifier_marks_broad_prompts() -> None:
 def test_read_code_context_classifies_before_refresh_and_resolution(monkeypatch) -> None:
     """The scope classifier should run before preflight and anchor resolution."""
     calls: list[str] = []
+    refresh_kwargs: dict[str, object] = {}
+    resolve_kwargs: dict[str, object] = {}
 
     def fake_parse_context_args(argv: list[str]) -> read_code._ContextArgs | None:
         calls.append("parse")
@@ -158,8 +160,16 @@ def test_read_code_context_classifies_before_refresh_and_resolution(monkeypatch)
         calls.append("classify")
         return read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
 
-    def fake_refresh_indexes_for_read(preflight_path: Path, *, verbose: bool = False) -> bool:
+    def fake_refresh_indexes_for_read(
+        preflight_path: Path,
+        *,
+        verbose: bool = False,
+        request_is_scoped: bool | None = None,
+    ) -> bool:
         calls.append("refresh")
+        refresh_kwargs["preflight_path"] = preflight_path
+        refresh_kwargs["verbose"] = verbose
+        refresh_kwargs["request_is_scoped"] = request_is_scoped
         return True
 
     def fake_resolve_pattern_anchor(
@@ -174,6 +184,7 @@ def test_read_code_context_classifies_before_refresh_and_resolution(monkeypatch)
         request_scope: read_code._ContextQueryScope | None = None,
     ) -> read_code._AnchorResolution:
         calls.append("resolve")
+        resolve_kwargs["request_scope"] = request_scope
         vector_match = read_code._VectorMatch(
             unit_id="function:sample",
             symbol_name="sample",
@@ -201,3 +212,58 @@ def test_read_code_context_classifies_before_refresh_and_resolution(monkeypatch)
 
     assert read_code.read_code_context(["sample"]) == 0
     assert calls == ["parse", "classify", "refresh", "resolve"]
+    assert refresh_kwargs == {
+        "preflight_path": Path("/tmp/example.py"),
+        "verbose": False,
+        "request_is_scoped": True,
+    }
+    assert resolve_kwargs["request_scope"] == read_code._ContextQueryScope(
+        is_scoped=True,
+        reason="file-path supplied",
+    )
+
+
+def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeypatch) -> None:
+    """The anchor resolver should route request scope into semantic candidate lookup."""
+    captured: dict[str, object] = {}
+    request_scope = read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
+
+    def fake_query_semantic_anchor_candidate(
+        file_path: Path | None,
+        pattern: str,
+        normalized_pattern: str,
+        *,
+        candidate_index: int,
+        show_shortlist_hint: bool,
+        content_type: str | None,
+        request_scope: read_code._ContextQueryScope | None = None,
+    ) -> tuple[list[read_code._VectorMatch], read_code._VectorMatch | None, bool]:
+        captured["request_scope"] = request_scope
+        vector_match = read_code._VectorMatch(
+            unit_id="function:sample",
+            symbol_name="sample",
+            qualified_name="sample",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            file_path=Path("/tmp/example.py"),
+        )
+        return [vector_match], vector_match, True
+
+    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate", fake_query_semantic_anchor_candidate)
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: None)
+
+    resolution = read_code._resolve_pattern_anchor(
+        Path("/tmp/example.py"),
+        "sample",
+        "sample",
+        candidate_index=0,
+        allow_fallback=False,
+        show_shortlist_hint=False,
+        content_type=None,
+        request_scope=request_scope,
+    )
+
+    assert resolution is not None
+    assert captured["request_scope"] == request_scope
