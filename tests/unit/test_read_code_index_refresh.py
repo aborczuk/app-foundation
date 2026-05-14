@@ -263,7 +263,6 @@ def test_vector_index_status_reports_healthy_when_status_payload_is_fresh(monkey
             False,
         ),
         (_vector_probe(status="missing", stale_reason="snapshot missing"), True, False),
-        (_vector_probe(status="healthy"), False, False),
     ],
 )
 def test_read_request_trusts_vector_cache_for_scoped_reads(
@@ -284,6 +283,21 @@ def test_read_request_trusts_vector_cache_for_scoped_reads(
             request_is_scoped=request_is_scoped,
         )
         is expected
+    )
+
+
+def test_read_request_trusts_vector_cache_for_broad_reads_when_session_is_healthy(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Healthy broad reads should use the cached vector state immediately."""
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    read_code_health._remember_vector_probe("test-session", _vector_probe(status="healthy"))
+
+    assert read_code_health._read_request_trusts_vector_cache(
+        scope_path,
+        request_is_scoped=False,
     )
 
 
@@ -321,6 +335,20 @@ def test_read_code_context_marks_file_local_requests_scoped_for_refresh(monkeypa
     assert exit_code == 0
     assert calls["request_is_scoped"] is True
     assert calls["selected"].signature == "def run_pipeline():"
+
+
+def test_vector_refresh_by_state_returns_early_for_trusted_broad_read(monkeypatch, tmp_path: Path) -> None:
+    """Healthy broad reads should skip the slow vector probe path."""
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    read_code_health._remember_vector_probe("test-session", _vector_probe(status="healthy"))
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: (_ for _ in ()).throw(AssertionError("slow probe should be skipped")),
+    )
+
+    assert read_code_health.vector_refresh_by_state(scope_path, request_is_scoped=False) is True
 
 
 def test_codegraph_status_payload_reports_stale_when_signatures_drift(monkeypatch, tmp_path: Path) -> None:

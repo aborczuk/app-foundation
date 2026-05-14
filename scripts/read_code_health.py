@@ -1100,12 +1100,13 @@ def _scope_needs_vector_refresh(scope_path: Path, drift_paths: tuple[str, ...]) 
 
 
 def _read_request_trusts_vector_cache(scope_path: Path, *, request_is_scoped: bool | None = None) -> bool:
-    """Return whether this scoped read can skip the heavyweight vector refresh path."""
-    if request_is_scoped is not True:
-        return False
-
+    """Return whether a read can skip the heavyweight vector refresh path."""
     probe = _load_vector_probe_cache(_read_code_session_id())
     if probe is None:
+        return False
+    if request_is_scoped is False:
+        return probe.status == "healthy"
+    if request_is_scoped is not True:
         return False
     if probe.status in {"missing", "unavailable", "probe-failed"}:
         return False
