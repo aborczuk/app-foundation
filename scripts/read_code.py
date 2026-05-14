@@ -56,6 +56,7 @@ from read_code_health import (
     _vector_indexer_cmd,
     codegraph_refresh_by_state,
     codegraph_supports_file,
+    evaluate_read_vector_trust,
     init_codegraph_env,
 )
 
@@ -808,6 +809,19 @@ def _query_semantic_anchor_candidate(
     return vector_candidates, vector_match, True
 
 
+def _broad_read_trusts_vector_cache(
+    file_path: Path | None,
+    request_scope: _ContextQueryScope | None,
+) -> bool:
+    """Return whether a broad read can skip codegraph escalation."""
+    return (
+        file_path is not None
+        and request_scope is not None
+        and request_scope.is_scoped is False
+        and evaluate_read_vector_trust(file_path, request_is_scoped=False)
+    )
+
+
 def _resolve_pattern_anchor(
     file_path: Path | None,
     pattern: str,
@@ -864,7 +878,7 @@ def _resolve_pattern_anchor(
     line_num: int | None = None
     if vector_match is not None:
         line_num = vector_match.line_num
-    elif file_path is not None:
+    elif file_path is not None and not _broad_read_trusts_vector_cache(file_path, request_scope):
         if codegraph_supports_file(file_path):
             discover_pattern = (
                 normalized_pattern

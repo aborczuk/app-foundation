@@ -269,6 +269,54 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
     assert captured["request_scope"] == request_scope
 
 
+def test_resolve_pattern_anchor_skips_codegraph_discovery_for_trusted_broad_reads(monkeypatch) -> None:
+    """Trusted broad reads should stay on the mixed retrieval path."""
+    request_scope = read_code._ContextQueryScope(is_scoped=False, reason="broad prompt")
+    vector_match = read_code._VectorMatch(
+        unit_id="function:sample",
+        symbol_name="sample",
+        qualified_name="sample",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=90,
+        file_path=Path("/tmp/example.py"),
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        read_code,
+        "_query_semantic_anchor_candidate",
+        lambda *args, **kwargs: ([vector_match], None, True),
+    )
+    monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
+    monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        read_code,
+        "codegraph_discover_or_fail",
+        lambda *args, **kwargs: calls.append("discover") or (_ for _ in ()).throw(
+            AssertionError("codegraph discovery should be skipped")
+        ),
+    )
+    monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: None)
+
+    resolution = read_code._resolve_pattern_anchor(
+        Path("/tmp/example.py"),
+        "sample",
+        "sample",
+        candidate_index=0,
+        allow_fallback=False,
+        show_shortlist_hint=False,
+        content_type=None,
+        request_scope=request_scope,
+    )
+
+    assert resolution is not None
+    assert resolution.vector_candidates == [vector_match]
+    assert resolution.vector_match is None
+    assert calls == []
+
+
 def test_query_semantic_anchor_candidate_skips_markdown_for_scoped_code_requests(monkeypatch) -> None:
     """Scoped code requests should only query code candidates."""
     scopes: list[str] = []
