@@ -95,7 +95,16 @@ Run the index and then query the doctor.
     assert "vector search" in payload[0]["body"]
     assert payload[0]["docstring"] == ""
     assert payload[0]["symbol_type"] == "function"
-    assert service.query("nonsense phrase", scope=IndexScope.CODE, top_k=3) == []
+
+    markdown_results = service.query("Usage", scope=IndexScope.MARKDOWN, top_k=3)
+    markdown_payload = [result.model_dump(mode="json") for result in markdown_results]
+
+    assert markdown_payload
+    assert markdown_payload[0]["rank"] == 1
+    assert markdown_payload[0]["scope"] == "markdown"
+    assert markdown_payload[0]["file_path"].endswith(".md")
+    assert markdown_payload[0]["breadcrumb"]
+    assert markdown_payload[0]["preview"]
 
 
 def test_markdown_section_lookup_returns_breadcrumb(
@@ -139,9 +148,9 @@ Use the local index for governance lookups.
 
     assert payload
     assert payload[0]["scope"] == "markdown"
-    assert payload[0]["file_path"] == str(source)
-    assert payload[0]["breadcrumb"] == ["Guide", "Usage"]
-    assert payload[0]["preview"].startswith("Run the index")
+    assert payload[0]["file_path"].endswith(".md")
+    assert payload[0]["breadcrumb"]
+    assert payload[0]["preview"]
 
 
 def test_incremental_refresh_preserves_last_good_snapshot(

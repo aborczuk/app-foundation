@@ -552,3 +552,54 @@ def test_read_code_context_keeps_inline_body_window_for_markdown_results(monkeyp
 
     assert read_code.read_code_context([str(markdown_file), "Section", "--inline-body"]) == 0
     assert calls == {"file_path": markdown_file, "start": 3, "end": 4}
+
+
+def test_read_code_context_keeps_markdown_selection_for_broad_prompt(monkeypatch, tmp_path: Path) -> None:
+    """Broad prompts should still be able to surface markdown matches."""
+    markdown_file = tmp_path / "example.md"
+    markdown_file.write_text("# Title\n\n## Section\nbody\n", encoding="utf-8")
+    calls: dict[str, object] = {}
+    markdown_match = read_code._VectorMatch(
+        unit_id="markdown",
+        symbol_name="Section",
+        qualified_name=f"{markdown_file}:Section",
+        line_num=3,
+        line_end=3,
+        raw_score=1.0,
+        cosine_similarity=100,
+        file_path=markdown_file,
+        signature="## Section",
+        docstring="",
+    )
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: calls.setdefault(
+            "request_is_scoped", request_is_scoped
+        )
+        or True,
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_pattern_anchor",
+        lambda *args, **kwargs: read_code._AnchorResolution(
+            vector_candidates=[markdown_match],
+            vector_match=markdown_match,
+            strict_status=0,
+            line_num=3,
+        ),
+    )
+    monkeypatch.setattr(read_code, "_render_compact_match", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        read_code,
+        "_render_numbered_window",
+        lambda file_path, start, end: calls.update({"file_path": file_path, "start": start, "end": end}),
+    )
+
+    assert read_code.read_code_context(["how does markdown selection work", "--inline-body"]) == 0
+    assert calls["request_is_scoped"] is False
+    assert calls["file_path"] == markdown_file
+    assert calls["start"] == 3
+    assert calls["end"] == 4
