@@ -158,6 +158,8 @@ Markdown behavior remains important for broad understanding queries because spec
 
 - Estimate: medium
 - Implementation Directive: Add validation coverage and benchmark cases for scoped code queries, broad code-plus-markdown discovery, markdown-oriented reads, and stale-trust escalation so latency improvements are measured and correctness regressions are caught.
+- Benchmark Corpus: keep the accepted corpus aligned with `tasks.md` across scoped exact-symbol/file-local reads, broad code-plus-markdown discovery, markdown-first reads, and stale-trust escalation cases.
+- Validation Expectation: preserve the measured timings in `## Internal Research` and treat `uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file specs/031-speed-up-vector-context/tasks.md --json` as the task-file format check for this benchmark contract.
 
 ## Plan Completion Summary
 

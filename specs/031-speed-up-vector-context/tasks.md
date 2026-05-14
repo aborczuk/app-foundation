@@ -142,6 +142,19 @@
 - Every non-human task is anchored to an explicit file path and primary seam so HUD scaffolding can attach concrete implementation context.
 - No task is intentionally estimated at `8` or `13`; the later estimate phase should either confirm medium-sized tasks or force a breakdown before finalize.
 
+### Accepted Benchmark Corpus
+
+- Scoped corpus: exact-path, exact-symbol, and file-local reads for Python sources, including the existing `_vector_anchor_rank` benchmark shape and equivalent scoped lookups that should stay on the fast path.
+- Broad corpus: code-plus-markdown discovery questions that require mixed semantic reading, including natural-language “how does this work?” queries.
+- Markdown corpus: markdown-first reads for specs, HUDs, quickstarts, and other task artifacts that explain intent better than code alone.
+- Escalation corpus: healthy, stale, and ambiguous trust states that validate when recovery or heavier freshness proof is required.
+
+### Validation Expectations
+
+- Preserve the existing measured timings already captured in `plan.md`; do not re-estimate or replace them in this task.
+- Keep the accepted benchmark corpus stable so later implementation tasks can use it as the regression baseline.
+- Run `uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file specs/031-speed-up-vector-context/tasks.md --json` after any edit to confirm the task file format remains valid.
+
 ## Plan Design Slice Index
 
 Use these plan slices as the authoritative tasking inputs:
