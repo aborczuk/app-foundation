@@ -44,6 +44,10 @@
 <!-- speckit_implement_docs:entry_id=T009:runbook -->
 - T009 let healthy broad discovery reads stay on the trusted mixed retrieval path by default, while preserving escalation for exceptional outcomes and keeping markdown-aware behavior intact.
 
+
+<!-- speckit_implement_docs:entry_id=T010:runbook -->
+- T010 made broad-read fallback explicit so recovery now runs only for empty, weak, stale, or conflicting outcomes while satisfactory broad results return directly.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -75,3 +79,6 @@
 
 <!-- speckit_implement_docs:entry_id=T009:decision_log -->
 - T009: routed the healthy broad-read happy path through trusted mixed retrieval in _resolve_pattern_anchor so ordinary broad discovery avoids unnecessary escalation while keeping the code-plus-markdown candidate path.
+
+<!-- speckit_implement_docs:entry_id=T010:decision_log -->
+- T010: added explicit broad-outcome evaluation around _resolve_pattern_anchor so codegraph recovery is reserved for bad broad results instead of being an implicit default path.
