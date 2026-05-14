@@ -287,6 +287,42 @@ def test_read_request_trusts_vector_cache_for_scoped_reads(
     )
 
 
+def test_read_code_context_marks_file_local_requests_scoped_for_refresh(monkeypatch, tmp_path: Path) -> None:
+    """File-local reads should carry the scoped trust flag into preflight."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: calls.setdefault(
+            "request_is_scoped", request_is_scoped
+        )
+        or True,
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_vector_find_candidates",
+        lambda *args, **kwargs: [
+            _vector_match_at_path(code_file, 1, "def run_pipeline():", confidence=95),
+        ],
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_render_compact_match",
+        lambda vector_match, **kwargs: calls.setdefault("selected", vector_match),
+    )
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    exit_code = read_code.read_code_context([str(code_file), "how does this work"])
+
+    assert exit_code == 0
+    assert calls["request_is_scoped"] is True
+    assert calls["selected"].signature == "def run_pipeline():"
+
+
 def test_codegraph_status_payload_reports_stale_when_signatures_drift(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         read_code_health,

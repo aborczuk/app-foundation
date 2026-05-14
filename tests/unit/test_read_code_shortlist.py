@@ -267,3 +267,101 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
 
     assert resolution is not None
     assert captured["request_scope"] == request_scope
+
+
+def test_read_code_context_keeps_top_candidate_for_exact_symbol_scope(monkeypatch) -> None:
+    """Exact-symbol reads should stay scoped and keep the same top shortlist candidate."""
+    calls: dict[str, object] = {}
+    candidates = [
+        read_code._VectorMatch(
+            unit_id="function:top",
+            symbol_name="top",
+            qualified_name="top",
+            line_num=10,
+            line_end=12,
+            raw_score=0.95,
+            cosine_similarity=97,
+            file_path=Path("/tmp/example.py"),
+        ),
+        read_code._VectorMatch(
+            unit_id="function:other",
+            symbol_name="other",
+            qualified_name="other",
+            line_num=20,
+            line_end=22,
+            raw_score=0.45,
+            cosine_similarity=40,
+            file_path=Path("/tmp/example.py"),
+        ),
+    ]
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: calls.setdefault(
+            "request_is_scoped", request_is_scoped
+        )
+        or True,
+    )
+    monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: candidates)
+    monkeypatch.setattr(
+        read_code,
+        "_render_compact_match",
+        lambda vector_match, **kwargs: calls.setdefault("selected", vector_match),
+    )
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    assert read_code.read_code_context(["def top("]) == 0
+    assert calls["request_is_scoped"] is True
+    assert calls["selected"].symbol_name == "top"
+
+
+def test_read_code_context_keeps_top_candidate_for_file_local_scope(monkeypatch, tmp_path: Path) -> None:
+    """File-local reads should stay scoped and keep the same top shortlist candidate."""
+    calls: dict[str, object] = {}
+    code_file = tmp_path / "example.py"
+    code_file.write_text("def top():\n    return 1\n", encoding="utf-8")
+    candidates = [
+        read_code._VectorMatch(
+            unit_id="function:top",
+            symbol_name="top",
+            qualified_name="top",
+            line_num=10,
+            line_end=12,
+            raw_score=0.95,
+            cosine_similarity=97,
+            file_path=code_file,
+        ),
+        read_code._VectorMatch(
+            unit_id="function:other",
+            symbol_name="other",
+            qualified_name="other",
+            line_num=20,
+            line_end=22,
+            raw_score=0.45,
+            cosine_similarity=40,
+            file_path=code_file,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: calls.setdefault(
+            "request_is_scoped", request_is_scoped
+        )
+        or True,
+    )
+    monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: candidates)
+    monkeypatch.setattr(
+        read_code,
+        "_render_compact_match",
+        lambda vector_match, **kwargs: calls.setdefault("selected", vector_match),
+    )
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_numbered_window", lambda *args, **kwargs: None)
+
+    assert read_code.read_code_context([str(code_file), "how does this work"]) == 0
+    assert calls["request_is_scoped"] is True
+    assert calls["selected"].symbol_name == "top"
