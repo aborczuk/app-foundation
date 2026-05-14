@@ -110,9 +110,10 @@ Findings are specific and actionable:
 This QA subagent is the orchestrator-facing owner of the canonical offline-QA stage inside `/speckit.implement`:
 - prepare or repair the task-scoped payload
 - run `scripts/speckit_offline_qa_handoff.py` first
-- return the resulting canonical QA outcome to the orchestrator
+- treat any offline-QA failure as an automatic fail
+- always perform manual inspection after a passing offline-QA result
 
-The behavioral QA agent invoked by `offline_qa.py` after schema validation remains the canonical downstream check. The combined result includes both schema and behavioral findings. After a pass-worthy offline-QA result, the orchestrator runs `scripts/speckit_closeout_task.py`.
+The behavioral QA agent invoked by `offline_qa.py` after schema validation remains the canonical downstream check. The combined result includes both schema and behavioral findings. A pass-worthy offline-QA result does not end review; it only allows the manual inspection step to proceed before any closeout.
 
 The orchestrator must treat the QA result as invalid, not as a verdict, when:
 - `qa_run_id` is missing
@@ -135,6 +136,8 @@ python scripts/offline_qa.py --payload-file ... --skip-behavioral
 - Do not pass tasks with missing acceptance criteria.
 - Do not trust pre-recorded test exit codes; always run tests fresh.
 - Do not skip drift detection even if tests pass.
+- Treat offline-QA failure as an automatic FAIL.
+- Do manual inspection in all cases, including offline-QA PASS results.
 - Keep findings specific and actionable (file names, symbol names, test names).
 - Emit warnings for non-blocking issues (e.g., missing HUD but tasks.md has criteria).
 - Do not append ledger events, close tasks, or emit phase-completion events.
