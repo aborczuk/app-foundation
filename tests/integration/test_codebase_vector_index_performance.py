@@ -152,6 +152,52 @@ def refreshed_symbol() -> str:
     assert refreshed_result[0].file_path == changed
 
 
+def test_refresh_reindexes_changed_code_symbol_after_invalidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changed files should invalidate the old symbol and surface the refreshed one."""
+
+    source = tmp_path / "src" / "sample.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        """
+def stale_symbol() -> str:
+    return "stale"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    service = _build_offline_vector_index_service(tmp_path, monkeypatch)
+    service.build_full_index(revision="rev-a")
+
+    initial = service.query("stale_symbol", scope=IndexScope.CODE, top_k=1)
+    assert initial
+    assert initial[0].file_path == source
+    assert initial[0].signature.startswith("def stale_symbol")
+
+    source.write_text(
+        """
+def refreshed_symbol() -> str:
+    return "fresh"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    refreshed = service.refresh_changed_files([source], revision="rev-b")
+    assert refreshed.indexed_commit == "rev-b"
+
+    stale = service.query("stale_symbol", scope=IndexScope.CODE, top_k=1)
+    assert stale
+    assert stale[0].signature.startswith("def refreshed_symbol")
+
+    updated = service.query("refreshed_symbol", scope=IndexScope.CODE, top_k=1)
+    assert updated
+    assert updated[0].file_path == source
+    assert updated[0].signature.startswith("def refreshed_symbol")
+
+
 def test_index_handles_max_volume_without_oom(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

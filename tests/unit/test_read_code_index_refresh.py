@@ -301,6 +301,55 @@ def test_read_request_trusts_vector_cache_for_broad_reads_when_session_is_health
     )
 
 
+@pytest.mark.parametrize(
+    ("probe", "request_is_scoped"),
+    [
+        (_vector_probe(status="missing", stale_reason="snapshot missing"), True),
+        (_vector_probe(status="missing", stale_reason="snapshot missing"), False),
+        (_vector_probe(status="unavailable", stale_reason="uv is not available"), True),
+        (_vector_probe(status="probe-failed", stale_reason="probe failed"), False),
+    ],
+)
+def test_read_request_trusts_vector_cache_rejects_invalidated_states(
+    monkeypatch,
+    tmp_path: Path,
+    probe: object,
+    request_is_scoped: bool,
+) -> None:
+    """Invalidated vector probes should not short-circuit read preflight."""
+    monkeypatch.setattr(read_code_health, "REPO_ROOT", tmp_path)
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    read_code_health._remember_vector_probe("test-session", probe)
+
+    assert (
+        read_code_health._read_request_trusts_vector_cache(
+            scope_path,
+            request_is_scoped=request_is_scoped,
+        )
+        is False
+    )
+
+
+def test_refresh_indexes_for_read_reports_escalation_failure(monkeypatch, tmp_path: Path, capsys) -> None:
+    """Read preflight should surface a hard failure when vector refresh cannot recover."""
+    code_file = tmp_path / "sample.py"
+    code_file.write_text("def run_pipeline():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(read_code_health, "_is_repo_local_path", lambda _path: True)
+    monkeypatch.setattr(read_code_health, "_ensure_codegraph_session_available", lambda _path: None)
+    monkeypatch.setattr(read_code_health, "_read_request_trusts_vector_cache", lambda *args, **kwargs: False)
+    monkeypatch.setattr(read_code_health, "vector_refresh_by_state", lambda *args, **kwargs: False)
+    monkeypatch.setattr(read_code_health, "_consume_vector_runtime_note", lambda: "stale vector index")
+
+    result = read_code_health._refresh_indexes_for_read(code_file, request_is_scoped=False)
+    captured = capsys.readouterr()
+
+    assert result is False
+    assert "stale vector index" in captured.err
+    assert "healthy vector index" in captured.err
+
+
 def test_read_code_context_marks_file_local_requests_scoped_for_refresh(monkeypatch, tmp_path: Path) -> None:
     """File-local reads should carry the scoped trust flag into preflight."""
     code_file = tmp_path / "sample.py"
@@ -349,6 +398,27 @@ def test_vector_refresh_by_state_returns_early_for_trusted_broad_read(monkeypatc
     )
 
     assert read_code_health.vector_refresh_by_state(scope_path, request_is_scoped=False) is True
+
+
+def test_vector_refresh_by_state_keeps_hard_failure_for_probe_failed_status(monkeypatch, tmp_path: Path, capsys) -> None:
+    """Probe failures should remain hard failures instead of being trusted."""
+    scope_path = tmp_path / "src" / "sample.py"
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        read_code_health,
+        "vector_index_probe",
+        lambda project_root=None: _vector_probe(
+            status="probe-failed",
+            stale_reason="vector probe failed",
+            stale_reason_class="probe-failed",
+        ),
+    )
+
+    result = read_code_health.vector_refresh_by_state(scope_path, request_is_scoped=False)
+    captured = capsys.readouterr()
+
+    assert result is False
+    assert "status is probe-failed" in captured.err
 
 
 def test_codegraph_status_payload_reports_stale_when_signatures_drift(monkeypatch, tmp_path: Path) -> None:
