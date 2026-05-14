@@ -74,7 +74,7 @@
 
 ### Tests for User Story 3
 
-- [ ] T011 [P] [US3] Add stale-trust, invalidation, and escalation observability coverage in `tests/unit/test_read_code_index_refresh.py` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/unit/test_read_code_index_refresh.py:_refresh_indexes_for_read`
+- [X] T011 [P] [US3] Add stale-trust, invalidation, and escalation observability coverage in `tests/unit/test_read_code_index_refresh.py` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/unit/test_read_code_index_refresh.py:_refresh_indexes_for_read`
 
 ### Implementation for User Story 3
 

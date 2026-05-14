@@ -48,6 +48,10 @@
 <!-- speckit_implement_docs:entry_id=T010:runbook -->
 - T010 made broad-read fallback explicit so recovery now runs only for empty, weak, stale, or conflicting outcomes while satisfactory broad results return directly.
 
+
+<!-- speckit_implement_docs:entry_id=T011:runbook -->
+- T011 added stale-trust, invalidation, and escalation regression coverage in both the unit refresh suite and the vector-index performance harness before the explicit signaling work lands.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T000:decision_log -->
@@ -82,3 +86,6 @@
 
 <!-- speckit_implement_docs:entry_id=T010:decision_log -->
 - T010: added explicit broad-outcome evaluation around _resolve_pattern_anchor so codegraph recovery is reserved for bad broad results instead of being an implicit default path.
+
+<!-- speckit_implement_docs:entry_id=T011:decision_log -->
+- T011: locked in stale/invalidation coverage for the trust helpers and refresh path, plus an integration invalidation regression in the vector-index performance suite so later signaling changes stay observable.
