@@ -161,6 +161,16 @@ def _read_code_refresh_debounce_cache_path(session_id: str) -> Path:
     return CODEGRAPH_DB_DIR / f"read-code-refresh-debounce-{_session_safe_key(session_id)}.json"
 
 
+def _read_code_search_scratchpad_path(session_id: str) -> Path:
+    """Return session-scoped scratchpad path for read_code search result reuse."""
+    return CODEGRAPH_CONTEXT_DIR / f"read-code-search-scratchpad-{_session_safe_key(session_id)}.json"
+
+
+def _read_code_search_metadata_log_path() -> Path:
+    """Return the repo-local JSONL log path for read_code search metadata events."""
+    return CODEGRAPH_CONTEXT_DIR / "read-code-search-history.jsonl"
+
+
 def _load_json_object(path: Path) -> dict[str, object] | None:
     """Load a JSON object from disk, returning None on missing/invalid payloads."""
     if not path.is_file():
@@ -186,6 +196,23 @@ def _persist_json_object(
             json.dumps(payload, ensure_ascii=ensure_ascii, sort_keys=sort_keys),
             encoding="utf-8",
         )
+    except OSError:
+        return
+
+
+def _append_jsonl_object(
+    path: Path,
+    payload: dict[str, object],
+    *,
+    ensure_ascii: bool = True,
+    sort_keys: bool = False,
+) -> None:
+    """Append one JSON object as a JSONL record without raising filesystem write errors."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=ensure_ascii, sort_keys=sort_keys))
+            handle.write("\n")
     except OSError:
         return
 

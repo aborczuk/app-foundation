@@ -34,11 +34,13 @@ Validation:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,11 +48,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from read_code_health import (
     REPO_ROOT,
+    _append_jsonl_object,
     _clear_vector_runtime_note,
     _command_exists,
     _consume_vector_runtime_note,
     _find_markdown_section_end,
+    _load_json_object,
     _markdown_heading_lines,
+    _persist_json_object,
+    _read_code_search_metadata_log_path,
+    _read_code_search_scratchpad_path,
     _read_code_session_id,
     _refresh_indexes_for_read,
     _resolve_markdown_anchor_fallback,
@@ -59,6 +66,7 @@ from read_code_health import (
     _set_vector_runtime_note,
     _vector_command_env,
     _vector_indexer_cmd,
+    codegraph_current_edit_signature,
     codegraph_refresh_by_state,
     codegraph_supports_file,
     evaluate_read_vector_trust,
@@ -83,6 +91,15 @@ READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
 READ_CODE_CONTEXT_PRE_FRACTION = 0.1
 READ_CODE_CONTEXT_PRE_CAP = 25
+READ_CODE_SEARCH_SCRATCHPAD_TTL_SECONDS = float(
+    os.environ.get("SPECKIT_READ_CODE_SEARCH_SCRATCHPAD_TTL_SECONDS", "300") or "300"
+)
+READ_CODE_SEARCH_SCRATCHPAD_MAX_ENTRIES = int(
+    os.environ.get("SPECKIT_READ_CODE_SEARCH_SCRATCHPAD_MAX_ENTRIES", "100") or "100"
+)
+READ_CODE_HISTORY_DEFAULT_LIMIT = 20
+READ_CODE_HISTORY_MAX_LIMIT = 50
+READ_CODE_HISTORY_MAX_STATS_ROWS = 12
 
 
 @dataclass(frozen=True)
@@ -191,6 +208,14 @@ class _AnalyzeMatch:
     line_num: int | None
 
 
+@dataclass(frozen=True)
+class _HistoryArgs:
+    """Parsed and validated arguments for read_code_history."""
+
+    command: str
+    limit: int = READ_CODE_HISTORY_DEFAULT_LIMIT
+
+
 
 
 
@@ -214,6 +239,412 @@ def _cgc_capture_env() -> dict[str, str]:
     env.setdefault("COLUMNS", "240")
     env.setdefault("NO_COLOR", "1")
     return env
+
+
+def _serialize_path(path: Path | None) -> str | None:
+    """Convert an optional path to a stable string payload for JSON storage."""
+    if path is None:
+        return None
+    return str(path)
+
+
+def _deserialize_path(value: object) -> Path | None:
+    """Convert a JSON payload path back into a Path when possible."""
+    if not isinstance(value, str) or not value:
+        return None
+    return Path(value)
+
+
+def _serialize_vector_match(match: _VectorMatch) -> dict[str, object]:
+    """Convert a vector match into a JSON-friendly scratchpad payload."""
+    return {
+        "unit_id": match.unit_id,
+        "symbol_name": match.symbol_name,
+        "qualified_name": match.qualified_name,
+        "line_num": match.line_num,
+        "line_end": match.line_end,
+        "raw_score": match.raw_score,
+        "cosine_similarity": match.cosine_similarity,
+        "symbol_type": match.symbol_type,
+        "has_body": match.has_body,
+        "has_docstring": match.has_docstring,
+        "body": match.body,
+        "preview": match.preview,
+        "signature": match.signature,
+        "file_path": _serialize_path(match.file_path),
+        "docstring": match.docstring,
+    }
+
+
+def _deserialize_vector_match(payload: object) -> _VectorMatch | None:
+    """Convert a scratchpad payload back into a vector match when valid."""
+    if not isinstance(payload, dict):
+        return None
+    unit_id = payload.get("unit_id")
+    symbol_name = payload.get("symbol_name")
+    qualified_name = payload.get("qualified_name")
+    line_num = payload.get("line_num")
+    line_end = payload.get("line_end")
+    raw_score = payload.get("raw_score")
+    if not isinstance(unit_id, str) or not isinstance(symbol_name, str) or not isinstance(qualified_name, str):
+        return None
+    if not isinstance(line_num, int) or not isinstance(line_end, int):
+        return None
+    if not isinstance(raw_score, (int, float)):
+        return None
+    cosine_similarity = payload.get("cosine_similarity", 0)
+    if not isinstance(cosine_similarity, int):
+        return None
+    symbol_type = payload.get("symbol_type", "")
+    has_body = payload.get("has_body", False)
+    has_docstring = payload.get("has_docstring", False)
+    body = payload.get("body", "")
+    preview = payload.get("preview", "")
+    signature = payload.get("signature", "")
+    docstring = payload.get("docstring", "")
+    if not isinstance(symbol_type, str) or not isinstance(body, str) or not isinstance(preview, str):
+        return None
+    if not isinstance(signature, str) or not isinstance(docstring, str):
+        return None
+    if not isinstance(has_body, bool) or not isinstance(has_docstring, bool):
+        return None
+    return _VectorMatch(
+        unit_id=unit_id,
+        symbol_name=symbol_name,
+        qualified_name=qualified_name,
+        line_num=line_num,
+        line_end=line_end,
+        raw_score=float(raw_score),
+        cosine_similarity=cosine_similarity,
+        symbol_type=symbol_type,
+        has_body=has_body,
+        has_docstring=has_docstring,
+        body=body,
+        preview=preview,
+        signature=signature,
+        file_path=_deserialize_path(payload.get("file_path")) or Path(),
+        docstring=docstring,
+    )
+
+
+def _serialize_find_match(match: _FindMatch) -> dict[str, object]:
+    """Convert a parsed find result into a JSON-friendly scratchpad payload."""
+    return {
+        "name": match.name,
+        "symbol_type": match.symbol_type,
+        "location": match.location,
+        "path": _serialize_path(match.path),
+        "line_num": match.line_num,
+    }
+
+
+def _deserialize_find_match(payload: object) -> _FindMatch | None:
+    """Convert a scratchpad payload back into a parsed find result when valid."""
+    if not isinstance(payload, dict):
+        return None
+    name = payload.get("name")
+    symbol_type = payload.get("symbol_type")
+    location = payload.get("location")
+    line_num = payload.get("line_num")
+    if not isinstance(name, str) or not isinstance(symbol_type, str) or not isinstance(location, str):
+        return None
+    if line_num is not None and not isinstance(line_num, int):
+        return None
+    return _FindMatch(
+        name=name,
+        symbol_type=symbol_type,
+        location=location,
+        path=_deserialize_path(payload.get("path")),
+        line_num=line_num,
+    )
+
+
+def _serialize_analyze_match(match: _AnalyzeMatch) -> dict[str, object]:
+    """Convert a parsed analyze result into a JSON-friendly scratchpad payload."""
+    return {
+        "columns": dict(match.columns),
+        "location": match.location,
+        "path": _serialize_path(match.path),
+        "line_num": match.line_num,
+    }
+
+
+def _deserialize_analyze_match(payload: object) -> _AnalyzeMatch | None:
+    """Convert a scratchpad payload back into a parsed analyze result when valid."""
+    if not isinstance(payload, dict):
+        return None
+    columns_raw = payload.get("columns")
+    location = payload.get("location")
+    line_num = payload.get("line_num")
+    if not isinstance(columns_raw, dict) or not isinstance(location, str):
+        return None
+    columns: dict[str, str] = {}
+    for key, value in columns_raw.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            return None
+        columns[key] = value
+    if line_num is not None and not isinstance(line_num, int):
+        return None
+    return _AnalyzeMatch(
+        columns=columns,
+        location=location,
+        path=_deserialize_path(payload.get("path")),
+        line_num=line_num,
+    )
+
+
+def _search_cache_key(command: str, query_payload: dict[str, object]) -> str:
+    """Return a stable cache key for one exact read_code search request."""
+    encoded = json.dumps(
+        {"command": command, "query": query_payload},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
+
+
+def _scratchpad_entry_cached_at(entry: dict[str, object]) -> float:
+    """Return the cache timestamp for one scratchpad entry."""
+    cached_at = entry.get("cached_at")
+    return float(cached_at) if isinstance(cached_at, (int, float)) else 0.0
+
+
+def _load_search_scratchpad_entries(session_id: str) -> dict[str, dict[str, object]]:
+    """Load string-keyed scratchpad entries for the active read_code session."""
+    payload = _load_json_object(_read_code_search_scratchpad_path(session_id))
+    if payload is None:
+        return {}
+    entries_raw = payload.get("entries")
+    if not isinstance(entries_raw, dict):
+        return {}
+    entries: dict[str, dict[str, object]] = {}
+    for key, value in entries_raw.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            entries[key] = value
+    return entries
+
+
+def _persist_search_scratchpad_entries(session_id: str, entries: dict[str, dict[str, object]]) -> None:
+    """Persist bounded scratchpad entries for the active read_code session."""
+    ordered = sorted(entries.items(), key=lambda item: _scratchpad_entry_cached_at(item[1]), reverse=True)
+    if READ_CODE_SEARCH_SCRATCHPAD_MAX_ENTRIES > 0:
+        ordered = ordered[:READ_CODE_SEARCH_SCRATCHPAD_MAX_ENTRIES]
+    _persist_json_object(
+        _read_code_search_scratchpad_path(session_id),
+        {"entries": {key: value for key, value in ordered}},
+        sort_keys=True,
+    )
+
+
+def _load_cached_search_entry(
+    session_id: str,
+    cache_key: str,
+    *,
+    signature: str,
+) -> dict[str, object] | None:
+    """Return a fresh scratchpad entry when the exact request is still reusable."""
+    entry = _load_search_scratchpad_entries(session_id).get(cache_key)
+    if entry is None:
+        return None
+    if entry.get("signature") != signature:
+        return None
+    ttl = READ_CODE_SEARCH_SCRATCHPAD_TTL_SECONDS
+    cached_at = _scratchpad_entry_cached_at(entry)
+    if ttl > 0 and cached_at > 0 and time.time() - cached_at > ttl:
+        return None
+    return entry
+
+
+def _store_search_scratchpad_entry(
+    session_id: str,
+    cache_key: str,
+    *,
+    command: str,
+    query_payload: dict[str, object],
+    signature: str,
+    matches_payload: list[dict[str, object]],
+) -> None:
+    """Persist one reusable search result set into the session scratchpad."""
+    entries = _load_search_scratchpad_entries(session_id)
+    entries[cache_key] = {
+        "command": command,
+        "query": dict(query_payload),
+        "signature": signature,
+        "cached_at": time.time(),
+        "match_count": len(matches_payload),
+        "matches": matches_payload,
+    }
+    _persist_search_scratchpad_entries(session_id, entries)
+
+
+def _context_query_payload(
+    parsed: _ContextArgs,
+    request_scope: _ContextQueryScope,
+    normalized_pattern: str,
+) -> dict[str, object]:
+    """Build the exact reusable scratchpad identity for a context request."""
+    return {
+        "pattern": parsed.pattern,
+        "normalized_pattern": normalized_pattern,
+        "file_path": str(parsed.file_path.resolve()) if parsed.file_path is not None else None,
+        "content_type": parsed.content_type,
+        "allow_fallback": parsed.allow_fallback,
+        "query_shape": "scoped" if request_scope.is_scoped else "broad",
+    }
+
+
+def _find_query_payload(parsed: _FindArgs) -> dict[str, object]:
+    """Build the exact reusable scratchpad identity for a find request."""
+    return {
+        "subcommand": parsed.command,
+        "forwarded_args": list(parsed.forwarded_args),
+    }
+
+
+def _analyze_query_payload(parsed: _AnalyzeArgs) -> dict[str, object]:
+    """Build the exact reusable scratchpad identity for an analyze request."""
+    return {
+        "subcommand": parsed.command,
+        "forwarded_args": list(parsed.forwarded_args),
+    }
+
+
+def _append_search_metadata_event(
+    *,
+    command: str,
+    subcommand: str | None,
+    query: str,
+    query_shape: str,
+    file_path: Path | None,
+    hit_count: int,
+    selected_candidate_index: int,
+    cache_hit: bool,
+    result_source: str,
+    elapsed_ms: float,
+    signature: str,
+) -> None:
+    """Append one bounded search metadata record for long-term local inspection."""
+    _append_jsonl_object(
+        _read_code_search_metadata_log_path(),
+        {
+            "ts": time.time(),
+            "session_id": _read_code_session_id(),
+            "command": command,
+            "subcommand": subcommand,
+            "query": query,
+            "query_shape": query_shape,
+            "file_path": str(file_path.resolve()) if file_path is not None else None,
+            "hit_count": hit_count,
+            "selected_candidate_index": selected_candidate_index,
+            "cache_hit": cache_hit,
+            "result_source": result_source,
+            "elapsed_ms": round(elapsed_ms, 3),
+            "repo_signature": signature,
+        },
+        sort_keys=True,
+    )
+
+
+def _load_search_metadata_events() -> list[dict[str, object]]:
+    """Load persisted read_code search metadata events from the repo-local JSONL log."""
+    log_path = _read_code_search_metadata_log_path()
+    if not log_path.is_file():
+        return []
+    try:
+        raw_lines = log_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    events: list[dict[str, object]] = []
+    for raw_line in raw_lines:
+        try:
+            payload = json.loads(raw_line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(payload)
+    return events
+
+
+def _history_label(event: dict[str, object]) -> str:
+    """Return the compact command label used for history rendering."""
+    command = event.get("command")
+    subcommand = event.get("subcommand")
+    if not isinstance(command, str):
+        return "unknown"
+    if isinstance(subcommand, str) and subcommand:
+        return f"{command}:{subcommand}"
+    return command
+
+
+def _render_history_recent(events: list[dict[str, object]], *, limit: int) -> None:
+    """Render a bounded recent-event view for read_code search history."""
+    print("history_command: recent")
+    selected = list(reversed(events[-limit:])) if limit > 0 else list(reversed(events))
+    print(f"entry_count: {len(selected)}")
+    if not selected:
+        print("# no recorded search events")
+        return
+    print("# index\ttime\tcommand\tquery_shape\thits\tselected\tcache\telapsed_ms\tquery")
+    for index, event in enumerate(selected):
+        ts = event.get("ts")
+        rendered_time = "unknown"
+        if isinstance(ts, (int, float)):
+            rendered_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(ts)))
+        query = event.get("query")
+        query_shape = event.get("query_shape")
+        hit_count = event.get("hit_count")
+        selected_index = event.get("selected_candidate_index")
+        cache_hit = "hit" if event.get("cache_hit") is True else "miss"
+        elapsed_ms = event.get("elapsed_ms")
+        print(
+            f"{index}\t{rendered_time}\t{_history_label(event)}\t"
+            f"{query_shape if isinstance(query_shape, str) else 'unknown'}\t"
+            f"{hit_count if isinstance(hit_count, int) else 0}\t"
+            f"{selected_index if isinstance(selected_index, int) else -1}\t"
+            f"{cache_hit}\t"
+            f"{elapsed_ms if isinstance(elapsed_ms, (int, float)) else 0}\t"
+            f"{query if isinstance(query, str) else ''}"
+        )
+
+
+def _render_history_stats(events: list[dict[str, object]]) -> None:
+    """Render aggregate counts, timings, and cache hit rates for search metadata."""
+    print("history_command: stats")
+    total_events = len(events)
+    print(f"event_count: {total_events}")
+    if total_events == 0:
+        print("# no recorded search events")
+        return
+    cache_hits = sum(1 for event in events if event.get("cache_hit") is True)
+    total_elapsed = sum(float(event.get("elapsed_ms", 0.0)) for event in events if isinstance(event.get("elapsed_ms"), (int, float)))
+    average_elapsed = total_elapsed / total_events if total_events else 0.0
+    print(f"cache_hit_count: {cache_hits}")
+    print(f"cache_hit_rate: {cache_hits / total_events:.2f}")
+    print(f"average_elapsed_ms: {average_elapsed:.2f}")
+
+    grouped: dict[tuple[str, str], dict[str, float]] = {}
+    for event in events:
+        command = event.get("command")
+        query_shape = event.get("query_shape")
+        if not isinstance(command, str):
+            continue
+        shape_label = query_shape if isinstance(query_shape, str) and query_shape else "unknown"
+        bucket = grouped.setdefault((command, shape_label), {"count": 0.0, "cache_hits": 0.0, "elapsed_ms": 0.0})
+        bucket["count"] += 1.0
+        if event.get("cache_hit") is True:
+            bucket["cache_hits"] += 1.0
+        elapsed_ms = event.get("elapsed_ms")
+        if isinstance(elapsed_ms, (int, float)):
+            bucket["elapsed_ms"] += float(elapsed_ms)
+
+    ordered = sorted(grouped.items(), key=lambda item: (-item[1]["count"], item[0][0], item[0][1]))
+    print("# command\tquery_shape\tcount\tavg_elapsed_ms\tcache_hit_rate")
+    for (command, query_shape), bucket in ordered[:READ_CODE_HISTORY_MAX_STATS_ROWS]:
+        count = int(bucket["count"])
+        average_ms = bucket["elapsed_ms"] / count if count else 0.0
+        hit_rate = bucket["cache_hits"] / count if count else 0.0
+        print(f"{command}\t{query_shape}\t{count}\t{average_ms:.2f}\t{hit_rate:.2f}")
 
 
 def _emit_vector_fallback_notice(
@@ -1359,6 +1790,33 @@ def _parse_analyze_args(argv: list[str]) -> _AnalyzeArgs | None:
     )
 
 
+def _parse_history_args(argv: list[str]) -> _HistoryArgs | None:
+    """Parse read_code_history arguments for bounded recent/stats inspection."""
+    if not argv:
+        print("ERROR: history mode requires a command (recent | stats)", file=sys.stderr)
+        return None
+    command = argv[0]
+    if command not in {"recent", "stats"}:
+        print(f"ERROR: Unknown history command '{command}'. Use: recent | stats", file=sys.stderr)
+        return None
+    if command == "stats":
+        if len(argv) > 1:
+            print("ERROR: history stats does not accept extra arguments", file=sys.stderr)
+            return None
+        return _HistoryArgs(command=command)
+    limit = READ_CODE_HISTORY_DEFAULT_LIMIT
+    if len(argv) > 2:
+        print("ERROR: history recent accepts at most one optional limit", file=sys.stderr)
+        return None
+    if len(argv) == 2:
+        limit_raw = argv[1]
+        if not limit_raw.isdigit() or int(limit_raw, 10) <= 0:
+            print(f"ERROR: history recent limit must be a positive integer: {limit_raw}", file=sys.stderr)
+            return None
+        limit = min(int(limit_raw, 10), READ_CODE_HISTORY_MAX_LIMIT)
+    return _HistoryArgs(command=command, limit=limit)
+
+
 def _repo_local_find_path(path: Path | None) -> bool:
     """Return whether a parsed find location points at repo-owned source content."""
     if path is None:
@@ -1493,9 +1951,110 @@ def _render_resolution_extras(
         _render_candidate_body(vector_match)
 
 
+def _context_resolution_from_cached_entry(
+    entry: dict[str, object],
+    *,
+    candidate_index: int,
+    show_shortlist_hint: bool,
+) -> tuple[_AnchorResolution | None, bool]:
+    """Restore a cached context result set and re-select the requested candidate index."""
+    matches_raw = entry.get("matches")
+    if not isinstance(matches_raw, list):
+        return None, False
+    vector_candidates = [
+        match
+        for item in matches_raw
+        if (match := _deserialize_vector_match(item)) is not None
+    ]
+    vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
+    if candidate_error is not None:
+        print(f"ERROR: {candidate_error}", file=sys.stderr)
+        if show_shortlist_hint and vector_candidates:
+            print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
+        return None, True
+    line_num = vector_match.line_num if vector_match is not None else None
+    return _AnchorResolution(
+        vector_candidates=vector_candidates,
+        vector_match=vector_match,
+        strict_status=0,
+        line_num=line_num,
+    ), True
+
+
+def _find_matches_from_cached_entry(entry: dict[str, object]) -> list[_FindMatch] | None:
+    """Restore cached find results when the scratchpad entry has the expected shape."""
+    matches_raw = entry.get("matches")
+    if not isinstance(matches_raw, list):
+        return None
+    matches: list[_FindMatch] = []
+    for item in matches_raw:
+        match = _deserialize_find_match(item)
+        if match is None:
+            return None
+        matches.append(match)
+    return matches
+
+
+def _analyze_matches_from_cached_entry(entry: dict[str, object]) -> list[_AnalyzeMatch] | None:
+    """Restore cached analyze results when the scratchpad entry has the expected shape."""
+    matches_raw = entry.get("matches")
+    if not isinstance(matches_raw, list):
+        return None
+    matches: list[_AnalyzeMatch] = []
+    for item in matches_raw:
+        match = _deserialize_analyze_match(item)
+        if match is None:
+            return None
+        matches.append(match)
+    return matches
+
+
+def _resolve_pattern_anchor_with_scratchpad(
+    parsed: _ContextArgs,
+    *,
+    request_scope: _ContextQueryScope,
+    normalized_pattern: str,
+) -> tuple[_AnchorResolution | None, bool, str]:
+    """Resolve a context request from session scratchpad first, then backend search."""
+    session_id = _read_code_session_id()
+    signature = codegraph_current_edit_signature()
+    query_payload = _context_query_payload(parsed, request_scope, normalized_pattern)
+    cache_key = _search_cache_key("context", query_payload)
+    cached_entry = _load_cached_search_entry(session_id, cache_key, signature=signature)
+    if cached_entry is not None:
+        cached_resolution, handled = _context_resolution_from_cached_entry(
+            cached_entry,
+            candidate_index=parsed.candidate_index,
+            show_shortlist_hint=True,
+        )
+        if handled:
+            return cached_resolution, True, signature
+
+    resolution = _resolve_pattern_anchor(
+        parsed.file_path,
+        parsed.pattern,
+        normalized_pattern,
+        candidate_index=parsed.candidate_index,
+        allow_fallback=parsed.allow_fallback,
+        show_shortlist_hint=True,
+        content_type=parsed.content_type,
+        request_scope=request_scope,
+    )
+    if resolution is not None:
+        _store_search_scratchpad_entry(
+            session_id,
+            cache_key,
+            command="context",
+            query_payload=query_payload,
+            signature=signature,
+            matches_payload=[_serialize_vector_match(match) for match in resolution.vector_candidates],
+        )
+    return resolution, False, signature
+
 
 def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     """Resolve an anchor and return compact semantic match metadata."""
+    started_at = time.perf_counter()
     parsed = _parse_context_args(argv)
     if parsed is None:
         return 1
@@ -1509,17 +2068,25 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     ):
         return 1
     normalized_pattern = normalize_symbol_pattern(parsed.pattern)
-    resolution = _resolve_pattern_anchor(
-        parsed.file_path,
-        parsed.pattern,
-        normalized_pattern,
-        candidate_index=parsed.candidate_index,
-        allow_fallback=parsed.allow_fallback,
-        show_shortlist_hint=True,
-        content_type=parsed.content_type,
+    resolution, cache_hit, signature = _resolve_pattern_anchor_with_scratchpad(
+        parsed,
         request_scope=request_scope,
+        normalized_pattern=normalized_pattern,
     )
     if resolution is None:
+        _append_search_metadata_event(
+            command="context",
+            subcommand=None,
+            query=parsed.pattern,
+            query_shape="scoped" if request_scope.is_scoped else "broad",
+            file_path=parsed.file_path,
+            hit_count=0,
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return 1
     vector_candidates = resolution.vector_candidates
     vector_match = resolution.vector_match
@@ -1527,10 +2094,36 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
 
     if line_num is None:
         print(f"ERROR: No match found for '{parsed.pattern}'", file=sys.stderr)
+        _append_search_metadata_event(
+            command="context",
+            subcommand=None,
+            query=parsed.pattern,
+            query_shape="scoped" if request_scope.is_scoped else "broad",
+            file_path=parsed.file_path,
+            hit_count=len(vector_candidates),
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return 1
 
     if vector_match is None:
         print("ERROR: No semantic match available", file=sys.stderr)
+        _append_search_metadata_event(
+            command="context",
+            subcommand=None,
+            query=parsed.pattern,
+            query_shape="scoped" if request_scope.is_scoped else "broad",
+            file_path=parsed.file_path,
+            hit_count=len(vector_candidates),
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return 1
 
     has_more_candidates = len(vector_candidates) > parsed.candidate_index + 1
@@ -1546,6 +2139,19 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     if parsed.inline_body:
         _render_read_context_inline_body(vector_match, line_num, parsed.context)
 
+    _append_search_metadata_event(
+        command="context",
+        subcommand=None,
+        query=parsed.pattern,
+        query_shape="scoped" if request_scope.is_scoped else "broad",
+        file_path=parsed.file_path,
+        hit_count=len(vector_candidates),
+        selected_candidate_index=parsed.candidate_index,
+        cache_hit=cache_hit,
+        result_source="scratchpad" if cache_hit else "backend",
+        elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+        signature=signature,
+    )
     return 0
 
 
@@ -1581,39 +2187,93 @@ def read_code_headings(argv: list[str], *, verbose: bool = False) -> int:
     return 0
 
 
+def read_code_history(argv: list[str], *, verbose: bool = False) -> int:
+    """Render bounded recent-event or aggregate stats views for search metadata."""
+    _ = verbose
+    parsed = _parse_history_args(argv)
+    if parsed is None:
+        return 1
+    events = _load_search_metadata_events()
+    if parsed.command == "recent":
+        _render_history_recent(events, limit=parsed.limit)
+        return 0
+    _render_history_stats(events)
+    return 0
+
+
 def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
     """Run cgc analyze and present repo-local table rows as a stepwise shortlist."""
+    started_at = time.perf_counter()
     parsed = _parse_analyze_args(argv)
     if parsed is None:
         return 1
 
-    init_codegraph_env()
-    cmd = ["uv", "run", "cgc", "analyze", parsed.command] + parsed.forwarded_args
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=_cgc_capture_env(),
-    )
-    raw_output = ((result.stdout or "") + (result.stderr or "")).rstrip()
+    signature = codegraph_current_edit_signature()
+    query = " ".join(parsed.forwarded_args)
+    query_payload = _analyze_query_payload(parsed)
+    session_id = _read_code_session_id()
+    cache_key = _search_cache_key("analyze", query_payload)
+    matches: list[_AnalyzeMatch] | None = None
+    raw_output = ""
+    cache_hit = False
 
-    if result.returncode != 0 or "--help" in parsed.forwarded_args:
-        if raw_output:
-            print(raw_output)
-        return result.returncode
+    if not verbose:
+        cached_entry = _load_cached_search_entry(session_id, cache_key, signature=signature)
+        if cached_entry is not None:
+            matches = _analyze_matches_from_cached_entry(cached_entry)
+            cache_hit = matches is not None
 
-    matches = _parse_cgc_analyze_output(raw_output)
+    result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    if matches is None:
+        init_codegraph_env()
+        cmd = ["uv", "run", "cgc", "analyze", parsed.command] + parsed.forwarded_args
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=_cgc_capture_env(),
+        )
+        raw_output = ((result.stdout or "") + (result.stderr or "")).rstrip()
+
+        if result.returncode != 0 or "--help" in parsed.forwarded_args:
+            if raw_output:
+                print(raw_output)
+            return result.returncode
+
+        matches = _parse_cgc_analyze_output(raw_output)
+        _store_search_scratchpad_entry(
+            session_id,
+            cache_key,
+            command="analyze",
+            query_payload=query_payload,
+            signature=signature,
+            matches_payload=[_serialize_analyze_match(match) for match in matches],
+        )
+
+    assert matches is not None
     if not matches:
         if verbose and raw_output:
             print("# raw_cgc_output")
             print(raw_output)
         else:
-            query = " ".join(parsed.forwarded_args)
             print(f"analyze_command: {parsed.command}")
             print(f"query: {query}")
             print("match_count: 0")
             print("# no parsed analyze matches; rerun with --verbose for raw cgc output")
+        _append_search_metadata_event(
+            command="analyze",
+            subcommand=parsed.command,
+            query=query,
+            query_shape=parsed.command,
+            file_path=None,
+            hit_count=0,
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return result.returncode
 
     if parsed.candidate_index < 0 or parsed.candidate_index >= len(matches):
@@ -1622,9 +2282,21 @@ def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
             file=sys.stderr,
         )
         print("Hint: re-run with --show-shortlist to inspect ranked matches.", file=sys.stderr)
+        _append_search_metadata_event(
+            command="analyze",
+            subcommand=parsed.command,
+            query=query,
+            query_shape=parsed.command,
+            file_path=None,
+            hit_count=len(matches),
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return 1
 
-    query = " ".join(parsed.forwarded_args)
     if parsed.show_shortlist:
         _render_analyze_shortlist(matches, parsed.command, query)
     _render_compact_analyze_match(
@@ -1638,42 +2310,95 @@ def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
     if verbose and raw_output:
         print("# raw_cgc_output")
         print(raw_output)
+    _append_search_metadata_event(
+        command="analyze",
+        subcommand=parsed.command,
+        query=query,
+        query_shape=parsed.command,
+        file_path=None,
+        hit_count=len(matches),
+        selected_candidate_index=parsed.candidate_index,
+        cache_hit=cache_hit,
+        result_source="scratchpad" if cache_hit else "backend",
+        elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+        signature=signature,
+    )
     return result.returncode
 
 
 def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
     """Run cgc find and present repo-local matches as a stepwise shortlist."""
+    started_at = time.perf_counter()
     parsed = _parse_find_args(argv)
     if parsed is None:
         return 1
 
-    init_codegraph_env()
-    cmd = ["uv", "run", "cgc", "find", parsed.command] + parsed.forwarded_args
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=_cgc_capture_env(),
-    )
-    raw_output = ((result.stdout or "") + (result.stderr or "")).rstrip()
+    signature = codegraph_current_edit_signature()
+    query = " ".join(parsed.forwarded_args)
+    query_payload = _find_query_payload(parsed)
+    session_id = _read_code_session_id()
+    cache_key = _search_cache_key("find", query_payload)
+    matches: list[_FindMatch] | None = None
+    raw_output = ""
+    cache_hit = False
 
-    if result.returncode != 0 or "--help" in parsed.forwarded_args:
-        if raw_output:
-            print(raw_output)
-        return result.returncode
+    if not verbose:
+        cached_entry = _load_cached_search_entry(session_id, cache_key, signature=signature)
+        if cached_entry is not None:
+            matches = _find_matches_from_cached_entry(cached_entry)
+            cache_hit = matches is not None
 
-    matches = _parse_cgc_find_output(raw_output)
+    result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    if matches is None:
+        init_codegraph_env()
+        cmd = ["uv", "run", "cgc", "find", parsed.command] + parsed.forwarded_args
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=_cgc_capture_env(),
+        )
+        raw_output = ((result.stdout or "") + (result.stderr or "")).rstrip()
+
+        if result.returncode != 0 or "--help" in parsed.forwarded_args:
+            if raw_output:
+                print(raw_output)
+            return result.returncode
+
+        matches = _parse_cgc_find_output(raw_output)
+        _store_search_scratchpad_entry(
+            session_id,
+            cache_key,
+            command="find",
+            query_payload=query_payload,
+            signature=signature,
+            matches_payload=[_serialize_find_match(match) for match in matches],
+        )
+
+    assert matches is not None
     if not matches:
         if verbose and raw_output:
             print("# raw_cgc_output")
             print(raw_output)
         else:
-            query = " ".join(parsed.forwarded_args)
             print(f"find_command: {parsed.command}")
             print(f"query: {query}")
             print("match_count: 0")
             print("# no parsed find matches; rerun with --verbose for raw cgc output")
+        _append_search_metadata_event(
+            command="find",
+            subcommand=parsed.command,
+            query=query,
+            query_shape=parsed.command,
+            file_path=None,
+            hit_count=0,
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return result.returncode
 
     if parsed.candidate_index < 0 or parsed.candidate_index >= len(matches):
@@ -1682,9 +2407,21 @@ def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
             file=sys.stderr,
         )
         print("Hint: re-run with --show-shortlist to inspect ranked matches.", file=sys.stderr)
+        _append_search_metadata_event(
+            command="find",
+            subcommand=parsed.command,
+            query=query,
+            query_shape=parsed.command,
+            file_path=None,
+            hit_count=len(matches),
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=cache_hit,
+            result_source="scratchpad" if cache_hit else "backend",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+        )
         return 1
 
-    query = " ".join(parsed.forwarded_args)
     if parsed.show_shortlist:
         _render_find_shortlist(
             matches,
@@ -1703,6 +2440,19 @@ def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
     if verbose and raw_output:
         print("# raw_cgc_output")
         print(raw_output)
+    _append_search_metadata_event(
+        command="find",
+        subcommand=parsed.command,
+        query=query,
+        query_shape=parsed.command,
+        file_path=None,
+        hit_count=len(matches),
+        selected_candidate_index=parsed.candidate_index,
+        cache_hit=cache_hit,
+        result_source="scratchpad" if cache_hit else "backend",
+        elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+        signature=signature,
+    )
     return result.returncode
 
 
@@ -1720,12 +2470,16 @@ def _print_usage() -> None:
     print(
         "  read_code find    <command> <pattern> [--show-shortlist] [--next-candidate] [...]"
     )
+    print(
+        "  read_code history <recent [limit] | stats>"
+    )
     print("  --verbose / -v    show detailed vector preflight diagnostics")
     print("\nModes:")
     print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
     print("  headings: List markdown headings with line numbers.")
     print("  analyze:  Graph discovery via CodeGraph with one-match-at-a-time shortlist stepping when table output is available.")
     print("  find:     Structural search via CodeGraph with one-match-at-a-time shortlist stepping.")
+    print("  history:  Inspect bounded recent search events and aggregate cache/timing stats.")
 
 
 def main(argv: list[str]) -> int:
@@ -1757,8 +2511,10 @@ def main(argv: list[str]) -> int:
         return read_code_analyze(args, verbose=verbose)
     if mode == "find":
         return read_code_find(args, verbose=verbose)
+    if mode == "history":
+        return read_code_history(args, verbose=verbose)
 
-    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | headings | analyze | find", file=sys.stderr)
+    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | headings | analyze | find | history", file=sys.stderr)
     return 1
 
 

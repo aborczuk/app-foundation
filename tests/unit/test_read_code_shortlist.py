@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -21,6 +22,23 @@ def _load_module(module_name: str, script_name: str):
 
 
 read_code = _load_module("read_code_shortlist", "read_code.py")
+
+
+def _configure_search_cache_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    session_id: str = "session-1",
+    signature: str = "",
+) -> tuple[Path, Path]:
+    """Pin scratchpad and history storage to temp files for one test session."""
+    scratchpad_path = tmp_path / "search-scratchpad.json"
+    metadata_log_path = tmp_path / "search-history.jsonl"
+    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: session_id)
+    monkeypatch.setattr(read_code, "codegraph_current_edit_signature", lambda *_args, **_kwargs: signature)
+    monkeypatch.setattr(read_code, "_read_code_search_scratchpad_path", lambda _session_id: scratchpad_path)
+    monkeypatch.setattr(read_code, "_read_code_search_metadata_log_path", lambda: metadata_log_path)
+    return scratchpad_path, metadata_log_path
 
 
 def test_candidate_body_helper_returns_bounded_follow_up_body() -> None:
@@ -1157,3 +1175,236 @@ def test_read_code_context_keeps_markdown_selection_for_broad_prompt(monkeypatch
     assert calls["file_path"] == markdown_file
     assert calls["start"] == 3
     assert calls["end"] == 4
+
+
+def test_read_code_context_reuses_scratchpad_for_next_candidate(monkeypatch, tmp_path: Path) -> None:
+    """Context stepping should reuse the first shortlist instead of rerunning search."""
+    _, metadata_log_path = _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
+    selected: list[str] = []
+    resolver_calls = {"count": 0}
+    request_scope = read_code._ContextQueryScope(is_scoped=True, reason="test scope")
+    candidates = [
+        read_code._VectorMatch(
+            unit_id="function:top",
+            symbol_name="top",
+            qualified_name="top",
+            line_num=10,
+            line_end=12,
+            raw_score=0.95,
+            cosine_similarity=97,
+            file_path=Path("/tmp/example.py"),
+        ),
+        read_code._VectorMatch(
+            unit_id="function:follow_up",
+            symbol_name="follow_up",
+            qualified_name="follow_up",
+            line_num=20,
+            line_end=22,
+            raw_score=0.85,
+            cosine_similarity=89,
+            file_path=Path("/tmp/example.py"),
+        ),
+    ]
+
+    def fake_resolve_pattern_anchor(*_args, **_kwargs):
+        resolver_calls["count"] += 1
+        return read_code._AnchorResolution(
+            vector_candidates=candidates,
+            vector_match=candidates[0],
+            strict_status=0,
+            line_num=candidates[0].line_num,
+        )
+
+    monkeypatch.setattr(read_code, "_classify_context_query_scope", lambda _parsed: request_scope)
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(read_code, "_resolve_pattern_anchor", fake_resolve_pattern_anchor)
+    monkeypatch.setattr(
+        read_code,
+        "_render_compact_match",
+        lambda vector_match, **_kwargs: selected.append(vector_match.symbol_name),
+    )
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(read_code, "_render_read_context_inline_body", lambda *_args, **_kwargs: None)
+
+    assert read_code.read_code_context(["sample"]) == 0
+    assert read_code.read_code_context(["sample", "--next-candidate"]) == 0
+
+    assert resolver_calls["count"] == 1
+    assert selected == ["top", "follow_up"]
+    metadata_events = read_code._load_search_metadata_events()
+    assert len(metadata_events) == 2
+    assert metadata_events[0]["cache_hit"] is False
+    assert metadata_events[1]["cache_hit"] is True
+    assert metadata_log_path.is_file()
+
+
+def test_read_code_find_reuses_scratchpad_for_next_candidate(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Find stepping should reuse parsed matches from the session scratchpad."""
+    _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
+    run_calls = {"count": 0}
+    matches = [
+        read_code._FindMatch(
+            name="sample",
+            symbol_type="function",
+            location="scripts/example.py:10",
+            path=Path("scripts/example.py"),
+            line_num=10,
+        ),
+        read_code._FindMatch(
+            name="sample_follow_up",
+            symbol_type="function",
+            location="scripts/example.py:20",
+            path=Path("scripts/example.py"),
+            line_num=20,
+        ),
+    ]
+
+    def fake_run(*_args, **_kwargs):
+        run_calls["count"] += 1
+        return read_code.subprocess.CompletedProcess(args=["uv"], returncode=0, stdout="ignored", stderr="")
+
+    monkeypatch.setattr(read_code, "init_codegraph_env", lambda: None)
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+    monkeypatch.setattr(read_code, "_parse_cgc_find_output", lambda _raw_output: matches)
+
+    assert read_code.read_code_find(["name", "sample"]) == 0
+    first = capsys.readouterr()
+    assert "match_index: 0/1" in first.out
+    assert "location: scripts/example.py:10" in first.out
+
+    assert read_code.read_code_find(["name", "sample", "--next-candidate"]) == 0
+    second = capsys.readouterr()
+    assert "match_index: 1/1" in second.out
+    assert "location: scripts/example.py:20" in second.out
+    assert run_calls["count"] == 1
+
+
+def test_read_code_analyze_reuses_scratchpad_for_next_candidate(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Analyze stepping should reuse parsed matches from the session scratchpad."""
+    _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
+    run_calls = {"count": 0}
+    matches = [
+        read_code._AnalyzeMatch(
+            columns={"caller": "top"},
+            location="scripts/example.py:10",
+            path=Path("scripts/example.py"),
+            line_num=10,
+        ),
+        read_code._AnalyzeMatch(
+            columns={"caller": "follow_up"},
+            location="scripts/example.py:20",
+            path=Path("scripts/example.py"),
+            line_num=20,
+        ),
+    ]
+
+    def fake_run(*_args, **_kwargs):
+        run_calls["count"] += 1
+        return read_code.subprocess.CompletedProcess(args=["uv"], returncode=0, stdout="ignored", stderr="")
+
+    monkeypatch.setattr(read_code, "init_codegraph_env", lambda: None)
+    monkeypatch.setattr(read_code.subprocess, "run", fake_run)
+    monkeypatch.setattr(read_code, "_parse_cgc_analyze_output", lambda _raw_output: matches)
+
+    assert read_code.read_code_analyze(["callers", "sample"]) == 0
+    first = capsys.readouterr()
+    assert "match_index: 0/1" in first.out
+    assert "caller: top" in first.out
+
+    assert read_code.read_code_analyze(["callers", "sample", "--next-candidate"]) == 0
+    second = capsys.readouterr()
+    assert "match_index: 1/1" in second.out
+    assert "caller: follow_up" in second.out
+    assert run_calls["count"] == 1
+
+
+def test_search_scratchpad_invalidates_on_signature_mismatch_and_ttl(monkeypatch, tmp_path: Path) -> None:
+    """Scratchpad reuse should stop when the repo signature or entry freshness changes."""
+    scratchpad_path, _ = _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
+    session_id = "session-ttl"
+    query_payload = {"command": "find", "query": "sample"}
+    cache_key = read_code._search_cache_key("find", query_payload)
+
+    read_code._store_search_scratchpad_entry(
+        session_id,
+        cache_key,
+        command="find",
+        query_payload=query_payload,
+        signature="clean",
+        matches_payload=[
+            {
+                "name": "sample",
+                "symbol_type": "function",
+                "location": "scripts/example.py:10",
+                "path": "scripts/example.py",
+                "line_num": 10,
+            }
+        ],
+    )
+
+    assert read_code._load_cached_search_entry(session_id, cache_key, signature="other") is None
+    assert read_code._load_cached_search_entry(session_id, cache_key, signature="clean") is not None
+
+    payload = json.loads(scratchpad_path.read_text(encoding="utf-8"))
+    payload["entries"][cache_key]["cached_at"] = 1.0
+    scratchpad_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert read_code._load_cached_search_entry(session_id, cache_key, signature="clean") is None
+
+
+def test_read_code_history_renders_recent_and_stats(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """History views should render compact recent events and aggregate cache stats."""
+    _, metadata_log_path = _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
+
+    read_code._append_search_metadata_event(
+        command="context",
+        subcommand=None,
+        query="sample",
+        query_shape="scoped",
+        file_path=Path("scripts/example.py"),
+        hit_count=2,
+        selected_candidate_index=0,
+        cache_hit=False,
+        result_source="backend",
+        elapsed_ms=15.5,
+        signature="clean",
+    )
+    read_code._append_search_metadata_event(
+        command="find",
+        subcommand="name",
+        query="sample",
+        query_shape="name",
+        file_path=None,
+        hit_count=2,
+        selected_candidate_index=1,
+        cache_hit=True,
+        result_source="scratchpad",
+        elapsed_ms=3.0,
+        signature="clean",
+    )
+
+    assert read_code.read_code_history(["recent", "5"]) == 0
+    recent = capsys.readouterr()
+    assert "history_command: recent" in recent.out
+    assert "context" in recent.out
+    assert "find:name" in recent.out
+
+    assert read_code.read_code_history(["stats"]) == 0
+    stats = capsys.readouterr()
+    assert "history_command: stats" in stats.out
+    assert "cache_hit_rate:" in stats.out
+    assert "context\tscoped" in stats.out
+    assert "find\tname" in stats.out
+    assert metadata_log_path.is_file()

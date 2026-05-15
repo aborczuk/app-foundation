@@ -1,4 +1,3 @@
- M scripts/hook_refresh_indexes.py
+ M scripts/read_code.py
  M scripts/read_code_health.py
- M tests/unit/test_hook_refresh_indexes.py
- M tests/unit/test_read_code_index_refresh.py
+ M tests/unit/test_read_code_shortlist.py
