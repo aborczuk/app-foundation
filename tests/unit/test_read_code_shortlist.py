@@ -338,7 +338,7 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
         show_shortlist_hint: bool,
         content_type: str | None,
         request_scope: read_code._ContextQueryScope | None = None,
-    ) -> tuple[list[read_code._VectorMatch], read_code._VectorMatch | None, bool]:
+    ) -> tuple[list[read_code._VectorMatch], read_code._VectorMatch | None, bool, read_code._RerankDebugInfo | None]:
         captured["request_scope"] = request_scope
         vector_match = read_code._VectorMatch(
             unit_id="function:sample",
@@ -350,9 +350,9 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
             cosine_similarity=90,
             file_path=Path("/tmp/example.py"),
         )
-        return [vector_match], vector_match, True
+        return [vector_match], vector_match, True, None
 
-    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate", fake_query_semantic_anchor_candidate)
+    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate_with_debug", fake_query_semantic_anchor_candidate)
     monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: None)
 
     resolution = read_code._resolve_pattern_anchor(
@@ -387,8 +387,8 @@ def test_resolve_pattern_anchor_skips_codegraph_discovery_for_trusted_broad_read
 
     monkeypatch.setattr(
         read_code,
-        "_query_semantic_anchor_candidate",
-        lambda *args, **kwargs: ([vector_match], None, True),
+        "_query_semantic_anchor_candidate_with_debug",
+        lambda *args, **kwargs: ([vector_match], None, True, None),
     )
     monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
@@ -415,7 +415,7 @@ def test_resolve_pattern_anchor_skips_codegraph_discovery_for_trusted_broad_read
     assert resolution is not None
     assert resolution.vector_candidates == [vector_match]
     assert resolution.vector_match is None
-    assert calls == []
+    assert calls == ["notice"]
 
 
 def test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recovery(monkeypatch) -> None:
@@ -435,8 +435,8 @@ def test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recover
 
     monkeypatch.setattr(
         read_code,
-        "_query_semantic_anchor_candidate",
-        lambda *args, **kwargs: ([vector_match], vector_match, True),
+        "_query_semantic_anchor_candidate_with_debug",
+        lambda *args, **kwargs: ([vector_match], vector_match, True, None),
     )
     monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
@@ -462,7 +462,7 @@ def test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recover
     assert resolution.vector_candidates == [vector_match]
     assert resolution.vector_match == vector_match
     assert resolution.line_num == 10
-    assert calls == []
+    assert calls == ["notice"]
 
 
 @pytest.mark.parametrize(
@@ -548,14 +548,14 @@ def test_resolve_pattern_anchor_recovers_from_bad_broad_outcomes_when_fallback_a
     )
     calls: list[str] = []
     responses = [
-        (initial_candidates, initial_match, True),
-        ([refresh_match], refresh_match, True),
+        (initial_candidates, initial_match, True, None),
+        ([refresh_match], refresh_match, True, None),
     ]
 
     def fake_query_semantic_anchor_candidate(*args, **kwargs):
         return responses.pop(0)
 
-    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate", fake_query_semantic_anchor_candidate)
+    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate_with_debug", fake_query_semantic_anchor_candidate)
     monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: calls.append("notice"))
@@ -628,11 +628,11 @@ def test_resolve_pattern_anchor_recovers_from_stale_broad_reads_when_fallback_al
     )
     calls: list[str] = []
     responses = [
-        ([initial_match], initial_match, True),
-        ([refresh_match], refresh_match, True),
+        ([initial_match], initial_match, True, None),
+        ([refresh_match], refresh_match, True, None),
     ]
 
-    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate", lambda *args, **kwargs: responses.pop(0))
+    monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate_with_debug", lambda *args, **kwargs: responses.pop(0))
     monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "_broad_read_trusts_vector_cache", lambda *args, **kwargs: False)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
@@ -736,6 +736,118 @@ def test_query_semantic_anchor_candidate_keeps_markdown_for_broad_requests(monke
     assert len(candidates) == 1
     assert selected is not None
     assert selected.symbol_name == "top"
+
+
+def test_query_semantic_anchor_candidate_reranks_shortlist_with_local_model(monkeypatch) -> None:
+    """A local reranker should be able to replace the heuristic top candidate."""
+    request_scope = read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
+    initial = [
+        read_code._VectorMatch(
+            unit_id="function:first",
+            symbol_name="first",
+            qualified_name="first",
+            line_num=10,
+            line_end=12,
+            raw_score=0.9,
+            cosine_similarity=90,
+            body="def first():\n    return 'first'\n",
+            file_path=Path("/tmp/example.py"),
+        ),
+        read_code._VectorMatch(
+            unit_id="function:second",
+            symbol_name="second",
+            qualified_name="second",
+            line_num=20,
+            line_end=22,
+            raw_score=0.8,
+            cosine_similarity=80,
+            body="def second():\n    return 'second'\n",
+            file_path=Path("/tmp/example.py"),
+        ),
+    ]
+
+    class FakeReranker:
+        def score_pairs(self, query: str, passages: list[str]) -> list[float]:
+            assert query == "top"
+            assert len(passages) == 2
+            return [0.1, 0.99]
+
+    monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: initial)
+    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: FakeReranker())
+
+    candidates, selected, ok, rerank_debug = read_code._query_semantic_anchor_candidate_with_debug(
+        Path("/tmp/example.py"),
+        "top",
+        "top",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type="code",
+        request_scope=request_scope,
+    )
+
+    assert ok is True
+    assert [candidate.symbol_name for candidate in candidates] == ["second", "first"]
+    assert selected is not None
+    assert selected.symbol_name == "second"
+    assert rerank_debug is not None
+    assert rerank_debug.status == "applied"
+    assert rerank_debug.changed is True
+    assert rerank_debug.before_symbols == ("first", "second")
+    assert rerank_debug.after_symbols == ("second", "first")
+
+
+def test_read_code_context_rerank_debug_is_opt_in(
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Rerank diagnostics should stay hidden unless the caller explicitly asks for them."""
+    vector_match = read_code._VectorMatch(
+        unit_id="function:sample",
+        symbol_name="sample",
+        qualified_name="sample",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=91,
+        file_path=Path("/tmp/example.py"),
+    )
+    resolution = read_code._AnchorResolution(
+        vector_candidates=[vector_match],
+        vector_match=vector_match,
+        strict_status=0,
+        line_num=10,
+        rerank_debug=read_code._RerankDebugInfo(
+            status="applied",
+            model_name="BAAI/bge-reranker-v2-m3",
+            candidate_count=2,
+            changed=True,
+            before_symbols=("first", "sample"),
+            after_symbols=("sample", "first"),
+        ),
+    )
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: True,
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_pattern_anchor_with_scratchpad",
+        lambda parsed, *, request_scope, normalized_pattern: (resolution, False, "clean"),
+    )
+    monkeypatch.setattr(read_code, "_render_compact_match", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_render_resolution_extras", lambda *args, **kwargs: None)
+    monkeypatch.setattr(read_code, "_append_search_metadata_event", lambda **kwargs: None)
+
+    assert read_code.read_code_context(["sample"]) == 0
+    hidden = capsys.readouterr()
+    assert "rerank_status:" not in hidden.out
+
+    assert read_code.read_code_context(["sample", "--show-rerank"]) == 0
+    shown = capsys.readouterr()
+    assert "rerank_status: applied" in shown.out
+    assert "shortlist_changed: true" in shown.out
 
 
 def test_vector_anchor_rank_penalizes_test_files_for_regular_context(monkeypatch) -> None:

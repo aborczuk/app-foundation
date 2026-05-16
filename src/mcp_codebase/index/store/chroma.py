@@ -14,8 +14,10 @@ from typing import Any, Sequence
 
 from src.mcp_codebase.index.config import (
     DEFAULT_EMBEDDING_MODEL_NAME,
+    DEFAULT_RERANKER_MODEL_NAME,
     IndexConfig,
     embedding_model_cache_path,
+    reranker_model_cache_path,
 )
 from src.mcp_codebase.index.domain import CodeSymbol, IndexMetadata, IndexScope, MarkdownSection, QueryResult
 
@@ -33,7 +35,22 @@ try:  # pragma: no cover - exercised in integration/runtime verification
 except ImportError:  # pragma: no cover - handled with a clear runtime error
     TextEmbedding = None
 
+try:  # pragma: no cover - exercised in integration/runtime verification
+    import torch  # type: ignore[import-not-found]
+    from transformers import (  # type: ignore[import-not-found]
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+    )
+except ImportError:  # pragma: no cover - handled with a clear runtime error
+    torch = None
+    AutoModelForSequenceClassification = None
+    AutoTokenizer = None
+
 _EMBEDDING_MODEL_ALIASES = {"local-default": DEFAULT_EMBEDDING_MODEL_NAME}
+_RERANKER_MODEL_ALIASES = {
+    "local-default": DEFAULT_RERANKER_MODEL_NAME,
+    "local-default-reranker": DEFAULT_RERANKER_MODEL_NAME,
+}
 _COSINE_COLLECTION_METADATA = {"hnsw:space": "cosine"}
 _NO_OP_TELEMETRY_IMPL = "src.mcp_codebase.index.telemetry.NoOpProductTelemetry"
 _UPSERT_BATCH_SIZE_FALLBACK = 1000
@@ -77,6 +94,61 @@ class _FastEmbedBackend:
         return [[float(value) for value in vector] for vector in vectors]
 
 
+class _LocalSequenceRerankerBackend:
+    """Load a cached HF reranker model and score query-passage pairs locally."""
+
+    def __init__(self, model_name: str, *, cache_dir: Path, local_files_only: bool) -> None:
+        if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
+            raise RuntimeError(
+                "transformers and torch are required for semantic reranking; run `uv sync` after adding the dependency."
+            )
+        self._model_name = model_name
+        self._batch_size = 16
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            cache_dir=str(cache_dir),
+            local_files_only=local_files_only,
+        )
+        self._model = AutoModelForSequenceClassification.from_pretrained(
+            model_name,
+            cache_dir=str(cache_dir),
+            local_files_only=local_files_only,
+        )
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        if self._device != "cpu":
+            self._model = self._model.half()
+        self._model.to(self._device)
+        self._model.eval()
+
+    @property
+    def model_name(self) -> str:
+        """Return the resolved reranker model name."""
+        return self._model_name
+
+    def rerank_scores(self, query: str, passages: Sequence[str]) -> list[float]:
+        """Return normalized reranker scores for one query over candidate passages."""
+        if not passages:
+            return []
+        assert torch is not None  # Narrowed by __init__ guard.
+        scores: list[float] = []
+        for start in range(0, len(passages), self._batch_size):
+            batch = list(passages[start : start + self._batch_size])
+            encoded = self._tokenizer(
+                [query] * len(batch),
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self._device) for key, value in encoded.items()}
+            with torch.no_grad():
+                logits = self._model(**encoded, return_dict=True).logits.view(-1).float().cpu()
+            scores.extend(float(value) for value in torch.sigmoid(logits).tolist())
+        return scores
+
+
 class ChromaIndexStore:
     """Persist and query vector-index snapshots on local disk."""
 
@@ -90,6 +162,7 @@ class ChromaIndexStore:
         self._previous_collection_path = self._db_root / "previous"
         self._staging_root = self._db_root / "staging"
         self._embedding_backend: _FastEmbedBackend | None = None
+        self._reranker_backend: _LocalSequenceRerankerBackend | None = None
 
     @property
     def config(self) -> IndexConfig:
@@ -106,6 +179,16 @@ class ChromaIndexStore:
         """Return the repo-local cache directory for embedding models."""
         return self._config.embedding_cache_dir
 
+    @property
+    def reranker_model(self) -> str:
+        """Return the resolved semantic reranker model name."""
+        return _resolve_reranker_model_name(self._config.reranker_model)
+
+    @property
+    def reranker_cache_dir(self) -> Path:
+        """Return the repo-local cache directory for reranker models."""
+        return self._config.reranker_cache_dir
+
     def ensure_embedding_model_local(self) -> dict[str, object]:
         """Prime the configured embedding model cache and return local cache details."""
         backend = self._ensure_embedding_backend()
@@ -121,6 +204,22 @@ class ChromaIndexStore:
             "embedding_cache_dir": str(self.embedding_cache_dir),
             "embedding_model_cache_path": str(model_cache_path),
             "embedding_model_cache_present": model_cache_path.exists(),
+        }
+
+    def ensure_reranker_model_local(self) -> dict[str, object]:
+        """Prime the configured reranker cache and return local cache details."""
+        backend = self._ensure_reranker_backend()
+        backend.rerank_scores("vector-index-bootstrap", ["vector-index-bootstrap"])
+        model_cache_path = reranker_model_cache_path(self.reranker_cache_dir, backend.model_name)
+        if not model_cache_path.exists():
+            fallback_candidates = sorted(self.reranker_cache_dir.glob("models--*"))
+            if fallback_candidates:
+                model_cache_path = fallback_candidates[0]
+        return {
+            "reranker_model": backend.model_name,
+            "reranker_cache_dir": str(self.reranker_cache_dir),
+            "reranker_model_cache_path": str(model_cache_path),
+            "reranker_model_cache_present": model_cache_path.exists(),
         }
 
     def write_snapshot(
@@ -481,12 +580,23 @@ class ChromaIndexStore:
         return vectors
 
     def _ensure_embedding_backend(self) -> _FastEmbedBackend:
+        """Return the shared embedding backend for the current store."""
         if self._embedding_backend is None:
             self._embedding_backend = _FastEmbedBackend(
                 self.embedding_model,
                 cache_dir=self.embedding_cache_dir,
             )
         return self._embedding_backend
+
+    def _ensure_reranker_backend(self) -> _LocalSequenceRerankerBackend:
+        """Return the shared reranker backend for the current store."""
+        if self._reranker_backend is None:
+            self._reranker_backend = _LocalSequenceRerankerBackend(
+                self.reranker_model,
+                cache_dir=self.reranker_cache_dir,
+                local_files_only=False,
+            )
+        return self._reranker_backend
 
     def _open_collection(self, collection_dir: Path, collection_name: str, *, create: bool) -> Any:
         if chromadb is None:
@@ -747,7 +857,13 @@ def _distance_to_score(distance: float | None) -> float:
 
 
 def _resolve_embedding_model_name(configured_model: str) -> str:
+    """Resolve embedding-model aliases to a concrete fastembed model name."""
     return _EMBEDDING_MODEL_ALIASES.get(configured_model, configured_model)
+
+
+def _resolve_reranker_model_name(configured_model: str) -> str:
+    """Resolve reranker-model aliases to a concrete FlagEmbedding model name."""
+    return _RERANKER_MODEL_ALIASES.get(configured_model, configured_model)
 
 
 def _chroma_settings(collection_dir: Path) -> Any:

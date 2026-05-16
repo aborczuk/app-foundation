@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--db-path", type=Path, default=DEFAULT_VECTOR_DB_PATH)
     parser.add_argument("--embedding-model", type=str, default="local-default")
+    parser.add_argument("--reranker-model", type=str, default="local-default-reranker")
     parser.add_argument(
         "--exclude-pattern",
         action="append",
@@ -95,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="Ensure the embedding model is cached locally and optionally build a full snapshot",
+        help="Ensure the embedding and reranker models are cached locally and optionally build a full snapshot",
     )
     bootstrap.add_argument("--revision", default="local")
     bootstrap.add_argument(
@@ -142,6 +143,7 @@ def build_service(args: argparse.Namespace):
         repo_root=args.repo_root,
         db_path=args.db_path,
         embedding_model=args.embedding_model,
+        reranker_model=args.reranker_model,
         exclude_patterns=cli_patterns or env_patterns,
     )
     return build_vector_index_service(config)
@@ -295,7 +297,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     if args.command == "bootstrap":
-        bootstrap_payload = service.ensure_embedding_model_local()
+        bootstrap_payload = service.ensure_local_models()
         if args.skip_build:
             print(json.dumps(bootstrap_payload, indent=2, sort_keys=True))
             return 0

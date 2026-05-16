@@ -15,6 +15,8 @@ EXCLUDE_PATTERNS_ENV = "MCP_CODEBASE_INDEX_EXCLUDE_PATTERNS"
 DEFAULT_VECTOR_DB_PATH = Path(".codegraphcontext/global/db/vector-index")
 DEFAULT_EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 DEFAULT_EMBEDDING_CACHE_DIR = DEFAULT_VECTOR_DB_PATH / "fastembed-cache"
+DEFAULT_RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
+DEFAULT_RERANKER_CACHE_DIR = DEFAULT_VECTOR_DB_PATH / "flagembedding-cache"
 
 
 class IndexConfig(BaseModel):
@@ -26,6 +28,8 @@ class IndexConfig(BaseModel):
     db_path: Path
     embedding_model: str = Field(min_length=1)
     embedding_cache_dir: Path = Field(default_factory=lambda: DEFAULT_EMBEDDING_CACHE_DIR)
+    reranker_model: str = Field(default=DEFAULT_RERANKER_MODEL_NAME, min_length=1)
+    reranker_cache_dir: Path = Field(default_factory=lambda: DEFAULT_RERANKER_CACHE_DIR)
     collection_name: str = Field(default="codebase-vector-index", min_length=1)
     default_scopes: tuple[IndexScope, ...] = Field(
         default_factory=lambda: (IndexScope.CODE, IndexScope.MARKDOWN)
@@ -49,6 +53,8 @@ class IndexConfig(BaseModel):
 
         if not self.embedding_model.strip():
             raise ValueError("embedding_model must not be blank")
+        if not self.reranker_model.strip():
+            raise ValueError("reranker_model must not be blank")
 
         embedding_cache_dir = self.embedding_cache_dir.expanduser()
         if not embedding_cache_dir.is_absolute():
@@ -61,6 +67,17 @@ class IndexConfig(BaseModel):
         except ValueError as exc:
             raise ValueError("embedding_cache_dir must reside within repo_root") from exc
 
+        reranker_cache_dir = self.reranker_cache_dir.expanduser()
+        if not reranker_cache_dir.is_absolute():
+            reranker_cache_dir = (repo_root / reranker_cache_dir).resolve()
+        else:
+            reranker_cache_dir = reranker_cache_dir.resolve()
+
+        try:
+            reranker_cache_dir.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError("reranker_cache_dir must reside within repo_root") from exc
+
         cleaned_patterns: list[str] = []
         for pattern in self.exclude_patterns:
             if not pattern or not pattern.strip():
@@ -70,6 +87,7 @@ class IndexConfig(BaseModel):
         object.__setattr__(self, "repo_root", repo_root)
         object.__setattr__(self, "db_path", db_path)
         object.__setattr__(self, "embedding_cache_dir", embedding_cache_dir)
+        object.__setattr__(self, "reranker_cache_dir", reranker_cache_dir)
         object.__setattr__(self, "exclude_patterns", tuple(cleaned_patterns))
         return self
 
@@ -92,3 +110,13 @@ def embedding_model_cache_path(cache_dir: Path, model_name: str) -> Path:
 def embedding_model_cache_is_present(cache_dir: Path, model_name: str) -> bool:
     """Return whether the embedding model cache already exists on local disk."""
     return embedding_model_cache_path(cache_dir, model_name).exists()
+
+
+def reranker_model_cache_path(cache_dir: Path, model_name: str) -> Path:
+    """Return the FlagEmbedding model-cache path for a concrete reranker model name."""
+    return cache_dir / f"models--{model_name.replace('/', '--')}"
+
+
+def reranker_model_cache_is_present(cache_dir: Path, model_name: str) -> bool:
+    """Return whether the reranker model cache already exists on local disk."""
+    return reranker_model_cache_path(cache_dir, model_name).exists()

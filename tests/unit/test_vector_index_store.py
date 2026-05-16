@@ -172,3 +172,32 @@ def test_apply_staging_guardrails_raises_on_low_disk(tmp_path: Path, monkeypatch
 
     with pytest.raises(RuntimeError, match="staging capacity critically low"):
         store._apply_staging_guardrails()
+
+
+def test_ensure_reranker_model_local_primes_cache(monkeypatch, tmp_path: Path) -> None:
+    """Bootstrap should report the local reranker cache after a warmup score pass."""
+
+    class FakeRerankerBackend:
+        def __init__(self, cache_path: Path) -> None:
+            self.model_name = "BAAI/bge-reranker-v2-m3"
+            self.cache_path = cache_path
+            self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+        def rerank_scores(self, query: str, passages):
+            self.calls.append((query, tuple(passages)))
+            self.cache_path.mkdir(parents=True, exist_ok=True)
+            return [1.0]
+
+    config = IndexConfig(repo_root=tmp_path, db_path=tmp_path / "vector-index", embedding_model="local")
+    store = chroma_store.ChromaIndexStore(config)
+    cache_path = store.reranker_cache_dir / "models--BAAI--bge-reranker-v2-m3"
+    backend = FakeRerankerBackend(cache_path)
+
+    monkeypatch.setattr(store, "_ensure_reranker_backend", lambda: backend)
+
+    payload = store.ensure_reranker_model_local()
+
+    assert backend.calls == [("vector-index-bootstrap", ("vector-index-bootstrap",))]
+    assert payload["reranker_model"] == "BAAI/bge-reranker-v2-m3"
+    assert payload["reranker_model_cache_path"] == str(cache_path)
+    assert payload["reranker_model_cache_present"] is True

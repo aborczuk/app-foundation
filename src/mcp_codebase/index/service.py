@@ -254,6 +254,16 @@ class VectorIndexService:
         """Prime and report the local embedding cache used by vector indexing."""
         return self._store.ensure_embedding_model_local()
 
+    def ensure_reranker_model_local(self) -> dict[str, object]:
+        """Prime and report the local reranker cache used by semantic shortlist reranking."""
+        return self._store.ensure_reranker_model_local()
+
+    def ensure_local_models(self) -> dict[str, object]:
+        """Prime and report both local model caches required for retrieval and reranking."""
+        payload = self.ensure_embedding_model_local()
+        payload.update(self.ensure_reranker_model_local())
+        return payload
+
     def _collect_content_units(
         self,
         *,

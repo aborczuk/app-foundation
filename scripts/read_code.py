@@ -41,8 +41,20 @@ import re
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+try:  # pragma: no cover - exercised in runtime verification
+    import torch  # type: ignore[import-not-found]
+    from transformers import (  # type: ignore[import-not-found]
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+    )
+except ImportError:  # pragma: no cover - handled via local-cache guards
+    torch = None
+    AutoModelForSequenceClassification = None
+    AutoTokenizer = None
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -91,6 +103,15 @@ READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
 READ_CODE_CONTEXT_PRE_FRACTION = 0.1
 READ_CODE_CONTEXT_PRE_CAP = 25
+READ_CODE_RERANK_CANDIDATE_LIMIT = int(
+    os.environ.get("SPECKIT_READ_CODE_RERANK_CANDIDATE_LIMIT", "20") or "20"
+)
+READ_CODE_FINAL_SHORTLIST_LIMIT = int(
+    os.environ.get("SPECKIT_READ_CODE_FINAL_SHORTLIST_LIMIT", "5") or "5"
+)
+READ_CODE_RERANK_BATCH_SIZE = int(
+    os.environ.get("SPECKIT_READ_CODE_RERANK_BATCH_SIZE", "16") or "16"
+)
 READ_CODE_SEARCH_SCRATCHPAD_TTL_SECONDS = float(
     os.environ.get("SPECKIT_READ_CODE_SEARCH_SCRATCHPAD_TTL_SECONDS", "300") or "300"
 )
@@ -100,6 +121,7 @@ READ_CODE_SEARCH_SCRATCHPAD_MAX_ENTRIES = int(
 READ_CODE_HISTORY_DEFAULT_LIMIT = 20
 READ_CODE_HISTORY_MAX_LIMIT = 50
 READ_CODE_HISTORY_MAX_STATS_ROWS = 12
+_READ_CODE_RERANKER_BACKEND = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +146,18 @@ class _VectorMatch:
 
 
 @dataclass(frozen=True)
+class _RerankDebugInfo:
+    """Bounded rerank diagnostics for one semantic shortlist."""
+
+    status: str
+    model_name: str | None
+    candidate_count: int
+    changed: bool
+    before_symbols: tuple[str, ...]
+    after_symbols: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class _AnchorResolution:
     """Shared anchor resolution result for context and window read entrypoints."""
 
@@ -131,6 +165,62 @@ class _AnchorResolution:
     vector_match: _VectorMatch | None
     strict_status: int
     line_num: int | None
+    rerank_debug: _RerankDebugInfo | None = None
+
+
+class _ReadCodeRerankerBackend:
+    """Load a cached local HF reranker for query-time shortlist rescoring."""
+
+    def __init__(self, model_name: str, *, cache_dir: Path) -> None:
+        if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
+            raise RuntimeError(
+                "transformers and torch are required for semantic shortlist reranking; run `uv sync` after adding the dependency."
+            )
+        self._model_name = model_name
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with _hf_hub_offline_mode():
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                cache_dir=str(cache_dir),
+                local_files_only=True,
+            )
+            self._model = AutoModelForSequenceClassification.from_pretrained(
+                model_name,
+                cache_dir=str(cache_dir),
+                local_files_only=True,
+            )
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        if self._device != "cpu":
+            self._model = self._model.half()
+        self._model.to(self._device)
+        self._model.eval()
+
+    @property
+    def model_name(self) -> str:
+        """Return the resolved reranker model name."""
+        return self._model_name
+
+    def score_pairs(self, query: str, passages: list[str]) -> list[float]:
+        """Return normalized reranker scores for one query over candidate passages."""
+        if not passages:
+            return []
+        assert torch is not None  # Narrowed by __init__ guard.
+        scores: list[float] = []
+        for start in range(0, len(passages), READ_CODE_RERANK_BATCH_SIZE):
+            batch = passages[start : start + READ_CODE_RERANK_BATCH_SIZE]
+            encoded = self._tokenizer(
+                [query] * len(batch),
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self._device) for key, value in encoded.items()}
+            with torch.no_grad():
+                logits = self._model(**encoded, return_dict=True).logits.view(-1).float().cpu()
+            scores.extend(float(value) for value in torch.sigmoid(logits).tolist())
+        return scores
 
 
 @dataclass(frozen=True)
@@ -145,6 +235,7 @@ class _ContextArgs:
     inline_body: bool
     candidate_index: int
     content_type: str | None
+    show_rerank: bool = False
 
 
 @dataclass(frozen=True)
@@ -214,6 +305,61 @@ class _HistoryArgs:
 
     command: str
     limit: int = READ_CODE_HISTORY_DEFAULT_LIMIT
+
+
+@contextmanager
+def _hf_hub_offline_mode():
+    """Force local-only Hugging Face model loads for the duration of one operation."""
+    previous = os.environ.get("HF_HUB_OFFLINE")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = previous
+
+
+def _read_code_reranker_model_name() -> str:
+    """Return the configured query-time reranker model name."""
+    from src.mcp_codebase.index.config import DEFAULT_RERANKER_MODEL_NAME
+
+    return os.environ.get("SPECKIT_READ_CODE_RERANKER_MODEL", DEFAULT_RERANKER_MODEL_NAME)
+
+
+def _read_code_reranker_cache_dir() -> Path:
+    """Return the repo-local cache directory used for query-time reranker loads."""
+    from src.mcp_codebase.index.config import DEFAULT_RERANKER_CACHE_DIR
+
+    return (REPO_ROOT / DEFAULT_RERANKER_CACHE_DIR).resolve()
+
+
+def _read_code_reranker_cache_present(model_name: str) -> bool:
+    """Return whether the configured reranker model is already cached locally."""
+    from src.mcp_codebase.index.config import reranker_model_cache_path
+
+    return reranker_model_cache_path(_read_code_reranker_cache_dir(), model_name).exists()
+
+
+def _load_read_code_reranker() -> _ReadCodeRerankerBackend | None:
+    """Return a cached query-time reranker backend when the local model is available."""
+    global _READ_CODE_RERANKER_BACKEND
+    if _READ_CODE_RERANKER_BACKEND is not None:
+        return _READ_CODE_RERANKER_BACKEND
+    if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
+        return None
+    model_name = _read_code_reranker_model_name()
+    if not _read_code_reranker_cache_present(model_name):
+        return None
+    try:
+        _READ_CODE_RERANKER_BACKEND = _ReadCodeRerankerBackend(
+            model_name,
+            cache_dir=_read_code_reranker_cache_dir(),
+        )
+    except Exception:
+        return None
+    return _READ_CODE_RERANKER_BACKEND
 
 
 
@@ -324,6 +470,48 @@ def _deserialize_vector_match(payload: object) -> _VectorMatch | None:
         signature=signature,
         file_path=_deserialize_path(payload.get("file_path")) or Path(),
         docstring=docstring,
+    )
+
+
+def _serialize_rerank_debug(debug: _RerankDebugInfo) -> dict[str, object]:
+    """Convert rerank diagnostics into a JSON-friendly scratchpad payload."""
+    return {
+        "status": debug.status,
+        "model_name": debug.model_name,
+        "candidate_count": debug.candidate_count,
+        "changed": debug.changed,
+        "before_symbols": list(debug.before_symbols),
+        "after_symbols": list(debug.after_symbols),
+    }
+
+
+def _deserialize_rerank_debug(payload: object) -> _RerankDebugInfo | None:
+    """Convert a scratchpad payload back into bounded rerank diagnostics."""
+    if not isinstance(payload, dict):
+        return None
+    status = payload.get("status")
+    model_name = payload.get("model_name")
+    candidate_count = payload.get("candidate_count")
+    changed = payload.get("changed")
+    before_symbols = payload.get("before_symbols")
+    after_symbols = payload.get("after_symbols")
+    if not isinstance(status, str):
+        return None
+    if model_name is not None and not isinstance(model_name, str):
+        return None
+    if not isinstance(candidate_count, int) or not isinstance(changed, bool):
+        return None
+    if not isinstance(before_symbols, list) or not isinstance(after_symbols, list):
+        return None
+    if not all(isinstance(item, str) for item in before_symbols + after_symbols):
+        return None
+    return _RerankDebugInfo(
+        status=status,
+        model_name=model_name,
+        candidate_count=candidate_count,
+        changed=changed,
+        before_symbols=tuple(before_symbols),
+        after_symbols=tuple(after_symbols),
     )
 
 
@@ -464,6 +652,7 @@ def _store_search_scratchpad_entry(
     query_payload: dict[str, object],
     signature: str,
     matches_payload: list[dict[str, object]],
+    rerank_debug_payload: dict[str, object] | None = None,
 ) -> None:
     """Persist one reusable search result set into the session scratchpad."""
     entries = _load_search_scratchpad_entries(session_id)
@@ -475,6 +664,8 @@ def _store_search_scratchpad_entry(
         "match_count": len(matches_payload),
         "matches": matches_payload,
     }
+    if rerank_debug_payload is not None:
+        entries[cache_key]["rerank_debug"] = rerank_debug_payload
     _persist_search_scratchpad_entries(session_id, entries)
 
 
@@ -855,6 +1046,81 @@ def _vector_anchor_rank(match: _VectorMatch, *, allow_test_files: bool = False) 
     )
 
 
+def _reranker_document_text(match: _VectorMatch) -> str:
+    """Return the best available text payload for shortlist reranking."""
+    primary = (match.body or match.preview or match.signature or "").strip()
+    secondary = match.docstring.strip()
+    if primary and secondary and secondary not in primary:
+        return f"{primary}\n\n{secondary}"
+    if primary:
+        return primary
+    if secondary:
+        return secondary
+    return match.qualified_name or match.symbol_name
+
+
+def _rerank_semantic_candidates(
+    query: str,
+    candidates: list[_VectorMatch],
+    *,
+    allow_test_files: bool,
+) -> tuple[list[_VectorMatch], _RerankDebugInfo]:
+    """Rescore the current shortlist window with the local reranker when available."""
+    before_symbols = tuple(match.symbol_name or match.qualified_name for match in candidates[:READ_CODE_RERANK_CANDIDATE_LIMIT])
+    if len(candidates) < 2:
+        return candidates, _RerankDebugInfo(
+            status="skipped",
+            model_name=None,
+            candidate_count=len(candidates),
+            changed=False,
+            before_symbols=before_symbols,
+            after_symbols=before_symbols,
+        )
+    backend = _load_read_code_reranker()
+    if backend is None:
+        return candidates, _RerankDebugInfo(
+            status="unavailable",
+            model_name=_read_code_reranker_model_name(),
+            candidate_count=len(candidates),
+            changed=False,
+            before_symbols=before_symbols,
+            after_symbols=before_symbols,
+        )
+    rerank_window = list(candidates[:READ_CODE_RERANK_CANDIDATE_LIMIT])
+    scores = backend.score_pairs(query, [_reranker_document_text(match) for match in rerank_window])
+    if len(scores) != len(rerank_window):
+        return candidates, _RerankDebugInfo(
+            status="unavailable",
+            model_name=getattr(backend, "model_name", _read_code_reranker_model_name()),
+            candidate_count=len(candidates),
+            changed=False,
+            before_symbols=before_symbols,
+            after_symbols=before_symbols,
+        )
+    reranked = [
+        match
+        for _, match in sorted(
+            enumerate(rerank_window),
+            key=lambda item: (
+                scores[item[0]],
+                *(_vector_anchor_rank(item[1], allow_test_files=allow_test_files)),
+                -item[0],
+            ),
+            reverse=True,
+        )
+    ]
+    ordered = reranked + candidates[READ_CODE_RERANK_CANDIDATE_LIMIT :]
+    after_symbols = tuple(match.symbol_name or match.qualified_name for match in ordered[:READ_CODE_RERANK_CANDIDATE_LIMIT])
+    return ordered, _RerankDebugInfo(
+        status="applied",
+        model_name=getattr(backend, "model_name", _read_code_reranker_model_name()),
+        candidate_count=len(candidates),
+        changed=before_symbols != after_symbols,
+        before_symbols=before_symbols,
+        after_symbols=after_symbols,
+    )
+
+
 def _is_explicit_test_targeting(file_path: Path | None, content_type: str | None) -> bool:
     """Return whether a discovery request is explicitly aimed at tests."""
     return content_type == "tests" or (file_path is not None and _is_test_path(file_path))
@@ -921,6 +1187,7 @@ def _vector_query_candidates(
     *,
     allow_test_files: bool = False,
 ) -> list[_VectorMatch]:
+    """Return the initial semantic retrieval window for one query scope."""
     if not query or not scope:
         return []
     if not _command_exists("uv"):
@@ -985,7 +1252,11 @@ def _vector_query_candidates(
             continue
         matches.append(match)
 
-    return sorted(matches, key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files), reverse=True)[:5]
+    return sorted(
+        matches,
+        key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
+        reverse=True,
+    )[:READ_CODE_RERANK_CANDIDATE_LIMIT]
 
 
 def _vector_find_candidates(
@@ -1237,7 +1508,7 @@ def _semantic_anchor_candidate_scopes(
     return ("code", "markdown")
 
 
-def _query_semantic_anchor_candidate(
+def _query_semantic_anchor_candidate_with_debug(
     file_path: Path | None,
     pattern: str,
     normalized_pattern: str,
@@ -1246,7 +1517,7 @@ def _query_semantic_anchor_candidate(
     show_shortlist_hint: bool,
     content_type: str | None,
     request_scope: _ContextQueryScope | None = None,
-) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
+) -> tuple[list[_VectorMatch], _VectorMatch | None, bool, _RerankDebugInfo | None]:
     """Query ranked candidates and select a semantic anchor with standardized error handling."""
     candidate_scopes = _semantic_anchor_candidate_scopes(request_scope, content_type)
     allow_test_files = _is_explicit_test_targeting(file_path, content_type)
@@ -1276,14 +1547,56 @@ def _query_semantic_anchor_candidate(
         ],
         key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
         reverse=True,
-    )[:5]
+    )[:READ_CODE_RERANK_CANDIDATE_LIMIT]
+    vector_candidates, rerank_debug = _rerank_semantic_candidates(
+        pattern,
+        vector_candidates,
+        allow_test_files=allow_test_files,
+    )
+    vector_candidates = vector_candidates[:READ_CODE_FINAL_SHORTLIST_LIMIT]
     vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
     if candidate_error is not None:
         print(f"ERROR: {candidate_error}", file=sys.stderr)
         if show_shortlist_hint and vector_candidates:
             print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
-        return vector_candidates, None, False
-    return vector_candidates, vector_match, True
+        return vector_candidates, None, False, rerank_debug
+    return vector_candidates, vector_match, True, rerank_debug
+
+
+def _query_semantic_anchor_candidate(
+    file_path: Path | None,
+    pattern: str,
+    normalized_pattern: str,
+    *,
+    candidate_index: int,
+    show_shortlist_hint: bool,
+    content_type: str | None,
+    request_scope: _ContextQueryScope | None = None,
+) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
+    """Query ranked candidates and select a semantic anchor."""
+    vector_candidates, vector_match, selection_ok, _ = _query_semantic_anchor_candidate_with_debug(
+        file_path,
+        pattern,
+        normalized_pattern,
+        candidate_index=candidate_index,
+        show_shortlist_hint=show_shortlist_hint,
+        content_type=content_type,
+        request_scope=request_scope,
+    )
+    return vector_candidates, vector_match, selection_ok
+
+
+def _render_rerank_debug(debug: _RerankDebugInfo, *, result_source: str) -> None:
+    """Render a bounded, opt-in rerank summary for one context resolution."""
+    print("# rerank_debug")
+    print(f"rerank_status: {debug.status}")
+    if debug.model_name:
+        print(f"reranker_model: {debug.model_name}")
+    print(f"candidate_window: {debug.candidate_count}")
+    print(f"shortlist_changed: {'true' if debug.changed else 'false'}")
+    print(f"result_source: {result_source}")
+    print(f"before: {' | '.join(debug.before_symbols) if debug.before_symbols else '(empty)'}")
+    print(f"after: {' | '.join(debug.after_symbols) if debug.after_symbols else '(empty)'}")
 
 
 def _broad_read_trusts_vector_cache(
@@ -1361,10 +1674,11 @@ def _resolve_pattern_anchor(
                 vector_match=vector_match,
                 strict_status=0,
                 line_num=line_num,
+                rerank_debug=None,
             )
         return None
 
-    vector_candidates, vector_match, selection_ok = _query_semantic_anchor_candidate(
+    vector_candidates, vector_match, selection_ok, rerank_debug = _query_semantic_anchor_candidate_with_debug(
         file_path,
         pattern,
         normalized_pattern,
@@ -1406,7 +1720,7 @@ def _resolve_pattern_anchor(
             ):
                 return None
 
-            refreshed_candidates, refreshed_match, selection_ok = _query_semantic_anchor_candidate(
+            refreshed_candidates, refreshed_match, selection_ok, rerank_debug = _query_semantic_anchor_candidate_with_debug(
                 file_path,
                 pattern,
                 normalized_pattern,
@@ -1430,6 +1744,7 @@ def _resolve_pattern_anchor(
                 vector_match=vector_match,
                 strict_status=0,
                 line_num=line_num,
+                rerank_debug=rerank_debug,
             )
         _emit_vector_fallback_notice(
             file_path=file_path,
@@ -1442,6 +1757,7 @@ def _resolve_pattern_anchor(
         vector_match=vector_match,
         strict_status=0,
         line_num=line_num,
+        rerank_debug=rerank_debug,
     )
 
 
@@ -1499,6 +1815,7 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
     context_set = False
     allow_fallback = False
     show_shortlist = False
+    show_rerank = False
     inline_body = False
     candidate_index = 0
     content_type: str | None = None
@@ -1552,6 +1869,8 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
             allow_fallback = True
         elif token == "--show-shortlist":
             show_shortlist = True
+        elif token == "--show-rerank":
+            show_rerank = True
         elif token == "--inline-body":
             inline_body = True
         elif token == "--next-candidate":
@@ -1614,6 +1933,7 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
         inline_body=inline_body,
         candidate_index=candidate_index,
         content_type=content_type,
+        show_rerank=show_rerank,
     )
 
 
@@ -1973,11 +2293,13 @@ def _context_resolution_from_cached_entry(
             print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
         return None, True
     line_num = vector_match.line_num if vector_match is not None else None
+    rerank_debug = _deserialize_rerank_debug(entry.get("rerank_debug"))
     return _AnchorResolution(
         vector_candidates=vector_candidates,
         vector_match=vector_match,
         strict_status=0,
         line_num=line_num,
+        rerank_debug=rerank_debug,
     ), True
 
 
@@ -2048,6 +2370,9 @@ def _resolve_pattern_anchor_with_scratchpad(
             query_payload=query_payload,
             signature=signature,
             matches_payload=[_serialize_vector_match(match) for match in resolution.vector_candidates],
+            rerank_debug_payload=(
+                _serialize_rerank_debug(resolution.rerank_debug) if resolution.rerank_debug is not None else None
+            ),
         )
     return resolution, False, signature
 
@@ -2135,6 +2460,11 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         show_shortlist=parsed.show_shortlist,
         inline_body=parsed.inline_body,
     )
+    if parsed.show_rerank and resolution.rerank_debug is not None:
+        _render_rerank_debug(
+            resolution.rerank_debug,
+            result_source="scratchpad" if cache_hit else "backend",
+        )
 
     if parsed.inline_body:
         _render_read_context_inline_body(vector_match, line_num, parsed.context)
@@ -2474,6 +2804,7 @@ def _print_usage() -> None:
         "  read_code history <recent [limit] | stats>"
     )
     print("  --verbose / -v    show detailed vector preflight diagnostics")
+    print("  --show-rerank     show opt-in rerank diagnostics for context results")
     print("\nModes:")
     print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
     print("  headings: List markdown headings with line numbers.")

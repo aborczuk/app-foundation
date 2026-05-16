@@ -62,7 +62,7 @@ uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap --sk
 The index is exposed through the existing `src/mcp_codebase` package. Expected entry points:
 
 ```bash
-# Ensure the local embedding model is available (and optionally build immediately)
+# Ensure the local embedding and reranker models are available (and optionally build immediately)
 uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap --skip-build
 
 # Build or refresh the index
