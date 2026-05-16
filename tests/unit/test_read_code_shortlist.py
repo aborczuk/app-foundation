@@ -738,8 +738,8 @@ def test_query_semantic_anchor_candidate_keeps_markdown_for_broad_requests(monke
     assert selected.symbol_name == "top"
 
 
-def test_query_semantic_anchor_candidate_reranks_shortlist_with_local_model(monkeypatch) -> None:
-    """A local reranker should be able to replace the heuristic top candidate."""
+def test_query_semantic_anchor_candidate_keeps_heuristic_shortlist_when_reranker_is_disabled(monkeypatch) -> None:
+    """Context ranking should stay heuristic-only while the reranker is rolled back."""
     request_scope = read_code._ContextQueryScope(is_scoped=True, reason="file-path supplied")
     initial = [
         read_code._VectorMatch(
@@ -766,14 +766,9 @@ def test_query_semantic_anchor_candidate_reranks_shortlist_with_local_model(monk
         ),
     ]
 
-    class FakeReranker:
-        def score_pairs(self, query: str, passages: list[str]) -> list[float]:
-            assert query == "top"
-            assert len(passages) == 2
-            return [0.1, 0.99]
-
+    reranker_calls: list[str] = []
     monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: initial)
-    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: FakeReranker())
+    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: reranker_calls.append("load") or None)
 
     candidates, selected, ok, rerank_debug = read_code._query_semantic_anchor_candidate_with_debug(
         Path("/tmp/example.py"),
@@ -786,21 +781,18 @@ def test_query_semantic_anchor_candidate_reranks_shortlist_with_local_model(monk
     )
 
     assert ok is True
-    assert [candidate.symbol_name for candidate in candidates] == ["second", "first"]
+    assert [candidate.symbol_name for candidate in candidates] == ["first", "second"]
     assert selected is not None
-    assert selected.symbol_name == "second"
-    assert rerank_debug is not None
-    assert rerank_debug.status == "applied"
-    assert rerank_debug.changed is True
-    assert rerank_debug.before_symbols == ("first", "second")
-    assert rerank_debug.after_symbols == ("second", "first")
+    assert selected.symbol_name == "first"
+    assert rerank_debug is None
+    assert reranker_calls == []
 
 
 def test_read_code_context_rerank_debug_is_opt_in(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Rerank diagnostics should stay hidden unless the caller explicitly asks for them."""
+    """The dormant rerank flag should be accepted quietly without rendering diagnostics."""
     vector_match = read_code._VectorMatch(
         unit_id="function:sample",
         symbol_name="sample",
@@ -816,14 +808,7 @@ def test_read_code_context_rerank_debug_is_opt_in(
         vector_match=vector_match,
         strict_status=0,
         line_num=10,
-        rerank_debug=read_code._RerankDebugInfo(
-            status="applied",
-            model_name="BAAI/bge-reranker-v2-m3",
-            candidate_count=2,
-            changed=True,
-            before_symbols=("first", "sample"),
-            after_symbols=("sample", "first"),
-        ),
+        rerank_debug=None,
     )
 
     monkeypatch.setattr(
@@ -846,8 +831,7 @@ def test_read_code_context_rerank_debug_is_opt_in(
 
     assert read_code.read_code_context(["sample", "--show-rerank"]) == 0
     shown = capsys.readouterr()
-    assert "rerank_status: applied" in shown.out
-    assert "shortlist_changed: true" in shown.out
+    assert "rerank_status:" not in shown.out
 
 
 def test_vector_anchor_rank_penalizes_test_files_for_regular_context(monkeypatch) -> None:

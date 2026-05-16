@@ -41,24 +41,17 @@ import re
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-try:  # pragma: no cover - exercised in runtime verification
-    import torch  # type: ignore[import-not-found]
-    from transformers import (  # type: ignore[import-not-found]
-        AutoModelForSequenceClassification,
-        AutoTokenizer,
-    )
-except ImportError:  # pragma: no cover - handled via local-cache guards
-    torch = None
-    AutoModelForSequenceClassification = None
-    AutoTokenizer = None
+# Reranker runtime is temporarily disabled while the daemonized design is pending.
+torch = None
+AutoModelForSequenceClassification = None
+AutoTokenizer = None
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from read_code_health import (
+from read_code_health import (  # noqa: E402
     REPO_ROOT,
     _append_jsonl_object,
     _clear_vector_runtime_note,
@@ -169,31 +162,11 @@ class _AnchorResolution:
 
 
 class _ReadCodeRerankerBackend:
-    """Load a cached local HF reranker for query-time shortlist rescoring."""
+    """Placeholder backend kept only so the rollback leaves minimal surface churn."""
 
     def __init__(self, model_name: str, *, cache_dir: Path) -> None:
-        if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
-            raise RuntimeError(
-                "transformers and torch are required for semantic shortlist reranking; run `uv sync` after adding the dependency."
-            )
-        self._model_name = model_name
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        with _hf_hub_offline_mode():
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                model_name,
-                cache_dir=str(cache_dir),
-                local_files_only=True,
-            )
-            self._model = AutoModelForSequenceClassification.from_pretrained(
-                model_name,
-                cache_dir=str(cache_dir),
-                local_files_only=True,
-            )
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        if self._device != "cpu":
-            self._model = self._model.half()
-        self._model.to(self._device)
-        self._model.eval()
+        _ = (model_name, cache_dir)
+        raise RuntimeError("Query-time reranking is temporarily disabled.")
 
     @property
     def model_name(self) -> str:
@@ -201,26 +174,9 @@ class _ReadCodeRerankerBackend:
         return self._model_name
 
     def score_pairs(self, query: str, passages: list[str]) -> list[float]:
-        """Return normalized reranker scores for one query over candidate passages."""
-        if not passages:
-            return []
-        assert torch is not None  # Narrowed by __init__ guard.
-        scores: list[float] = []
-        for start in range(0, len(passages), READ_CODE_RERANK_BATCH_SIZE):
-            batch = passages[start : start + READ_CODE_RERANK_BATCH_SIZE]
-            encoded = self._tokenizer(
-                [query] * len(batch),
-                batch,
-                padding=True,
-                truncation=True,
-                max_length=512,
-                return_tensors="pt",
-            )
-            encoded = {key: value.to(self._device) for key, value in encoded.items()}
-            with torch.no_grad():
-                logits = self._model(**encoded, return_dict=True).logits.view(-1).float().cpu()
-            scores.extend(float(value) for value in torch.sigmoid(logits).tolist())
-        return scores
+        """Return no scores because the rollback disables runtime reranking."""
+        _ = (query, passages)
+        return []
 
 
 @dataclass(frozen=True)
@@ -307,20 +263,6 @@ class _HistoryArgs:
     limit: int = READ_CODE_HISTORY_DEFAULT_LIMIT
 
 
-@contextmanager
-def _hf_hub_offline_mode():
-    """Force local-only Hugging Face model loads for the duration of one operation."""
-    previous = os.environ.get("HF_HUB_OFFLINE")
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("HF_HUB_OFFLINE", None)
-        else:
-            os.environ["HF_HUB_OFFLINE"] = previous
-
-
 def _read_code_reranker_model_name() -> str:
     """Return the configured query-time reranker model name."""
     from src.mcp_codebase.index.config import DEFAULT_RERANKER_MODEL_NAME
@@ -343,23 +285,8 @@ def _read_code_reranker_cache_present(model_name: str) -> bool:
 
 
 def _load_read_code_reranker() -> _ReadCodeRerankerBackend | None:
-    """Return a cached query-time reranker backend when the local model is available."""
-    global _READ_CODE_RERANKER_BACKEND
-    if _READ_CODE_RERANKER_BACKEND is not None:
-        return _READ_CODE_RERANKER_BACKEND
-    if AutoTokenizer is None or AutoModelForSequenceClassification is None or torch is None:
-        return None
-    model_name = _read_code_reranker_model_name()
-    if not _read_code_reranker_cache_present(model_name):
-        return None
-    try:
-        _READ_CODE_RERANKER_BACKEND = _ReadCodeRerankerBackend(
-            model_name,
-            cache_dir=_read_code_reranker_cache_dir(),
-        )
-    except Exception:
-        return None
-    return _READ_CODE_RERANKER_BACKEND
+    """Return None while query-time reranking is temporarily disabled."""
+    return None
 
 
 
@@ -1518,7 +1445,7 @@ def _query_semantic_anchor_candidate_with_debug(
     content_type: str | None,
     request_scope: _ContextQueryScope | None = None,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool, _RerankDebugInfo | None]:
-    """Query ranked candidates and select a semantic anchor with standardized error handling."""
+    """Query ranked candidates and select a semantic anchor with heuristic ordering only."""
     candidate_scopes = _semantic_anchor_candidate_scopes(request_scope, content_type)
     allow_test_files = _is_explicit_test_targeting(file_path, content_type)
     code_candidates = _vector_find_candidates(
@@ -1547,13 +1474,8 @@ def _query_semantic_anchor_candidate_with_debug(
         ],
         key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
         reverse=True,
-    )[:READ_CODE_RERANK_CANDIDATE_LIMIT]
-    vector_candidates, rerank_debug = _rerank_semantic_candidates(
-        pattern,
-        vector_candidates,
-        allow_test_files=allow_test_files,
-    )
-    vector_candidates = vector_candidates[:READ_CODE_FINAL_SHORTLIST_LIMIT]
+    )[:READ_CODE_FINAL_SHORTLIST_LIMIT]
+    rerank_debug = None
     vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
     if candidate_error is not None:
         print(f"ERROR: {candidate_error}", file=sys.stderr)
@@ -2293,13 +2215,12 @@ def _context_resolution_from_cached_entry(
             print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
         return None, True
     line_num = vector_match.line_num if vector_match is not None else None
-    rerank_debug = _deserialize_rerank_debug(entry.get("rerank_debug"))
     return _AnchorResolution(
         vector_candidates=vector_candidates,
         vector_match=vector_match,
         strict_status=0,
         line_num=line_num,
-        rerank_debug=rerank_debug,
+        rerank_debug=None,
     ), True
 
 
@@ -2460,12 +2381,6 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         show_shortlist=parsed.show_shortlist,
         inline_body=parsed.inline_body,
     )
-    if parsed.show_rerank and resolution.rerank_debug is not None:
-        _render_rerank_debug(
-            resolution.rerank_debug,
-            result_source="scratchpad" if cache_hit else "backend",
-        )
-
     if parsed.inline_body:
         _render_read_context_inline_body(vector_match, line_num, parsed.context)
 
@@ -2804,7 +2719,6 @@ def _print_usage() -> None:
         "  read_code history <recent [limit] | stats>"
     )
     print("  --verbose / -v    show detailed vector preflight diagnostics")
-    print("  --show-rerank     show opt-in rerank diagnostics for context results")
     print("\nModes:")
     print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
     print("  headings: List markdown headings with line numbers.")
