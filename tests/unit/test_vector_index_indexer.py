@@ -269,7 +269,7 @@ def test_indexer_watch_parser_exposes_watch_mode(tmp_path) -> None:
 
 
 def test_indexer_bootstrap_primes_model_and_builds_index(monkeypatch, tmp_path, capsys) -> None:
-    """Bootstrap mode should warm only the embedding cache and build a full snapshot."""
+    """Bootstrap mode should warm both local model caches and build a full snapshot."""
 
     class FakeService:
         def __init__(self) -> None:
@@ -279,6 +279,7 @@ def test_indexer_bootstrap_primes_model_and_builds_index(monkeypatch, tmp_path, 
             self.calls.append(("ensure_local_models",))
             return {
                 "embedding_model": "BAAI/bge-small-en-v1.5",
+                "reranker_model": "BAAI/bge-reranker-v2-m3",
             }
 
         def build_full_index(self, *, revision: str = "local", source_paths=None):
@@ -317,5 +318,5 @@ def test_indexer_bootstrap_primes_model_and_builds_index(monkeypatch, tmp_path, 
     assert exit_code == 0
     assert fake_service.calls == [("ensure_local_models",), ("build", "rev-bootstrap")]
     assert payload["embedding_model"] == "BAAI/bge-small-en-v1.5"
-    assert "reranker_model" not in payload
+    assert payload["reranker_model"] == "BAAI/bge-reranker-v2-m3"
     assert payload["index_metadata"]["indexed_commit"] == "rev-bootstrap"

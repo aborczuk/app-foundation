@@ -34,23 +34,27 @@ Validation:
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
+import plistlib
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-# Reranker runtime is temporarily disabled while the daemonized design is pending.
-torch = None
-AutoModelForSequenceClassification = None
-AutoTokenizer = None
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# isort: off
 from read_code_health import (  # noqa: E402
     REPO_ROOT,
     _append_jsonl_object,
@@ -70,13 +74,34 @@ from read_code_health import (  # noqa: E402
     _run_command_capture,
     _set_vector_runtime_note,
     _vector_command_env,
-    _vector_indexer_cmd,
     codegraph_current_edit_signature,
     codegraph_refresh_by_state,
     codegraph_supports_file,
     evaluate_read_vector_trust,
     init_codegraph_env,
 )
+from src.mcp_codebase.index.reranker_runtime import (  # noqa: E402
+    READ_CODE_RERANKER_DAEMON_FAILURE_COOLDOWN_SECONDS,
+    READ_CODE_RERANKER_DAEMON_HEALTH_POLL_INTERVAL_SECONDS,
+    READ_CODE_RERANKER_DAEMON_HEALTH_TIMEOUT_SECONDS,
+    READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS,
+    load_json_object as _load_runtime_json_object,
+    persist_json_object as _persist_runtime_json_object,
+    reranker_build_fingerprint,
+    reranker_endpoint_path,
+    reranker_failure_marker_path,
+    reranker_launch_agent_label,
+    reranker_launch_agent_path,
+    reranker_log_path,
+    reranker_pid_path,
+    reranker_runtime_dir,
+    reranker_socket_path,
+    reranker_startup_lock_path,
+    reranker_tcp_port,
+)
+from src.mcp_codebase.index import IndexConfig, IndexScope, build_vector_index_service  # noqa: E402
+from src.mcp_codebase.index.config import DEFAULT_VECTOR_DB_PATH, load_exclude_patterns  # noqa: E402
+# isort: on
 
 # Backwards-compatible alias for older callers and tests.
 codegraph_refresh_if_needed = codegraph_refresh_by_state
@@ -115,6 +140,7 @@ READ_CODE_HISTORY_DEFAULT_LIMIT = 20
 READ_CODE_HISTORY_MAX_LIMIT = 50
 READ_CODE_HISTORY_MAX_STATS_ROWS = 12
 _READ_CODE_RERANKER_BACKEND = None
+_READ_CODE_VECTOR_QUERY_SERVICE = None
 
 
 @dataclass(frozen=True)
@@ -159,24 +185,526 @@ class _AnchorResolution:
     strict_status: int
     line_num: int | None
     rerank_debug: _RerankDebugInfo | None = None
+    rerank_source: str = "heuristic"
 
 
 class _ReadCodeRerankerBackend:
-    """Placeholder backend kept only so the rollback leaves minimal surface churn."""
+    """Socket client for the local reranker daemon with bounded fallback behavior."""
 
-    def __init__(self, model_name: str, *, cache_dir: Path) -> None:
-        _ = (model_name, cache_dir)
-        raise RuntimeError("Query-time reranking is temporarily disabled.")
+    def __init__(self, model_name: str, *, repo_root: Path) -> None:
+        """Create a client bound to one repo-local daemon runtime."""
+        self._model_name = model_name
+        self._repo_root = repo_root.resolve()
+        self._socket_path = reranker_socket_path(self._repo_root)
+        self._pid_path = reranker_pid_path(self._repo_root)
+        self._endpoint_path = reranker_endpoint_path(self._repo_root)
+        self._lock_path = reranker_startup_lock_path(self._repo_root)
+        self._failure_marker_path = reranker_failure_marker_path(self._repo_root)
+        self._runtime_dir = reranker_runtime_dir(self._repo_root)
+        self._log_path = reranker_log_path(self._repo_root)
+        self._tcp_port = reranker_tcp_port(self._repo_root)
+        self._build_fingerprint = reranker_build_fingerprint(self._repo_root, model_name)
+        self._launch_agent_label = reranker_launch_agent_label(self._repo_root)
+        self._launch_agent_path = reranker_launch_agent_path(self._repo_root)
 
     @property
     def model_name(self) -> str:
         """Return the resolved reranker model name."""
         return self._model_name
 
-    def score_pairs(self, query: str, passages: list[str]) -> list[float]:
-        """Return no scores because the rollback disables runtime reranking."""
-        _ = (query, passages)
-        return []
+    def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
+        """Return daemon scores only when the daemon is already healthy, otherwise fall back."""
+        if not passages:
+            return [], "heuristic"
+        healthy = self._health()
+        if healthy is None:
+            return [], "heuristic"
+        try:
+            payload = self._score(query, passages)
+        except Exception as exc:
+            self._record_startup_failure(f"score failed: {exc}")
+            return [], "heuristic"
+        self._clear_startup_failure()
+        scores = payload.get("scores")
+        if not isinstance(scores, list) or not all(isinstance(item, (int, float)) for item in scores):
+            self._record_startup_failure("score payload missing numeric scores")
+            return [], "heuristic"
+        return [float(item) for item in scores], "daemon"
+
+    def _http_client(self, *, timeout: float) -> httpx.Client:
+        """Return an HTTP client for the active local daemon transport."""
+        endpoint = _load_runtime_json_object(self._endpoint_path) or {}
+        transport_name = endpoint.get("transport")
+        if transport_name == "tcp":
+            host = str(endpoint.get("host") or "127.0.0.1")
+            port = int(endpoint.get("port") or self._tcp_port)
+            return httpx.Client(base_url=f"http://{host}:{port}", timeout=timeout)
+        transport = httpx.HTTPTransport(uds=str(self._socket_path))
+        return httpx.Client(transport=transport, base_url="http://read-code-reranker", timeout=timeout)
+
+    def _endpoint_snapshot(self) -> tuple[str, str]:
+        """Return the currently advertised daemon transport and endpoint label."""
+        endpoint = _load_runtime_json_object(self._endpoint_path) or {}
+        transport_name = endpoint.get("transport")
+        if transport_name == "tcp":
+            host = str(endpoint.get("host") or "127.0.0.1")
+            port = int(endpoint.get("port") or self._tcp_port)
+            return "tcp", f"{host}:{port}"
+        return "uds", str(self._socket_path)
+
+    def _health(self) -> dict[str, object] | None:
+        """Return a healthy daemon payload when the socket endpoint is ready."""
+        try:
+            with self._http_client(timeout=READ_CODE_RERANKER_DAEMON_HEALTH_TIMEOUT_SECONDS) as client:
+                response = client.get("/health")
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("status") != "healthy":
+            return None
+        if payload.get("build_fingerprint") != self._build_fingerprint:
+            return None
+        if payload.get("model_name") != self._model_name:
+            return None
+        if payload.get("model_loaded") is not True:
+            return None
+        return payload
+
+    def _score(self, query: str, passages: list[str]) -> dict[str, object]:
+        """Submit one shortlist scoring request to the daemon."""
+        with self._http_client(timeout=max(READ_CODE_RERANKER_DAEMON_HEALTH_TIMEOUT_SECONDS, 30.0)) as client:
+            response = client.post(
+                "/score",
+                json={
+                    "query": query,
+                    "passages": passages,
+                    "normalize": True,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("reranker daemon returned a non-object score payload")
+        return payload
+
+    def _should_skip_restart(self) -> bool:
+        """Return whether the daemon startup cooldown is still active."""
+        payload = _load_runtime_json_object(self._failure_marker_path)
+        if payload is None:
+            return False
+        failed_at = payload.get("failed_at")
+        if not isinstance(failed_at, (int, float)):
+            return False
+        return time.time() - float(failed_at) < READ_CODE_RERANKER_DAEMON_FAILURE_COOLDOWN_SECONDS
+
+    def _record_startup_failure(self, reason: str) -> None:
+        """Persist a bounded failure marker so repeated queries do not thrash startup."""
+        _persist_runtime_json_object(
+            self._failure_marker_path,
+            {
+                "failed_at": time.time(),
+                "reason": reason[:200],
+                "model_name": self._model_name,
+            },
+            sort_keys=True,
+        )
+
+    def _clear_startup_failure(self) -> None:
+        """Remove the startup failure marker after a healthy daemon handshake."""
+        try:
+            self._failure_marker_path.unlink()
+        except FileNotFoundError:
+            return
+        except OSError:
+            return
+
+    def _failure_snapshot(self) -> tuple[str | None, float | None, bool]:
+        """Return the bounded failure marker state used by daemon status reporting."""
+        payload = _load_runtime_json_object(self._failure_marker_path)
+        if payload is None:
+            return None, None, False
+        failed_at = payload.get("failed_at")
+        reason = payload.get("reason")
+        if not isinstance(failed_at, (int, float)):
+            return str(reason) if isinstance(reason, str) else None, None, False
+        age = max(0.0, time.time() - float(failed_at))
+        return (
+            str(reason) if isinstance(reason, str) else None,
+            age,
+            age < READ_CODE_RERANKER_DAEMON_FAILURE_COOLDOWN_SECONDS,
+        )
+
+    def _process_alive(self, pid: int) -> bool:
+        """Return whether a PID currently exists without sending a signal."""
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+
+    def _remove_stale_artifacts(self) -> None:
+        """Remove dead-process or orphaned runtime artifacts under the startup lock."""
+        pid_payload = _load_runtime_json_object(self._pid_path) or {}
+        pid = pid_payload.get("pid")
+        pid_is_alive = isinstance(pid, int) and self._process_alive(pid)
+        if pid_is_alive:
+            return
+        for path in (self._pid_path, self._socket_path, self._endpoint_path):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                continue
+
+    def _launchctl_path(self) -> str | None:
+        """Return the launchctl executable path when the host provides it."""
+        return shutil.which("launchctl")
+
+    def _launchctl_domain_target(self) -> str:
+        """Return the per-user launchd bootstrap domain for this process."""
+        return f"gui/{os.getuid()}"
+
+    def _launchctl_service_target(self) -> str:
+        """Return the fully-qualified launchd service target for this repo daemon."""
+        return f"{self._launchctl_domain_target()}/{self._launch_agent_label}"
+
+    def _run_launchctl(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        """Execute launchctl with bounded captured output for lifecycle control."""
+        launchctl = self._launchctl_path()
+        if not launchctl:
+            raise RuntimeError("launchctl is not available on this host")
+        return subprocess.run(
+            [launchctl, *args],
+            capture_output=True,
+            text=True,
+            cwd=str(self._repo_root),
+            check=False,
+        )
+
+    def _managed_service_installed(self) -> bool:
+        """Return whether the launchd plist exists for this repo daemon."""
+        return self._launch_agent_path.is_file()
+
+    def _managed_service_loaded(self) -> bool:
+        """Return whether launchd currently knows about the managed daemon service."""
+        if not self._managed_service_installed() or self._launchctl_path() is None:
+            return False
+        result = self._run_launchctl(["print", self._launchctl_service_target()])
+        return result.returncode == 0
+
+    def _launch_agent_plist_payload(self) -> dict[str, object]:
+        """Build the launchd plist payload for the managed reranker daemon."""
+        uv_path = shutil.which("uv") or "uv"
+        self._runtime_dir.mkdir(parents=True, exist_ok=True)
+        return {
+            "Label": self._launch_agent_label,
+            "ProgramArguments": [
+                uv_path,
+                "run",
+                "--no-sync",
+                "python",
+                "-m",
+                "src.mcp_codebase.index.reranker_daemon",
+                "--repo-root",
+                str(self._repo_root),
+                "--socket-path",
+                str(self._socket_path),
+                "--pid-file",
+                str(self._pid_path),
+                "--endpoint-file",
+                str(self._endpoint_path),
+                "--log-file",
+                str(self._log_path),
+                "--tcp-port",
+                str(self._tcp_port),
+                "--reranker-model",
+                self._model_name,
+            ],
+            "WorkingDirectory": str(self._repo_root),
+            "RunAtLoad": True,
+            "KeepAlive": True,
+            "StandardOutPath": str(self._log_path),
+            "StandardErrorPath": str(self._log_path),
+            "ProcessType": "Background",
+        }
+
+    def _write_launch_agent_plist(self) -> None:
+        """Persist the managed-service launchd plist for this repo daemon."""
+        self._launch_agent_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self._launch_agent_plist_payload()
+        with self._launch_agent_path.open("wb") as handle:
+            plistlib.dump(payload, handle, sort_keys=True)
+
+    def _bootout_managed_service(self) -> None:
+        """Best-effort stop/remove of the launchd-managed daemon instance."""
+        if self._launchctl_path() is None or not self._managed_service_installed():
+            return
+        for args in (
+            ["bootout", self._launchctl_domain_target(), str(self._launch_agent_path)],
+            ["bootout", self._launchctl_service_target()],
+        ):
+            result = self._run_launchctl(args)
+            if result.returncode == 0:
+                break
+
+    def _start_managed_service(self, *, force: bool) -> None:
+        """Start or restart the launchd-managed daemon for this repo."""
+        if not self._managed_service_installed():
+            raise RuntimeError("managed daemon is not installed")
+        if force:
+            self._bootout_managed_service()
+        if not self._managed_service_loaded():
+            result = self._run_launchctl(["bootstrap", self._launchctl_domain_target(), str(self._launch_agent_path)])
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "").strip()
+                raise RuntimeError(f"launchctl bootstrap failed: {detail or 'unknown error'}")
+        result = self._run_launchctl(["kickstart", "-k", self._launchctl_service_target()])
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(f"launchctl kickstart failed: {detail or 'unknown error'}")
+
+    def _spawn_daemon(self) -> None:
+        """Launch the daemon as a detached process that logs to the runtime log file."""
+        self._runtime_dir.mkdir(parents=True, exist_ok=True)
+        self._remove_stale_artifacts()
+        log_handle = self._log_path.open("a", encoding="utf-8")
+        try:
+            subprocess.Popen(
+                [
+                    "uv",
+                    "run",
+                    "--no-sync",
+                    "python",
+                    "-m",
+                    "src.mcp_codebase.index.reranker_daemon",
+                    "--repo-root",
+                    str(self._repo_root),
+                    "--socket-path",
+                    str(self._socket_path),
+                    "--pid-file",
+                    str(self._pid_path),
+                    "--endpoint-file",
+                    str(self._endpoint_path),
+                    "--log-file",
+                    str(self._log_path),
+                    "--tcp-port",
+                    str(self._tcp_port),
+                    "--reranker-model",
+                    self._model_name,
+                ],
+                cwd=str(self._repo_root),
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                close_fds=True,
+            )
+        finally:
+            log_handle.close()
+
+    def _wait_for_ready(self) -> dict[str, object] | None:
+        """Poll daemon health until ready or the startup timeout elapses."""
+        deadline = time.time() + READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS
+        while time.time() < deadline:
+            payload = self._health()
+            if payload is not None:
+                return payload
+            time.sleep(READ_CODE_RERANKER_DAEMON_HEALTH_POLL_INTERVAL_SECONDS)
+        return None
+
+    @contextmanager
+    def _startup_lock(self):
+        """Serialize daemon launches across concurrent read_code client processes."""
+        self._runtime_dir.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def _ensure_healthy(self) -> dict[str, object] | None:
+        """Return health payload after lock-guarded startup or fallback cooldown."""
+        healthy = self._health()
+        if healthy is not None:
+            self._clear_startup_failure()
+            return healthy
+        if self._should_skip_restart():
+            return None
+        with self._startup_lock():
+            healthy = self._health()
+            if healthy is not None:
+                self._clear_startup_failure()
+                return healthy
+            self._remove_stale_artifacts()
+            pid_payload = _load_runtime_json_object(self._pid_path) or {}
+            pid = pid_payload.get("pid")
+            if isinstance(pid, int) and self._process_alive(pid):
+                healthy = self._wait_for_ready()
+                if healthy is not None:
+                    self._clear_startup_failure()
+                    return healthy
+                self._record_startup_failure("daemon process is alive but never reported healthy")
+                return None
+            try:
+                if self._managed_service_installed() and self._launchctl_path() is not None:
+                    self._start_managed_service(force=False)
+                else:
+                    self._spawn_daemon()
+            except Exception as exc:
+                self._record_startup_failure(f"spawn failed: {exc}")
+                return None
+            healthy = self._wait_for_ready()
+            if healthy is not None:
+                self._clear_startup_failure()
+                return healthy
+            self._record_startup_failure("health probe timed out after daemon launch")
+            return None
+
+    def status(self) -> _DaemonStatus:
+        """Return the current daemon health, endpoint, and cooldown state."""
+        health = self._health()
+        if health is not None:
+            self._clear_startup_failure()
+        pid_payload = _load_runtime_json_object(self._pid_path) or {}
+        pid_value = pid_payload.get("pid")
+        pid = int(pid_value) if isinstance(pid_value, int) else None
+        failure_reason, failure_age_seconds, cooldown_active = self._failure_snapshot()
+        transport, endpoint = self._endpoint_snapshot()
+        return _DaemonStatus(
+            healthy=health is not None,
+            transport=transport,
+            endpoint=endpoint,
+            pid=int(health.get("pid")) if health is not None and isinstance(health.get("pid"), int) else pid,
+            model_loaded=bool(health.get("model_loaded")) if health is not None else False,
+            model_name=str(health.get("model_name")) if health is not None and health.get("model_name") else self._model_name,
+            startup_timestamp=float(health.get("started_at")) if health is not None and isinstance(health.get("started_at"), (int, float)) else None,
+            build_fingerprint=str(health.get("build_fingerprint")) if health is not None and health.get("build_fingerprint") else None,
+            failure_reason=failure_reason,
+            failure_age_seconds=failure_age_seconds,
+            cooldown_active=cooldown_active,
+            log_path=self._log_path,
+            managed=self._managed_service_installed(),
+            launch_agent_loaded=self._managed_service_loaded(),
+            launch_agent_label=self._launch_agent_label,
+            launch_agent_path=self._launch_agent_path,
+        )
+
+    def start(self, *, force: bool = False) -> _DaemonStatus:
+        """Ensure the daemon is running, optionally clearing the restart cooldown first."""
+        if force:
+            self._clear_startup_failure()
+        if self._managed_service_installed() and self._launchctl_path() is not None:
+            try:
+                self._start_managed_service(force=force)
+            except Exception as exc:
+                self._record_startup_failure(f"managed start failed: {exc}")
+        self._ensure_healthy()
+        return self.status()
+
+    def stop(self, *, timeout_seconds: float = 5.0) -> bool:
+        """Stop the managed daemon process when a live PID marker is present."""
+        if self._managed_service_installed() and self._launchctl_path() is not None:
+            self._bootout_managed_service()
+            deadline = time.time() + timeout_seconds
+            while time.time() < deadline:
+                if not self._managed_service_loaded():
+                    break
+                time.sleep(0.1)
+            self._remove_stale_artifacts()
+            self._clear_startup_failure()
+            return True
+        pid_payload = _load_runtime_json_object(self._pid_path) or {}
+        pid = pid_payload.get("pid")
+        if not isinstance(pid, int) or not self._process_alive(pid):
+            self._remove_stale_artifacts()
+            return False
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            self._remove_stale_artifacts()
+            return False
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            if not self._process_alive(pid):
+                break
+            time.sleep(0.1)
+        self._remove_stale_artifacts()
+        self._clear_startup_failure()
+        return True
+
+    def install_managed_service(self, *, force: bool = False) -> _DaemonStatus:
+        """Install and start the repo-scoped launchd service for the reranker daemon."""
+        if force:
+            self._clear_startup_failure()
+        self._write_launch_agent_plist()
+        try:
+            self._start_managed_service(force=force)
+        except Exception as exc:
+            self._record_startup_failure(f"managed install failed: {exc}")
+        self._ensure_healthy()
+        return self.status()
+
+    def uninstall_managed_service(self) -> bool:
+        """Remove the repo-scoped launchd service and clear runtime markers."""
+        if self._managed_service_installed():
+            self._bootout_managed_service()
+        removed = False
+        try:
+            self._launch_agent_path.unlink()
+            removed = True
+        except FileNotFoundError:
+            removed = False
+        except OSError:
+            removed = False
+        self._remove_stale_artifacts()
+        self._clear_startup_failure()
+        return removed
+
+    def log_tail(self, *, limit: int) -> list[str]:
+        """Return the bounded tail of the daemon log for operator inspection."""
+        if limit <= 0 or not self._log_path.is_file():
+            return []
+        try:
+            lines = self._log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return []
+        return lines[-limit:]
+
+
+@dataclass(frozen=True)
+class _RerankResult:
+    """Bounded semantic rerank outcome used by shortlist selection and metadata."""
+
+    candidates: list[_VectorMatch]
+    debug: _RerankDebugInfo
+    source: str
+
+
+@dataclass(frozen=True)
+class _DaemonStatus:
+    """Bounded daemon status snapshot used by CLI health reporting."""
+
+    healthy: bool
+    transport: str
+    endpoint: str
+    pid: int | None
+    model_loaded: bool
+    model_name: str | None
+    startup_timestamp: float | None
+    build_fingerprint: str | None
+    failure_reason: str | None
+    failure_age_seconds: float | None
+    cooldown_active: bool
+    log_path: Path
+    managed: bool
+    launch_agent_loaded: bool
+    launch_agent_label: str
+    launch_agent_path: Path
 
 
 @dataclass(frozen=True)
@@ -263,6 +791,15 @@ class _HistoryArgs:
     limit: int = READ_CODE_HISTORY_DEFAULT_LIMIT
 
 
+@dataclass(frozen=True)
+class _DaemonArgs:
+    """Parsed and validated arguments for read_code daemon control commands."""
+
+    command: str
+    limit: int = 40
+    force: bool = False
+
+
 def _read_code_reranker_model_name() -> str:
     """Return the configured query-time reranker model name."""
     from src.mcp_codebase.index.config import DEFAULT_RERANKER_MODEL_NAME
@@ -285,8 +822,29 @@ def _read_code_reranker_cache_present(model_name: str) -> bool:
 
 
 def _load_read_code_reranker() -> _ReadCodeRerankerBackend | None:
-    """Return None while query-time reranking is temporarily disabled."""
-    return None
+    """Return the shared daemon-backed reranker client for this read_code process."""
+    global _READ_CODE_RERANKER_BACKEND
+    if _READ_CODE_RERANKER_BACKEND is None:
+        _READ_CODE_RERANKER_BACKEND = _ReadCodeRerankerBackend(
+            _read_code_reranker_model_name(),
+            repo_root=REPO_ROOT,
+        )
+    return _READ_CODE_RERANKER_BACKEND
+
+
+def _load_read_code_vector_query_service():
+    """Return the shared in-process vector query service for this read_code process."""
+    global _READ_CODE_VECTOR_QUERY_SERVICE
+    if _READ_CODE_VECTOR_QUERY_SERVICE is None:
+        config = IndexConfig(
+            repo_root=REPO_ROOT,
+            db_path=REPO_ROOT / DEFAULT_VECTOR_DB_PATH,
+            embedding_model="local-default",
+            reranker_model="local-default-reranker",
+            exclude_patterns=load_exclude_patterns(),
+        )
+        _READ_CODE_VECTOR_QUERY_SERVICE = build_vector_index_service(config)
+    return _READ_CODE_VECTOR_QUERY_SERVICE
 
 
 
@@ -593,6 +1151,9 @@ def _store_search_scratchpad_entry(
     }
     if rerank_debug_payload is not None:
         entries[cache_key]["rerank_debug"] = rerank_debug_payload
+    rerank_source = query_payload.get("rerank_source")
+    if isinstance(rerank_source, str) and rerank_source:
+        entries[cache_key]["rerank_source"] = rerank_source
     _persist_search_scratchpad_entries(session_id, entries)
 
 
@@ -641,27 +1202,27 @@ def _append_search_metadata_event(
     result_source: str,
     elapsed_ms: float,
     signature: str,
+    rerank_source: str | None = None,
 ) -> None:
     """Append one bounded search metadata record for long-term local inspection."""
-    _append_jsonl_object(
-        _read_code_search_metadata_log_path(),
-        {
-            "ts": time.time(),
-            "session_id": _read_code_session_id(),
-            "command": command,
-            "subcommand": subcommand,
-            "query": query,
-            "query_shape": query_shape,
-            "file_path": str(file_path.resolve()) if file_path is not None else None,
-            "hit_count": hit_count,
-            "selected_candidate_index": selected_candidate_index,
-            "cache_hit": cache_hit,
-            "result_source": result_source,
-            "elapsed_ms": round(elapsed_ms, 3),
-            "repo_signature": signature,
-        },
-        sort_keys=True,
-    )
+    payload = {
+        "ts": time.time(),
+        "session_id": _read_code_session_id(),
+        "command": command,
+        "subcommand": subcommand,
+        "query": query,
+        "query_shape": query_shape,
+        "file_path": str(file_path.resolve()) if file_path is not None else None,
+        "hit_count": hit_count,
+        "selected_candidate_index": selected_candidate_index,
+        "cache_hit": cache_hit,
+        "result_source": result_source,
+        "elapsed_ms": round(elapsed_ms, 3),
+        "repo_signature": signature,
+    }
+    if rerank_source is not None:
+        payload["rerank_source"] = rerank_source
+    _append_jsonl_object(_read_code_search_metadata_log_path(), payload, sort_keys=True)
 
 
 def _load_search_metadata_events() -> list[dict[str, object]]:
@@ -991,38 +1552,50 @@ def _rerank_semantic_candidates(
     candidates: list[_VectorMatch],
     *,
     allow_test_files: bool,
-) -> tuple[list[_VectorMatch], _RerankDebugInfo]:
-    """Rescore the current shortlist window with the local reranker when available."""
+) -> _RerankResult:
+    """Rescore the current shortlist window with the daemon-backed reranker when available."""
     before_symbols = tuple(match.symbol_name or match.qualified_name for match in candidates[:READ_CODE_RERANK_CANDIDATE_LIMIT])
     if len(candidates) < 2:
-        return candidates, _RerankDebugInfo(
-            status="skipped",
-            model_name=None,
-            candidate_count=len(candidates),
-            changed=False,
-            before_symbols=before_symbols,
-            after_symbols=before_symbols,
+        return _RerankResult(
+            candidates=candidates,
+            debug=_RerankDebugInfo(
+                status="skipped",
+                model_name=None,
+                candidate_count=len(candidates),
+                changed=False,
+                before_symbols=before_symbols,
+                after_symbols=before_symbols,
+            ),
+            source="heuristic",
         )
     backend = _load_read_code_reranker()
     if backend is None:
-        return candidates, _RerankDebugInfo(
-            status="unavailable",
-            model_name=_read_code_reranker_model_name(),
-            candidate_count=len(candidates),
-            changed=False,
-            before_symbols=before_symbols,
-            after_symbols=before_symbols,
+        return _RerankResult(
+            candidates=candidates,
+            debug=_RerankDebugInfo(
+                status="unavailable",
+                model_name=_read_code_reranker_model_name(),
+                candidate_count=len(candidates),
+                changed=False,
+                before_symbols=before_symbols,
+                after_symbols=before_symbols,
+            ),
+            source="heuristic",
         )
     rerank_window = list(candidates[:READ_CODE_RERANK_CANDIDATE_LIMIT])
-    scores = backend.score_pairs(query, [_reranker_document_text(match) for match in rerank_window])
+    scores, source = backend.score_pairs(query, [_reranker_document_text(match) for match in rerank_window])
     if len(scores) != len(rerank_window):
-        return candidates, _RerankDebugInfo(
-            status="unavailable",
-            model_name=getattr(backend, "model_name", _read_code_reranker_model_name()),
-            candidate_count=len(candidates),
-            changed=False,
-            before_symbols=before_symbols,
-            after_symbols=before_symbols,
+        return _RerankResult(
+            candidates=candidates,
+            debug=_RerankDebugInfo(
+                status="unavailable",
+                model_name=getattr(backend, "model_name", _read_code_reranker_model_name()),
+                candidate_count=len(candidates),
+                changed=False,
+                before_symbols=before_symbols,
+                after_symbols=before_symbols,
+            ),
+            source="heuristic",
         )
     reranked = [
         match
@@ -1038,13 +1611,17 @@ def _rerank_semantic_candidates(
     ]
     ordered = reranked + candidates[READ_CODE_RERANK_CANDIDATE_LIMIT :]
     after_symbols = tuple(match.symbol_name or match.qualified_name for match in ordered[:READ_CODE_RERANK_CANDIDATE_LIMIT])
-    return ordered, _RerankDebugInfo(
-        status="applied",
-        model_name=getattr(backend, "model_name", _read_code_reranker_model_name()),
-        candidate_count=len(candidates),
-        changed=before_symbols != after_symbols,
-        before_symbols=before_symbols,
-        after_symbols=after_symbols,
+    return _RerankResult(
+        candidates=ordered,
+        debug=_RerankDebugInfo(
+            status="applied",
+            model_name=getattr(backend, "model_name", _read_code_reranker_model_name()),
+            candidate_count=len(candidates),
+            changed=before_symbols != after_symbols,
+            before_symbols=before_symbols,
+            after_symbols=after_symbols,
+        ),
+        source=source,
     )
 
 
@@ -1117,63 +1694,45 @@ def _vector_query_candidates(
     """Return the initial semantic retrieval window for one query scope."""
     if not query or not scope:
         return []
-    if not _command_exists("uv"):
-        _set_vector_runtime_note("uv is not available")
-        return []
-
-    cmd = _vector_indexer_cmd(
-        REPO_ROOT,
-        "query",
-        query,
-        "--scope",
-        scope,
-        "--top-k",
-        "20",
-    )
-    if file_path is not None:
-        cmd = _vector_indexer_cmd(
-            REPO_ROOT,
-            "query",
-            query,
-            "--file-path",
-            str(file_path.resolve()),
-            "--scope",
-            scope,
-            "--top-k",
-            "20",
-        )
-    proc = _run_command_capture(cmd, env=_vector_command_env())
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        if stderr:
-            _set_vector_runtime_note(f"indexer query failed: {stderr.splitlines()[0]}")
-        else:
-            _set_vector_runtime_note(f"indexer query failed with exit code {proc.returncode}")
-        return []
-
     try:
-        payload = json.loads(proc.stdout or "[]")
-    except json.JSONDecodeError:
-        _set_vector_runtime_note("indexer query returned invalid JSON")
+        index_scope = IndexScope(scope)
+    except ValueError:
         return []
-    if not isinstance(payload, list):
-        _set_vector_runtime_note("indexer query returned unexpected payload shape")
+    try:
+        service = _load_read_code_vector_query_service()
+        results = service.query(
+            query,
+            top_k=READ_CODE_RERANK_CANDIDATE_LIMIT,
+            scope=index_scope,
+            file_path=file_path.resolve() if file_path is not None else None,
+        )
+    except Exception as exc:
+        _set_vector_runtime_note(f"indexer query failed: {exc}")
         return []
 
     target = file_path.resolve() if file_path is not None else None
     matches: list[_VectorMatch] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        candidate = _candidate_text(item, "file_path")
-        if not candidate:
-            continue
+    for result in results:
+        candidate = str(result.file_path)
         if target is not None:
             try:
-                if Path(candidate).expanduser().resolve() != target:
+                if Path(candidate).resolve() != target:
                     continue
             except Exception:
                 continue
+        item = {
+            "file_path": candidate,
+            "line_start": result.line_start,
+            "line_end": result.line_end,
+            "score": result.score,
+            "body": result.body,
+            "preview": result.preview,
+            "signature": result.signature,
+            "docstring": result.docstring,
+            "symbol_type": result.symbol_type,
+            "symbol_name": getattr(result.content, "symbol_name", ""),
+            "qualified_name": getattr(result.content, "qualified_name", ""),
+        }
         match = _vector_match_for_item(item, query, normalized_query)
         if match is None:
             continue
@@ -1445,7 +2004,7 @@ def _query_semantic_anchor_candidate_with_debug(
     content_type: str | None,
     request_scope: _ContextQueryScope | None = None,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool, _RerankDebugInfo | None]:
-    """Query ranked candidates and select a semantic anchor with heuristic ordering only."""
+    """Query ranked candidates and select a semantic anchor with daemon reranking fallback."""
     candidate_scopes = _semantic_anchor_candidate_scopes(request_scope, content_type)
     allow_test_files = _is_explicit_test_targeting(file_path, content_type)
     code_candidates = _vector_find_candidates(
@@ -1474,8 +2033,14 @@ def _query_semantic_anchor_candidate_with_debug(
         ],
         key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
         reverse=True,
-    )[:READ_CODE_FINAL_SHORTLIST_LIMIT]
-    rerank_debug = None
+    )
+    rerank_result = _rerank_semantic_candidates(
+        pattern,
+        vector_candidates,
+        allow_test_files=allow_test_files,
+    )
+    vector_candidates = rerank_result.candidates[:READ_CODE_FINAL_SHORTLIST_LIMIT]
+    rerank_debug = rerank_result.debug
     vector_match, candidate_error = _select_semantic_anchor_candidate(vector_candidates, candidate_index)
     if candidate_error is not None:
         print(f"ERROR: {candidate_error}", file=sys.stderr)
@@ -1519,6 +2084,13 @@ def _render_rerank_debug(debug: _RerankDebugInfo, *, result_source: str) -> None
     print(f"result_source: {result_source}")
     print(f"before: {' | '.join(debug.before_symbols) if debug.before_symbols else '(empty)'}")
     print(f"after: {' | '.join(debug.after_symbols) if debug.after_symbols else '(empty)'}")
+
+
+def _rerank_source_for_debug(debug: _RerankDebugInfo | None) -> str:
+    """Return the persisted rerank source label for one shortlist resolution."""
+    if debug is None or debug.status != "applied":
+        return "heuristic"
+    return "daemon"
 
 
 def _broad_read_trusts_vector_cache(
@@ -1597,6 +2169,7 @@ def _resolve_pattern_anchor(
                 strict_status=0,
                 line_num=line_num,
                 rerank_debug=None,
+                rerank_source="heuristic",
             )
         return None
 
@@ -1667,6 +2240,7 @@ def _resolve_pattern_anchor(
                 strict_status=0,
                 line_num=line_num,
                 rerank_debug=rerank_debug,
+                rerank_source=_rerank_source_for_debug(rerank_debug),
             )
         _emit_vector_fallback_notice(
             file_path=file_path,
@@ -1680,6 +2254,7 @@ def _resolve_pattern_anchor(
         strict_status=0,
         line_num=line_num,
         rerank_debug=rerank_debug,
+        rerank_source=_rerank_source_for_debug(rerank_debug),
     )
 
 
@@ -2059,6 +2634,58 @@ def _parse_history_args(argv: list[str]) -> _HistoryArgs | None:
     return _HistoryArgs(command=command, limit=limit)
 
 
+def _parse_daemon_args(argv: list[str]) -> _DaemonArgs | None:
+    """Parse read_code daemon commands for lifecycle management and log inspection."""
+    if not argv:
+        print(
+            "ERROR: daemon mode requires a command (status | start | install | uninstall | stop | logs)",
+            file=sys.stderr,
+        )
+        return None
+    command = argv[0]
+    if command not in {"status", "start", "install", "uninstall", "stop", "logs"}:
+        print(
+            f"ERROR: Unknown daemon command '{command}'. Use: status | start | install | uninstall | stop | logs",
+            file=sys.stderr,
+        )
+        return None
+    if command == "status":
+        if len(argv) != 1:
+            print("ERROR: daemon status does not accept extra arguments", file=sys.stderr)
+            return None
+        return _DaemonArgs(command=command)
+    if command == "uninstall":
+        if len(argv) != 1:
+            print("ERROR: daemon uninstall does not accept extra arguments", file=sys.stderr)
+            return None
+        return _DaemonArgs(command=command)
+    if command == "stop":
+        if len(argv) != 1:
+            print("ERROR: daemon stop does not accept extra arguments", file=sys.stderr)
+            return None
+        return _DaemonArgs(command=command)
+    if command in {"start", "install"}:
+        force = False
+        for token in argv[1:]:
+            if token == "--force":
+                force = True
+                continue
+            print(f"ERROR: Unknown daemon {command} argument '{token}'", file=sys.stderr)
+            return None
+        return _DaemonArgs(command=command, force=force)
+    limit = 40
+    if len(argv) > 2:
+        print("ERROR: daemon logs accepts at most one optional line limit", file=sys.stderr)
+        return None
+    if len(argv) == 2:
+        limit_raw = argv[1]
+        if not limit_raw.isdigit() or int(limit_raw, 10) <= 0:
+            print(f"ERROR: daemon logs limit must be a positive integer: {limit_raw}", file=sys.stderr)
+            return None
+        limit = min(int(limit_raw, 10), 200)
+    return _DaemonArgs(command=command, limit=limit)
+
+
 def _repo_local_find_path(path: Path | None) -> bool:
     """Return whether a parsed find location points at repo-owned source content."""
     if path is None:
@@ -2220,7 +2847,8 @@ def _context_resolution_from_cached_entry(
         vector_match=vector_match,
         strict_status=0,
         line_num=line_num,
-        rerank_debug=None,
+        rerank_debug=_deserialize_rerank_debug(entry.get("rerank_debug")),
+        rerank_source=str(entry.get("rerank_source") or "heuristic"),
     ), True
 
 
@@ -2284,11 +2912,13 @@ def _resolve_pattern_anchor_with_scratchpad(
         request_scope=request_scope,
     )
     if resolution is not None:
+        store_query_payload = dict(query_payload)
+        store_query_payload["rerank_source"] = resolution.rerank_source
         _store_search_scratchpad_entry(
             session_id,
             cache_key,
             command="context",
-            query_payload=query_payload,
+            query_payload=store_query_payload,
             signature=signature,
             matches_payload=[_serialize_vector_match(match) for match in resolution.vector_candidates],
             rerank_debug_payload=(
@@ -2332,6 +2962,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
             result_source="scratchpad" if cache_hit else "backend",
             elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
             signature=signature,
+            rerank_source="heuristic",
         )
         return 1
     vector_candidates = resolution.vector_candidates
@@ -2352,6 +2983,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
             result_source="scratchpad" if cache_hit else "backend",
             elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
             signature=signature,
+            rerank_source=resolution.rerank_source,
         )
         return 1
 
@@ -2369,6 +3001,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
             result_source="scratchpad" if cache_hit else "backend",
             elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
             signature=signature,
+            rerank_source=resolution.rerank_source,
         )
         return 1
 
@@ -2383,6 +3016,11 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
     )
     if parsed.inline_body:
         _render_read_context_inline_body(vector_match, line_num, parsed.context)
+    if parsed.show_rerank and resolution.rerank_debug is not None:
+        _render_rerank_debug(
+            resolution.rerank_debug,
+            result_source=resolution.rerank_source,
+        )
 
     _append_search_metadata_event(
         command="context",
@@ -2396,6 +3034,7 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         result_source="scratchpad" if cache_hit else "backend",
         elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
         signature=signature,
+        rerank_source=resolution.rerank_source,
     )
     return 0
 
@@ -2443,6 +3082,74 @@ def read_code_history(argv: list[str], *, verbose: bool = False) -> int:
         _render_history_recent(events, limit=parsed.limit)
         return 0
     _render_history_stats(events)
+    return 0
+
+
+def _render_daemon_status(status: _DaemonStatus) -> None:
+    """Render a bounded daemon health snapshot for operator inspection."""
+    print("daemon_command: status")
+    print(f"healthy: {'true' if status.healthy else 'false'}")
+    print(f"managed: {'true' if status.managed else 'false'}")
+    print(f"launch_agent_loaded: {'true' if status.launch_agent_loaded else 'false'}")
+    print(f"launch_agent_label: {status.launch_agent_label}")
+    print(f"launch_agent_path: {status.launch_agent_path}")
+    print(f"transport: {status.transport}")
+    print(f"endpoint: {status.endpoint}")
+    print(f"pid: {status.pid if status.pid is not None else 'none'}")
+    print(f"model_loaded: {'true' if status.model_loaded else 'false'}")
+    print(f"model_name: {status.model_name or 'unknown'}")
+    print(f"build_fingerprint: {status.build_fingerprint or 'unknown'}")
+    if status.startup_timestamp is not None:
+        print(f"started_at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(status.startup_timestamp))}")
+    else:
+        print("started_at: unknown")
+    print(f"cooldown_active: {'true' if status.cooldown_active else 'false'}")
+    if status.failure_reason:
+        print(f"failure_reason: {status.failure_reason}")
+    if status.failure_age_seconds is not None:
+        print(f"failure_age_seconds: {status.failure_age_seconds:.2f}")
+    print(f"log_path: {status.log_path}")
+
+
+def read_code_daemon(argv: list[str], *, verbose: bool = False) -> int:
+    """Inspect or manage the local reranker daemon lifecycle."""
+    _ = verbose
+    parsed = _parse_daemon_args(argv)
+    if parsed is None:
+        return 1
+    backend = _load_read_code_reranker()
+    if backend is None:
+        print("ERROR: reranker daemon backend is unavailable", file=sys.stderr)
+        return 1
+    if parsed.command == "status":
+        _render_daemon_status(backend.status())
+        return 0
+    if parsed.command == "start":
+        _render_daemon_status(backend.start(force=parsed.force))
+        return 0
+    if parsed.command == "install":
+        _render_daemon_status(backend.install_managed_service(force=parsed.force))
+        return 0
+    if parsed.command == "uninstall":
+        removed = backend.uninstall_managed_service()
+        print("daemon_command: uninstall")
+        print(f"removed: {'true' if removed else 'false'}")
+        return 0
+    if parsed.command == "stop":
+        stopped = backend.stop()
+        print("daemon_command: stop")
+        print(f"stopped: {'true' if stopped else 'false'}")
+        return 0
+    print("daemon_command: logs")
+    print(f"log_path: {backend.status().log_path}")
+    lines = backend.log_tail(limit=parsed.limit)
+    print(f"line_count: {len(lines)}")
+    if not lines:
+        print("# no daemon log lines")
+        return 0
+    print("# tail")
+    for line in lines:
+        print(line)
     return 0
 
 
@@ -2718,6 +3425,9 @@ def _print_usage() -> None:
     print(
         "  read_code history <recent [limit] | stats>"
     )
+    print(
+        "  read_code daemon  <status | start [--force] | install [--force] | uninstall | stop | logs [limit]>"
+    )
     print("  --verbose / -v    show detailed vector preflight diagnostics")
     print("\nModes:")
     print("  context:  Resolve anchor semantically and show metadata (opt-in body/lines).")
@@ -2725,6 +3435,7 @@ def _print_usage() -> None:
     print("  analyze:  Graph discovery via CodeGraph with one-match-at-a-time shortlist stepping when table output is available.")
     print("  find:     Structural search via CodeGraph with one-match-at-a-time shortlist stepping.")
     print("  history:  Inspect bounded recent search events and aggregate cache/timing stats.")
+    print("  daemon:   Inspect or control the local reranker daemon lifecycle.")
 
 
 def main(argv: list[str]) -> int:
@@ -2758,8 +3469,10 @@ def main(argv: list[str]) -> int:
         return read_code_find(args, verbose=verbose)
     if mode == "history":
         return read_code_history(args, verbose=verbose)
+    if mode == "daemon":
+        return read_code_daemon(args, verbose=verbose)
 
-    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | headings | analyze | find | history", file=sys.stderr)
+    print(f"ERROR: Unknown mode '{mode}'. Use: context | window | headings | analyze | find | history | daemon", file=sys.stderr)
     return 1
 
 

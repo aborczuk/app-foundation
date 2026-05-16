@@ -259,8 +259,14 @@ class VectorIndexService:
         return self._store.ensure_reranker_model_local()
 
     def ensure_local_models(self) -> dict[str, object]:
-        """Prime and report only the embedding cache while reranking is disabled."""
-        return self.ensure_embedding_model_local()
+        """Prime and report both local model caches required for retrieval and reranking."""
+        payload = self.ensure_embedding_model_local()
+        payload.update(self.ensure_reranker_model_local())
+        return payload
+
+    def rerank_scores(self, query: str, passages: Sequence[str]) -> dict[str, object]:
+        """Return local reranker scores for one query over a bounded shortlist window."""
+        return self._store.rerank_scores(query, passages)
 
     def _collect_content_units(
         self,

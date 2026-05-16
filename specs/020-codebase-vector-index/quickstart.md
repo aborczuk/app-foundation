@@ -62,8 +62,15 @@ uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap --sk
 The index is exposed through the existing `src/mcp_codebase` package. Expected entry points:
 
 ```bash
-# Ensure the local embedding model is available (and optionally build immediately)
+# Ensure the local embedding and reranker models are available (and optionally build immediately)
 uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap --skip-build
+
+# Install the long-lived local reranker daemon under launchd on macOS
+uv run --no-sync python scripts/read_code.py daemon install --force
+
+# Inspect the managed daemon state and recent logs
+uv run --no-sync python scripts/read_code.py daemon status
+uv run --no-sync python scripts/read_code.py daemon logs 50
 
 # Build or refresh the index
 uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . build

@@ -222,6 +222,14 @@ class ChromaIndexStore:
             "reranker_model_cache_present": model_cache_path.exists(),
         }
 
+    def rerank_scores(self, query: str, passages: Sequence[str]) -> dict[str, object]:
+        """Return local reranker scores for one query over a bounded passage window."""
+        backend = self._ensure_reranker_backend()
+        return {
+            "model_name": backend.model_name,
+            "scores": backend.rerank_scores(query, passages),
+        }
+
     def write_snapshot(
         self,
         content_units: Sequence[CodeSymbol | MarkdownSection],
@@ -419,11 +427,7 @@ class ChromaIndexStore:
 
     def status(self) -> IndexMetadata | None:
         """Return the active snapshot metadata if the index exists."""
-        snapshot = self.load_snapshot()
-        if snapshot is None:
-            return None
-        metadata, _ = snapshot
-        return metadata
+        return self._load_active_metadata()
 
     def query(
         self,
@@ -434,11 +438,9 @@ class ChromaIndexStore:
         file_path: str | Path | None = None,
     ) -> list[QueryResult]:
         """Return ranked query results from the active snapshot."""
-        snapshot = self.load_snapshot()
-        if snapshot is None or not query_text.strip():
+        metadata = self._load_active_metadata()
+        if metadata is None or not query_text.strip():
             return []
-
-        metadata, _ = snapshot
         collection = self._open_collection(Path(metadata.snapshot_path), metadata.collection_name, create=False)
         try:
             query_embedding = self._embed_texts([query_text])[0]
@@ -488,11 +490,9 @@ class ChromaIndexStore:
 
     def list_file_code_symbols(self, file_path: str | Path) -> list[CodeSymbol]:
         """Return deterministic code symbols for a single file from the active snapshot."""
-        snapshot = self.load_snapshot()
-        if snapshot is None:
+        metadata = self._load_active_metadata()
+        if metadata is None:
             return []
-
-        metadata, _ = snapshot
         normalized_file = _normalize_index_path(file_path, self._config.repo_root)
         collection = self._open_collection(
             Path(metadata.snapshot_path),

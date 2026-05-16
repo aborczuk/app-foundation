@@ -96,13 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="Ensure the embedding model is cached locally and optionally build a full snapshot",
+        help="Ensure the embedding and reranker models are cached locally and optionally build a full snapshot",
     )
     bootstrap.add_argument("--revision", default="local")
     bootstrap.add_argument(
         "--skip-build",
         action="store_true",
-        help="Only prime/check the embedding model cache without building embeddings.",
+        help="Only prime/check the local model caches without building embeddings.",
     )
 
     return parser
