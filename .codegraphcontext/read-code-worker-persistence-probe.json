@@ -1,0 +1,9 @@
+{
+  "build_fingerprint": "3746594e634b0d2c",
+  "captured_at": 1779028148.141404,
+  "model_name": "BAAI/bge-reranker-v2-m3",
+  "ok": true,
+  "parent_pid": 24412,
+  "pid": 24412,
+  "started_at": 1779028146.998871
+}
