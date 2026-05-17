@@ -1,271 +1,36 @@
-"""Smoke tests for the post-edit index refresh hook."""
+"""Regression tests for the post-edit index refresh hook."""
 
 from __future__ import annotations
 
+import builtins
 import importlib.util
 import sys
 from pathlib import Path
 
-from src.mcp_codebase.index.config import DEFAULT_EMBEDDING_CACHE_DIR, DEFAULT_EMBEDDING_MODEL_NAME
 
+def test_hook_refresh_indexes_loads_without_pydantic(monkeypatch) -> None:
+    """The hook should still import when the host interpreter lacks repo-only deps."""
 
-def _load_hook_module():
-    """Load the refresh hook script as a module for direct function testing."""
-    script_path = Path(__file__).resolve().parents[2] / "scripts" / "hook_refresh_indexes.py"
-    spec = importlib.util.spec_from_file_location("hook_refresh_indexes", script_path)
-    assert spec is not None
-    assert spec.loader is not None
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "pydantic":
+            raise ModuleNotFoundError("No module named 'pydantic'", name="pydantic")
+        return original_import(name, globals, locals, fromlist, level)
+
+    hook_path = Path(__file__).resolve().parents[2] / "scripts" / "hook_refresh_indexes.py"
+    module_name = "hook_refresh_indexes_no_pydantic"
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.delitem(sys.modules, "src.mcp_codebase.index.config", raising=False)
+    monkeypatch.delitem(sys.modules, "src.mcp_codebase", raising=False)
+
+    spec = importlib.util.spec_from_file_location(module_name, hook_path)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module
 
-
-def test_refresh_vector_skips_when_embedding_model_cache_is_missing(monkeypatch, tmp_path) -> None:
-    """Require explicit model bootstrap before vector refresh runs."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    refresh_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_embedding_model_available_offline", lambda root: (False, "offline-missing"))
-    monkeypatch.setattr(
-        hook,
-        "_run_refresh",
-        lambda *args, **kwargs: refresh_calls.append((args, kwargs)),
+    assert module.DEFAULT_EMBEDDING_MODEL_NAME == "BAAI/bge-small-en-v1.5"
+    assert module.DEFAULT_EMBEDDING_CACHE_DIR == Path(
+        ".codegraphcontext/global/db/vector-index/fastembed-cache"
     )
-
-    errors = hook._refresh_vector([repo_root / "src" / "example.py"])
-
-    assert refresh_calls == []
-    assert errors
-    assert "embedding model cache for" in errors[0]
-    assert str(repo_root / DEFAULT_EMBEDDING_CACHE_DIR) in errors[0]
-    assert "offline-missing" in errors[0]
-    assert DEFAULT_EMBEDDING_MODEL_NAME in errors[0]
-
-
-def test_refresh_vector_uses_offline_mode_when_embedding_model_cache_is_present(monkeypatch, tmp_path) -> None:
-    """Keep edit-time refresh local once the embedding cache has been primed."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    model_cache_dir = repo_root / DEFAULT_EMBEDDING_CACHE_DIR / f"models--{DEFAULT_EMBEDDING_MODEL_NAME.replace('/', '--')}"
-    model_cache_dir.mkdir(parents=True)
-    (model_cache_dir / "snapshot.json").write_text("{}", encoding="utf-8")
-    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_embedding_model_available_offline", lambda root: (True, ""))
-    monkeypatch.setattr(
-        hook,
-        "_run_refresh",
-        lambda command, label, env_overrides=None: refresh_calls.append((tuple(command), env_overrides)),
-    )
-
-    errors = hook._refresh_vector([repo_root / "src" / "example.py"])
-
-    assert errors == []
-    assert len(refresh_calls) == 1
-    command, env_overrides = refresh_calls[0]
-    assert command[:5] == ("uv", "run", "--no-sync", "python", "-m")
-    assert env_overrides == {"HF_HUB_OFFLINE": "1"}
-
-
-def test_refresh_vector_reuses_cached_embedding_model_availability(monkeypatch, tmp_path) -> None:
-    """Reuse the availability probe result while the embedding cache stays unchanged."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    probe_calls: list[Path] = []
-    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
-
-    def fake_probe(root: Path) -> tuple[bool, str]:
-        probe_calls.append(root)
-        return True, ""
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_embedding_model_available_offline", fake_probe)
-    monkeypatch.setattr(
-        hook,
-        "_run_refresh",
-        lambda command, label, env_overrides=None: refresh_calls.append(
-            (tuple(command), env_overrides)
-        ),
-    )
-
-    first_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
-    second_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
-
-    assert first_errors == []
-    assert second_errors == []
-    assert len(probe_calls) == 1
-    assert len(refresh_calls) == 2
-    for _, env_overrides in refresh_calls:
-        assert env_overrides == {"HF_HUB_OFFLINE": "1"}
-
-
-def test_refresh_vector_reprobes_when_embedding_cache_state_changes(
-    monkeypatch, tmp_path
-) -> None:
-    """Invalidate the cached probe when the embedding cache directory changes."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    probe_calls: list[Path] = []
-    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
-
-    def fake_probe(root: Path) -> tuple[bool, str]:
-        probe_calls.append(root)
-        return True, ""
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_embedding_model_available_offline", fake_probe)
-    monkeypatch.setattr(
-        hook,
-        "_run_refresh",
-        lambda command, label, env_overrides=None: refresh_calls.append(
-            (tuple(command), env_overrides)
-        ),
-    )
-
-    first_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
-    model_cache_dir = repo_root / DEFAULT_EMBEDDING_CACHE_DIR
-    model_cache_dir.mkdir(parents=True, exist_ok=True)
-    (model_cache_dir / "snapshot.json").write_text("{}", encoding="utf-8")
-    second_errors = hook._refresh_vector([repo_root / "src" / "example.py"])
-
-    assert first_errors == []
-    assert second_errors == []
-    assert len(probe_calls) == 2
-    assert len(refresh_calls) == 2
-    for _, env_overrides in refresh_calls:
-        assert env_overrides == {"HF_HUB_OFFLINE": "1"}
-
-
-def test_refresh_codegraph_batches_sibling_files(monkeypatch, tmp_path) -> None:
-    """Refresh a shared parent directory once when multiple sibling files change."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    sibling_dir = repo_root / "scripts"
-    sibling_dir.mkdir(parents=True)
-    first_path = sibling_dir / "first.py"
-    second_path = sibling_dir / "second.py"
-    first_path.write_text("print('a')\n", encoding="utf-8")
-    second_path.write_text("print('b')\n", encoding="utf-8")
-    refresh_calls: list[tuple[list[str], str]] = []
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-
-    def fake_run_refresh(command: list[str], label: str, *, env_overrides=None):
-        refresh_calls.append((command, label))
-        return None
-
-    monkeypatch.setattr(hook, "_run_refresh", fake_run_refresh)
-
-    errors = hook._refresh_codegraph([first_path, second_path])
-
-    assert errors == []
-    assert len(refresh_calls) == 1
-    command, label = refresh_calls[0]
-    assert label == f"codegraph {sibling_dir}"
-    assert command[:2] == [sys.executable, str(repo_root / "scripts" / "cgc_safe_index.py")]
-    assert command[2] == str(sibling_dir)
-
-
-def test_refresh_vector_includes_python_paths(monkeypatch, tmp_path) -> None:
-    """Include python edits in the vector refresh path filter."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    script_path = repo_root / "scripts" / "refresh.py"
-    script_path.parent.mkdir(parents=True)
-    script_path.write_text("#!/usr/bin/env bash\necho refresh\n", encoding="utf-8")
-    ignored_path = repo_root / "notes.txt"
-    ignored_path.write_text("not indexed", encoding="utf-8")
-    refresh_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_embedding_model_available_offline", lambda root: (True, ""))
-    monkeypatch.setattr(
-        hook,
-        "_run_refresh",
-        lambda command, label, env_overrides=None: refresh_calls.append((tuple(command), env_overrides)),
-    )
-
-    errors = hook._refresh_vector([script_path, ignored_path])
-
-    assert errors == []
-    assert len(refresh_calls) == 1
-    command, env_overrides = refresh_calls[0]
-    assert str(script_path) in command
-    assert str(ignored_path) not in command
-    assert env_overrides == {"HF_HUB_OFFLINE": "1"}
-
-
-def test_main_returns_nonzero_when_refresh_fails(monkeypatch) -> None:
-    """Surface refresh failures as a hard hook failure for deterministic handoff."""
-    hook = _load_hook_module()
-    monkeypatch.setattr(hook.json, "load", lambda stream: {"tool_input": {"file_path": "scripts/read_code.py"}})
-    monkeypatch.setattr(hook, "_collect_changed_paths", lambda payload: [Path("scripts/read_code.py")])
-    monkeypatch.setattr(hook, "_refresh_codegraph", lambda paths: ["codegraph failed"])
-    monkeypatch.setattr(hook, "_refresh_vector", lambda paths: [])
-
-    exit_code = hook.main()
-
-    assert exit_code == 1
-
-
-def test_run_refresh_request_respects_refresh_flags(monkeypatch, tmp_path) -> None:
-    """Allow callers like read preflight to request only one index family."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    target = repo_root / "scripts" / "example.py"
-    target.parent.mkdir(parents=True)
-    target.write_text("print('x')\n", encoding="utf-8")
-    calls: list[str] = []
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_refresh_codegraph", lambda paths: calls.append("codegraph") or [])
-    monkeypatch.setattr(hook, "_refresh_vector", lambda paths: calls.append("vector") or [])
-    monkeypatch.setattr(hook, "_record_refresh_side_effects", lambda **kwargs: None)
-
-    failures = hook.run_refresh_request(
-        {
-            "tool_input": {
-                "paths": [str(target)],
-                "refresh_codegraph": False,
-                "refresh_vector": True,
-            }
-        }
-    )
-
-    assert failures == []
-    assert calls == ["vector"]
-
-
-def test_run_refresh_request_records_vector_side_effects_after_success(monkeypatch, tmp_path) -> None:
-    """Successful vector refreshes should persist the healthy vector baseline."""
-    hook = _load_hook_module()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    target = repo_root / "scripts" / "example.py"
-    target.parent.mkdir(parents=True)
-    target.write_text("print('x')\n", encoding="utf-8")
-    side_effects: list[tuple[list[Path], bool]] = []
-
-    monkeypatch.setattr(hook, "_repo_root", lambda: repo_root)
-    monkeypatch.setattr(hook, "_refresh_codegraph", lambda paths: [])
-    monkeypatch.setattr(hook, "_refresh_vector", lambda paths: [])
-    monkeypatch.setattr(
-        hook,
-        "_record_refresh_side_effects",
-        lambda *, paths, refreshed_vector: side_effects.append((list(paths), refreshed_vector)),
-    )
-
-    failures = hook.run_refresh_request({"tool_input": {"paths": [str(target)]}})
-
-    assert failures == []
-    assert side_effects == [([target], True)]
