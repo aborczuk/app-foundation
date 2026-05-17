@@ -40,10 +40,12 @@ import json
 import os
 import plistlib
 import re
+import select
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -85,16 +87,11 @@ from src.mcp_codebase.index.reranker_runtime import (  # noqa: E402
     READ_CODE_RERANKER_DAEMON_HEALTH_POLL_INTERVAL_SECONDS,
     READ_CODE_RERANKER_DAEMON_HEALTH_TIMEOUT_SECONDS,
     READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS,
-    READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS,
-    READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS,
     load_json_object as _load_runtime_json_object,
     persist_json_object as _persist_runtime_json_object,
     reranker_build_fingerprint,
     reranker_endpoint_path,
     reranker_failure_marker_path,
-    reranker_file_rpc_heartbeat_path,
-    reranker_file_rpc_requests_dir,
-    reranker_file_rpc_responses_dir,
     reranker_launch_agent_label,
     reranker_launch_agent_path,
     reranker_log_path,
@@ -196,7 +193,7 @@ class _AnchorResolution:
 
 
 class _ReadCodeRerankerBackend:
-    """Socket client for the local reranker daemon with bounded fallback behavior."""
+    """Persistent stdio worker client for rerank scoring plus daemon lifecycle control."""
 
     def __init__(self, model_name: str, *, repo_root: Path) -> None:
         """Create a client bound to one repo-local daemon runtime."""
@@ -211,11 +208,10 @@ class _ReadCodeRerankerBackend:
         self._log_path = reranker_log_path(self._repo_root)
         self._tcp_port = reranker_tcp_port(self._repo_root)
         self._build_fingerprint = reranker_build_fingerprint(self._repo_root, model_name)
-        self._file_rpc_heartbeat_path = reranker_file_rpc_heartbeat_path(self._repo_root)
-        self._file_rpc_requests_dir = reranker_file_rpc_requests_dir(self._repo_root)
-        self._file_rpc_responses_dir = reranker_file_rpc_responses_dir(self._repo_root)
         self._launch_agent_label = reranker_launch_agent_label(self._repo_root)
         self._launch_agent_path = reranker_launch_agent_path(self._repo_root)
+        self._worker_process: subprocess.Popen[str] | None = None
+        self._worker_lock = threading.Lock()
 
     @property
     def model_name(self) -> str:
@@ -223,32 +219,163 @@ class _ReadCodeRerankerBackend:
         return self._model_name
 
     def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
-        """Return daemon scores only when the daemon is already healthy, otherwise fall back."""
+        """Return persistent stdio-worker scores when available, otherwise fall back."""
         if not passages:
             return [], "heuristic"
-        healthy = self._health()
-        if healthy is None:
-            file_scores = self._score_via_file_rpc(query, passages)
-            if file_scores is not None:
-                return file_scores, "daemon"
-            return [], "heuristic"
         try:
-            payload = self._score(query, passages)
+            payload = self._worker_score(query, passages)
         except Exception as exc:
-            self._record_startup_failure(f"score failed: {exc}")
-            file_scores = self._score_via_file_rpc(query, passages)
-            if file_scores is not None:
-                return file_scores, "daemon"
+            self._record_startup_failure(f"worker score failed: {exc}")
+            self._shutdown_worker()
             return [], "heuristic"
         self._clear_startup_failure()
         scores = payload.get("scores")
         if not isinstance(scores, list) or not all(isinstance(item, (int, float)) for item in scores):
-            self._record_startup_failure("score payload missing numeric scores")
-            file_scores = self._score_via_file_rpc(query, passages)
-            if file_scores is not None:
-                return file_scores, "daemon"
+            self._record_startup_failure("worker score payload missing numeric scores")
             return [], "heuristic"
-        return [float(item) for item in scores], "daemon"
+        return [float(item) for item in scores], "worker"
+
+    def query_items(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str,
+        file_path: Path | None,
+    ) -> list[dict[str, object]] | None:
+        """Return worker-backed semantic query items when the stdio worker is healthy."""
+        try:
+            payload = self._worker_query(query=query, top_k=top_k, scope=scope, file_path=file_path)
+        except Exception as exc:
+            self._record_startup_failure(f"worker query failed: {exc}")
+            self._shutdown_worker()
+            return None
+        self._clear_startup_failure()
+        items = payload.get("items")
+        if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+            self._record_startup_failure("worker query payload missing item objects")
+            return None
+        return [dict(item) for item in items]
+
+    def _read_worker_json(self, *, timeout: float) -> dict[str, object]:
+        """Read one JSON response from the live stdio worker within a bounded timeout."""
+        assert self._worker_process is not None
+        assert self._worker_process.stdout is not None
+        ready, _, _ = select.select([self._worker_process.stdout], [], [], timeout)
+        if not ready:
+            raise TimeoutError(f"stdio worker did not respond within {timeout} seconds")
+        line = self._worker_process.stdout.readline()
+        if not line:
+            stderr = self._worker_process.stderr.read() if self._worker_process.stderr is not None else ""
+            raise RuntimeError(f"stdio worker closed stdout unexpectedly: {stderr}")
+        payload = json.loads(line)
+        if not isinstance(payload, dict):
+            raise ValueError("stdio worker returned a non-object payload")
+        return payload
+
+    def _ensure_worker_ready(self) -> dict[str, object] | None:
+        """Start the persistent stdio worker on demand and return its ready payload."""
+        with self._worker_lock:
+            if self._worker_process is not None and self._worker_process.poll() is None:
+                return {
+                    "ok": True,
+                    "pid": self._worker_process.pid,
+                }
+            if self._should_skip_restart():
+                return None
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "src.mcp_codebase.index.reranker_stdio_worker",
+                    "--repo-root",
+                    str(self._repo_root),
+                    "--reranker-model",
+                    self._model_name,
+                ],
+                cwd=str(self._repo_root),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+            self._worker_process = process
+            try:
+                payload = self._read_worker_json(timeout=max(READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS, 120.0))
+            except Exception as exc:
+                self._record_startup_failure(f"worker startup failed: {exc}")
+                self._shutdown_worker()
+                return None
+            if payload.get("ok") is not True:
+                self._record_startup_failure(f"worker startup failed: {payload.get('error')}")
+                self._shutdown_worker()
+                return None
+            return payload
+
+    def _worker_request(self, payload: dict[str, object], *, timeout: float) -> dict[str, object]:
+        """Send one JSON request to the persistent stdio worker and return its JSON response."""
+        ready = self._ensure_worker_ready()
+        if ready is None:
+            raise RuntimeError("stdio worker is unavailable")
+        assert self._worker_process is not None
+        assert self._worker_process.stdin is not None
+        with self._worker_lock:
+            self._worker_process.stdin.write(json.dumps(payload) + "\n")
+            self._worker_process.stdin.flush()
+            return self._read_worker_json(timeout=timeout)
+
+    def _worker_score(self, query: str, passages: list[str]) -> dict[str, object]:
+        """Submit one bounded rerank request to the persistent stdio worker."""
+        return self._worker_request(
+            {
+                "op": "score",
+                "query": query,
+                "passages": passages,
+            },
+            timeout=30.0,
+        )
+
+    def _worker_query(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str,
+        file_path: Path | None,
+    ) -> dict[str, object]:
+        """Submit one semantic query request to the persistent stdio worker."""
+        return self._worker_request(
+            {
+                "op": "query",
+                "query": query,
+                "top_k": top_k,
+                "scope": scope,
+                "file_path": str(file_path.resolve()) if file_path is not None else None,
+            },
+            timeout=30.0,
+        )
+
+    def _shutdown_worker(self) -> None:
+        """Terminate the live stdio worker and clear the cached process handle."""
+        process = self._worker_process
+        self._worker_process = None
+        if process is None:
+            return
+        try:
+            if process.poll() is None and process.stdin is not None:
+                process.stdin.write(json.dumps({"op": "shutdown"}) + "\n")
+                process.stdin.flush()
+        except Exception:
+            pass
+        try:
+            process.wait(timeout=5.0)
+        except Exception:
+            process.kill()
+            try:
+                process.wait(timeout=5.0)
+            except Exception:
+                pass
 
     def _http_client(self, *, timeout: float) -> httpx.Client:
         """Return an HTTP client for the active local daemon transport."""
@@ -308,61 +435,6 @@ class _ReadCodeRerankerBackend:
         if not isinstance(payload, dict):
             raise ValueError("reranker daemon returned a non-object score payload")
         return payload
-
-    def _file_rpc_heartbeat(self) -> dict[str, object] | None:
-        """Return a recent shared heartbeat when the daemon is available for file RPC."""
-        payload = _load_runtime_json_object(self._file_rpc_heartbeat_path)
-        if payload is None:
-            return None
-        updated_at = payload.get("updated_at")
-        if not isinstance(updated_at, (int, float)):
-            return None
-        if time.time() - float(updated_at) > max(2.0, READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS):
-            return None
-        if payload.get("build_fingerprint") != self._build_fingerprint:
-            return None
-        if payload.get("model_name") != self._model_name:
-            return None
-        return payload
-
-    def _score_via_file_rpc(self, query: str, passages: list[str]) -> list[float] | None:
-        """Submit one bounded rerank request through the shared file-RPC channel."""
-        if self._file_rpc_heartbeat() is None:
-            return None
-        request_id = f"{os.getpid()}-{time.time_ns()}"
-        request_path = self._file_rpc_requests_dir / f"{request_id}.request.json"
-        response_path = self._file_rpc_responses_dir / f"{request_id}.response.json"
-        self._file_rpc_requests_dir.mkdir(parents=True, exist_ok=True)
-        self._file_rpc_responses_dir.mkdir(parents=True, exist_ok=True)
-        _persist_runtime_json_object(
-            request_path,
-            {
-                "request_id": request_id,
-                "query": query,
-                "passages": list(passages),
-                "requested_at": time.time(),
-            },
-            sort_keys=True,
-        )
-        deadline = time.time() + READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS
-        try:
-            while time.time() < deadline:
-                payload = _load_runtime_json_object(response_path)
-                if payload is not None:
-                    scores = payload.get("scores")
-                    if isinstance(scores, list) and all(isinstance(item, (int, float)) for item in scores):
-                        return [float(item) for item in scores]
-                    return None
-                time.sleep(READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS)
-            return None
-        finally:
-            for path in (request_path, response_path):
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    continue
-                except OSError:
-                    continue
 
     def _should_skip_restart(self) -> bool:
         """Return whether the daemon startup cooldown is still active."""
@@ -1792,6 +1864,25 @@ def _vector_query_candidates(
         index_scope = IndexScope(scope)
     except ValueError:
         return []
+    backend = _load_read_code_reranker()
+    worker_items = (
+        backend.query_items(
+            query=query,
+            top_k=READ_CODE_SEMANTIC_RETRIEVAL_LIMIT,
+            scope=index_scope.value,
+            file_path=file_path,
+        )
+        if backend is not None
+        else None
+    )
+    if worker_items is not None:
+        return _vector_matches_from_query_items(
+            worker_items,
+            query=query,
+            normalized_query=normalized_query,
+            file_path=file_path,
+            allow_test_files=allow_test_files,
+        )
     try:
         service = _load_read_code_vector_query_service()
         results = service.query(
@@ -1803,35 +1894,55 @@ def _vector_query_candidates(
     except Exception as exc:
         _set_vector_runtime_note(f"indexer query failed: {exc}")
         return []
+    return _vector_matches_from_query_items(
+        [
+            {
+                "file_path": str(result.file_path),
+                "line_start": result.line_start,
+                "line_end": result.line_end,
+                "score": result.score,
+                "body": result.body,
+                "preview": result.preview,
+                "signature": result.signature,
+                "docstring": result.docstring,
+                "symbol_type": result.symbol_type,
+                "symbol_name": getattr(result.content, "symbol_name", ""),
+                "qualified_name": getattr(result.content, "qualified_name", ""),
+            }
+            for result in results
+        ],
+        query=query,
+        normalized_query=normalized_query,
+        file_path=file_path,
+        allow_test_files=allow_test_files,
+    )
 
+
+def _vector_matches_from_query_items(
+    items: list[dict[str, object]],
+    *,
+    query: str,
+    normalized_query: str,
+    file_path: Path | None,
+    allow_test_files: bool,
+) -> list[_VectorMatch]:
+    """Convert serialized semantic query items into ranked vector matches."""
     target = file_path.resolve() if file_path is not None else None
     matches: list[_VectorMatch] = []
-    for result in results:
-        candidate = str(result.file_path)
+    for item in items:
+        candidate = _candidate_text(item, "file_path")
+        if not candidate:
+            continue
         if target is not None:
             try:
                 if Path(candidate).resolve() != target:
                     continue
             except Exception:
                 continue
-        item = {
-            "file_path": candidate,
-            "line_start": result.line_start,
-            "line_end": result.line_end,
-            "score": result.score,
-            "body": result.body,
-            "preview": result.preview,
-            "signature": result.signature,
-            "docstring": result.docstring,
-            "symbol_type": result.symbol_type,
-            "symbol_name": getattr(result.content, "symbol_name", ""),
-            "qualified_name": getattr(result.content, "qualified_name", ""),
-        }
         match = _vector_match_for_item(item, query, normalized_query)
         if match is None:
             continue
         matches.append(match)
-
     return sorted(
         matches,
         key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
@@ -2097,8 +2208,8 @@ def _query_semantic_anchor_candidate_with_debug(
     show_shortlist_hint: bool,
     content_type: str | None,
     request_scope: _ContextQueryScope | None = None,
-) -> tuple[list[_VectorMatch], _VectorMatch | None, bool, _RerankDebugInfo | None]:
-    """Query ranked candidates and select a semantic anchor with daemon reranking fallback."""
+) -> tuple[list[_VectorMatch], _VectorMatch | None, bool, _RerankDebugInfo | None, str]:
+    """Query ranked candidates and select a semantic anchor with worker reranking fallback."""
     candidate_scopes = _semantic_anchor_candidate_scopes(request_scope, content_type)
     allow_test_files = _is_explicit_test_targeting(file_path, content_type)
     code_candidates = _vector_find_candidates(
@@ -2140,8 +2251,8 @@ def _query_semantic_anchor_candidate_with_debug(
         print(f"ERROR: {candidate_error}", file=sys.stderr)
         if show_shortlist_hint and vector_candidates:
             print("Hint: re-run with --show-shortlist to inspect ranked candidates.", file=sys.stderr)
-        return vector_candidates, None, False, rerank_debug
-    return vector_candidates, vector_match, True, rerank_debug
+        return vector_candidates, None, False, rerank_debug, rerank_result.source
+    return vector_candidates, vector_match, True, rerank_debug, rerank_result.source
 
 
 def _query_semantic_anchor_candidate(
@@ -2155,7 +2266,7 @@ def _query_semantic_anchor_candidate(
     request_scope: _ContextQueryScope | None = None,
 ) -> tuple[list[_VectorMatch], _VectorMatch | None, bool]:
     """Query ranked candidates and select a semantic anchor."""
-    vector_candidates, vector_match, selection_ok, _ = _query_semantic_anchor_candidate_with_debug(
+    vector_candidates, vector_match, selection_ok, _, _ = _query_semantic_anchor_candidate_with_debug(
         file_path,
         pattern,
         normalized_pattern,
@@ -2178,13 +2289,6 @@ def _render_rerank_debug(debug: _RerankDebugInfo, *, result_source: str) -> None
     print(f"result_source: {result_source}")
     print(f"before: {' | '.join(debug.before_symbols) if debug.before_symbols else '(empty)'}")
     print(f"after: {' | '.join(debug.after_symbols) if debug.after_symbols else '(empty)'}")
-
-
-def _rerank_source_for_debug(debug: _RerankDebugInfo | None) -> str:
-    """Return the persisted rerank source label for one shortlist resolution."""
-    if debug is None or debug.status != "applied":
-        return "heuristic"
-    return "daemon"
 
 
 def _broad_read_trusts_vector_cache(
@@ -2267,7 +2371,7 @@ def _resolve_pattern_anchor(
             )
         return None
 
-    vector_candidates, vector_match, selection_ok, rerank_debug = _query_semantic_anchor_candidate_with_debug(
+    vector_candidates, vector_match, selection_ok, rerank_debug, rerank_source = _query_semantic_anchor_candidate_with_debug(
         file_path,
         pattern,
         normalized_pattern,
@@ -2309,7 +2413,7 @@ def _resolve_pattern_anchor(
             ):
                 return None
 
-            refreshed_candidates, refreshed_match, selection_ok, rerank_debug = _query_semantic_anchor_candidate_with_debug(
+            refreshed_candidates, refreshed_match, selection_ok, rerank_debug, rerank_source = _query_semantic_anchor_candidate_with_debug(
                 file_path,
                 pattern,
                 normalized_pattern,
@@ -2334,7 +2438,7 @@ def _resolve_pattern_anchor(
                 strict_status=0,
                 line_num=line_num,
                 rerank_debug=rerank_debug,
-                rerank_source=_rerank_source_for_debug(rerank_debug),
+                rerank_source=rerank_source,
             )
         _emit_vector_fallback_notice(
             file_path=file_path,
@@ -2348,7 +2452,7 @@ def _resolve_pattern_anchor(
         strict_status=0,
         line_num=line_num,
         rerank_debug=rerank_debug,
-        rerank_source=_rerank_source_for_debug(rerank_debug),
+        rerank_source=rerank_source,
     )
 
 
@@ -3161,13 +3265,13 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
 
 
 def read_code_window(argv: list[str], *, verbose: bool = False) -> int:
-    """Reject direct window reads and force semantic-first discovery."""
-    _ = (argv, verbose)
-    print(
-        "ERROR: window mode is disabled. Use read_code.py context/find/analyze instead.",
-        file=sys.stderr,
-    )
-    return 1
+    """Render one bounded numbered file window after validating the requested span."""
+    _ = verbose
+    parsed = _parse_window_args(argv)
+    if parsed is None:
+        return 1
+    _render_numbered_window(parsed.file_path, parsed.start_line, parsed.end_line)
+    return 0
 
 
 def read_code_headings(argv: list[str], *, verbose: bool = False) -> int:

@@ -20,12 +20,6 @@ READ_CODE_RERANKER_DAEMON_FAILURE_COOLDOWN_SECONDS = float(
 READ_CODE_RERANKER_DAEMON_HEALTH_POLL_INTERVAL_SECONDS = float(
     os.environ.get("SPECKIT_READ_CODE_RERANKER_DAEMON_HEALTH_POLL_INTERVAL_SECONDS", "0.1") or "0.1"
 )
-READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS = float(
-    os.environ.get("SPECKIT_READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS", "0.05") or "0.05"
-)
-READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS = float(
-    os.environ.get("SPECKIT_READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS", "30.0") or "30.0"
-)
 
 
 def _repo_runtime_slug(repo_root: Path) -> str:
@@ -92,21 +86,6 @@ def reranker_failure_marker_path(repo_root: Path) -> Path:
 def reranker_log_path(repo_root: Path) -> Path:
     """Return the daemon log path used for detached startup diagnostics."""
     return reranker_runtime_dir(repo_root) / "daemon.log"
-
-
-def reranker_file_rpc_requests_dir(repo_root: Path) -> Path:
-    """Return the shared request directory for file-based daemon RPC."""
-    return reranker_shared_runtime_dir(repo_root) / "requests"
-
-
-def reranker_file_rpc_responses_dir(repo_root: Path) -> Path:
-    """Return the shared response directory for file-based daemon RPC."""
-    return reranker_shared_runtime_dir(repo_root) / "responses"
-
-
-def reranker_file_rpc_heartbeat_path(repo_root: Path) -> Path:
-    """Return the shared heartbeat file for file-based daemon RPC."""
-    return reranker_shared_runtime_dir(repo_root) / "heartbeat.json"
 
 
 def reranker_build_fingerprint(repo_root: Path, model_name: str) -> str:

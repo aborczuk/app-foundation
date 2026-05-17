@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import time
 from pathlib import Path
@@ -21,13 +20,9 @@ from src.mcp_codebase.index.config import (
     load_exclude_patterns,
 )
 from src.mcp_codebase.index.reranker_runtime import (
-    READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS,
     persist_json_object,
     reranker_build_fingerprint,
     reranker_endpoint_path,
-    reranker_file_rpc_heartbeat_path,
-    reranker_file_rpc_requests_dir,
-    reranker_file_rpc_responses_dir,
     reranker_log_path,
     reranker_pid_path,
     reranker_tcp_port,
@@ -79,67 +74,12 @@ def build_app(
     reranker_model: str,
     pid_file: Path | None = None,
     endpoint_file: Path | None = None,
-    file_rpc_requests_dir: Path | None = None,
-    file_rpc_responses_dir: Path | None = None,
-    file_rpc_heartbeat_path: Path | None = None,
 ) -> FastAPI:
     """Create the reranker daemon application with warmed model state."""
     app = FastAPI()
     service = _build_service(repo_root, reranker_model=reranker_model)
     started_at = time.time()
     build_fingerprint = reranker_build_fingerprint(repo_root, reranker_model)
-    background_tasks: list[asyncio.Task[None]] = []
-
-    def _heartbeat_payload() -> dict[str, object]:
-        """Return the shared file-RPC heartbeat payload for client-side liveness checks."""
-        return {
-            "updated_at": time.time(),
-            "pid": os.getpid(),
-            "model_name": reranker_model,
-            "build_fingerprint": build_fingerprint,
-            "started_at": started_at,
-        }
-
-    async def _drain_file_rpc_requests_once() -> None:
-        """Process the current bounded rerank requests from the shared file-RPC queue."""
-        assert file_rpc_requests_dir is not None
-        assert file_rpc_responses_dir is not None
-        request_paths = sorted(file_rpc_requests_dir.glob("*.request.json"))
-        for request_path in request_paths:
-            response_path = file_rpc_responses_dir / request_path.name.replace(".request.json", ".response.json")
-            try:
-                payload = json.loads(request_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                payload = {"error": "invalid-request-payload"}
-            query = payload.get("query")
-            passages = payload.get("passages")
-            if isinstance(query, str) and isinstance(passages, list) and all(isinstance(item, str) for item in passages):
-                result = await asyncio.to_thread(service.rerank_scores, query, passages)
-                response_payload = {
-                    "scores": [float(score) for score in result["scores"]],
-                    "model_name": str(result["model_name"]),
-                }
-            else:
-                response_payload = {"error": "invalid-request-shape"}
-            await asyncio.to_thread(persist_json_object, response_path, response_payload, sort_keys=True)
-            try:
-                request_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-    async def _heartbeat_loop() -> None:
-        """Continuously refresh the shared heartbeat file and service file-RPC clients."""
-        assert file_rpc_heartbeat_path is not None
-        while True:
-            await asyncio.to_thread(
-                persist_json_object,
-                file_rpc_heartbeat_path,
-                _heartbeat_payload(),
-                sort_keys=True,
-            )
-            if file_rpc_requests_dir is not None and file_rpc_responses_dir is not None:
-                await _drain_file_rpc_requests_once()
-            await asyncio.sleep(READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS)
 
     @app.on_event("startup")
     async def _startup() -> None:
@@ -152,20 +92,11 @@ def build_app(
                 {"pid": os.getpid(), "updated_at": time.time()},
                 sort_keys=True,
             )
-        if file_rpc_requests_dir is not None:
-            file_rpc_requests_dir.mkdir(parents=True, exist_ok=True)
-        if file_rpc_responses_dir is not None:
-            file_rpc_responses_dir.mkdir(parents=True, exist_ok=True)
-        if file_rpc_heartbeat_path is not None:
-            persist_json_object(file_rpc_heartbeat_path, _heartbeat_payload(), sort_keys=True)
-            background_tasks.append(asyncio.create_task(_heartbeat_loop()))
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         """Remove the PID marker when the daemon exits cleanly."""
-        for task in background_tasks:
-            task.cancel()
-        for path in (pid_file, endpoint_file, file_rpc_heartbeat_path):
+        for path in (pid_file, endpoint_file):
             if path is None:
                 continue
             try:
@@ -221,9 +152,6 @@ def main(argv: list[str] | None = None) -> int:
     endpoint_file = args.endpoint_file.expanduser().resolve() if args.endpoint_file is not None else reranker_endpoint_path(repo_root)
     log_file = args.log_file.expanduser().resolve() if args.log_file is not None else reranker_log_path(repo_root)
     tcp_port = int(args.tcp_port) if args.tcp_port is not None else reranker_tcp_port(repo_root)
-    file_rpc_requests_dir = reranker_file_rpc_requests_dir(repo_root)
-    file_rpc_responses_dir = reranker_file_rpc_responses_dir(repo_root)
-    file_rpc_heartbeat_path = reranker_file_rpc_heartbeat_path(repo_root)
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     log_file.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -244,9 +172,6 @@ def main(argv: list[str] | None = None) -> int:
             reranker_model=args.reranker_model,
             pid_file=pid_file,
             endpoint_file=endpoint_file,
-            file_rpc_requests_dir=file_rpc_requests_dir,
-            file_rpc_responses_dir=file_rpc_responses_dir,
-            file_rpc_heartbeat_path=file_rpc_heartbeat_path,
         )
         config = uvicorn.Config(
             app,
@@ -271,9 +196,6 @@ def main(argv: list[str] | None = None) -> int:
             reranker_model=args.reranker_model,
             pid_file=pid_file,
             endpoint_file=endpoint_file,
-            file_rpc_requests_dir=file_rpc_requests_dir,
-            file_rpc_responses_dir=file_rpc_responses_dir,
-            file_rpc_heartbeat_path=file_rpc_heartbeat_path,
         )
         config = uvicorn.Config(
             app,

@@ -5,7 +5,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import select
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from time import perf_counter
@@ -249,21 +251,17 @@ This is document {index}.
     assert service.query("symbol_239", scope=IndexScope.CODE, top_k=1)
 
 
-def test_live_read_code_context_records_daemon_rerank_source_without_restarting_daemon(
+def test_live_read_code_context_records_worker_rerank_source_without_restarting_worker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Opt-in live verification should prove normal context reads consume daemon reranking without per-search restart."""
-    if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_DAEMON_TESTS") != "1":
-        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_DAEMON_TESTS=1 to run live daemon verification.")
+    """Opt-in live verification should prove normal context reads reuse one stdio worker."""
+    if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS=1 to run live worker verification.")
 
     backend = read_code._load_read_code_reranker()
     if backend is None:
         pytest.skip("Reranker backend is unavailable in this environment.")
-
-    heartbeat_before = backend._file_rpc_heartbeat()
-    if heartbeat_before is None:
-        pytest.skip("Live reranker daemon is not reachable through the sandbox-safe transport.")
 
     metadata_log_path = tmp_path / "search-history.jsonl"
     current_session = {"id": "live-rerank-daemon-1"}
@@ -275,16 +273,163 @@ def test_live_read_code_context_records_daemon_rerank_source_without_restarting_
     )
     monkeypatch.setattr(read_code, "_read_code_search_metadata_log_path", lambda: metadata_log_path)
 
-    assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
-    current_session["id"] = "live-rerank-daemon-2"
-    assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
-
-    heartbeat_after = backend._file_rpc_heartbeat()
-    assert heartbeat_after is not None
-    assert heartbeat_before["started_at"] == heartbeat_after["started_at"]
+    try:
+        assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
+        assert backend._worker_process is not None
+        pid_before = backend._worker_process.pid
+        current_session["id"] = "live-rerank-daemon-2"
+        assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
+        assert backend._worker_process is not None
+        assert pid_before == backend._worker_process.pid
+    finally:
+        backend._shutdown_worker()
 
     events = [json.loads(line) for line in metadata_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(events) == 2
     assert all(event["command"] == "context" for event in events)
-    assert all(event["rerank_source"] == "daemon" for event in events)
-    assert all(event["result_source"] == "backend" for event in events)
+    assert all(event["rerank_source"] == "worker" for event in events)
+
+
+def test_live_vector_query_candidates_reuse_worker_without_local_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opt-in live verification should prove semantic query requests reuse the stdio worker."""
+    if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS=1 to run live worker verification.")
+
+    backend = read_code._load_read_code_reranker()
+    if backend is None:
+        pytest.skip("Reranker backend is unavailable in this environment.")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    target = repo_root / "scripts" / "read_code.py"
+    monkeypatch.setattr(
+        read_code,
+        "_load_read_code_vector_query_service",
+        lambda: (_ for _ in ()).throw(AssertionError("semantic query should use the stdio worker first")),
+    )
+
+    try:
+        backend._shutdown_worker()
+        first = read_code._vector_query_candidates(
+            target,
+            "_vector_query_candidates",
+            "_vector_query_candidates",
+            "code",
+            allow_test_files=False,
+        )
+        assert first
+        assert backend._worker_process is not None
+        pid_before = backend._worker_process.pid
+
+        second = read_code._vector_query_candidates(
+            target,
+            "_vector_find_candidates",
+            "_vector_find_candidates",
+            "code",
+            allow_test_files=False,
+        )
+        assert second
+        assert backend._worker_process is not None
+        assert backend._worker_process.pid == pid_before
+    finally:
+        backend._shutdown_worker()
+
+
+def _read_json_line(process: subprocess.Popen[str], *, timeout: float) -> dict[str, object]:
+    """Read one JSON line from a live stdio worker with a bounded timeout."""
+    assert process.stdout is not None
+    ready, _, _ = select.select([process.stdout], [], [], timeout)
+    if not ready:
+        raise TimeoutError(f"stdio worker did not produce output within {timeout} seconds")
+    line = process.stdout.readline()
+    if not line:
+        stderr = process.stderr.read() if process.stderr is not None else ""
+        raise AssertionError(f"stdio worker closed stdout unexpectedly: {stderr}")
+    payload = json.loads(line)
+    assert isinstance(payload, dict)
+    return payload
+
+
+def _write_json_line(process: subprocess.Popen[str], payload: dict[str, object]) -> None:
+    """Write one JSON line to the live stdio worker and flush immediately."""
+    assert process.stdin is not None
+    process.stdin.write(json.dumps(payload) + "\n")
+    process.stdin.flush()
+
+
+def test_live_reranker_stdio_worker_reuses_one_process_for_multiple_requests() -> None:
+    """Opt-in live verification should prove stdio worker reuse without sockets or file RPC."""
+    if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_STDIO_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_STDIO_TESTS=1 to run live stdio worker verification.")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "src.mcp_codebase.index.reranker_stdio_worker",
+            "--repo-root",
+            str(repo_root),
+        ],
+        cwd=repo_root,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        ready = _read_json_line(process, timeout=120.0)
+        assert ready["op"] == "ready"
+        assert ready["ok"] is True
+
+        _write_json_line(process, {"op": "health"})
+        health = _read_json_line(process, timeout=10.0)
+        assert health["op"] == "health"
+        assert health["ok"] is True
+        assert health["pid"] == ready["pid"]
+        assert health["started_at"] == ready["started_at"]
+
+        _write_json_line(
+            process,
+            {
+                "op": "score",
+                "query": "vector trust decision fallback",
+                "passages": [
+                    "Return daemon scores only when the daemon is already healthy.",
+                    "Remove the startup failure marker after a healthy daemon handshake.",
+                ],
+            },
+        )
+        score_one = _read_json_line(process, timeout=30.0)
+        assert score_one["op"] == "score"
+        assert score_one["ok"] is True
+        assert score_one["pid"] == ready["pid"]
+        assert score_one["started_at"] == ready["started_at"]
+        assert len(score_one["scores"]) == 2
+
+        _write_json_line(
+            process,
+            {
+                "op": "score",
+                "query": "vector trust decision fallback",
+                "passages": [
+                    "Return daemon scores only when the daemon is already healthy.",
+                    "Remove the startup failure marker after a healthy daemon handshake.",
+                ],
+            },
+        )
+        score_two = _read_json_line(process, timeout=30.0)
+        assert score_two["op"] == "score"
+        assert score_two["ok"] is True
+        assert score_two["pid"] == ready["pid"]
+        assert score_two["started_at"] == ready["started_at"]
+        assert len(score_two["scores"]) == 2
+
+        _write_json_line(process, {"op": "shutdown"})
+        shutdown = _read_json_line(process, timeout=10.0)
+        assert shutdown["op"] == "shutdown"
+        assert shutdown["ok"] is True
+        assert shutdown["pid"] == ready["pid"]
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=10.0)

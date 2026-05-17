@@ -1,4 +1,4 @@
-"""Unit tests for the read_code window disablement contract."""
+"""Unit tests for bounded read_code window rendering."""
 
 from __future__ import annotations
 
@@ -49,14 +49,19 @@ def test_parse_window_args_rejects_ranges_over_the_maximum(tmp_path: Path) -> No
     assert read_code._parse_window_args([str(target), "1", str(read_code.READ_CODE_MAX_LINES + 1)]) is None
 
 
-def test_read_code_window_is_disabled(tmp_path: Path, capsys) -> None:
-    """Window mode should fail closed and force semantic-first discovery."""
+def test_read_code_window_renders_a_bounded_numbered_span(tmp_path: Path, capsys) -> None:
+    """Window mode should render the requested bounded line span."""
     read_code = _load_read_code_module()
     target = tmp_path / "sample.py"
     target.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
 
     rc = read_code.read_code_window([str(target), "2", "4"])
-    stderr = capsys.readouterr().err
+    captured = capsys.readouterr()
 
-    assert rc == 1
-    assert "window mode is disabled" in stderr
+    assert rc == 0
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        "     2\ttwo",
+        "     3\tthree",
+        "     4\tfour",
+    ]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -34,114 +33,105 @@ def _reranker_runtime_env(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_reranker_backend_uses_healthy_daemon_scores(tmp_path: Path, monkeypatch) -> None:
-    """A healthy daemon should supply scores without falling back to heuristic order."""
+    """A ready stdio worker should supply scores without falling back to heuristic order."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_health", lambda: {"status": "healthy"})
+    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(
         backend,
-        "_score",
+        "_worker_score",
         lambda query, passages: {"scores": [0.2, 0.9], "model_name": backend.model_name},
     )
 
     scores, source = backend.score_pairs("query", ["first", "second"])
 
     assert scores == [0.2, 0.9]
-    assert source == "daemon"
+    assert source == "worker"
 
 
-def test_reranker_backend_uses_file_rpc_scores_when_socket_health_is_unavailable(
+def test_reranker_backend_uses_worker_query_items(tmp_path: Path, monkeypatch) -> None:
+    """A ready stdio worker should supply semantic query items without local fallback."""
+    backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
+    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
+    monkeypatch.setattr(
+        backend,
+        "_worker_query",
+        lambda **kwargs: {
+            "items": [
+                {
+                    "file_path": "/tmp/example.py",
+                    "line_start": 5,
+                    "line_end": 7,
+                    "score": 0.75,
+                    "body": "def sample():\n    return 1",
+                    "preview": "def sample(): ...",
+                    "signature": "def sample()",
+                    "docstring": "Sample helper.",
+                    "symbol_type": "function",
+                    "symbol_name": "sample",
+                    "qualified_name": "sample",
+                }
+            ]
+        },
+    )
+
+    items = backend.query_items(query="sample", top_k=5, scope="code", file_path=Path("/tmp/example.py"))
+
+    assert items is not None
+    assert items[0]["symbol_name"] == "sample"
+
+
+def test_reranker_backend_query_items_fall_back_when_worker_query_fails(tmp_path: Path, monkeypatch) -> None:
+    """Worker query failures should fail fast and allow the local service fallback path."""
+    backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
+    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
+    monkeypatch.setattr(
+        backend,
+        "_worker_query",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("worker query failed")),
+    )
+    shutdown_calls: list[str] = []
+    monkeypatch.setattr(backend, "_shutdown_worker", lambda: shutdown_calls.append("shutdown"))
+
+    items = backend.query_items(query="sample", top_k=5, scope="code", file_path=Path("/tmp/example.py"))
+
+    assert items is None
+    assert shutdown_calls == ["shutdown"]
+
+
+def test_reranker_backend_falls_back_to_heuristic_when_socket_health_is_unavailable(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """A live file-RPC heartbeat should let sandboxed clients use the daemon without sockets."""
+    """An unavailable stdio worker should fail fast to heuristic ordering."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_health", lambda: None)
-    read_code._persist_runtime_json_object(
-        backend._file_rpc_heartbeat_path,
-        {
-            "updated_at": time.time(),
-            "pid": 123,
-            "model_name": backend.model_name,
-            "build_fingerprint": backend._build_fingerprint,
-            "started_at": time.time(),
-        },
-        sort_keys=True,
-    )
-    monkeypatch.setattr(read_code, "READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS", 1.0)
-    monkeypatch.setattr(read_code, "READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS", 0.01)
-
-    def _respond_once() -> None:
-        deadline = time.time() + 1.0
-        while time.time() < deadline:
-            request_paths = sorted(backend._file_rpc_requests_dir.glob("*.request.json"))
-            if request_paths:
-                request_path = request_paths[0]
-                response_path = backend._file_rpc_responses_dir / request_path.name.replace(".request.json", ".response.json")
-                read_code._persist_runtime_json_object(
-                    response_path,
-                    {"scores": [0.1, 0.9], "model_name": backend.model_name},
-                    sort_keys=True,
-                )
-                return
-            time.sleep(0.01)
-        raise AssertionError("file-rpc request was never written")
-
-    responder = threading.Thread(target=_respond_once, daemon=True)
-    responder.start()
+    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: None)
 
     scores, source = backend.score_pairs("query", ["first", "second"])
 
-    responder.join(timeout=1.0)
-    assert scores == [0.1, 0.9]
-    assert source == "daemon"
+    assert scores == []
+    assert source == "heuristic"
 
 
-def test_reranker_backend_falls_back_to_file_rpc_when_socket_score_fails(
+def test_reranker_backend_falls_back_to_heuristic_when_socket_score_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Socket transport failures should still reuse the daemon through the shared file-RPC channel."""
+    """Worker scoring failures should fail fast instead of taking a slow secondary path."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_health", lambda: {"status": "healthy"})
-    monkeypatch.setattr(backend, "_score", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("socket failed")))
-    read_code._persist_runtime_json_object(
-        backend._file_rpc_heartbeat_path,
-        {
-            "updated_at": time.time(),
-            "pid": 123,
-            "model_name": backend.model_name,
-            "build_fingerprint": backend._build_fingerprint,
-            "started_at": time.time(),
-        },
-        sort_keys=True,
+    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
+    monkeypatch.setattr(
+        backend,
+        "_worker_score",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("worker failed")),
     )
-    monkeypatch.setattr(read_code, "READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS", 1.0)
-    monkeypatch.setattr(read_code, "READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS", 0.01)
-
-    def _respond_once() -> None:
-        deadline = time.time() + 1.0
-        while time.time() < deadline:
-            request_paths = sorted(backend._file_rpc_requests_dir.glob("*.request.json"))
-            if request_paths:
-                request_path = request_paths[0]
-                response_path = backend._file_rpc_responses_dir / request_path.name.replace(".request.json", ".response.json")
-                read_code._persist_runtime_json_object(
-                    response_path,
-                    {"scores": [0.3, 0.7], "model_name": backend.model_name},
-                    sort_keys=True,
-                )
-                return
-            time.sleep(0.01)
-        raise AssertionError("file-rpc request was never written")
-
-    responder = threading.Thread(target=_respond_once, daemon=True)
-    responder.start()
+    shutdown_calls: list[str] = []
+    monkeypatch.setattr(backend, "_shutdown_worker", lambda: shutdown_calls.append("shutdown"))
 
     scores, source = backend.score_pairs("query", ["first", "second"])
 
-    responder.join(timeout=1.0)
-    assert scores == [0.3, 0.7]
-    assert source == "daemon"
+    assert scores == []
+    assert source == "heuristic"
+    assert shutdown_calls == ["shutdown"]
 
 
 def test_reranker_backend_does_not_start_daemon_on_query_path_when_unhealthy(tmp_path: Path, monkeypatch) -> None:

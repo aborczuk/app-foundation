@@ -194,6 +194,8 @@ This repository follows the **app-foundation Pipeline Constitution** — a zero-
 
 Task management and pipeline governance is driven by speckit — a specification-driven workflow for feature development. The tasking step registers tasks in the task ledger, and implement consumes the next registered task from that ledger. All work is tracked in `.speckit/` ledgers as an append-only audit trail.
 
+For `read_code` runtime architecture and the current stdio-worker transport used for semantic retrieval and reranking, see `docs/governance/read-code-stdio-worker.md`.
+
 ## Deployment
 
 ### Production Environment

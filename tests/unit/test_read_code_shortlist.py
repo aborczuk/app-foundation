@@ -341,7 +341,13 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
         show_shortlist_hint: bool,
         content_type: str | None,
         request_scope: read_code._ContextQueryScope | None = None,
-    ) -> tuple[list[read_code._VectorMatch], read_code._VectorMatch | None, bool, read_code._RerankDebugInfo | None]:
+    ) -> tuple[
+        list[read_code._VectorMatch],
+        read_code._VectorMatch | None,
+        bool,
+        read_code._RerankDebugInfo | None,
+        str,
+    ]:
         captured["request_scope"] = request_scope
         vector_match = read_code._VectorMatch(
             unit_id="function:sample",
@@ -353,7 +359,7 @@ def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeyp
             cosine_similarity=90,
             file_path=Path("/tmp/example.py"),
         )
-        return [vector_match], vector_match, True, None
+        return [vector_match], vector_match, True, None, "heuristic"
 
     monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate_with_debug", fake_query_semantic_anchor_candidate)
     monkeypatch.setattr(read_code, "_emit_vector_fallback_notice", lambda *args, **kwargs: None)
@@ -391,7 +397,7 @@ def test_resolve_pattern_anchor_skips_codegraph_discovery_for_trusted_broad_read
     monkeypatch.setattr(
         read_code,
         "_query_semantic_anchor_candidate_with_debug",
-        lambda *args, **kwargs: ([vector_match], None, True, None),
+        lambda *args, **kwargs: ([vector_match], None, True, None, "heuristic"),
     )
     monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
@@ -439,7 +445,7 @@ def test_resolve_pattern_anchor_keeps_satisfactory_broad_results_without_recover
     monkeypatch.setattr(
         read_code,
         "_query_semantic_anchor_candidate_with_debug",
-        lambda *args, **kwargs: ([vector_match], vector_match, True, None),
+        lambda *args, **kwargs: ([vector_match], vector_match, True, None, "heuristic"),
     )
     monkeypatch.setattr(read_code, "evaluate_read_vector_trust", lambda *args, **kwargs: True)
     monkeypatch.setattr(read_code, "codegraph_supports_file", lambda *args, **kwargs: True)
@@ -551,8 +557,8 @@ def test_resolve_pattern_anchor_recovers_from_bad_broad_outcomes_when_fallback_a
     )
     calls: list[str] = []
     responses = [
-        (initial_candidates, initial_match, True, None),
-        ([refresh_match], refresh_match, True, None),
+        (initial_candidates, initial_match, True, None, "heuristic"),
+        ([refresh_match], refresh_match, True, None, "heuristic"),
     ]
 
     def fake_query_semantic_anchor_candidate(*args, **kwargs):
@@ -631,8 +637,8 @@ def test_resolve_pattern_anchor_recovers_from_stale_broad_reads_when_fallback_al
     )
     calls: list[str] = []
     responses = [
-        ([initial_match], initial_match, True, None),
-        ([refresh_match], refresh_match, True, None),
+        ([initial_match], initial_match, True, None, "heuristic"),
+        ([refresh_match], refresh_match, True, None, "heuristic"),
     ]
 
     monkeypatch.setattr(read_code, "_query_semantic_anchor_candidate_with_debug", lambda *args, **kwargs: responses.pop(0))
@@ -774,13 +780,13 @@ def test_resolve_pattern_anchor_uses_daemon_rerank_scores_when_available(monkeyp
         read_code,
         "_load_read_code_reranker",
         lambda: type(
-            "Backend",
-            (),
-            {
-                "model_name": "BAAI/bge-reranker-v2-m3",
-                "score_pairs": lambda self, query, passages: ([0.1, 0.95], "daemon"),
-            },
-        )(),
+                "Backend",
+                (),
+                {
+                    "model_name": "BAAI/bge-reranker-v2-m3",
+                    "score_pairs": lambda self, query, passages: ([0.1, 0.95], "worker"),
+                },
+            )(),
     )
 
     resolution = read_code._resolve_pattern_anchor(
@@ -798,7 +804,7 @@ def test_resolve_pattern_anchor_uses_daemon_rerank_scores_when_available(monkeyp
     assert [candidate.symbol_name for candidate in resolution.vector_candidates] == ["second", "first"]
     assert resolution.vector_match is not None
     assert resolution.vector_match.symbol_name == "second"
-    assert resolution.rerank_source == "daemon"
+    assert resolution.rerank_source == "worker"
     assert resolution.rerank_debug is not None
     assert resolution.rerank_debug.changed is True
 
@@ -827,7 +833,7 @@ def test_rerank_semantic_candidates_scores_only_visible_shortlist_window(monkeyp
         def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
             del query
             captured_passages.extend(passages)
-            return ([0.0] * (len(passages) - 1)) + [1.0], "daemon"
+            return ([0.0] * (len(passages) - 1)) + [1.0], "worker"
 
     monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: _Backend())
 
@@ -838,7 +844,7 @@ def test_rerank_semantic_candidates_scores_only_visible_shortlist_window(monkeyp
     )
 
     assert len(captured_passages) == read_code.READ_CODE_RERANK_WINDOW_LIMIT
-    assert result.source == "daemon"
+    assert result.source == "worker"
     assert result.candidates[0].symbol_name == f"item_{read_code.READ_CODE_RERANK_WINDOW_LIMIT - 1}"
     assert result.candidates[read_code.READ_CODE_RERANK_WINDOW_LIMIT].symbol_name == f"item_{read_code.READ_CODE_RERANK_WINDOW_LIMIT}"
 
@@ -871,7 +877,7 @@ def test_read_code_context_rerank_debug_is_opt_in(
             before_symbols=("sample", "other"),
             after_symbols=("other", "sample"),
         ),
-        rerank_source="daemon",
+        rerank_source="worker",
     )
 
     monkeypatch.setattr(
@@ -895,7 +901,7 @@ def test_read_code_context_rerank_debug_is_opt_in(
     assert read_code.read_code_context(["sample", "--show-rerank"]) == 0
     shown = capsys.readouterr()
     assert "rerank_status: applied" in shown.out
-    assert "result_source: daemon" in shown.out
+    assert "result_source: worker" in shown.out
 
 
 def test_vector_anchor_rank_penalizes_test_files_for_regular_context(monkeypatch) -> None:
@@ -987,21 +993,18 @@ def test_vector_query_candidates_prefers_implementation_files_by_default(monkeyp
         file_path=Path("/tmp/example.py"),
     )
 
-    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    class _Backend:
+        def query_items(self, **kwargs):
+            return [
+                {"kind": "test", "file_path": "/tmp/tests/test_example.py", "line_start": 10, "score": 0.9},
+                {"kind": "impl", "file_path": "/tmp/example.py", "line_start": 10, "score": 0.9},
+            ]
+
+    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: _Backend())
     monkeypatch.setattr(
         read_code,
-        "_run_command_capture",
-        lambda *args, **kwargs: read_code.subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=read_code.json.dumps(
-                [
-                    {"kind": "test", "file_path": "/tmp/tests/test_example.py", "line_start": 10, "score": 0.9},
-                    {"kind": "impl", "file_path": "/tmp/example.py", "line_start": 10, "score": 0.9},
-                ]
-            ),
-            stderr="",
-        ),
+        "_load_read_code_vector_query_service",
+        lambda: (_ for _ in ()).throw(AssertionError("worker-backed query should skip local service")),
     )
     monkeypatch.setattr(
         read_code,
@@ -1044,21 +1047,18 @@ def test_vector_query_candidates_preserves_test_files_for_explicit_test_targetin
         file_path=Path("/tmp/example.py"),
     )
 
-    monkeypatch.setattr(read_code, "_command_exists", lambda name: True)
+    class _Backend:
+        def query_items(self, **kwargs):
+            return [
+                {"kind": "test", "file_path": "/tmp/tests/test_example.py", "line_start": 10, "score": 0.9},
+                {"kind": "impl", "file_path": "/tmp/example.py", "line_start": 10, "score": 0.9},
+            ]
+
+    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: _Backend())
     monkeypatch.setattr(
         read_code,
-        "_run_command_capture",
-        lambda *args, **kwargs: read_code.subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=read_code.json.dumps(
-                [
-                    {"kind": "test", "file_path": "/tmp/tests/test_example.py", "line_start": 10, "score": 0.9},
-                    {"kind": "impl", "file_path": "/tmp/example.py", "line_start": 10, "score": 0.9},
-                ]
-            ),
-            stderr="",
-        ),
+        "_load_read_code_vector_query_service",
+        lambda: (_ for _ in ()).throw(AssertionError("worker-backed query should skip local service")),
     )
     monkeypatch.setattr(
         read_code,
@@ -1076,6 +1076,58 @@ def test_vector_query_candidates_preserves_test_files_for_explicit_test_targetin
 
     assert candidates
     assert candidates[0].file_path == Path("/tmp/tests/test_example.py")
+
+
+def test_vector_query_candidates_fall_back_to_local_service_when_worker_query_is_unavailable(monkeypatch) -> None:
+    """Unavailable worker queries should fall back cleanly to the in-process local service."""
+    impl_match = read_code._VectorMatch(
+        unit_id="function:impl",
+        symbol_name="impl",
+        qualified_name="impl",
+        line_num=10,
+        line_end=12,
+        raw_score=0.9,
+        cosine_similarity=90,
+        file_path=Path("/tmp/example.py"),
+    )
+
+    class _Backend:
+        def query_items(self, **kwargs):
+            return None
+
+    class _Content:
+        symbol_name = "impl"
+        qualified_name = "impl"
+
+    class _Result:
+        file_path = Path("/tmp/example.py")
+        line_start = 10
+        line_end = 12
+        score = 0.9
+        body = ""
+        preview = ""
+        signature = "def impl()"
+        docstring = ""
+        symbol_type = "function"
+        content = _Content()
+
+    class _Service:
+        def query(self, query_text, *, top_k=10, scope=None, file_path=None):
+            return [_Result()]
+
+    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: _Backend())
+    monkeypatch.setattr(read_code, "_load_read_code_vector_query_service", lambda: _Service())
+    monkeypatch.setattr(read_code, "_vector_match_for_item", lambda item, query, normalized_query: impl_match)
+
+    candidates = read_code._vector_query_candidates(
+        None,
+        "impl",
+        "impl",
+        "code",
+        allow_test_files=False,
+    )
+
+    assert candidates == [impl_match]
 
 
 def test_read_code_context_keeps_top_candidate_for_exact_symbol_scope(monkeypatch) -> None:
