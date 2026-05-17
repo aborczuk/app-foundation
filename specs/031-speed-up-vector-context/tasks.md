@@ -83,7 +83,7 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-**Purpose**: Lock the benchmark artifact and ensure the settled graph is ready for estimate, HUD, and implement phases.
+**Purpose**: Lock the benchmark artifact, prove the persistent daemon path is actually consumed by normal `context` queries, and extend that same daemon to own the remaining first-search startup cost before estimate, HUD, and implement phases.
 
 - [X] T014 Capture the post-change benchmark evidence and accepted validation commands in `specs/031-speed-up-vector-context/tasks.md` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
   - Evidence corpus: scoped exact-path / exact-symbol reads, broad code-plus-markdown discovery, markdown-first reads, and stale/escalation cases remain covered by the existing performance and regression suite.
@@ -92,6 +92,33 @@
     - `uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py -k 'invalidation or timing'`
     - `uv run python scripts/ruff_guard.py scripts/read_code_health.py scripts/read_code.py tests/unit/test_read_code_index_refresh.py tests/unit/test_read_code_shortlist.py tests/integration/test_codebase_vector_index_performance.py`
 - [X] T015 De-prioritize test-file candidates in regular context discovery unless the request explicitly targets tests in `scripts/read_code.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_vector_anchor_rank`
+- [X] T016 [P] Add reranker-daemon transport coverage for shortlist-sized scoring and shared-file fallback in `tests/unit/test_read_code_reranker_daemon.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_rerank_semantic_candidates`
+- [X] T017 Cap rerank requests to the shortlist-sized candidate window and route daemon scoring through a transport-neutral client in `scripts/read_code.py` — `scripts/read_code.py:_rerank_semantic_candidates`
+- [X] T018 Keep Unix-socket and shared-file transports behind the same daemon scoring contract in `scripts/read_code.py`, `src/mcp_codebase/index/reranker_runtime.py`, and `src/mcp_codebase/index/reranker_daemon.py` — `src/mcp_codebase/index/reranker_daemon.py:build_app`
+- [X] T019 [P] Add live-backend verification that normal `read_code context` queries record `rerank_source: daemon`, avoid per-search reranker startup on repeated first-search ranking requests, and fall back cleanly when transport is unavailable in `tests/integration/test_codebase_vector_index_performance.py` and `tests/unit/test_read_code_reranker_daemon.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+- [X] T020 Capture daemon status, fallback, and live verification commands for the reranker service in `specs/031-speed-up-vector-context/tasks.md` and `specs/031-speed-up-vector-context/plan.md` — `specs/031-speed-up-vector-context/plan.md:Design Slices`
+  - Status command: `uv run --no-sync python scripts/read_code.py daemon status`
+  - Live proof test: `SPECKIT_RUN_LIVE_RERANKER_DAEMON_TESTS=1 uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py::test_live_read_code_context_records_daemon_rerank_source_without_restarting_daemon`
+  - Fresh-session daemon proof commands:
+    - `READ_CODE_SESSION_ID=daemon-live-check-1 uv run --no-sync python scripts/read_code.py context "_vector_trust_decision" --path scripts/read_code_health.py`
+    - `READ_CODE_SESSION_ID=daemon-live-check-2 uv run --no-sync python scripts/read_code.py context "_vector_trust_decision" --path scripts/read_code_health.py`
+  - Verified outcome: both fresh-session live queries recorded `rerank_source: daemon`, and the live integration test proved the daemon `started_at` value stayed constant across separate first-search requests.
+- [ ] T021 [P] Add failing contract and live-backend coverage for daemon-owned semantic retrieval startup reuse in `tests/unit/test_read_code_reranker_daemon.py`, `tests/unit/test_read_code_shortlist.py`, and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+  - Prove a fresh-session first-search query records daemon-backed semantic retrieval when transport is healthy.
+  - Prove a repeated fresh-session first-search query avoids per-request semantic query startup and keeps the same daemon process identity.
+  - Preserve clean local fallback when daemon query transport is unavailable or times out.
+- [ ] T022 Route semantic query requests through a transport-neutral daemon client contract in `scripts/read_code.py` and `src/mcp_codebase/index/reranker_runtime.py` — `scripts/read_code.py:_vector_query_candidates`
+  - Keep the synchronous client path bounded to `health -> query -> fallback`.
+  - Reuse the existing UDS-or-file-RPC transport boundary instead of introducing a second daemon or a second client stack.
+- [ ] T023 Move warm semantic query service ownership and request handling into the existing daemon in `src/mcp_codebase/index/reranker_daemon.py`, `src/mcp_codebase/index/service.py`, and `src/mcp_codebase/index/store/chroma.py` — `src/mcp_codebase/index/reranker_daemon.py:build_app`
+  - Keep reranker and semantic retrieval in the same long-lived process.
+  - Ensure daemon-side startup owns the remaining vector query initialization that still happens per first-search request today.
+- [ ] T024 Record daemon-vs-local semantic query sourcing in search metadata and preserve scratchpad behavior in `scripts/read_code.py` and `tests/unit/test_read_code_shortlist.py` — `scripts/read_code.py:_append_search_metadata_event`
+  - Add bounded metadata fields that distinguish daemon-backed semantic retrieval from local fallback.
+  - Keep scratchpad rereads and first-read `--inline-body` gating behavior unchanged.
+- [ ] T025 Capture status, live-proof, and fallback verification commands for daemon-backed semantic retrieval in `specs/031-speed-up-vector-context/plan.md` and `specs/031-speed-up-vector-context/tasks.md` — `specs/031-speed-up-vector-context/plan.md:Plan Completion Summary`
+  - Record the settled live verification commands and the acceptance outcome for daemon-owned first-search retrieval.
+  - Include at least one proof that repeated fresh-session first-search reads avoid per-request semantic query startup when the daemon is healthy.
 
 ## Dependencies & Execution Order
 
@@ -123,6 +150,12 @@
 - T008 and T011 can run in parallel after Phase 2 because they cover different outcome classes and test files.
 - T013 and T014 can run in parallel at the end once the implementation and benchmark outputs are stable.
 - T014 and T015 can run in parallel at the end because benchmark capture and test-candidate ranking polish touch different seams.
+- T016 should land before or alongside T017 so the shortlist-sized rerank boundary has regression coverage before the transport contract changes.
+- T017 and T018 should stay sequential because the shortlist-sized rerank boundary must be stable before the shared transport contract is finalized.
+- T019 and T020 can run in parallel at the end once the daemon path and metadata outputs are stable.
+- T021 should land before or alongside T022 so the daemon semantic-retrieval contract is pinned down before the client routing changes.
+- T022 and T023 should stay sequential because the daemon client contract needs to stabilize before the daemon-side semantic query handler is finalized.
+- T024 and T025 can run in parallel at the end once daemon-backed semantic retrieval and metadata fields are stable.
 
 ## Implementation Strategy
 
@@ -145,7 +178,7 @@
 
 ## Notes
 
-- The task graph follows the approved design-slice ordering from `plan.md`: `PL-01` then `PL-02` then `PL-03`.
+- The task graph follows the approved design-slice ordering from `plan.md`: `PL-01` then `PL-02` then `PL-03`, followed by the daemon-focused `PL-04` through `PL-07` extensions.
 - Every non-human task is anchored to an explicit file path and primary seam so HUD scaffolding can attach concrete implementation context.
 - No task is intentionally estimated at `8` or `13`; the later estimate phase should either confirm medium-sized tasks or force a breakdown before finalize.
 
@@ -169,3 +202,7 @@ Use these plan slices as the authoritative tasking inputs:
 - `PL-01` — Scoped Trust Fast Path
 - `PL-02` — Broad Discovery and Conditional Escalation
 - `PL-03` — Benchmark and Regression Coverage
+- `PL-04` — Persistent Reranker Transport Boundary
+- `PL-05` — Daemon Lifecycle, Observability, and Live Proof
+- `PL-06` — Daemon-Backed Semantic Retrieval
+- `PL-07` — Daemon-Owned Remaining First-Search Startup

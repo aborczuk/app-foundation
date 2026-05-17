@@ -17,7 +17,7 @@
       "estimate": "medium",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Rework broad discovery to use session-level trust for healthy reads, preserve markdown-aware behavior questions, and make heavyweight freshness and fallback work conditional on stale, empty, weak, or ambiguous outcomes.",
+      "implementation_directive": "Rework broad discovery so scoped exact-symbol and file-local reads use scoped trust, while broad reads use session-level trust for healthy cases, preserve markdown-aware behavior questions, and make heavyweight freshness and fallback work conditional on stale, empty, weak, or ambiguous outcomes.",
       "slice_id": "PL-02",
       "title": "Broad Discovery and Conditional Escalation",
       "why": ""
@@ -30,43 +30,64 @@
       "slice_id": "PL-03",
       "title": "Benchmark and Regression Coverage",
       "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Introduce a transport-neutral reranker client contract and keep daemon lifecycle concerns out of the synchronous `context` path. Support both host-side Unix-socket HTTP and sandbox-safe shared-file RPC behind the same `health -> score -> fallback` call pattern, and cap rerank requests to the shortlist-sized candidate window that can actually change user-visible ordering.",
+      "slice_id": "PL-04",
+      "title": "Persistent Reranker Transport Boundary",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Keep the managed daemon startup/status/install logic outside the read path, preserve bounded failure markers and cooldown behavior, and add live verification that a normal `read_code context` query records `rerank_source: daemon` when the daemon is healthy and the active transport is available. Also preserve regression coverage proving heuristic fallback remains safe when daemon transport is blocked or slow.",
+      "slice_id": "PL-05",
+      "title": "Daemon Lifecycle, Observability, and Live Proof",
+      "why": ""
     }
   ],
   "domains": {
     "reasoning": {
-      "caching": "The plan needs a session and scope trust model so healthy vector state can be reused without repeated heavyweight status probes.",
-      "code patterns": "The core work is a routing and control-flow refactor across preflight, query classification, and fallback sequencing.",
-      "resilience": "The plan must preserve safe escalation when trust is stale, weak, or ambiguous instead of trading correctness for speed.",
-      "testing": "The benchmark corpus and regression coverage must prove scoped, broad, and markdown-aware reads still return the intended seams."
+      "caching": "The plan still depends on scratchpad and trust reuse for rereads, and the reranker daemon must not disturb those cached fast paths.",
+      "code patterns": "The main remaining work is a transport-boundary refactor: keep lifecycle and transport concerns out of the synchronous read path while preserving one scoring contract.",
+      "observability": "The daemon needs bounded health, failure, and result-source signals so transport failures degrade cleanly and remain diagnosable in history and status surfaces.",
+      "resilience": "The plan must preserve safe heuristic fallback when the daemon is unavailable, slow, or mismatched instead of making `context` depend on daemon success.",
+      "testing": "Live verification must prove normal `context` queries actually consume daemon scores in this environment, while regression coverage proves fallback remains safe."
     },
     "relevant": [
       "caching",
       "resilience",
       "testing",
-      "code patterns"
+      "code patterns",
+      "observability"
     ]
   },
   "feature_id": "031-speed-up-vector-context",
   "risk": {
-    "external_dependency_uncertainty": "low",
-    "human_operator_dependency": "low",
-    "overall": "medium",
+    "external_dependency_uncertainty": "medium",
+    "human_operator_dependency": "medium",
+    "overall": "high",
     "repo_uncertainty": "medium",
     "requirement_clarity": "medium",
-    "runtime_side_effect_risk": "medium",
+    "runtime_side_effect_risk": "high",
     "state_data_migration_risk": "low"
   },
   "routing": {
     "architecture_diagram": false,
     "external_research": false,
-    "plan_level": "core",
+    "plan_level": "comprehensive",
     "relevant_domains": [
       "caching",
       "resilience",
       "testing",
-      "code patterns"
+      "code patterns",
+      "observability"
     ],
-    "routing_reason": "The plan needs explicit routing and trust strategy because the feature splits broad versus scoped queries, changes when freshness is proven, and constrains fallback and markdown scope behavior.",
+    "routing_reason": "The original latency-routing plan still stands, but the remaining unsolved problem is now the persistent reranker transport and lifecycle boundary. That needs an additive architecture update and verification slices without discarding the earlier scoped/broad trust work.",
     "sketch_level": "expanded"
   },
   "schema_version": "1.0.0",
@@ -76,7 +97,7 @@
     "expanded_design_notes": true,
     "external_research": false,
     "net_new_surface": false,
-    "strategy_reason": "The plan needs explicit routing and trust strategy because the feature splits broad versus scoped queries, changes when freshness is proven, and constrains fallback and markdown scope behavior."
+    "strategy_reason": "The original latency-routing plan still stands, but the remaining unsolved problem is now the persistent reranker transport and lifecycle boundary. That needs an additive architecture update and verification slices without discarding the earlier scoped/broad trust work."
   },
   "tasking": {
     "hud_generation": "generative",
@@ -89,8 +110,8 @@
       "specs/020-codebase-vector-index/spec.md",
       "specs/025-intent-anchor-routing/spec.md"
     ],
-    "duplicate_reason": "Existing specs cover the vector index and intent anchoring separately, but none define the trust-routing and latency behavior for `read_code context` itself.",
-    "risk_level": "medium",
-    "tshirt_size": "m"
+    "duplicate_reason": "Existing specs cover vector indexing and intent anchoring, but none define the persistent reranker transport and sandbox-safe daemon boundary now needed to preserve first-query quality without regressing `read_code context`.",
+    "risk_level": "high",
+    "tshirt_size": "l"
   }
 }

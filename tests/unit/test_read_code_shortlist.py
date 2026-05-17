@@ -803,6 +803,46 @@ def test_resolve_pattern_anchor_uses_daemon_rerank_scores_when_available(monkeyp
     assert resolution.rerank_debug.changed is True
 
 
+def test_rerank_semantic_candidates_scores_only_visible_shortlist_window(monkeypatch) -> None:
+    """The daemon should only score the user-visible shortlist window, not the full retrieval set."""
+    captured_passages: list[str] = []
+    candidates = [
+        read_code._VectorMatch(
+            unit_id=f"function:item_{index}",
+            symbol_name=f"item_{index}",
+            qualified_name=f"item_{index}",
+            line_num=index,
+            line_end=index,
+            raw_score=1.0 - (index * 0.01),
+            cosine_similarity=100 - index,
+            body=f"def item_{index}():\n    return {index}\n",
+            file_path=Path("/tmp/example.py"),
+        )
+        for index in range(read_code.READ_CODE_SEMANTIC_RETRIEVAL_LIMIT)
+    ]
+
+    class _Backend:
+        model_name = "BAAI/bge-reranker-v2-m3"
+
+        def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
+            del query
+            captured_passages.extend(passages)
+            return ([0.0] * (len(passages) - 1)) + [1.0], "daemon"
+
+    monkeypatch.setattr(read_code, "_load_read_code_reranker", lambda: _Backend())
+
+    result = read_code._rerank_semantic_candidates(
+        "target",
+        candidates,
+        allow_test_files=False,
+    )
+
+    assert len(captured_passages) == read_code.READ_CODE_RERANK_WINDOW_LIMIT
+    assert result.source == "daemon"
+    assert result.candidates[0].symbol_name == f"item_{read_code.READ_CODE_RERANK_WINDOW_LIMIT - 1}"
+    assert result.candidates[read_code.READ_CODE_RERANK_WINDOW_LIMIT].symbol_name == f"item_{read_code.READ_CODE_RERANK_WINDOW_LIMIT}"
+
+
 def test_read_code_context_rerank_debug_is_opt_in(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -1141,6 +1181,7 @@ def test_read_code_context_keeps_inline_body_window_for_code_results(monkeypatch
     code_file = tmp_path / "example.py"
     code_file.write_text("line1\nline2\nline3\nline4\nline5\n", encoding="utf-8")
     calls: dict[str, object] = {}
+    _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
 
     monkeypatch.setattr(
         read_code,
@@ -1185,6 +1226,7 @@ def test_read_code_context_keeps_inline_body_window_for_code_results(monkeypatch
         lambda file_path, start, end: calls.update({"file_path": file_path, "start": start, "end": end}),
     )
 
+    assert read_code.read_code_context([str(code_file), "sample"]) == 0
     assert read_code.read_code_context([str(code_file), "sample", "--inline-body"]) == 0
     assert calls == {"file_path": code_file, "start": 1, "end": 57}
 
@@ -1194,6 +1236,7 @@ def test_read_code_context_keeps_inline_body_window_for_markdown_results(monkeyp
     markdown_file = tmp_path / "example.md"
     markdown_file.write_text("# Title\n\n## Section\nbody\n", encoding="utf-8")
     calls: dict[str, object] = {}
+    _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
 
     monkeypatch.setattr(
         read_code,
@@ -1242,6 +1285,7 @@ def test_read_code_context_keeps_inline_body_window_for_markdown_results(monkeyp
         lambda file_path, start, end: calls.update({"file_path": file_path, "start": start, "end": end}),
     )
 
+    assert read_code.read_code_context([str(markdown_file), "Section"]) == 0
     assert read_code.read_code_context([str(markdown_file), "Section", "--inline-body"]) == 0
     assert calls == {"file_path": markdown_file, "start": 3, "end": 4}
 
@@ -1251,6 +1295,7 @@ def test_read_code_context_keeps_markdown_selection_for_broad_prompt(monkeypatch
     markdown_file = tmp_path / "example.md"
     markdown_file.write_text("# Title\n\n## Section\nbody\n", encoding="utf-8")
     calls: dict[str, object] = {}
+    _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
     markdown_match = read_code._VectorMatch(
         unit_id="markdown",
         symbol_name="Section",
@@ -1290,11 +1335,40 @@ def test_read_code_context_keeps_markdown_selection_for_broad_prompt(monkeypatch
         lambda file_path, start, end: calls.update({"file_path": file_path, "start": start, "end": end}),
     )
 
+    assert read_code.read_code_context(["how does markdown selection work"]) == 0
     assert read_code.read_code_context(["how does markdown selection work", "--inline-body"]) == 0
     assert calls["request_is_scoped"] is False
     assert calls["file_path"] == markdown_file
     assert calls["start"] == 3
     assert calls["end"] == 4
+
+
+def test_read_code_context_rejects_inline_body_on_first_read(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Inline body should be blocked until the exact query has been selected in-session once."""
+    code_file = tmp_path / "example.py"
+    code_file.write_text("print('hi')\n", encoding="utf-8")
+    _configure_search_cache_paths(monkeypatch, tmp_path, signature="clean")
+    refresh_calls = {"count": 0}
+
+    def _unexpected_refresh(*_args, **_kwargs) -> bool:
+        refresh_calls["count"] += 1
+        return True
+
+    monkeypatch.setattr(read_code, "_refresh_indexes_for_read", _unexpected_refresh)
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_pattern_anchor",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should not resolve on first inline-body read")),
+    )
+
+    assert read_code.read_code_context([str(code_file), "sample", "--inline-body"]) == 1
+    captured = capsys.readouterr()
+    assert "--inline-body requires a prior context read" in captured.err
+    assert refresh_calls["count"] == 0
 
 
 def test_read_code_context_reuses_scratchpad_for_next_candidate(monkeypatch, tmp_path: Path) -> None:

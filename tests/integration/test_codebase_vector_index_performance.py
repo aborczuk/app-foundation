@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import os
 import shutil
+import sys
 from pathlib import Path
 from time import perf_counter
 
@@ -10,6 +14,20 @@ import pytest
 
 from src.mcp_codebase.index import IndexConfig, IndexScope
 from src.mcp_codebase.index.service import VectorIndexService
+
+
+def _load_script_module(module_name: str, script_name: str):
+    """Load one scripts module directly from the repo for integration-style verification."""
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / script_name
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+read_code = _load_script_module("read_code_live_rerank_integration", "read_code.py")
 
 
 def _build_offline_vector_index_service(
@@ -229,3 +247,44 @@ This is document {index}.
     assert built.markdown_section_count == 80
     assert built.entry_count > len(source_paths)
     assert service.query("symbol_239", scope=IndexScope.CODE, top_k=1)
+
+
+def test_live_read_code_context_records_daemon_rerank_source_without_restarting_daemon(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt-in live verification should prove normal context reads consume daemon reranking without per-search restart."""
+    if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_DAEMON_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_DAEMON_TESTS=1 to run live daemon verification.")
+
+    backend = read_code._load_read_code_reranker()
+    if backend is None:
+        pytest.skip("Reranker backend is unavailable in this environment.")
+
+    heartbeat_before = backend._file_rpc_heartbeat()
+    if heartbeat_before is None:
+        pytest.skip("Live reranker daemon is not reachable through the sandbox-safe transport.")
+
+    metadata_log_path = tmp_path / "search-history.jsonl"
+    current_session = {"id": "live-rerank-daemon-1"}
+    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: current_session["id"])
+    monkeypatch.setattr(
+        read_code,
+        "_read_code_search_scratchpad_path",
+        lambda session_id: tmp_path / f"{session_id}-scratchpad.json",
+    )
+    monkeypatch.setattr(read_code, "_read_code_search_metadata_log_path", lambda: metadata_log_path)
+
+    assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
+    current_session["id"] = "live-rerank-daemon-2"
+    assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
+
+    heartbeat_after = backend._file_rpc_heartbeat()
+    assert heartbeat_after is not None
+    assert heartbeat_before["started_at"] == heartbeat_after["started_at"]
+
+    events = [json.loads(line) for line in metadata_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(events) == 2
+    assert all(event["command"] == "context" for event in events)
+    assert all(event["rerank_source"] == "daemon" for event in events)
+    assert all(event["result_source"] == "backend" for event in events)

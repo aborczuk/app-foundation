@@ -9,9 +9,9 @@ _Artifact: `plan.md`_
 ## Triage
 
 - duplicate: false
-- t_shirt_size: m
-- risk_level: medium
-- reason: Existing specs cover the vector index and intent anchoring separately, but none define the trust-routing and latency behavior for `read_code context` itself.
+- t_shirt_size: l
+- risk_level: high
+- reason: Existing specs cover vector indexing and intent anchoring, but none define the persistent reranker transport and sandbox-safe daemon boundary now needed to preserve first-query quality without regressing `read_code context`.
 
 ## Strategy Contract
 
@@ -19,25 +19,27 @@ _Artifact: `plan.md`_
 {
   "domains": {
     "reasoning": {
-      "caching": "The plan needs a session and scope trust model so healthy vector state can be reused without repeated heavyweight status probes.",
-      "code patterns": "The core work is a routing and control-flow refactor across preflight, query classification, and fallback sequencing.",
-      "resilience": "The plan must preserve safe escalation when trust is stale, weak, or ambiguous instead of trading correctness for speed.",
-      "testing": "The benchmark corpus and regression coverage must prove scoped, broad, and markdown-aware reads still return the intended seams."
+      "caching": "The plan still depends on scratchpad and trust reuse for rereads, and the reranker daemon must not disturb those cached fast paths.",
+      "code patterns": "The main remaining work is a transport-boundary refactor: keep lifecycle and transport concerns out of the synchronous read path while preserving one scoring contract.",
+      "observability": "The daemon needs bounded health, failure, and result-source signals so transport failures degrade cleanly and remain diagnosable in history and status surfaces.",
+      "resilience": "The plan must preserve safe heuristic fallback when the daemon is unavailable, slow, or mismatched instead of making `context` depend on daemon success.",
+      "testing": "Live verification must prove normal `context` queries actually consume daemon scores in this environment, while regression coverage proves fallback remains safe."
     },
     "relevant": [
       "caching",
       "resilience",
       "testing",
-      "code patterns"
+      "code patterns",
+      "observability"
     ]
   },
   "risk": {
-    "external_dependency_uncertainty": "low",
-    "human_operator_dependency": "low",
-    "overall": "medium",
+    "external_dependency_uncertainty": "medium",
+    "human_operator_dependency": "medium",
+    "overall": "high",
     "repo_uncertainty": "medium",
     "requirement_clarity": "medium",
-    "runtime_side_effect_risk": "medium",
+    "runtime_side_effect_risk": "high",
     "state_data_migration_risk": "low"
   },
   "strategy": {
@@ -46,7 +48,7 @@ _Artifact: `plan.md`_
     "expanded_design_notes": true,
     "external_research": false,
     "net_new_surface": false,
-    "strategy_reason": "The plan needs explicit routing and trust strategy because the feature splits broad versus scoped queries, changes when freshness is proven, and constrains fallback and markdown scope behavior."
+    "strategy_reason": "The original latency-routing plan still stands, but the remaining unsolved problem is now the persistent reranker transport and lifecycle boundary. That needs an additive architecture update and verification slices without discarding the earlier scoped/broad trust work."
   },
   "triage": {
     "duplicate": false,
@@ -54,9 +56,9 @@ _Artifact: `plan.md`_
       "specs/020-codebase-vector-index/spec.md",
       "specs/025-intent-anchor-routing/spec.md"
     ],
-    "duplicate_reason": "Existing specs cover the vector index and intent anchoring separately, but none define the trust-routing and latency behavior for `read_code context` itself.",
-    "risk_level": "medium",
-    "tshirt_size": "m"
+    "duplicate_reason": "Existing specs cover vector indexing and intent anchoring, but none define the persistent reranker transport and sandbox-safe daemon boundary now needed to preserve first-query quality without regressing `read_code context`.",
+    "risk_level": "high",
+    "tshirt_size": "l"
   }
 }
 ```
@@ -100,27 +102,39 @@ _Artifact: `plan.md`_
 
 ## Relevant Domains
 
-- `caching`: Session and scope trust reuse are the primary latency lever because healthy vector state is currently reproven on repeated reads.
-- `resilience`: The refactor must preserve safe escalation when trust is stale, weak, empty, or ambiguous so a faster path does not mask incorrect seams.
-- `testing`: Benchmark and regression coverage are required because the feature changes a heavily used discovery path with both latency and correctness consequences.
-- `code patterns`: The change is mainly a routing and control-flow simplification across `read_code.py` and `read_code_health.py`, so the design has to remove unnecessary branches rather than add more guards.
+- `caching`: Session and scope trust reuse remain the primary reread latency lever, and daemon scoring must layer on top without invalidating scratchpad-based fast paths.
+- `resilience`: The reranker daemon can improve first-query ordering only if transport or lifecycle failures degrade to heuristic ranking without breaking `context`.
+- `testing`: The remaining problem is no longer theoretical architecture; it requires live proof that `context` actually records `rerank_source: daemon` under the accepted benchmark queries.
+- `code patterns`: The main refactor is separating transport/lifecycle management from synchronous query execution while preserving one rerank contract.
+- `observability`: Health, cooldown, result-source, and failure-marker behavior have to stay explicit so the daemon remains operable and diagnosable.
 
 ## Summary
 
 Split `read_code context` into scoped and broad request paths, make vector freshness proof conditional instead of mandatory, and remove avoidable sequential code-plus-markdown work for scoped code queries. Keep markdown-aware broad discovery for “how does this work?” questions, but only pay broader trust and mixed-scope costs when the query shape or result quality requires them.
 
+Add a persistent reranker-service layer on top of that faster base path. The daemon remains reranker-only, but it must expose a transport and lifecycle model that works both for host-shell reads and for sandboxed agent reads, without putting startup, repair, or transport failure handling on the synchronous `context` path.
+
 ## Internal Research
 
-- The current exact-symbol scoped benchmark measured about `8.65s` total in-process for `_vector_anchor_rank` against [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/read_code.py).
+- The original exact-symbol scoped benchmark measured about `8.65s` total in-process for `_vector_anchor_rank` against [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/read_code.py).
 - Preflight consumed about `5.75s`, while semantic query work consumed about `2.90s`.
-- The expensive preflight seam is vector freshness, not codegraph availability: `vector_index_probe()` took about `5.63s`, while `_ensure_codegraph_session_available()` was effectively `0.003s`.
-- Scoped query work currently runs both `_vector_find_candidates(..., "code")` and `_vector_find_candidates(..., "markdown")` from [`_query_semantic_anchor_candidate`](/Users/andreborczuk/app-foundation/scripts/read_code.py:707), even for a Python-file exact symbol query.
-- In the measured scoped benchmark, the code query took about `1.32s`, the markdown query took about `1.30s`, and the markdown branch returned zero results.
-- The current overlap optimization is structurally late: it is only consulted after the expensive global vector status probe has already run.
+- The expensive preflight seam was vector freshness, not codegraph availability: `vector_index_probe()` took about `5.63s`, while `_ensure_codegraph_session_available()` was effectively `0.003s`.
+- Scoped query work previously ran both `_vector_find_candidates(..., "code")` and `_vector_find_candidates(..., "markdown")` from [`_query_semantic_anchor_candidate`](/Users/andreborczuk/app-foundation/scripts/read_code.py:707), even for a Python-file exact symbol query.
+- The current reread path has already been repaired with scratchpad reuse: accepted repeated queries now drop from about `3.0s` first-read backend time to about `15ms-16ms` rereads in the same session.
+- The remaining user-visible pain is first-query cost and first-query ordering quality, not repeated-read latency.
+- The host-managed reranker daemon can stay healthy over a Unix socket, but sandboxed agent reads cannot connect to Unix sockets or loopback TCP in this environment; direct connect attempts fail with `operation not permitted`.
+- A shared-files request/response channel is therefore the only currently viable transport between the sandboxed `read_code` client and the long-lived host daemon.
+- Manual file-RPC requests succeed for small score batches, but live `context` still needs bounded shortlist-sized rerank requests and proof that the normal query path records `rerank_source: daemon`.
+- Verification commands for the settled daemon path:
+  - `uv run --no-sync python scripts/read_code.py daemon status`
+  - `SPECKIT_RUN_LIVE_RERANKER_DAEMON_TESTS=1 uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py::test_live_read_code_context_records_daemon_rerank_source_without_restarting_daemon`
+  - `READ_CODE_SESSION_ID=daemon-live-check-1 uv run --no-sync python scripts/read_code.py context "_vector_trust_decision" --path scripts/read_code_health.py`
+  - `READ_CODE_SESSION_ID=daemon-live-check-2 uv run --no-sync python scripts/read_code.py context "_vector_trust_decision" --path scripts/read_code_health.py`
+- Verified daemon outcome: the two fresh-session live queries both recorded `rerank_source: daemon`, and the live integration test proved the daemon `started_at` value remained stable across separate first-search requests.
 
 ## Architecture Strategy
 
-Introduce a two-path `read_code context` architecture:
+Keep the earlier two-path `read_code context` architecture:
 
 - Scoped path:
   - classify symbol-shaped, path-scoped, or file-local requests before global vector freshness proof
@@ -132,15 +146,33 @@ Introduce a two-path `read_code context` architecture:
   - allow healthy session trust to satisfy normal repeated reads
   - run the slower trust or recovery path only when broad discovery is empty, weak, stale, or ambiguous
 
-This split is necessary because the current single path proves global vector freshness and runs dual-scope retrieval before it knows whether the request is narrow or broad, which erases the value of scoped trust and scoped retrieval optimizations.
+Layer the reranker on top of that architecture as a transport-neutral post-retrieval scorer:
+
+- The synchronous read path may only do:
+  - health probe
+  - bounded score request over the active transport
+  - heuristic fallback if anything fails or times out
+- The synchronous read path must not do:
+  - daemon startup
+  - PID/socket cleanup
+  - launch-service management
+  - blocking repair loops
+- Transport policy:
+  - host-shell path can use Unix-socket HTTP
+  - sandboxed agent path must use the shared-files RPC transport under current policy
+  - both transports must satisfy the same score request/response contract so rerank behavior does not fork by transport
+
+This split is necessary because the remaining latency problem is not trust routing anymore; it is keeping a warm reranker model available without making ordinary `context` reads depend on socket permissions or daemon lifecycle work.
 
 ## Expanded Design Notes
 
-Freshness should be modeled as “trusted enough for this request” rather than “the entire vector DB is globally proven fresh on every call.” For scoped reads, acceptable trust signals include unchanged session state, unchanged scope-local edit state, or an exact strong hit in the requested file. For broad reads, session-level trust can still be used for healthy repeated reads, but the slower proof path should remain available for first use, stale state, or ambiguous outcomes.
+The daemon is now a quality and warm-model optimization, not a prerequisite for the base query path. The implementation therefore has to treat reranking as strictly best-effort. If transport setup, health probing, or scoring fails, the command must keep the heuristic shortlist and continue. That contract is more important than maximizing daemon usage because `context` is a primary discovery tool.
 
-Fallback behavior needs to become conditional. The current `read_code context` flow allows recovery work after semantic resolution, but the plan should require observable triggers before paying for it: empty result sets, weak top candidates, stale trust state, or conflicts between expected scope and returned seams. This keeps safety behavior explicit and prevents recovery branches from becoming hidden default latency.
+Transport needs to be explicit rather than incidental. The same daemon may be reachable through Unix-socket HTTP for host-managed reads and through shared-file RPC for sandboxed reads. The client should not infer behavior from the environment ad hoc; it should use one transport-neutral scoring interface with two concrete transports and a bounded fallback order.
 
-Markdown behavior remains important for broad understanding queries because specs, HUDs, and quickstarts often explain intent better than code alone. The optimization target is not “turn markdown off”; it is “do not synchronously pay for markdown on obviously code-scoped reads.” For genuinely mixed broad queries, the remaining product decision is whether code and markdown should run in parallel or whether one should be preferred and the other staged behind it.
+The scoring window also needs a clear product boundary. The reread problem is already solved by scratchpads, so the daemon’s remaining job is only to rerank the shortlist window presented to the user. The plan should therefore limit scoring to the shortlist-sized candidate window that can materially affect top-rank ordering, rather than rescoring a much larger retrieval set and paying a large first-query penalty for little product value.
+
+Observability remains part of the feature. Status surfaces, failure markers, result-source metadata, and cooldown state are necessary because the transport now differs by execution domain. Without those signals, regressions will look like “context is slow again” or “daemon is healthy but unused” with no bounded seam to inspect.
 
 ## Design Slices
 
@@ -162,6 +194,26 @@ Markdown behavior remains important for broad understanding queries because spec
 - Benchmark Corpus: keep the accepted corpus aligned with `tasks.md` across scoped exact-symbol/file-local reads, broad code-plus-markdown discovery, markdown-first reads, and stale-trust escalation cases.
 - Validation Expectation: preserve the measured timings in `## Internal Research` and treat `uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file specs/031-speed-up-vector-context/tasks.md --json` as the task-file format check for this benchmark contract.
 
+### Slice PL-04 - Persistent Reranker Transport Boundary
+
+- Estimate: medium
+- Implementation Directive: Introduce a transport-neutral reranker client contract and keep daemon lifecycle concerns out of the synchronous `context` path. Support both host-side Unix-socket HTTP and sandbox-safe shared-file RPC behind the same `health -> score -> fallback` call pattern, and cap rerank requests to the shortlist-sized candidate window that can actually change user-visible ordering.
+
+### Slice PL-05 - Daemon Lifecycle, Observability, and Live Proof
+
+- Estimate: medium
+- Implementation Directive: Keep the managed daemon startup/status/install logic outside the read path, preserve bounded failure markers and cooldown behavior, and add live verification that a normal `read_code context` query records `rerank_source: daemon` when the daemon is healthy and the active transport is available. Also preserve regression coverage proving heuristic fallback remains safe when daemon transport is blocked or slow.
+
+### Slice PL-06 - Daemon-Backed Semantic Retrieval
+
+- Estimate: large
+- Implementation Directive: Extend the existing long-lived read-code daemon so it owns the warm semantic query service in addition to reranking, expose a transport-neutral `query` capability over the same UDS-or-file-RPC boundary, and keep `read_code.py` as the orchestrator for classification, scratchpad/history, and final rendering. The synchronous client path must remain `health -> query -> fallback`, and live verification must prove first-search queries avoid per-request vector-query startup when the daemon is healthy.
+
+### Slice PL-07 - Daemon-Owned Remaining First-Search Startup
+
+- Estimate: large
+- Implementation Directive: Move the remaining expensive first-search runtime starts that still occur on the `read_code` side into the existing long-lived daemon instead of creating a second service. That includes warm ownership of the semantic query service, any per-query vector backend initialization still triggered from `read_code.py`, and the metadata needed to prove whether a given first-search result came from daemon-owned startup or local fallback. The synchronous client path must stay minimal: `health -> daemon query -> fallback`, with daemon lifecycle work and heavyweight initialization remaining outside the normal read path.
+
 ## Plan Completion Summary
 
-Selected a medium-depth plan with architecture strategy, expanded design notes, and three implementation slices because the feature changes a frequently used internal discovery path and must rebalance speed versus trust without changing the user-facing command surface. This depth is enough because repo-local timing work already isolated the dominant latency seams, and the remaining work is routing, trust policy, and regression coverage rather than external research. The next phase should turn the three slices into tasks, starting with the scoped trust fast path because it offers the clearest latency win.
+Kept the original latency-routing plan intact and extended it with daemon-specific transport and verification work because the reread performance target is already solved while the persistent reranker path was still incomplete. The next phase should keep the earlier trust-routing slices, then add the reranker transport boundary, live-proof slices, daemon-backed semantic retrieval, and remaining first-search startup migration slice so the same long-lived service can remove both reranker startup and vector-query startup from first-search reads without splitting the runtime into multiple daemons.

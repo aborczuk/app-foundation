@@ -234,6 +234,7 @@ cython_debug/
 .codegraphcontext/db/
 .codegraphcontext/global/db/
 .codegraphcontext/last-edit-signature.txt
+.codegraphcontext/read-code-search-scratchpad-*.json
 .codegraphcontext/.uv-cache/
 *.kuzudb
 *.kuzudb-wal
@@ -253,3 +254,4 @@ dump.rdb
 *.pyc
 .venv/
 .env.*
+.codegraphcontext/read-code-reranker-runtime/

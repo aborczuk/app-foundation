@@ -85,11 +85,16 @@ from src.mcp_codebase.index.reranker_runtime import (  # noqa: E402
     READ_CODE_RERANKER_DAEMON_HEALTH_POLL_INTERVAL_SECONDS,
     READ_CODE_RERANKER_DAEMON_HEALTH_TIMEOUT_SECONDS,
     READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS,
+    READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS,
+    READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS,
     load_json_object as _load_runtime_json_object,
     persist_json_object as _persist_runtime_json_object,
     reranker_build_fingerprint,
     reranker_endpoint_path,
     reranker_failure_marker_path,
+    reranker_file_rpc_heartbeat_path,
+    reranker_file_rpc_requests_dir,
+    reranker_file_rpc_responses_dir,
     reranker_launch_agent_label,
     reranker_launch_agent_path,
     reranker_log_path,
@@ -99,8 +104,6 @@ from src.mcp_codebase.index.reranker_runtime import (  # noqa: E402
     reranker_startup_lock_path,
     reranker_tcp_port,
 )
-from src.mcp_codebase.index import IndexConfig, IndexScope, build_vector_index_service  # noqa: E402
-from src.mcp_codebase.index.config import DEFAULT_VECTOR_DB_PATH, load_exclude_patterns  # noqa: E402
 # isort: on
 
 # Backwards-compatible alias for older callers and tests.
@@ -121,11 +124,15 @@ READ_CODE_DEFAULT_WINDOW_LINES = 60
 READ_CODE_MAX_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
 READ_CODE_CONTEXT_PRE_FRACTION = 0.1
 READ_CODE_CONTEXT_PRE_CAP = 25
-READ_CODE_RERANK_CANDIDATE_LIMIT = int(
-    os.environ.get("SPECKIT_READ_CODE_RERANK_CANDIDATE_LIMIT", "20") or "20"
-)
 READ_CODE_FINAL_SHORTLIST_LIMIT = int(
     os.environ.get("SPECKIT_READ_CODE_FINAL_SHORTLIST_LIMIT", "5") or "5"
+)
+READ_CODE_SEMANTIC_RETRIEVAL_LIMIT = int(
+    os.environ.get("SPECKIT_READ_CODE_SEMANTIC_RETRIEVAL_LIMIT", "20") or "20"
+)
+READ_CODE_RERANK_WINDOW_LIMIT = int(
+    os.environ.get("SPECKIT_READ_CODE_RERANK_WINDOW_LIMIT", str(READ_CODE_FINAL_SHORTLIST_LIMIT))
+    or str(READ_CODE_FINAL_SHORTLIST_LIMIT)
 )
 READ_CODE_RERANK_BATCH_SIZE = int(
     os.environ.get("SPECKIT_READ_CODE_RERANK_BATCH_SIZE", "16") or "16"
@@ -204,6 +211,9 @@ class _ReadCodeRerankerBackend:
         self._log_path = reranker_log_path(self._repo_root)
         self._tcp_port = reranker_tcp_port(self._repo_root)
         self._build_fingerprint = reranker_build_fingerprint(self._repo_root, model_name)
+        self._file_rpc_heartbeat_path = reranker_file_rpc_heartbeat_path(self._repo_root)
+        self._file_rpc_requests_dir = reranker_file_rpc_requests_dir(self._repo_root)
+        self._file_rpc_responses_dir = reranker_file_rpc_responses_dir(self._repo_root)
         self._launch_agent_label = reranker_launch_agent_label(self._repo_root)
         self._launch_agent_path = reranker_launch_agent_path(self._repo_root)
 
@@ -218,16 +228,25 @@ class _ReadCodeRerankerBackend:
             return [], "heuristic"
         healthy = self._health()
         if healthy is None:
+            file_scores = self._score_via_file_rpc(query, passages)
+            if file_scores is not None:
+                return file_scores, "daemon"
             return [], "heuristic"
         try:
             payload = self._score(query, passages)
         except Exception as exc:
             self._record_startup_failure(f"score failed: {exc}")
+            file_scores = self._score_via_file_rpc(query, passages)
+            if file_scores is not None:
+                return file_scores, "daemon"
             return [], "heuristic"
         self._clear_startup_failure()
         scores = payload.get("scores")
         if not isinstance(scores, list) or not all(isinstance(item, (int, float)) for item in scores):
             self._record_startup_failure("score payload missing numeric scores")
+            file_scores = self._score_via_file_rpc(query, passages)
+            if file_scores is not None:
+                return file_scores, "daemon"
             return [], "heuristic"
         return [float(item) for item in scores], "daemon"
 
@@ -289,6 +308,61 @@ class _ReadCodeRerankerBackend:
         if not isinstance(payload, dict):
             raise ValueError("reranker daemon returned a non-object score payload")
         return payload
+
+    def _file_rpc_heartbeat(self) -> dict[str, object] | None:
+        """Return a recent shared heartbeat when the daemon is available for file RPC."""
+        payload = _load_runtime_json_object(self._file_rpc_heartbeat_path)
+        if payload is None:
+            return None
+        updated_at = payload.get("updated_at")
+        if not isinstance(updated_at, (int, float)):
+            return None
+        if time.time() - float(updated_at) > max(2.0, READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS):
+            return None
+        if payload.get("build_fingerprint") != self._build_fingerprint:
+            return None
+        if payload.get("model_name") != self._model_name:
+            return None
+        return payload
+
+    def _score_via_file_rpc(self, query: str, passages: list[str]) -> list[float] | None:
+        """Submit one bounded rerank request through the shared file-RPC channel."""
+        if self._file_rpc_heartbeat() is None:
+            return None
+        request_id = f"{os.getpid()}-{time.time_ns()}"
+        request_path = self._file_rpc_requests_dir / f"{request_id}.request.json"
+        response_path = self._file_rpc_responses_dir / f"{request_id}.response.json"
+        self._file_rpc_requests_dir.mkdir(parents=True, exist_ok=True)
+        self._file_rpc_responses_dir.mkdir(parents=True, exist_ok=True)
+        _persist_runtime_json_object(
+            request_path,
+            {
+                "request_id": request_id,
+                "query": query,
+                "passages": list(passages),
+                "requested_at": time.time(),
+            },
+            sort_keys=True,
+        )
+        deadline = time.time() + READ_CODE_RERANKER_FILE_RPC_TIMEOUT_SECONDS
+        try:
+            while time.time() < deadline:
+                payload = _load_runtime_json_object(response_path)
+                if payload is not None:
+                    scores = payload.get("scores")
+                    if isinstance(scores, list) and all(isinstance(item, (int, float)) for item in scores):
+                        return [float(item) for item in scores]
+                    return None
+                time.sleep(READ_CODE_RERANKER_FILE_RPC_POLL_INTERVAL_SECONDS)
+            return None
+        finally:
+            for path in (request_path, response_path):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    continue
 
     def _should_skip_restart(self) -> bool:
         """Return whether the daemon startup cooldown is still active."""
@@ -836,6 +910,9 @@ def _load_read_code_vector_query_service():
     """Return the shared in-process vector query service for this read_code process."""
     global _READ_CODE_VECTOR_QUERY_SERVICE
     if _READ_CODE_VECTOR_QUERY_SERVICE is None:
+        from src.mcp_codebase.index.config import DEFAULT_VECTOR_DB_PATH, IndexConfig, load_exclude_patterns
+        from src.mcp_codebase.index.service import build_vector_index_service
+
         config = IndexConfig(
             repo_root=REPO_ROOT,
             db_path=REPO_ROOT / DEFAULT_VECTOR_DB_PATH,
@@ -1171,6 +1248,18 @@ def _context_query_payload(
         "allow_fallback": parsed.allow_fallback,
         "query_shape": "scoped" if request_scope.is_scoped else "broad",
     }
+
+
+def _context_scratchpad_cache_state(
+    parsed: _ContextArgs,
+    request_scope: _ContextQueryScope,
+    normalized_pattern: str,
+) -> tuple[str, str, str]:
+    """Return the exact session, signature, and cache key for one context request."""
+    session_id = _read_code_session_id()
+    signature = codegraph_current_edit_signature()
+    query_payload = _context_query_payload(parsed, request_scope, normalized_pattern)
+    return session_id, signature, _search_cache_key("context", query_payload)
 
 
 def _find_query_payload(parsed: _FindArgs) -> dict[str, object]:
@@ -1554,7 +1643,10 @@ def _rerank_semantic_candidates(
     allow_test_files: bool,
 ) -> _RerankResult:
     """Rescore the current shortlist window with the daemon-backed reranker when available."""
-    before_symbols = tuple(match.symbol_name or match.qualified_name for match in candidates[:READ_CODE_RERANK_CANDIDATE_LIMIT])
+    rerank_window_limit = min(len(candidates), READ_CODE_RERANK_WINDOW_LIMIT)
+    before_symbols = tuple(
+        match.symbol_name or match.qualified_name for match in candidates[:rerank_window_limit]
+    )
     if len(candidates) < 2:
         return _RerankResult(
             candidates=candidates,
@@ -1582,7 +1674,7 @@ def _rerank_semantic_candidates(
             ),
             source="heuristic",
         )
-    rerank_window = list(candidates[:READ_CODE_RERANK_CANDIDATE_LIMIT])
+    rerank_window = list(candidates[:rerank_window_limit])
     scores, source = backend.score_pairs(query, [_reranker_document_text(match) for match in rerank_window])
     if len(scores) != len(rerank_window):
         return _RerankResult(
@@ -1609,8 +1701,8 @@ def _rerank_semantic_candidates(
             reverse=True,
         )
     ]
-    ordered = reranked + candidates[READ_CODE_RERANK_CANDIDATE_LIMIT :]
-    after_symbols = tuple(match.symbol_name or match.qualified_name for match in ordered[:READ_CODE_RERANK_CANDIDATE_LIMIT])
+    ordered = reranked + candidates[rerank_window_limit:]
+    after_symbols = tuple(match.symbol_name or match.qualified_name for match in ordered[:rerank_window_limit])
     return _RerankResult(
         candidates=ordered,
         debug=_RerankDebugInfo(
@@ -1694,6 +1786,8 @@ def _vector_query_candidates(
     """Return the initial semantic retrieval window for one query scope."""
     if not query or not scope:
         return []
+    from src.mcp_codebase.index.domain import IndexScope
+
     try:
         index_scope = IndexScope(scope)
     except ValueError:
@@ -1702,7 +1796,7 @@ def _vector_query_candidates(
         service = _load_read_code_vector_query_service()
         results = service.query(
             query,
-            top_k=READ_CODE_RERANK_CANDIDATE_LIMIT,
+            top_k=READ_CODE_SEMANTIC_RETRIEVAL_LIMIT,
             scope=index_scope,
             file_path=file_path.resolve() if file_path is not None else None,
         )
@@ -1742,7 +1836,7 @@ def _vector_query_candidates(
         matches,
         key=lambda match: _vector_anchor_rank(match, allow_test_files=allow_test_files),
         reverse=True,
-    )[:READ_CODE_RERANK_CANDIDATE_LIMIT]
+    )[:READ_CODE_SEMANTIC_RETRIEVAL_LIMIT]
 
 
 def _vector_find_candidates(
@@ -2887,10 +2981,12 @@ def _resolve_pattern_anchor_with_scratchpad(
     normalized_pattern: str,
 ) -> tuple[_AnchorResolution | None, bool, str]:
     """Resolve a context request from session scratchpad first, then backend search."""
-    session_id = _read_code_session_id()
-    signature = codegraph_current_edit_signature()
+    session_id, signature, cache_key = _context_scratchpad_cache_state(
+        parsed,
+        request_scope,
+        normalized_pattern,
+    )
     query_payload = _context_query_payload(parsed, request_scope, normalized_pattern)
-    cache_key = _search_cache_key("context", query_payload)
     cached_entry = _load_cached_search_entry(session_id, cache_key, signature=signature)
     if cached_entry is not None:
         cached_resolution, handled = _context_resolution_from_cached_entry(
@@ -2936,6 +3032,32 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         return 1
 
     request_scope = _classify_context_query_scope(parsed)
+    normalized_pattern = normalize_symbol_pattern(parsed.pattern)
+    session_id, signature, cache_key = _context_scratchpad_cache_state(
+        parsed,
+        request_scope,
+        normalized_pattern,
+    )
+    if parsed.inline_body and _load_cached_search_entry(session_id, cache_key, signature=signature) is None:
+        print(
+            "ERROR: --inline-body requires a prior context read for this exact query in the current session. Re-run without --inline-body first.",
+            file=sys.stderr,
+        )
+        _append_search_metadata_event(
+            command="context",
+            subcommand=None,
+            query=parsed.pattern,
+            query_shape="scoped" if request_scope.is_scoped else "broad",
+            file_path=parsed.file_path,
+            hit_count=0,
+            selected_candidate_index=parsed.candidate_index,
+            cache_hit=False,
+            result_source="gated",
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            signature=signature,
+            rerank_source="heuristic",
+        )
+        return 1
     preflight_path = parsed.file_path or Path.cwd()
     if not _refresh_indexes_for_read(
         preflight_path,
@@ -2943,7 +3065,6 @@ def read_code_context(argv: list[str], *, verbose: bool = False) -> int:
         request_is_scoped=request_scope.is_scoped,
     ):
         return 1
-    normalized_pattern = normalize_symbol_pattern(parsed.pattern)
     resolution, cache_hit, signature = _resolve_pattern_anchor_with_scratchpad(
         parsed,
         request_scope=request_scope,
@@ -3477,4 +3598,7 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    exit_code = main(sys.argv[1:])
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(exit_code)
