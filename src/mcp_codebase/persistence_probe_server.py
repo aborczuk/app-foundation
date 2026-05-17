@@ -8,6 +8,18 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+_SERVER_NAME = "read-code-persistence-probe"
+
+
+def _capture_process_identity(server_ref: "PersistenceProbeServer") -> dict[str, object]:
+    """Return the bounded process identity snapshot for the probe server."""
+    return {
+        "name": _SERVER_NAME,
+        "project_root": str(server_ref._project_root),
+        "pid": server_ref._pid,
+        "started_at": server_ref._started_at,
+    }
+
 
 class PersistenceProbeServer:
     """Expose one MCP tool that returns this server process identity."""
@@ -22,17 +34,10 @@ class PersistenceProbeServer:
 
     def _register_tools(self) -> None:
         """Register the single persistence probe tool."""
-        server_ref = self
-
         @self.mcp.tool()
         async def get_process_identity() -> dict[str, object]:
             """Return the current server process identity for persistence checks."""
-            return {
-                "name": "read-code-persistence-probe",
-                "project_root": str(server_ref._project_root),
-                "pid": server_ref._pid,
-                "started_at": server_ref._started_at,
-            }
+            return _capture_process_identity(self)
 
 
 def create_server(*, project_root: Path | None = None) -> PersistenceProbeServer:

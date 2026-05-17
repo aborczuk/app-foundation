@@ -83,7 +83,7 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-**Purpose**: Lock the benchmark artifact, prove the persistent daemon path is actually consumed by normal `context` queries, and extend that same daemon to own the remaining first-search startup cost before estimate, HUD, and implement phases.
+**Purpose**: Lock the benchmark artifact, prove the persistent rerank path is actually consumed by normal `context` queries, and finish the remaining first-search startup migration on the only transport now proven to persist across sandboxed agent turns: a project-local MCP stdio server.
 
 - [X] T014 Capture the post-change benchmark evidence and accepted validation commands in `specs/031-speed-up-vector-context/tasks.md` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
   - Evidence corpus: scoped exact-path / exact-symbol reads, broad code-plus-markdown discovery, markdown-first reads, and stale/escalation cases remain covered by the existing performance and regression suite.
@@ -119,6 +119,21 @@
 - [ ] T025 Capture status, live-proof, and fallback verification commands for daemon-backed semantic retrieval in `specs/031-speed-up-vector-context/plan.md` and `specs/031-speed-up-vector-context/tasks.md` — `specs/031-speed-up-vector-context/plan.md:Plan Completion Summary`
   - Record the settled live verification commands and the acceptance outcome for daemon-owned first-search retrieval.
   - Include at least one proof that repeated fresh-session first-search reads avoid per-request semantic query startup when the daemon is healthy.
+- [ ] T026 [P] Add failing contract and live-backend persistence coverage for the project-local MCP stdio server in `tests/unit/test_persistence_probe_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
+  - Prove the MCP server keeps the same `pid` and `started_at` across separate agent turns.
+  - Prove the persistence check is the gate before migrating `read_code` warm backend ownership onto the MCP path.
+- [ ] T027 Build a project-local MCP stdio backend server that owns warm semantic query and rerank operations in `src/mcp_codebase/` and wire it in `.codex/config.toml` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
+  - Keep the persistence-probe server contract as the base shape and extend it into the real backend server instead of introducing another socket daemon or another repo-local worker.
+  - Expose bounded backend operations that can serve semantic query startup reuse and rerank startup reuse from one persistent process.
+- [ ] T028 Route `read_code` backend requests through the MCP-persistent server with bounded fallback in `scripts/read_code.py` and `tests/unit/test_read_code_reranker_daemon.py` — `scripts/read_code.py:_vector_query_candidates`
+  - Keep the synchronous client path minimal: `server call -> result -> fallback`.
+  - Remove dependency on the per-invocation stdio worker for the active `read_code` path once the MCP server contract is live.
+- [ ] T029 [P] Add live-backend verification that fresh `uv run ... scripts/read_code.py context ...` invocations reuse the same MCP-owned warm backend for both semantic query and rerank in `tests/integration/test_codebase_vector_index_performance.py` and `scripts/probe_read_code_worker_persistence.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+  - Prove repeated fresh CLI invocations reuse one backend `pid` and avoid per-search semantic-query and reranker startup.
+  - Preserve the existing scratchpad reread fast path and clean heuristic/local fallback when the MCP backend is unavailable.
+- [ ] T030 Capture the accepted MCP persistence proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
+  - Record the exact persistence proof commands and the backend identity values used to verify the platform-owned server survives across turns.
+  - Retire obsolete daemon/file-RPC wording where it conflicts with the accepted MCP-persistent path.
 
 ## Dependencies & Execution Order
 
@@ -156,6 +171,9 @@
 - T021 should land before or alongside T022 so the daemon semantic-retrieval contract is pinned down before the client routing changes.
 - T022 and T023 should stay sequential because the daemon client contract needs to stabilize before the daemon-side semantic query handler is finalized.
 - T024 and T025 can run in parallel at the end once daemon-backed semantic retrieval and metadata fields are stable.
+- T026 should land before T027 because the MCP persistence proof is the architectural gate for the migration.
+- T027 and T028 should stay sequential because the server contract needs to stabilize before `read_code` switches its active backend path.
+- T029 and T030 can run in parallel at the end once MCP-backed query and rerank reuse are stable.
 
 ## Implementation Strategy
 
@@ -178,7 +196,7 @@
 
 ## Notes
 
-- The task graph follows the approved design-slice ordering from `plan.md`: `PL-01` then `PL-02` then `PL-03`, followed by the daemon-focused `PL-04` through `PL-07` extensions.
+- The task graph follows the approved design-slice ordering from `plan.md`: `PL-01` then `PL-02` then `PL-03`, followed by the transport/startup extensions. The older daemon-worker tasks remain for audit history, while `T026` through `T030` capture the accepted MCP-persistent route proven by the live persistence probe.
 - Every non-human task is anchored to an explicit file path and primary seam so HUD scaffolding can attach concrete implementation context.
 - No task is intentionally estimated at `8` or `13`; the later estimate phase should either confirm medium-sized tasks or force a breakdown before finalize.
 

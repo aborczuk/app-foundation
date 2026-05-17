@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import os
@@ -13,6 +14,8 @@ from pathlib import Path
 from time import perf_counter
 
 import pytest
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from src.mcp_codebase.index import IndexConfig, IndexScope
 from src.mcp_codebase.index.service import VectorIndexService
@@ -30,6 +33,59 @@ def _load_script_module(module_name: str, script_name: str):
 
 
 read_code = _load_script_module("read_code_live_rerank_integration", "read_code.py")
+
+
+def _persistence_artifact_path() -> Path:
+    """Return the opt-in artifact path used to validate MCP persistence evidence."""
+    override = os.environ.get("READ_CODE_PERSISTENCE_ARTIFACT_PATH")
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[2] / ".codegraphcontext" / "read-code-persistence-probe.json"
+
+
+def _normalize_identity(identity: object) -> dict[str, object]:
+    """Return one validated identity object with the expected bounded keys."""
+    if not isinstance(identity, dict):
+        raise AssertionError("identity snapshot must be a JSON object")
+    if set(identity) != {"name", "project_root", "pid", "started_at"}:
+        raise AssertionError("identity snapshot must contain name, project_root, pid, and started_at")
+    return identity
+
+
+def _load_persistence_artifact(path: Path) -> dict[str, object]:
+    """Load the externally captured MCP persistence artifact from disk."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise AssertionError(f"persistence artifact must be a JSON object: {path}")
+    return payload
+
+
+def _assert_comparison_matches(payload: dict[str, object]) -> None:
+    """Assert the artifact comparison confirms the same pid and started_at."""
+    comparison = payload.get("comparison")
+    if not isinstance(comparison, dict):
+        raise AssertionError("persistence artifact must contain a comparison object")
+    assert comparison.get("same_pid") is True
+    assert comparison.get("same_started_at") is True
+
+
+async def _capture_live_process_identities(repo_root: Path) -> tuple[dict[str, object], dict[str, object]]:
+    """Spawn one probe server over stdio and return two live identity snapshots."""
+    server = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "src.mcp_codebase.persistence_probe_server"],
+        cwd=repo_root,
+    )
+    async with stdio_client(server) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            first_result = await session.call_tool("get_process_identity", {})
+            second_result = await session.call_tool("get_process_identity", {})
+            first_payload = first_result.structuredContent
+            second_payload = second_result.structuredContent
+            assert isinstance(first_payload, dict)
+            assert isinstance(second_payload, dict)
+            return _normalize_identity(first_payload), _normalize_identity(second_payload)
 
 
 def _build_offline_vector_index_service(
@@ -170,6 +226,42 @@ def refreshed_symbol() -> str:
     refreshed_result = service.query("refreshed_symbol", scope=IndexScope.CODE, top_k=1)
     assert refreshed_result
     assert refreshed_result[0].file_path == changed
+
+
+def test_live_project_local_mcp_server_persistence_artifact_matches_across_turns() -> None:
+    """Opt-in live verification should validate externally captured MCP persistence evidence."""
+    artifact_path = _persistence_artifact_path()
+    if not artifact_path.exists():
+        pytest.skip(f"Missing MCP persistence artifact at {artifact_path}")
+
+    payload = _load_persistence_artifact(artifact_path)
+    previous = _normalize_identity(payload.get("previous"))
+    current = _normalize_identity(payload.get("current"))
+    expected_repo_root = str(Path(__file__).resolve().parents[2])
+
+    assert previous["name"] == "read-code-persistence-probe"
+    assert current["name"] == "read-code-persistence-probe"
+    assert previous["project_root"] == current["project_root"] == expected_repo_root
+    assert previous["pid"] == current["pid"]
+    assert previous["started_at"] == current["started_at"]
+    assert previous["pid"] > 0
+    assert isinstance(previous["started_at"], float)
+    _assert_comparison_matches(payload)
+
+
+def test_live_project_local_mcp_server_reports_one_stable_identity_over_stdio_calls() -> None:
+    """Opt-in live verification should exercise one real stdio-spawned probe server process."""
+    if os.environ.get("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 to run live stdio persistence verification.")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    first_identity, second_identity = asyncio.run(_capture_live_process_identities(repo_root))
+
+    assert first_identity["name"] == "read-code-persistence-probe"
+    assert first_identity["project_root"] == str(repo_root)
+    assert first_identity["pid"] > 0
+    assert isinstance(first_identity["started_at"], float)
+    assert second_identity == first_identity
 
 
 def test_refresh_reindexes_changed_code_symbol_after_invalidation(
