@@ -29,10 +29,12 @@ def _load_script_module(module_name: str, script_name: str):
 task_ledger = _load_script_module("task_ledger", "task_ledger.py")
 
 
-def _write_tasks_file(path: Path) -> None:
+def _write_tasks_file(path: Path, *, task_lines: list[str] | None = None) -> None:
+    """Write a minimal tasks file with optional custom task lines."""
     path.write_text(
         "\n".join(
-            [
+            task_lines
+            or [
                 "## implement",
                 "- [ ] T001 first task",
                 "- [ ] T002 second task",
@@ -50,8 +52,9 @@ def _task_event(
     attempt: int = 0,
     timestamp_utc: str = "2026-04-29T00:00:00Z",
     actor: str = "codex",
+    verification_method: str | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "timestamp_utc": timestamp_utc,
         "feature_id": "023",
         "task_id": task_id,
@@ -59,6 +62,9 @@ def _task_event(
         "event": event,
         "actor": actor,
     }
+    if verification_method is not None:
+        payload["verification_method"] = verification_method
+    return payload
 
 
 def test_register_tasks_appends_missing_tasks_and_returns_next_registered_task(
@@ -161,3 +167,51 @@ def test_assert_can_start_task_rejects_open_prior_task(tmp_path: Path) -> None:
 
     with pytest.raises(SystemExit):
         task_ledger.assert_can_start_task(ledger_path, tasks_file, "023", "T002", actor="codex")
+
+
+def test_assert_can_start_task_allows_parallel_sibling_when_prior_serial_work_is_closed(
+    tmp_path: Path,
+) -> None:
+    ledger_path = tmp_path / ".speckit" / "task-ledger.jsonl"
+    tasks_file = tmp_path / "specs" / "023-deterministic-phase-orchestration" / "tasks.md"
+    tasks_file.parent.mkdir(parents=True)
+    _write_tasks_file(
+        tasks_file,
+        task_lines=[
+            "## implement",
+            "- [ ] T001 setup task",
+            "- [ ] T002 [P] parallel task one",
+            "- [ ] T003 [P] parallel task two",
+        ],
+    )
+
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(
+        "\n".join(
+            [
+                json.dumps(_task_event("task_registered"), sort_keys=True),
+                json.dumps(_task_event("task_registered", task_id="T002"), sort_keys=True),
+                json.dumps(_task_event("task_registered", task_id="T003"), sort_keys=True),
+                json.dumps(_task_event("task_started"), sort_keys=True),
+                json.dumps(
+                    _task_event("human_action_verified", verification_method="manual-review"),
+                    sort_keys=True,
+                ),
+                json.dumps(_task_event("task_closed"), sort_keys=True),
+                json.dumps(_task_event("task_started", task_id="T002", actor="agent-a"), sort_keys=True),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = task_ledger.assert_can_start_task(
+        ledger_path,
+        tasks_file,
+        "023",
+        "T003",
+        actor="agent-b",
+    )
+
+    assert summary["task_id"] == "T003"
+    assert summary["parallel"] is True

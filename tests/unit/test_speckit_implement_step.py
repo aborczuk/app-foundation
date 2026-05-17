@@ -33,11 +33,12 @@ speckit_implement_step = _load_script_module(
 )
 
 
-def _write_tasks_file(path: Path) -> None:
+def _write_tasks_file(path: Path, *, task_lines: list[str] | None = None) -> None:
     """Write a minimal valid tasks file for implement-step tests."""
     path.write_text(
         "\n".join(
-            [
+            task_lines
+            or [
                 "## Implement",
                 "- [ ] T001 Say hooray! — ./README.md",
                 "- [ ] T002 Keep going — ./README.md",
@@ -72,6 +73,28 @@ def _write_registered_tasks_ledger(path: Path) -> None:
     path.write_text("\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n", encoding="utf-8")
 
 
+def _task_event(
+    event: str,
+    *,
+    task_id: str,
+    actor: str = "codex",
+    timestamp_utc: str = "2026-04-29T00:00:00Z",
+    verification_method: str | None = None,
+) -> dict[str, object]:
+    """Build a minimal task-ledger event payload for selector tests."""
+    payload: dict[str, object] = {
+        "timestamp_utc": timestamp_utc,
+        "feature_id": "023",
+        "task_id": task_id,
+        "attempt": 1,
+        "event": event,
+        "actor": actor,
+    }
+    if verification_method is not None:
+        payload["verification_method"] = verification_method
+    return payload
+
+
 class _FakeCloseoutResult:
     """Minimal closeout result stub used to exercise the implement flow."""
 
@@ -93,6 +116,50 @@ class _FakeCloseoutResult:
     def to_json(self) -> str:
         """Serialize the closeout stub in the shape the runner expects."""
         return json.dumps(self._payload, sort_keys=True)
+
+
+def test_select_next_registered_task_skips_other_actor_for_parallel_work(tmp_path: Path) -> None:
+    """A second actor should claim the next startable parallel task instead of blocking."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    _write_tasks_file(
+        feature_dir / "tasks.md",
+        task_lines=[
+            "## Implement",
+            "- [ ] T001 Setup — ./README.md",
+            "- [ ] T002 [P] Parallel one — ./README.md",
+            "- [ ] T003 [P] Parallel two — ./README.md",
+        ],
+    )
+    ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    events = [
+        _task_event("task_registered", task_id="T001"),
+        _task_event("task_registered", task_id="T002"),
+        _task_event("task_registered", task_id="T003"),
+        _task_event("task_started", task_id="T001"),
+        _task_event("human_action_verified", task_id="T001", verification_method="manual-review"),
+        _task_event("task_closed", task_id="T001"),
+        _task_event("task_started", task_id="T002", actor="agent-a"),
+    ]
+    ledger_path.write_text(
+        "\n".join(json.dumps(event, sort_keys=True) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    summary = speckit_implement_step._select_next_registered_task(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id="023",
+        actor="agent-b",
+        correlation_id="run-test:speckit.implement",
+    )
+
+    assert summary["next_task_id"] == "T003"
+    assert summary["task_action"] == "started"
+    assert summary["task_parallel"] is True
+    assert summary["task_owner_actor"] == "agent-b"
 
 
 def test_main_blocks_when_feature_not_found(tmp_path: Path, monkeypatch, capsys) -> None:

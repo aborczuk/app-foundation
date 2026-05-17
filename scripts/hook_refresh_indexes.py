@@ -23,10 +23,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.mcp_codebase.index.config import (  # noqa: E402
-    DEFAULT_EMBEDDING_CACHE_DIR,
-    DEFAULT_EMBEDDING_MODEL_NAME,
-)
+try:  # noqa: E402
+    from src.mcp_codebase.index.config import (
+        DEFAULT_EMBEDDING_CACHE_DIR,
+        DEFAULT_EMBEDDING_MODEL_NAME,
+    )
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised by import-isolation test
+    if exc.name != "pydantic":
+        raise
+    # Keep the post-commit refresh hook runnable in the host git environment even when
+    # repo-only Python deps are unavailable there. The hook only needs these two constants.
+    DEFAULT_EMBEDDING_CACHE_DIR = Path(".codegraphcontext/global/db/vector-index/fastembed-cache")
+    DEFAULT_EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 VECTOR_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}
 EMBEDDING_AVAILABILITY_CACHE_VERSION = 1

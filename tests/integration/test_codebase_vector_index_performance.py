@@ -69,23 +69,73 @@ def _assert_comparison_matches(payload: dict[str, object]) -> None:
     assert comparison.get("same_started_at") is True
 
 
-async def _capture_live_process_identities(repo_root: Path) -> tuple[dict[str, object], dict[str, object]]:
-    """Spawn one probe server over stdio and return two live identity snapshots."""
+def _structured(tool_result: object) -> object:
+    """Return structured content from one MCP tool result."""
+    structured = getattr(tool_result, "structuredContent", None)
+    if structured is None:
+        raise AssertionError("MCP tool did not return structured content")
+    return structured
+
+
+async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
+    """Spawn one live backend server over stdio and exercise its public tools."""
     server = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "src.mcp_codebase.persistence_probe_server"],
+        args=["-m", "src.mcp_codebase.project_backend_server"],
         cwd=repo_root,
     )
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
-            first_result = await session.call_tool("get_process_identity", {})
-            second_result = await session.call_tool("get_process_identity", {})
-            first_payload = first_result.structuredContent
-            second_payload = second_result.structuredContent
-            assert isinstance(first_payload, dict)
-            assert isinstance(second_payload, dict)
-            return _normalize_identity(first_payload), _normalize_identity(second_payload)
+            tools = await session.list_tools()
+            tool_names = {tool.name for tool in tools.tools}
+
+            first_payload = _structured(await session.call_tool("get_process_identity", {}))
+            second_payload = _structured(await session.call_tool("get_process_identity", {}))
+            health_payload = _structured(await session.call_tool("health", {}))
+            query_payload = _structured(
+                await session.call_tool(
+                    "query",
+                    {
+                        "query_text": "backend server",
+                        "top_k": 2,
+                        "scope": "code",
+                        "file_path": str(repo_root / "src" / "mcp_codebase" / "project_backend_server.py"),
+                    },
+                )
+            )
+            if not isinstance(query_payload, list) or not query_payload:
+                raise AssertionError("query tool did not return any search results")
+            first_item = query_payload[0]
+            if not isinstance(first_item, dict):
+                raise AssertionError("query tool returned a non-object result")
+            second_item = query_payload[1] if len(query_payload) > 1 else first_item
+            if not isinstance(second_item, dict):
+                raise AssertionError("query tool returned a non-object result")
+            first_passage = first_item.get("preview") or first_item.get("body")
+            second_passage = second_item.get("preview") or second_item.get("body")
+            if not isinstance(first_passage, str) or not first_passage.strip():
+                raise AssertionError("query result is missing a usable passage")
+            if not isinstance(second_passage, str) or not second_passage.strip():
+                raise AssertionError("query result is missing a usable passage")
+            score_payload = _structured(
+                await session.call_tool(
+                    "score",
+                    {
+                        "query_text": "semantic rerank worker",
+                        "passages": [first_passage, second_passage],
+                    },
+                )
+            )
+
+            return {
+                "tool_names": tool_names,
+                "identity_1": _normalize_identity(first_payload),
+                "identity_2": _normalize_identity(second_payload),
+                "health": health_payload,
+                "query": query_payload,
+                "score": score_payload,
+            }
 
 
 def _build_offline_vector_index_service(
@@ -249,19 +299,37 @@ def test_live_project_local_mcp_server_persistence_artifact_matches_across_turns
     _assert_comparison_matches(payload)
 
 
-def test_live_project_local_mcp_server_reports_one_stable_identity_over_stdio_calls() -> None:
-    """Opt-in live verification should exercise one real stdio-spawned probe server process."""
+def test_live_project_local_mcp_server_exposes_identity_health_query_and_score() -> None:
+    """Opt-in live verification should exercise one real MCP backend process."""
     if os.environ.get("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS") != "1":
-        pytest.skip("Set SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 to run live stdio persistence verification.")
+        pytest.skip("Set SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 to run live backend verification.")
 
     repo_root = Path(__file__).resolve().parents[2]
-    first_identity, second_identity = asyncio.run(_capture_live_process_identities(repo_root))
+    payload = asyncio.run(_exercise_live_backend_server(repo_root))
 
-    assert first_identity["name"] == "read-code-persistence-probe"
-    assert first_identity["project_root"] == str(repo_root)
-    assert first_identity["pid"] > 0
-    assert isinstance(first_identity["started_at"], float)
-    assert second_identity == first_identity
+    assert payload["tool_names"] == {"get_process_identity", "health", "query", "score"}
+
+    identity_1 = _normalize_identity(payload["identity_1"])
+    identity_2 = _normalize_identity(payload["identity_2"])
+    health = payload["health"]
+    query = payload["query"]
+    score = payload["score"]
+
+    assert identity_1 == identity_2
+    assert identity_1["name"] == "read-code-persistence-probe"
+    assert identity_1["project_root"] == str(repo_root)
+    assert identity_1["pid"] > 0
+    assert isinstance(identity_1["started_at"], float)
+    assert isinstance(health, dict)
+    assert health["pid"] == identity_1["pid"]
+    assert health["started_at"] == identity_1["started_at"]
+    assert health["name"] == identity_1["name"]
+    assert isinstance(query, list)
+    assert query
+    assert query[0]["file_path"].endswith("project_backend_server.py")
+    assert isinstance(score, dict)
+    assert len(score["scores"]) == 2
+    assert all(isinstance(value, float) for value in score["scores"])
 
 
 def test_refresh_reindexes_changed_code_symbol_after_invalidation(

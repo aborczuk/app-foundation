@@ -784,48 +784,36 @@ def feature_state_for(ledger_path: Path, feature_id: str) -> FeatureState:
     return feature_states.get(feature_id, FeatureState())
 
 
-def assert_can_start_task(
-    ledger_path: Path,
-    tasks_file: Path,
+def evaluate_start_task(
+    *,
+    feature_state: FeatureState,
+    task_definitions: list[TaskDefinition],
     feature_id: str,
     task_id: str,
-    *,
-    actor: str | None = None,
-) -> dict[str, Any]:
-    """Validate dependency and actor gates before starting a task."""
-    ensure_feature_id(feature_id)
-    ensure_task_id(task_id)
-
-    events = read_events(ledger_path)
-    errors, feature_states = validate_sequence(events)
-    if errors:
-        print("ERROR: ledger is invalid; cannot assert task start gate:", file=sys.stderr)
-        for err in errors:
-            print(f"- {err}", file=sys.stderr)
-        raise SystemExit(1)
-
-    task_definitions = parse_task_definitions(tasks_file)
+    actor: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Return a start-gate summary or the blocking reason for one task candidate."""
     order = [definition.task_id for definition in task_definitions]
     if task_id not in order:
-        fail(f"Task {task_id} not found in ordered task list from {tasks_file}")
+        return None, f"Task {task_id} not found in ordered task list"
 
-    actor_name = resolve_actor(actor)
-    feature_state = feature_states.get(feature_id, FeatureState())
-    active_for_actor = feature_state.active_tasks_by_actor.get(actor_name)
+    active_for_actor = feature_state.active_tasks_by_actor.get(actor)
     if active_for_actor and active_for_actor != task_id:
-        fail(
-            f"Cannot start {task_id}; actor {actor_name!r} already has open task "
-            f"{active_for_actor} in feature {feature_id}"
+        return (
+            None,
+            f"Cannot start {task_id}; actor {actor!r} already has open task "
+            f"{active_for_actor} in feature {feature_id}",
         )
 
     current_state = feature_state.tasks.get(task_id)
     if current_state and current_state.closed:
-        fail(f"Cannot start {task_id}; it is already closed in the ledger")
+        return None, f"Cannot start {task_id}; it is already closed in the ledger"
     if current_state and current_state.started and not current_state.closed:
         owner = current_state.owner_actor or "unknown"
-        fail(
+        return (
+            None,
             f"Cannot start {task_id}; it is already started by actor {owner!r} "
-            "and not yet closed"
+            "and not yet closed",
         )
 
     task_lookup = {definition.task_id: definition for definition in task_definitions}
@@ -842,8 +830,9 @@ def assert_can_start_task(
     for prior in blocking_prior:
         prior_state = feature_state.tasks.get(prior)
         if not prior_state or not prior_state.closed:
-            fail(
-                f"Cannot start {task_id}; prior task {prior} is not closed in the ledger"
+            return (
+                None,
+                f"Cannot start {task_id}; prior task {prior} is not closed in the ledger",
             )
 
     if not current_definition.is_parallel:
@@ -853,18 +842,60 @@ def assert_can_start_task(
             if candidate_task_id != task_id and state.started and not state.closed
         )
         if open_other_tasks:
-            fail(
+            return (
+                None,
                 f"Cannot start non-parallel task {task_id}; open tasks remain: "
-                f"{', '.join(open_other_tasks)}"
+                f"{', '.join(open_other_tasks)}",
             )
 
-    return {
-        "feature_id": feature_id,
-        "task_id": task_id,
-        "actor": actor_name,
-        "parallel": current_definition.is_parallel,
-        "blocking_prior_tasks": blocking_prior,
-    }
+    return (
+        {
+            "feature_id": feature_id,
+            "task_id": task_id,
+            "actor": actor,
+            "parallel": current_definition.is_parallel,
+            "blocking_prior_tasks": blocking_prior,
+        },
+        None,
+    )
+
+
+def assert_can_start_task(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+    ) -> dict[str, Any]:
+    """Validate dependency and actor gates before starting a task."""
+    ensure_feature_id(feature_id)
+    ensure_task_id(task_id)
+
+    events = read_events(ledger_path)
+    errors, feature_states = validate_sequence(events)
+    if errors:
+        print("ERROR: ledger is invalid; cannot assert task start gate:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+
+    task_definitions = parse_task_definitions(tasks_file)
+    actor_name = resolve_actor(actor)
+    feature_state = feature_states.get(feature_id, FeatureState())
+    summary, blocking_reason = evaluate_start_task(
+        feature_state=feature_state,
+        task_definitions=task_definitions,
+        feature_id=feature_id,
+        task_id=task_id,
+        actor=actor_name,
+    )
+    if blocking_reason:
+        if "not found in ordered task list" in blocking_reason:
+            fail(f"{blocking_reason} from {tasks_file}")
+        fail(blocking_reason)
+    assert summary is not None
+    return summary
 
 
 def append_task_started_event(

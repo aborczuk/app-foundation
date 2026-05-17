@@ -335,20 +335,48 @@ def _select_next_registered_task(
     if not any(task_state.registered for task_state in feature_state.tasks.values()):
         raise ValueError("task_registration_required")
 
-    next_task = task_ledger.next_registered_task(feature_state)
-    if next_task is None:
+    task_definitions = task_ledger.parse_task_definitions(tasks_file)
+    next_task_id: str | None = None
+    task_state: task_ledger.TaskState | None = None
+    task_action: str | None = None
+    task_parallel = False
+    blocked_owner_actor: str | None = None
+
+    for definition in task_definitions:
+        candidate_state = feature_state.tasks.get(definition.task_id)
+        if candidate_state is None or not candidate_state.registered or candidate_state.closed:
+            continue
+        if candidate_state.started:
+            owner_actor = candidate_state.owner_actor or "unknown"
+            if owner_actor == actor:
+                next_task_id = definition.task_id
+                task_state = candidate_state
+                task_action = "resumed"
+                task_parallel = definition.is_parallel
+                break
+            if blocked_owner_actor is None:
+                blocked_owner_actor = owner_actor
+            continue
+        _, blocking_reason = task_ledger.evaluate_start_task(
+            feature_state=feature_state,
+            task_definitions=task_definitions,
+            feature_id=feature_id,
+            task_id=definition.task_id,
+            actor=actor,
+        )
+        if blocking_reason is None:
+            next_task_id = definition.task_id
+            task_state = candidate_state
+            task_action = "started"
+            task_parallel = definition.is_parallel
+            break
+
+    if next_task_id is None or task_state is None or task_action is None:
+        if blocked_owner_actor is not None:
+            raise ValueError(f"task_owned_by_other_actor:{blocked_owner_actor}")
         raise ValueError("no_registered_open_tasks")
 
-    next_task_id, task_state = next_task
-
-    task_definitions = task_ledger.parse_task_definitions(tasks_file)
-
-    task_action = "resumed" if task_state.started else "started"
-    if task_state.started:
-        owner_actor = task_state.owner_actor or "unknown"
-        if owner_actor != actor:
-            raise ValueError(f"task_owned_by_other_actor:{owner_actor}")
-    else:
+    if task_action == "started":
         task_ledger.assert_can_start_task(
             ledger_path,
             tasks_file,
@@ -380,10 +408,7 @@ def _select_next_registered_task(
         "task_started": bool(task_state.started),
         "task_closed": bool(task_state.closed),
         "task_owner_actor": task_state.owner_actor or actor,
-        "task_parallel": next(
-            (definition.is_parallel for definition in task_definitions if definition.task_id == next_task_id),
-            False,
-        ),
+        "task_parallel": task_parallel,
     }
 
 

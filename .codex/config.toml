@@ -3,4 +3,4 @@ goals = true
 
 [mcp_servers.read_code_persistence_probe]
 command = "uv"
-args = ["run", "--no-sync", "python", "-m", "src.mcp_codebase.persistence_probe_server"]
+args = ["run", "--no-sync", "python", "-m", "src.mcp_codebase.project_backend_server"]

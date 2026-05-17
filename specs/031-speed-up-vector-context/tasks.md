@@ -119,7 +119,7 @@
 - [ ] T025 Capture status, live-proof, and fallback verification commands for daemon-backed semantic retrieval in `specs/031-speed-up-vector-context/plan.md` and `specs/031-speed-up-vector-context/tasks.md` — `specs/031-speed-up-vector-context/plan.md:Plan Completion Summary`
   - Record the settled live verification commands and the acceptance outcome for daemon-owned first-search retrieval.
   - Include at least one proof that repeated fresh-session first-search reads avoid per-request semantic query startup when the daemon is healthy.
-- [ ] T026 [P] Add failing contract and live-backend persistence coverage for the project-local MCP stdio server in `tests/unit/test_persistence_probe_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
+- [X] T026 [P] Add failing contract and live-backend persistence coverage for the project-local MCP stdio server in `tests/unit/test_persistence_probe_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
   - Prove the MCP server keeps the same `pid` and `started_at` across separate agent turns.
   - Prove the persistence check is the gate before migrating `read_code` warm backend ownership onto the MCP path.
 - [ ] T027 Build a project-local MCP stdio backend server that owns warm semantic query and rerank operations in `src/mcp_codebase/` and wire it in `.codex/config.toml` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`

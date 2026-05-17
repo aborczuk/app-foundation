@@ -42,3 +42,11 @@ def test_create_server_captures_one_stable_identity() -> None:
     assert first_payload["project_root"] == str(Path.cwd())
     assert first_payload["pid"] > 0
     assert isinstance(first_payload["started_at"], float)
+
+
+def test_create_server_registers_backend_tools() -> None:
+    """The backend server should expose the expected MCP operations."""
+    server = create_server(project_root=Path.cwd())
+    tool_names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
+
+    assert tool_names == {"get_process_identity", "health", "query", "score"}

@@ -1512,3 +1512,8 @@
 {"actor": "codex", "attempt": 1, "details": "Starting MCP persistence-gate implementation with builder/QA subagents.", "event": "task_started", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T14:56:23.202029Z"}
 {"actor": "codex", "attempt": 1, "details": "QA findings: restore live probe-server coverage and assert artifact repo_root matches current repo.", "event": "offline_qa_failed", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T15:12:09.091289Z"}
 {"actor": "codex", "attempt": 1, "details": "QA PASS: live stdio probe coverage restored; artifact repo_root assertion tightened.", "event": "offline_qa_passed", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T15:17:19.942720Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T15:17:55.540183Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "860b6c1", "event": "commit_created", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T15:17:55.585527Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T15:17:55.630222Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "031", "task_id": "T026", "timestamp_utc": "2026-05-17T15:17:55.672486Z"}
+{"actor": "codex", "attempt": 1, "details": "Starting project-local MCP backend server implementation.", "event": "task_started", "feature_id": "031", "task_id": "T027", "timestamp_utc": "2026-05-17T15:20:58.586398Z"}
