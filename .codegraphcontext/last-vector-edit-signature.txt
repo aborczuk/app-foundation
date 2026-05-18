@@ -1,5 +1,0 @@
- M .codex/config.toml
- M AGENTS.md
- M docs/governance/read-code-stdio-worker.md
- M src/mcp_codebase/project_backend_server.py
- M tests/unit/test_project_backend_server.py

@@ -45,6 +45,26 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 - Keep them short, specific, and colocated with the function they describe.
 - Any code edit that changes behavior should add or update documentation explaining the function or work (eg quickstart.md), unless the change is trivially self-evident.
 
+### Documentation docs
+- When adding or rewriting backend/runtime documentation, make the process model explicit instead of implied.
+- Name the exact runtime symbols that matter operationally:
+  - client/session owner
+  - server entrypoint
+  - readiness gate
+  - warmup function
+  - model/backend wrapper
+  - device or precision policy seam
+- If the doc covers a warm backend, persistent server, model-serving path, or agent runtime behavior, start from:
+  - [`docs/templates/runtime-backend-governance-template.md`](/Users/andreborczuk/app-foundation/docs/templates/runtime-backend-governance-template.md)
+- Runtime docs must explicitly state:
+  - active model name
+  - device selection policy
+  - precision policy
+  - reuse boundary
+  - startup/warmup checklist
+  - expected cold-start shape
+- Do not write runtime docs as architecture prose only; they must be usable as an operator and debugging reference.
+
 ## Technology choices
 - all new code should be written in python so it is viable in codegraph. No bash or other direct shell scripting languages
 

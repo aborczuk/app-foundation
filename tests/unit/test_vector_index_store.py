@@ -189,11 +189,11 @@ def test_select_torch_device_prefers_mps_when_cuda_is_unavailable(monkeypatch) -
     assert chroma_store._select_torch_device() == "mps"
 
 
-def test_local_sequence_reranker_backend_moves_model_to_mps_without_half_precision(
+def test_local_sequence_reranker_backend_moves_model_to_mps_with_half_precision(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    """MPS rerankers should use the accelerator without forcing the CUDA-only half path."""
+    """MPS rerankers should reduce resident model memory with half precision."""
 
     class _FakeCuda:
         @staticmethod
@@ -256,7 +256,7 @@ def test_local_sequence_reranker_backend_moves_model_to_mps_without_half_precisi
     )
 
     assert backend._device == "mps"
-    assert fake_model.half_called is False
+    assert fake_model.half_called is True
     assert fake_model.moved_to == "mps"
     assert fake_model.eval_called is True
 

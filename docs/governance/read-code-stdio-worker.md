@@ -30,6 +30,66 @@ The backend exposes bounded MCP tools:
 - `read_code_analyze`
 - `read_code_window`
 
+## Key Runtime Symbols
+
+The main runtime symbols for this path are:
+
+- [`_ReadCodeRerankerBackend`](/Users/andreborczuk/app-foundation/scripts/read_code.py)
+  - the `read_code.py` side MCP client/session owner
+  - routes semantic query and rerank requests into the live backend
+- [`project_backend_server.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+  - the live MCP stdio server process
+  - registers `query`, `score`, `read_code_context`, `read_code_find`, `read_code_analyze`, `read_code_window`, `warmup`, `health`, and identity/runtime probe tools
+- [`_DirectReadCodeBackend`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+  - the in-server adapter that lets direct `read_code_*` MCP tools reuse the already-live vector/rerank backend without spawning a nested client
+- [`_ensure_vector_index_ready`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+  - the MCP-server readiness gate
+  - it now uses the cheap active-snapshot seam instead of the old heavy `status()` walk on each read
+- [`warmup`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+  - primes one representative scoped semantic query and one five-passage rerank so the first real contextual read does not pay a separate compile/warmup hit
+- [`_LocalSequenceRerankerBackend`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py)
+  - local Hugging Face reranker wrapper used by the vector index store
+- [`_select_torch_device`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py)
+  - device policy for the local reranker backend
+
+## Model And Runtime Policy
+
+The active reranker model is:
+
+- `BAAI/bge-reranker-v2-m3`
+
+The active reranker implementation is:
+
+- [`_LocalSequenceRerankerBackend`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py)
+
+The current device selection policy is:
+
+- [`_select_torch_device`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py) prefers:
+  - `cuda`
+  - then `mps`
+  - then `cpu`
+
+The current precision policy is:
+
+- `cuda`
+  - load the reranker in half precision
+- `mps`
+  - load the reranker in half precision
+- `cpu`
+  - keep the reranker in full `float32`
+
+The current memory/latency tradeoff is:
+
+- `mps` gives the accepted warm-path latency for direct MCP reads
+- `mps` also keeps a large resident model footprint because the reranker is long-lived in the MCP server
+- `cpu` avoids the MPS accelerator footprint, but rerank latency is materially worse
+
+This means:
+
+- the accepted fast agent path is a warm MCP server with the reranker already loaded
+- the main runtime cost is now intentional model residency, not repeated process startup
+- when memory pressure matters more than latency, the relevant seam is the reranker backend in [`chroma.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py), not the MCP transport layer
+
 ## Ownership Split
 
 The shared [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/read_code.py) orchestration still owns:
@@ -62,9 +122,10 @@ Guaranteed now:
 Not guaranteed now:
 
 - separate fresh `uv run --no-sync python scripts/read_code.py ...` invocations do not reuse one backend automatically
-- cross-turn proof for direct MCP `read_code_*` calls is still the remaining gate in the current thread
+- command hooks or helper subprocesses that open their own stdio MCP client session do not attach to the already-running Codex-managed MCP server
+- separate agent/chat sessions should not assume they will inherit the same backend `pid`
 
-That distinction is the current open gap.
+That distinction is the current boundary of the design.
 
 ## Verified Behavior
 
@@ -185,6 +246,55 @@ These numbers are acceptance landmarks, not hard promises. The important split i
 - repeated rerank probes on the same server should be in the low hundreds of milliseconds or better on MPS
 - full direct contextual reads should be much faster after the first warmup than they were on the old CPU-bound path
 
-## Next Requirement
+## Operational Risks
 
-The original sandboxed-agent goal is now satisfied on the direct MCP path: direct `read_code_*` calls keep the same `pid` and `started_at` across agent turns. The CLI subprocess path remains compatibility-only and is not the accepted warm path for agent reads.
+The main operational risks on this path are:
+
+- high resident memory on `mps`
+  - the reranker is intentionally long-lived inside the MCP server
+  - warm latency improves, but memory residency is materially higher than the CPU path
+- accelerator visibility differs by runtime
+  - the live MCP server may see `mps` even when other sandboxed Python paths do not
+  - capability must be checked on the actual live MCP server, not inferred from another process
+- stdio ownership boundaries are strict
+  - a separate stdio MCP client creates its own server process
+  - hooks and helper subprocesses do not share the already-managed Codex MCP server automatically
+- standalone CLI reads remain cold by design
+  - fresh `uv run ... scripts/read_code.py ...` invocations are compatibility-only and still pay per-process startup
+
+## Where To Change It
+
+Use these seams when changing runtime behavior:
+
+- MCP server lifecycle and tool registration:
+  - [`project_backend_server.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+- `read_code.py` MCP client/session behavior and fallback policy:
+  - [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/read_code.py)
+- local reranker model loading, device choice, and precision policy:
+  - [`chroma.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py)
+- vector index readiness and active snapshot usage:
+  - [`service.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/service.py)
+  - [`project_backend_server.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+
+## Related Tests
+
+The main guards for this runtime are:
+
+- live MCP persistence and read-surface verification:
+  - [`test_codebase_vector_index_performance.py`](/Users/andreborczuk/app-foundation/tests/integration/test_codebase_vector_index_performance.py)
+- MCP server behavior and warmup/runtime probes:
+  - [`test_project_backend_server.py`](/Users/andreborczuk/app-foundation/tests/unit/test_project_backend_server.py)
+- reranker device and precision policy:
+  - [`test_vector_index_store.py`](/Users/andreborczuk/app-foundation/tests/unit/test_vector_index_store.py)
+- `read_code.py` backend integration and fallback behavior:
+  - [`test_read_code_reranker_daemon.py`](/Users/andreborczuk/app-foundation/tests/unit/test_read_code_reranker_daemon.py)
+
+## Accepted Constraint
+
+The original sandboxed-agent goal is satisfied on the direct MCP path:
+
+- direct `read_code_*` calls keep the same `pid` and `started_at` across agent turns inside one live Codex session
+
+The original goal is not satisfied on the standalone CLI path:
+
+- fresh `uv run ... scripts/read_code.py ...` subprocesses remain compatibility-only and are not the accepted warm path for agent reads

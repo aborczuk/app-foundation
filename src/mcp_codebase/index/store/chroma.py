@@ -116,7 +116,8 @@ class _LocalSequenceRerankerBackend:
             local_files_only=local_files_only,
         )
         self._device = _select_torch_device()
-        if self._device == "cuda":
+        # Keep accelerated backends in half precision to reduce resident model memory.
+        if self._device in {"cuda", "mps"}:
             self._model = self._model.half()
         self._model.to(self._device)
         self._model.eval()
