@@ -131,20 +131,20 @@
 - [ ] T029 [P] Add live-backend verification that fresh `uv run ... scripts/read_code.py context ...` invocations reuse the same MCP-owned warm backend for both semantic query and rerank in `tests/integration/test_codebase_vector_index_performance.py` and `scripts/probe_read_code_worker_persistence.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
   - Prove repeated fresh CLI invocations reuse one backend `pid` and avoid per-search semantic-query and reranker startup.
   - Preserve the existing scratchpad reread fast path and clean heuristic/local fallback when the MCP backend is unavailable.
-- [ ] T030 Capture the accepted MCP persistence proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
+- [X] T030 Capture the accepted MCP persistence proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
   - Record the exact persistence proof commands and the backend identity values used to verify the platform-owned server survives across turns.
   - Retire obsolete daemon/file-RPC wording where it conflicts with the accepted MCP-persistent path.
-- [ ] T031 [P] Add failing contract and live-backend coverage for an MCP-native `read_code` agent surface in `tests/unit/test_project_backend_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/project_backend_server.py:module`
+- [X] T031 [P] Add failing contract and live-backend coverage for an MCP-native `read_code` agent surface in `tests/unit/test_project_backend_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/project_backend_server.py:module`
   - Prove the persistent project-local MCP server exposes bounded `context`, `find`, `analyze`, and `window` operations suitable for direct agent use.
   - Prove repeated agent-turn calls keep the same backend `pid` and `started_at` while preserving the accepted scoped and broad benchmark corpus behavior.
   - Preserve clean bounded failures for unsupported arguments or unavailable backend state.
 - [X] T032 Route the reusable `read_code` orchestration into importable helpers and expose MCP-native `context`, `find`, `analyze`, and `window` tools in `scripts/read_code.py` and `src/mcp_codebase/project_backend_server.py` — `scripts/read_code.py:read_code_context`
   - Keep `scripts/read_code.py` as the CLI compatibility layer, not the primary warm path for agent reads.
   - Reuse the existing classification, scratchpad/history, metadata, and rendering logic instead of re-implementing a second read stack inside the MCP server.
-- [ ] T033 Migrate live agent-path verification onto the MCP-native read surface in `tests/integration/test_codebase_vector_index_performance.py` and `src/mcp_codebase/persistence_probe_server.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+- [X] T033 Migrate live agent-path verification onto the MCP-native read surface in `tests/integration/test_codebase_vector_index_performance.py` and `src/mcp_codebase/persistence_probe_server.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
   - Prove direct MCP `context`/`find`/`analyze`/`window` calls return parity-equivalent results without spawning fresh `uv run ... scripts/read_code.py ...` subprocesses.
   - Prove the same persistent backend serves both semantic query and rerank work across separate agent turns in the sandbox.
-- [ ] T034 Capture the accepted MCP-native agent-read proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
+- [X] T034 Capture the accepted MCP-native agent-read proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
   - Record `T029` as the failed standalone-CLI persistence branch and `T031` through `T033` as the accepted sandboxed-agent path.
   - Retire obsolete “CLI subprocesses can be warm” wording and document the direct-MCP usage contract for agents.
 

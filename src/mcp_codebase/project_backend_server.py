@@ -113,13 +113,22 @@ class ProjectBackendServer:
         self._vector_index_service = _build_service(self._project_root, reranker_model=reranker_model)
         self._read_code_module = _load_read_code_module(self._project_root)
         self._read_code_backend = _DirectReadCodeBackend(self)
+        self._vector_index_ready = False
         self.mcp = FastMCP(_SERVER_NAME)
         self._register_tools()
 
     def _ensure_vector_index_ready(self) -> None:
-        """Build the local vector index once when the backend first needs it."""
-        if self._vector_index_service.status() is None:
+        """Build the local vector index once using the active manifest, not stale diagnostics."""
+        if self._vector_index_ready:
+            return
+        store = getattr(self._vector_index_service, "_store", None)
+        load_active_metadata = getattr(store, "_load_active_metadata", None)
+        active_metadata = load_active_metadata() if callable(load_active_metadata) else None
+        if active_metadata is None and not callable(load_active_metadata):
+            active_metadata = self._vector_index_service.status()
+        if active_metadata is None:
             self._vector_index_service.build_full_index(revision="local")
+        self._vector_index_ready = True
 
     @contextmanager
     def _read_code_session(self, session_id: str | None):

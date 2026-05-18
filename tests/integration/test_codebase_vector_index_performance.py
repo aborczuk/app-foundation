@@ -43,6 +43,14 @@ def _persistence_artifact_path() -> Path:
     return Path(__file__).resolve().parents[2] / ".codegraphcontext" / "read-code-persistence-probe.json"
 
 
+def _mcp_read_surface_artifact_path() -> Path:
+    """Return the opt-in artifact path used to validate direct MCP read-surface persistence."""
+    override = os.environ.get("READ_CODE_MCP_READ_SURFACE_ARTIFACT_PATH")
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[2] / ".codegraphcontext" / "read-code-mcp-read-surface-probe.json"
+
+
 def _normalize_identity(identity: object) -> dict[str, object]:
     """Return one validated identity object with the expected bounded keys."""
     if not isinstance(identity, dict):
@@ -67,6 +75,20 @@ def _assert_comparison_matches(payload: dict[str, object]) -> None:
         raise AssertionError("persistence artifact must contain a comparison object")
     assert comparison.get("same_pid") is True
     assert comparison.get("same_started_at") is True
+
+
+def _normalize_mcp_command_payload(payload: object) -> dict[str, object]:
+    """Return one validated direct-MCP read-command payload."""
+    if not isinstance(payload, dict):
+        raise AssertionError("direct MCP read payload must be a JSON object")
+    required = {"name", "pid", "started_at", "command", "argv", "exit_code", "stdout", "stderr"}
+    if set(payload) != required:
+        raise AssertionError(f"direct MCP read payload must contain exactly {sorted(required)}")
+    if not isinstance(payload["argv"], list):
+        raise AssertionError("direct MCP read payload argv must be a list")
+    if not isinstance(payload["stdout"], str) or not isinstance(payload["stderr"], str):
+        raise AssertionError("direct MCP read payload stdout/stderr must be strings")
+    return payload
 
 
 def _structured(tool_result: object) -> object:
@@ -349,6 +371,45 @@ def test_live_project_local_mcp_server_persistence_artifact_matches_across_turns
     assert previous["pid"] > 0
     assert isinstance(previous["started_at"], float)
     _assert_comparison_matches(payload)
+
+
+def test_live_project_local_mcp_read_surface_artifact_matches_across_turns() -> None:
+    """Opt-in live verification should validate externally captured direct MCP read-surface evidence."""
+    artifact_path = _mcp_read_surface_artifact_path()
+    if not artifact_path.exists():
+        pytest.skip(f"Missing MCP read-surface artifact at {artifact_path}")
+
+    payload = _load_persistence_artifact(artifact_path)
+    previous = _normalize_identity(payload.get("previous"))
+    current = _normalize_identity(payload.get("current"))
+    context_payload = _normalize_mcp_command_payload(payload.get("read_code_context"))
+    find_payload = _normalize_mcp_command_payload(payload.get("read_code_find"))
+    analyze_payload = _normalize_mcp_command_payload(payload.get("read_code_analyze"))
+    window_payload = _normalize_mcp_command_payload(payload.get("read_code_window"))
+
+    assert previous == current
+    _assert_comparison_matches(payload)
+
+    for command_payload, command_name in (
+        (context_payload, "read_code_context"),
+        (find_payload, "read_code_find"),
+        (analyze_payload, "read_code_analyze"),
+        (window_payload, "read_code_window"),
+    ):
+        assert command_payload["name"] == previous["name"]
+        assert command_payload["pid"] == previous["pid"]
+        assert command_payload["started_at"] == previous["started_at"]
+        assert command_payload["command"] == command_name
+        assert command_payload["exit_code"] == 0
+
+    assert "file_path:" in context_payload["stdout"]
+    assert "ERROR:" not in context_payload["stderr"]
+    assert "name: read_code_context" in find_payload["stdout"]
+    assert "ERROR:" not in find_payload["stderr"]
+    assert "analyze_command: deps" in analyze_payload["stdout"]
+    assert "ERROR:" not in analyze_payload["stderr"]
+    assert "Python entrypoint for code discovery with semantic-first anchoring." in window_payload["stdout"]
+    assert "ERROR:" not in window_payload["stderr"]
 
 
 def test_live_project_local_mcp_server_exposes_identity_health_query_and_score() -> None:

@@ -28,6 +28,17 @@ class _FakeQueryResult:
 class _FakeVectorIndexService:
     """Keep project-backend unit tests off the real vector runtime."""
 
+    class _FakeStore:
+        """Expose the cheap active-metadata seam used by MCP readiness checks."""
+
+        def _load_active_metadata(self) -> dict[str, object]:
+            """Return one truthy fake active-manifest payload."""
+            return {"snapshot_path": "/tmp/fake-snapshot"}
+
+    def __init__(self) -> None:
+        """Attach one fake store with an active metadata loader."""
+        self._store = self._FakeStore()
+
     def status(self) -> dict[str, object]:
         """Return one healthy fake status payload."""
         return {"healthy": True}
@@ -184,3 +195,26 @@ def test_read_code_window_tool_returns_bounded_output(server: backend_server.Pro
     assert '"""Unit tests for the MCP-native project backend server."""' in payload["stdout"]
     assert payload["stderr"] == ""
     assert payload["pid"] > 0
+
+
+def test_ensure_vector_index_ready_uses_store_metadata_without_service_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MCP readiness should use active snapshot metadata instead of full service status diagnostics."""
+
+    class _StatusShouldNotRunService(_FakeVectorIndexService):
+        def status(self) -> dict[str, object]:
+            """Fail loudly if the heavy service status path is touched."""
+            raise AssertionError("service.status() should not run for MCP readiness")
+
+    monkeypatch.setattr(
+        backend_server,
+        "_build_service",
+        lambda *_args, **_kwargs: _StatusShouldNotRunService(),
+    )
+    server = backend_server.create_server(project_root=Path.cwd())
+
+    server._ensure_vector_index_ready()
+    server._ensure_vector_index_ready()
+
+    assert server._vector_index_ready is True

@@ -1,0 +1,64 @@
+{
+  "previous": {
+    "name": "read-code-persistence-probe",
+    "pid": 56118,
+    "project_root": "/Users/andreborczuk/app-foundation",
+    "started_at": 1779065135.868618
+  },
+  "read_code_analyze": {
+    "argv": [
+      "deps",
+      "src.mcp_codebase.project_backend_server"
+    ],
+    "command": "read_code_analyze",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 56118,
+    "started_at": 1779065135.868618,
+    "stderr": "",
+    "stdout": "analyze_command: deps\nquery: src.mcp_codebase.project_backend_server\nmatch_count: 0\n# no parsed analyze matches; rerun with --verbose for raw cgc output\n"
+  },
+  "read_code_context": {
+    "argv": [
+      "_vector_query_candidates",
+      "--path",
+      "/Users/andreborczuk/app-foundation/scripts/read_code.py",
+      "--content-type",
+      "code"
+    ],
+    "command": "read_code_context",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 56118,
+    "started_at": 1779065135.868618,
+    "stderr": "[05/17/26 20:47:55] INFO     vector-index: embedding 1 texts in    chroma.py:567\n                             batches of 1                                       \n                    INFO     vector-index: embedded 1/1 texts in   chroma.py:573\n                             0.00s                                              \n                    INFO     vector-index: embedding backend       chroma.py:579\n                             returned 1 vectors in 0.00s                        \n",
+    "stdout": "file_path: /Users/andreborczuk/app-foundation/scripts/read_code.py\nsignature: def _vector_find_candidates(\ndocstring: Return the bounded shortlist for a query using raw and normalized probes.\ncosine_similarity: 84/100\n# --inline-body for function body and implementation, --next-candidate for the next ranked candidate, uv run cgc analyze callers 'function:_vector_find_candidates' for call sites\n"
+  },
+  "read_code_find": {
+    "argv": [
+      "name",
+      "read_code_context"
+    ],
+    "command": "read_code_find",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 56118,
+    "started_at": 1779065135.868618,
+    "stderr": "",
+    "stdout": "find_command: name\nquery: read_code_context\nname: read_code_context\ntype: Function\nlocation: /Users/andreborczuk/app-foundation/scripts/read_code.py:581\nmatch_index: 0/19\n# --next-candidate for the next ranked match, --show-shortlist to inspect ranked matches, --verbose for raw cgc output\n"
+  },
+  "read_code_window": {
+    "argv": [
+      "/Users/andreborczuk/app-foundation/scripts/read_code.py",
+      "1",
+      "3"
+    ],
+    "command": "read_code_window",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 56118,
+    "started_at": 1779065135.868618,
+    "stderr": "",
+    "stdout": "     1\t#!/usr/bin/env python3\n     2\t\"\"\"Python entrypoint for code discovery with semantic-first anchoring.\n     3\t\n"
+  }
+}

@@ -224,6 +224,7 @@ Observability remains part of the feature. Status surfaces, failure markers, res
 Kept the original latency-routing plan intact and migrated the active warm backend path onto the project-local MCP server. That migration is now complete for the in-process `read_code` query and rerank path, and the live proofs pass for:
 
 - direct backend server identity, health, query, and score
+- direct MCP-native `read_code_context`, `read_code_find`, `read_code_analyze`, and `read_code_window`
 - same-process rerank reuse
 - same-process semantic query reuse
 
@@ -232,4 +233,17 @@ The remaining open gap is cross-invocation persistence for fresh standalone CLI 
 - `uv run --no-sync python scripts/probe_read_code_worker_persistence.py --reset`
 - `uv run --no-sync python scripts/probe_read_code_worker_persistence.py`
 
-showed a backend `pid` change from `47366` to `47540` on May 17, 2026, with `same_pid: false` and `same_started_at: false`. So the active path is MCP-backed but still per-invocation for standalone `uv run ... scripts/read_code.py ...` usage. That means the standalone-CLI persistence branch is not the accepted solve for the sandboxed-agent goal. The next accepted phase is `PL-08`: move the agent read surface itself onto the persistent MCP server and treat the CLI as compatibility-only.
+showed a backend `pid` change from `47366` to `47540` on May 17, 2026, with `same_pid: false` and `same_started_at: false`. So the active path is MCP-backed but still per-invocation for standalone `uv run ... scripts/read_code.py ...` usage. That means the standalone-CLI persistence branch is not the accepted solve for the sandboxed-agent goal.
+
+`PL-08` is now implemented:
+
+- the project-local MCP server exposes direct `read_code_context`, `read_code_find`, `read_code_analyze`, and `read_code_window` tools
+- those tools reuse the shared `read_code.py` orchestration inside one warm server process
+- direct MCP read-surface persistence now proved across agent turns using:
+  - `.codegraphcontext/read-code-mcp-read-surface-baseline.json`
+  - `.codegraphcontext/read-code-mcp-read-surface-probe.json`
+- observed stable backend identity on May 17, 2026:
+  - `pid: 56118`
+  - `started_at: 1779065135.868618`
+
+That closes the accepted sandboxed-agent path. The CLI subprocess branch remains compatibility-only, and `T029` remains the intentionally failed standalone-CLI persistence branch rather than the accepted solution.

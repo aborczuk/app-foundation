@@ -120,44 +120,46 @@ Primary tools:
 
 Read code by intent, not by guessing file windows.
 
-1. **Start with `context` **
-   - Use `uv run python scripts/read_code.py context` for EVERYTHING. natural-language queries, symbols, strings, markdown, or the best matching seam. It will get you to some starting confidence to explore from.
+Use the direct MCP read surface:
+
+- `read_code_context`
+- `read_code_find`
+- `read_code_analyze`
+- `read_code_window`
+
+Those MCP tools run inside the persistent project-local MCP server and are the accepted path when the agent needs warm reuse across turns.
+
+1. **Start with `context`**
+   - Use `read_code_context` for natural-language queries, symbols, strings, markdown, or the best matching seam. It will get you to some starting confidence to explore from.
 
 
    Examples:
 
-  ```bash
-   uv run python scripts/read_code.py context "how read_code resolves semantic candidates"
-   uv run python scripts/read_code.py context "_resolve_pattern_anchor"
-  ```
+   - `read_code_context("how read_code resolves semantic candidates")`
+   - `read_code_context("_resolve_pattern_anchor")`
 2. **Inspect ranked results sequentially**
     - It returns one result at a time.
-    - If the first result is not the right seam, step through candidates by using --next-candidate or --candidate-index N.
+    - If the first result is not the right seam, step through candidates by using `--next-candidate` or `--candidate-index N`.
 
    Examples:
 
-   ```bash
-   uv run python scripts/read_code.py context "semantic candidate resolution" --next-candidate
-   uv run python scripts/read_code.py context "semantic candidate resolution" --candidate-index 2
-   ```
+   - `read_code_context("semantic candidate resolution", next_candidate=True)`
+   - `read_code_context("semantic candidate resolution", candidate_index=2)`
 3. **Dig for Body**
-    - If you believe it is the right candidate, send --inline-body to get the body of the function
+    - If you believe it is the right candidate, send `--inline-body` to get the body of the function.
+    - For agents on the MCP path, prefer the same flow through `read_code_context` first and only request the inline body after the first bounded read, matching the existing gating behavior.
 
    Examples:
 
-   ```bash
-   uv run python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body
-   ```
+   - `read_code_context("_resolve_pattern_anchor", inline_body=True)`
 
 4. **For code symbols, Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
 
    Once `context` or `find` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
 
-   ```bash
-   uv run python scripts/read_code.py analyze callers "_resolve_pattern_anchor"      # Find all functions that call this
-   uv run python scripts/read_code.py analyze calls "read_code_context"              # Find all functions this calls
-   uv run python scripts/read_code.py analyze variable "vector_candidates"           # Find where a variable is used
-   ```
+   - `read_code_analyze("callers", ["_resolve_pattern_anchor"])` to find all functions that call this
+   - `read_code_analyze("calls", ["read_code_context"])` to find all functions this calls
+   - `read_code_analyze("variable", ["vector_candidates"])` to find where a variable is used
 
    The compact match output will hint which analysis to run next.
 
@@ -165,9 +167,7 @@ Read code by intent, not by guessing file windows.
 
    Examples:
 
-   ```bash
-   uv run python scripts/read_code.py context "_resolve_pattern_anchor" --path src/mcp_codebase/read_code.py
-   ```
+   - `read_code_context("_resolve_pattern_anchor", file_path="/Users/andreborczuk/app-foundation/src/mcp_codebase/read_code.py")`
 
 6. **Advanced Graph Analysis (when needed)**
 
@@ -177,11 +177,9 @@ Read code by intent, not by guessing file windows.
 
    Examples:
 
-   ```bash
-   uv run python scripts/read_code.py analyze deps "src.mcp_codebase.read_code"      # Module dependencies
-   uv run python scripts/read_code.py analyze tree "SomeClass"                        # Inheritance hierarchy
-   uv run python scripts/read_code.py analyze dead-code                               # Unused functions
-   ```
+   - `read_code_analyze("deps", ["src.mcp_codebase.read_code"])` for module dependencies
+   - `read_code_analyze("tree", ["SomeClass"])` for inheritance hierarchy
+   - `read_code_analyze("dead-code", [])` for unused functions
 
    **Find commands** (`read_code find`):
 - `name <symbol>` — exact name match for functions, classes, variables
@@ -193,11 +191,9 @@ Read code by intent, not by guessing file windows.
 - `argument <param_name>` — find functions that take a specific parameter
 
 Examples:
-```bash
-uv run python scripts/read_code.py find name "_emit_strict_resolution_failure"
-uv run python scripts/read_code.py find pattern "vector_match"
-uv run python scripts/read_code.py find content "semantic search"
-```
+- `read_code_find("name", ["_emit_strict_resolution_failure"])`
+- `read_code_find("pattern", ["vector_match"])`
+- `read_code_find("content", ["semantic search"])`
 
 **Analyze commands** (`read_code analyze`):
 - `callers <symbol>` — find all functions that call this function
@@ -219,7 +215,12 @@ uv run python scripts/read_code.py find content "semantic search"
    
    - This keeps markdown reads bounded and intent-driven, just like code reads.
 
-8. If read preflight reports a missing/stale vector DB, bootstrap it first: `uv run --no-sync python -m src.mcp_codebase.indexer --repo-root . bootstrap`.
+8. If read preflight reports a missing/stale vector DB, bootstrap it through the repo maintenance flow before relying on the result.
+
+### Accepted Read Path Summary
+
+- Codex agents should prefer the persistent MCP read tools for normal code-reading work.
+- Do not assume fresh `uv run ... scripts/read_code.py ...` subprocesses are warm; that branch is intentionally not the accepted agent-read performance path.
 
 
 ### Edit Efficiency
