@@ -227,6 +227,7 @@ Examples:
   - optionally call `score_probe`
 - Expected live MCP cold-start shape on Apple silicon:
   - the explicit `warmup` call pays model plus MPS warmup once
+  - `warmup` primes one representative scoped query and one five-passage rerank so the first real `read_code_context` call does not pay a separate context-shaped warmup hit
   - repeated rerank probes on the same server should be much faster
   - full `read_code_context` calls are still slower than raw rerank probes because they include semantic query and shared `read_code` orchestration
 

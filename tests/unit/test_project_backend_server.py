@@ -39,7 +39,10 @@ class _FakeVectorIndexService:
         """Attach one fake store with an active metadata loader."""
         self._store = self._FakeStore()
         self.ensure_reranker_calls = 0
+        self.query_calls = 0
+        self.query_payloads: list[dict[str, object]] = []
         self.rerank_calls = 0
+        self.rerank_payloads: list[dict[str, object]] = []
 
     def status(self) -> dict[str, object]:
         """Return one healthy fake status payload."""
@@ -63,6 +66,15 @@ class _FakeVectorIndexService:
         file_path: Path | None,
     ) -> list[_FakeQueryResult]:
         """Return one deterministic query row for tests."""
+        self.query_calls += 1
+        self.query_payloads.append(
+            {
+                "query_text": query_text,
+                "top_k": top_k,
+                "scope": scope,
+                "file_path": file_path,
+            }
+        )
         _ = top_k
         _ = scope
         resolved = file_path.resolve() if file_path is not None else Path("/tmp/example.py")
@@ -87,7 +99,12 @@ class _FakeVectorIndexService:
     def rerank_scores(self, query_text: str, passages: list[str]) -> dict[str, object]:
         """Return bounded float scores for fake rerank requests."""
         self.rerank_calls += 1
-        _ = query_text
+        self.rerank_payloads.append(
+            {
+                "query_text": query_text,
+                "passage_count": len(passages),
+            }
+        )
         return {
             "scores": [float(index + 1) for index, _ in enumerate(passages)],
             "model_name": "fake-model",
@@ -119,6 +136,14 @@ def server(monkeypatch: pytest.MonkeyPatch) -> backend_server.ProjectBackendServ
     """Create one backend server with a fake in-memory vector service."""
     monkeypatch.setattr(backend_server, "_build_service", lambda *_args, **_kwargs: _FakeVectorIndexService())
     return backend_server.create_server(project_root=Path.cwd())
+
+
+def test_mcp_process_name_is_bounded_and_labeled() -> None:
+    """The MCP process name helper should emit one recognizable bounded label."""
+    payload = backend_server._mcp_process_name("ppid-1234567890")
+
+    assert payload.startswith(b"read_code_mcp_server:")
+    assert len(payload) <= 63
 
 
 def test_create_server_registers_mcp_native_read_code_tools(
@@ -223,7 +248,7 @@ def test_runtime_capabilities_tool_returns_bounded_probe_payload(
 
 
 def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendServer) -> None:
-    """The explicit warmup tool should prime reranker init and first forward once per server."""
+    """The explicit warmup tool should prime the full context query and shortlist rerank once."""
     first = _extract_tool_payload(asyncio.run(server.mcp.call_tool("warmup", {})))
     second = _extract_tool_payload(asyncio.run(server.mcp.call_tool("warmup", {})))
 
@@ -231,9 +256,22 @@ def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendS
     assert second["warmup_completed"] is True
     assert second["elapsed_ms"] <= first["elapsed_ms"]
     assert server._vector_index_service.ensure_reranker_calls == 1
+    assert server._vector_index_service.query_calls == 1
     assert server._vector_index_service.rerank_calls == 1
-
-
+    assert server._vector_index_service.query_payloads == [
+        {
+            "query_text": "_resolve_pattern_anchor",
+            "top_k": 5,
+            "scope": None,
+            "file_path": (Path.cwd() / "scripts" / "read_code.py").resolve(),
+        }
+    ]
+    assert server._vector_index_service.rerank_payloads == [
+        {
+            "query_text": "_resolve_pattern_anchor",
+            "passage_count": 5,
+        }
+    ]
 def test_score_probe_tool_reports_elapsed_time_and_score_count(
     server: backend_server.ProjectBackendServer,
 ) -> None:

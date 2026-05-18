@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import ctypes
 import importlib.util
 import io
 import os
@@ -26,6 +27,29 @@ from src.mcp_codebase.index.store import chroma as chroma_store
 _SERVER_NAME = "read-code-persistence-probe"
 _BACKEND_RUNTIME_DIR = "read-code-mcp-runtime"
 _BACKEND_PID_FILE_PREFIX = "project_backend_server"
+_WARMUP_QUERY_TEXT = "_resolve_pattern_anchor"
+_WARMUP_QUERY_TOP_K = 5
+_WARMUP_RERANK_PASSAGES = [
+    "def _resolve_pattern_anchor(file_path, pattern, normalized_pattern):\n"
+    "    vector_candidates, vector_match = _query_semantic_anchor_candidate_with_debug(\n"
+    "        file_path, pattern, normalized_pattern\n"
+    "    )\n"
+    "    return vector_match or vector_candidates[0]\n",
+    "def _resolve_pattern_anchor_with_scratchpad(session_id, pattern):\n"
+    "    cached = _load_anchor_resolution(session_id, pattern)\n"
+    "    if cached is not None:\n"
+    "        return cached\n"
+    "    return _resolve_pattern_anchor(None, pattern, pattern)\n",
+    "def _query_semantic_anchor_candidate_with_debug(file_path, pattern, normalized_pattern):\n"
+    "    candidates = _vector_find_candidates(pattern, file_path=file_path)\n"
+    "    reranked = _rerank_semantic_candidates(pattern, candidates)\n"
+    "    return reranked\n",
+    "def _vector_find_candidates(query_text, *, file_path=None):\n"
+    "    return _vector_query_candidates(query_text, top_k=20, file_path=file_path)\n",
+    "def _rerank_semantic_candidates(query_text, passages):\n"
+    "    shortlist = passages[:5]\n"
+    "    return backend.score_pairs(query_text, shortlist)\n",
+]
 
 
 def _capture_process_identity(server_ref: "ProjectBackendServer") -> dict[str, object]:
@@ -59,6 +83,30 @@ def _capture_torch_runtime() -> dict[str, object]:
         "mps_available": bool(is_mps_available()) if callable(is_mps_available) else False,
         "cuda_available": bool(torch_module.cuda.is_available()),
     }
+
+
+def _mcp_process_name(owner: str) -> bytes:
+    """Return one bounded process name for Activity Monitor and ps output."""
+    return f"read_code_mcp_server:{owner}".encode("utf-8")[:63]
+
+
+def _apply_process_name(owner: str) -> None:
+    """Best-effort apply one process display name on platforms that support setprogname."""
+    try:
+        libc = ctypes.CDLL(None)
+        setprogname = getattr(libc, "setprogname", None)
+        if setprogname is None:
+            return
+        setprogname.argtypes = [ctypes.c_char_p]
+        setprogname.restype = None
+        setprogname(_mcp_process_name(owner))
+    except Exception:
+        return
+
+
+def _warmup_query_file_path(project_root: Path) -> Path:
+    """Return one stable scoped file used to prime the full context query path."""
+    return project_root / "scripts" / "read_code.py"
 
 
 def _backend_runtime_dir(project_root: Path) -> Path:
@@ -223,6 +271,7 @@ class ProjectBackendServer:
         """Capture one process identity and build one warm vector service."""
         self._project_root = (project_root or config.PROJECT_ROOT).resolve()
         self._instance_owner = _resolve_backend_owner()
+        _apply_process_name(self._instance_owner)
         self._pid = os.getpid()
         self._started_at = time.time()
         self._reranker_model = reranker_model
@@ -314,12 +363,21 @@ class ProjectBackendServer:
         return getattr(backend, "_device", None)
 
     def _warmup_reranker_runtime(self) -> dict[str, object]:
-        """Prime the reranker backend and first accelerator forward once per server."""
+        """Prime the scoped query path and shortlist-sized reranker forward once per server."""
         self._ensure_vector_index_ready()
         started = monotonic()
         if not self._reranker_warmed:
             self._vector_index_service.ensure_reranker_model_local()
-            self._vector_index_service.rerank_scores("__warmup__", ["warmup passage"])
+            self._vector_index_service.query(
+                _WARMUP_QUERY_TEXT,
+                top_k=_WARMUP_QUERY_TOP_K,
+                scope=None,
+                file_path=_warmup_query_file_path(self._project_root),
+            )
+            self._vector_index_service.rerank_scores(
+                _WARMUP_QUERY_TEXT,
+                list(_WARMUP_RERANK_PASSAGES),
+            )
             self._reranker_warmed = True
         return {
             **_capture_process_identity(self),

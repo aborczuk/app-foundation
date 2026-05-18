@@ -125,17 +125,21 @@ Use this checklist when starting a new Codex session and expecting warm `read_co
    - `read_code_find`
    - `read_code_analyze`
    - `read_code_window`
+   - the Codex MCP config now launches the server with the repo venv Python directly, so after refresh you should see one `project_backend_server` process instead of a parent `uv` wrapper plus child Python pair
 3. Confirm accelerator visibility on the live MCP server before trusting rerank timings:
    - call `get_runtime_capabilities`
    - verify:
-     - `mps_built: true`
-     - `mps_available: true`
-     - `cuda_available: false` is expected on Apple silicon
+      - `mps_built: true`
+      - `mps_available: true`
+      - `cuda_available: false` is expected on Apple silicon
 4. Prime the reranker before the first real read:
    - call `warmup`
    - verify:
-     - `warmup_completed: true`
-     - `selected_device: "mps"` when MPS is exposed
+      - `warmup_completed: true`
+      - `selected_device: "mps"` when MPS is exposed
+   - `warmup` now primes:
+      - one representative scoped semantic query against `scripts/read_code.py`
+      - one five-passage shortlist rerank shaped like a real `read_code_context` call
 5. Optionally measure the live rerank path after warmup:
    - call `score_probe`
 
@@ -177,6 +181,7 @@ These numbers are acceptance landmarks, not hard promises. The important split i
 
 - first probe after server start pays warmup
 - calling `warmup` at session start moves that one-time hit off the first real user read
+- after the representative warmup, the first scoped `read_code_context` call should land much closer to the normal warm regime instead of paying a separate context-shaped compile hit
 - repeated rerank probes on the same server should be in the low hundreds of milliseconds or better on MPS
 - full direct contextual reads should be much faster after the first warmup than they were on the old CPU-bound path
 
