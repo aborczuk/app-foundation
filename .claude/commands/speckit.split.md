@@ -213,7 +213,7 @@ This command operates on the **current feature branch's spec**, or on a spec ide
 
 ---
 
-## Behavior Rules
+## Behavior rules
 
 - **Never write files before user approves the split proposal** — the proposal step is a hard gate.
 - **No scope drop**: Every FR from the source spec must appear in exactly one phase spec. Verify this with the FR Coverage Check table.

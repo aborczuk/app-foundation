@@ -83,7 +83,7 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
 
 ---
 
-## Behavior Rules
+## Behavior rules
 
 - **Scope discipline**: Sub-tasks must cover exactly the original task's scope — no added features, no dropped scope.
 - **Two or three, not one**: A split into a single task is not a split. Minimum 2 sub-tasks.

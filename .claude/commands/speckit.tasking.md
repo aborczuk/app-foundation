@@ -6,7 +6,7 @@
 $ARGUMENTS
 ```
 
-## Compact Contract (Load First)
+## Contract
 
 Generate `tasks.md` and task HUDs from an approved `plan.md` / `spec.json` summary, then stabilize the downstream task graph with deterministic checks.
 
@@ -18,7 +18,7 @@ Generate `tasks.md` and task HUDs from an approved `plan.md` / `spec.json` summa
 6. Validate completed HUDs via `scripts/speckit_remake_huds.py validate --feature-dir "$FEATURE_DIR" --json`.
 7. Register tasks and generate acceptance tests from the settled task graph.
 
-## Expanded Guidance (Load On Demand)
+## Guidance
 
 ### 1. Setup + hard-block gate
 

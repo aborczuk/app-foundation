@@ -6,7 +6,7 @@
 $ARGUMENTS
 ```
 
-## Compact Contract (Load First)
+## Contract
 
 Act as the persistent implement-session QA subagent for one completed task at a time. Own the canonical offline-QA stage for the active task: prepare the minimum valid task-scoped payload, run `scripts/speckit_offline_qa_handoff.py` immediately, and emit a structured PASS/FIX_REQUIRED result for the orchestrator using that canonical result. `scripts/speckit_closeout_task.py` remains orchestrator-owned after QA passes.
 
@@ -18,7 +18,7 @@ Act as the persistent implement-session QA subagent for one completed task at a 
 6. If the offline QA passes, then continue to the other steps in this document. You must do a manual drift detection as well as check that the functionality exists, and works.
 7. Emit structured PASS/FIX_REQUIRED findings back to the orchestrator only.
 
-## Expanded Guidance (Load On Demand)
+## Guidance
 
 ### 1. Setup + context resolution
 

@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 
 KNOWN_SHAPES: dict[str, list[str]] = {
-    "compact_expanded": [
+    "contract_guidance": [
         "User Input",
-        "Compact Contract (Load First)",
-        "Expanded Guidance (Load On Demand)",
+        "Contract",
+        "Guidance",
         "Behavior rules",
     ],
     "legacy_outline": [
@@ -52,23 +52,23 @@ def _shape_matches(headings: list[str], expected: list[str]) -> bool:
     return headings == expected
 
 
-def _compact_contract_body(markdown_file: Path) -> str:
-    """Return the body text that belongs to the compact contract section."""
+def _contract_body(markdown_file: Path) -> str:
+    """Return the body text that belongs to the contract section."""
     lines = markdown_file.read_text(encoding="utf-8").splitlines()
-    compact_heading = "## Compact Contract (Load First)"
+    contract_heading = "## Contract"
     collecting = False
-    compact_lines: list[str] = []
+    contract_lines: list[str] = []
 
     for line in lines:
-        if line.strip() == compact_heading:
+        if line.strip() == contract_heading:
             collecting = True
             continue
         if collecting and re.match(r"^##\s+.+$", line):
             break
         if collecting:
-            compact_lines.append(line)
+            contract_lines.append(line)
 
-    return "\n".join(compact_lines)
+    return "\n".join(contract_lines)
 
 
 def _find_forbidden_procedure_markers(text: str) -> list[str]:
@@ -88,7 +88,7 @@ def _resolve_repo_root(markdown_file: Path, repo_root: Path | None) -> Path:
 
 
 def _validate_required_command_docs(repo_root: Path) -> dict[str, Any]:
-    """Validate required command-doc shape and compact-contract marker hygiene."""
+    """Validate required command-doc shape and contract-section marker hygiene."""
     command_dir = repo_root / ".claude" / "commands"
     missing_docs: list[str] = []
     shape_failures: list[str] = []
@@ -102,10 +102,10 @@ def _validate_required_command_docs(repo_root: Path) -> dict[str, Any]:
             continue
         validated_docs.append(command_id)
         headings = _top_level_headings(doc_path)
-        if not _shape_matches(headings, KNOWN_SHAPES["compact_expanded"]):
+        if not _shape_matches(headings, KNOWN_SHAPES["contract_guidance"]):
             shape_failures.append(command_id)
             continue
-        forbidden_markers = _find_forbidden_procedure_markers(_compact_contract_body(doc_path))
+        forbidden_markers = _find_forbidden_procedure_markers(_contract_body(doc_path))
         if forbidden_markers:
             marker_failures.append(
                 {
@@ -158,7 +158,7 @@ def validate_markdown_doc_shape(
         if matched_shape is None:
             reasons.append("shape_mismatch")
         else:
-            forbidden_markers = _find_forbidden_procedure_markers(_compact_contract_body(markdown_file))
+            forbidden_markers = _find_forbidden_procedure_markers(_contract_body(markdown_file))
             if forbidden_markers:
                 reasons.append("executable_procedures_detected")
 

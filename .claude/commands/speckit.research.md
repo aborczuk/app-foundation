@@ -17,7 +17,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 Normal pipeline execution no longer produces separate `discovery.md` or `research.md` artifacts. Run `/speckit.plan`; the combined plan script performs internal discovery, proportional external/internal research, architecture planning, and design-slice scaffolding inside `plan.md`.
 
-## Behavior Rules
+## Behavior rules
 
 - Do not use this command for the normal pipeline path.
 - Do not make architecture or LOE decisions here.

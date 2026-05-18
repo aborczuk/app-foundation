@@ -342,8 +342,8 @@ def test_query_semantic_anchor_candidate_reports_empty_shortlist_explicitly(
 
     candidates, match, ok, rerank_debug, rerank_source = read_code._query_semantic_anchor_candidate_with_debug(
         None,
-        "Compact Contract (Load First)",
-        "Compact Contract (Load First)",
+        "Contract",
+        "Contract",
         candidate_index=0,
         show_shortlist_hint=False,
         content_type=None,
@@ -379,7 +379,7 @@ def test_backend_query_accepts_result_payload_shape(monkeypatch: pytest.MonkeyPa
     )
 
     payload = backend._backend_query(
-        query="Compact Contract (Load First)",
+        query="Contract",
         top_k=10,
         scope="markdown",
         file_path=None,

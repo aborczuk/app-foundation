@@ -19,22 +19,18 @@ def _load_read_markdown_module():
     return module
 
 
-def test_speckit_solution_doc_exposes_compact_and_expanded_headings() -> None:
-    """Keep the solution command aligned to the compact/expanded markdown pattern."""
+def test_speckit_solution_doc_exposes_contract_and_guidance_headings() -> None:
+    """Keep the solution command aligned to the contract/guidance markdown pattern."""
     read_markdown = _load_read_markdown_module()
     doc_path = Path(__file__).resolve().parents[2] / ".claude" / "commands" / "speckit.solution.md"
 
-    compact_section = read_markdown.read_markdown_section(
-        str(doc_path), "Compact Contract (Load First)"
-    )
-    expanded_section = read_markdown.read_markdown_section(
-        str(doc_path), "Expanded Guidance (Load On Demand)"
-    )
+    contract_section = read_markdown.read_markdown_section(str(doc_path), "Contract")
+    guidance_section = read_markdown.read_markdown_section(str(doc_path), "Guidance")
 
-    assert compact_section
-    assert expanded_section
-    assert any("## Compact Contract (Load First)" in line for line in compact_section)
-    assert any("## Expanded Guidance (Load On Demand)" in line for line in expanded_section)
+    assert contract_section
+    assert guidance_section
+    assert any("## Contract" in line for line in contract_section)
+    assert any("## Guidance" in line for line in guidance_section)
 
 
 def test_speckit_solution_doc_consumes_plan_design_slices() -> None:

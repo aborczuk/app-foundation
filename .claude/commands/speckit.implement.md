@@ -6,7 +6,7 @@
 $ARGUMENTS
 ```
 
-## Compact Contract (Load First)
+## Contract
 
 Execute implementation through script-owned preflight, task start, persistent builder/QA subagent orchestration, script-owned QA handoff, and documentation updates. `/speckit.implement` itself is the orchestrator. It owns the helper sequence, mediates all builder↔QA handoff directly, and keeps the Codex session warm across queued tasks until the task gate says implementation is complete.
 
@@ -19,7 +19,7 @@ Execute implementation through script-owned preflight, task start, persistent bu
 6. Update quickstart runbook + decision log via `scripts/speckit_implement_docs.py`.
 7. Preserve GitHub sync handoff via `/speckit.checkpoint Phase [N]` compact status line; do not emit a prose summary.
 
-## Expanded Guidance (Load On Demand)
+## Guidance
 
 ### 1. Setup + preflight
 

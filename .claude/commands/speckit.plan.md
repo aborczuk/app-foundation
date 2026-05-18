@@ -6,7 +6,7 @@
 
 Run one combined plan command that starts with duplicate/LOE/risk triage, then scales the plan and sketch depth only as far as the spec actually needs.
 
-## Compact Contract
+## Contract
 
 This is a normal command-file workflow. Do not call `scripts/speckit_codex_handoff_runner.py`, do not create a nested Codex subrunner, and do not hide the plan logic in another prompt payload.
 
@@ -126,7 +126,7 @@ The command ends by running `finalize`. The final response from this command mus
 
 The payload must preserve triage, domains, strategy, and risk so the ledger documents why the selected planning treatment was used.
 
-## Behavior Rules
+## Behavior rules
 
 - Do not create `discovery.md`, `research.md`, `sketch.md`, `data-model.md`, or `quickstart.md` in the normal plan path.
 - Do not call `/speckit.research` or `/speckit.sketch`.

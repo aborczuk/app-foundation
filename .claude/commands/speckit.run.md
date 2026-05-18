@@ -6,7 +6,7 @@
 $ARGUMENTS
 ```
 
-## Compact Contract (Load First)
+## Contract
 
 Treat this command as the canonical trigger for deterministic phase orchestration.
 If the request is a new feature description rather than an existing feature id, bootstrap the feature through specify requirements first
@@ -21,7 +21,7 @@ Examples:
 5. Validate artifacts and contracts before any completion event append.
 6. Emit success event and next-step handoff only after validation succeeds.
 
-## Expanded Guidance (Load On Demand)
+## Guidance
 
 - Keep this command as a trigger contract, not a procedure script.
 - Route phase execution through `scripts/pipeline_driver.py` and manifest-owned driver metadata.

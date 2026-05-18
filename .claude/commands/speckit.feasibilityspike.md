@@ -19,7 +19,7 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## Compact Contract (Load First)
+## Contract
 
 Prove that the architecture committed to `plan.md` is actually buildable before any task breakdown or LLD begins.
 
@@ -31,7 +31,7 @@ Prove that the architecture committed to `plan.md` is actually buildable before 
 5. Write `spike.md`.
 6. Branch on the result and either confirm the plan or route back to `/speckit.plan`.
 
-## Expanded Guidance (Load On Demand)
+## Guidance
 
 ### 1. Setup
 

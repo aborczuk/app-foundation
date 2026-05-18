@@ -16,7 +16,7 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-## Compact Contract (Load First)
+## Contract
 
 Use [`scripts/speckit_solution_step.py`](/Users/andreborczuk/app-foundation/scripts/speckit_solution_step.py) only as a local scaffold and validation helper.
 
@@ -84,7 +84,7 @@ uv run --no-sync python scripts/speckit_tasking_chain.py --feature-dir "$FEATURE
 uv run python scripts/speckit_solution_step.py finalize --feature-id "$FEATURE_ID" --phase solution --correlation-id "$CORRELATION_ID"
 ```
 
-## Expanded Guidance (Load On Demand)
+## Guidance
 
 ### 1. Setup
 
@@ -171,7 +171,7 @@ The command ends by running `finalize`. The final response from this command mus
 - List generated artifacts: `tasks.md`, `estimates.md`, HUDs, acceptance tests.
 - Suggested next: `/speckit.implement`.
 
-## Behavior Rules
+## Behavior rules
 
 - Do not re-decide architecture already settled in `plan.md`.
 - Do not treat `scripts/speckit_remake_huds.py` output as the final HUD content for code tasks.

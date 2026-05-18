@@ -339,13 +339,13 @@ def test_read_markdown_direct_invocation_does_not_use_uv_by_default(
     assert not trace_file.exists()
 
 
-def test_command_docs_share_the_compact_expanded_shape(tmp_path: Path) -> None:
+def test_command_docs_share_the_contract_guidance_shape(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     env = _env_with_fake_uv(tmp_path, json.dumps({"is_stale": False}))
     expected_headings = [
         "## User Input",
-        "## Compact Contract (Load First)",
-        "## Expanded Guidance (Load On Demand)",
+        "## Contract",
+        "## Guidance",
         "## Behavior rules",
     ]
     for rel_path in [

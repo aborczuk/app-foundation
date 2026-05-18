@@ -12,7 +12,7 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.health]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.query]
 approval_mode = "approve"

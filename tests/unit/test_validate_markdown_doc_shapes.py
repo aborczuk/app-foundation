@@ -41,16 +41,16 @@ def _read_git_blob(pathspec: str) -> str:
     return completed.stdout
 
 
-def test_validate_markdown_doc_shape_accepts_compact_expanded(tmp_path: Path) -> None:
-    """The new compact/expanded command-doc shape should validate cleanly."""
+def test_validate_markdown_doc_shape_accepts_contract_guidance(tmp_path: Path) -> None:
+    """The contract/guidance command-doc shape should validate cleanly."""
     doc = tmp_path / "doc.md"
     doc.write_text(
         "\n".join(
             [
                 "# Title",
                 "## User Input",
-                "## Compact Contract (Load First)",
-                "## Expanded Guidance (Load On Demand)",
+                "## Contract",
+                "## Guidance",
                 "## Behavior rules",
             ]
         )
@@ -61,11 +61,11 @@ def test_validate_markdown_doc_shape_accepts_compact_expanded(tmp_path: Path) ->
     payload = validator.validate_markdown_doc_shape(markdown_file=doc)
 
     assert payload["ok"] is True
-    assert payload["matched_shape"] == "compact_expanded"
+    assert payload["matched_shape"] == "contract_guidance"
     assert payload["headings"] == [
         "User Input",
-        "Compact Contract (Load First)",
-        "Expanded Guidance (Load On Demand)",
+        "Contract",
+        "Guidance",
         "Behavior rules",
     ]
 
@@ -73,18 +73,18 @@ def test_validate_markdown_doc_shape_accepts_compact_expanded(tmp_path: Path) ->
 def test_validate_markdown_doc_shape_rejects_executable_gate_append_procedures(
     tmp_path: Path,
 ) -> None:
-    """Compact docs with gate/append procedures should be rejected."""
+    """Contract docs with gate/append procedures should be rejected."""
     doc = tmp_path / "doc.md"
     doc.write_text(
         "\n".join(
             [
                 "# Title",
                 "## User Input",
-                "## Compact Contract (Load First)",
+                "## Contract",
                 "1. Run `uv run python scripts/speckit_gate_status.py --mode implement --feature-dir \"$FEATURE_DIR\" --json`.",
                 "2. Run `uv run python scripts/speckit_prepare_ignores.py --repo-root . --plan-file \"$FEATURE_DIR/plan.md\" --json`.",
                 "3. Execute tasks in order, using the task gate and ledger flow defined below.",
-                "## Expanded Guidance (Load On Demand)",
+                "## Guidance",
                 "## Behavior rules",
             ]
         )
@@ -96,7 +96,7 @@ def test_validate_markdown_doc_shape_rejects_executable_gate_append_procedures(
 
     assert payload["ok"] is False
     assert payload["reasons"] == ["executable_procedures_detected"]
-    assert payload["matched_shape"] == "compact_expanded"
+    assert payload["matched_shape"] == "contract_guidance"
     assert payload["forbidden_markers"] == [
         "speckit_gate_status.py",
         "speckit_prepare_ignores.py",
@@ -105,7 +105,7 @@ def test_validate_markdown_doc_shape_rejects_executable_gate_append_procedures(
 
 
 def test_validate_markdown_doc_shape_reports_legacy_mismatch(tmp_path: Path) -> None:
-    """A legacy command doc should fail the compact/expanded shape check."""
+    """A legacy command doc should fail the contract/guidance shape check."""
     doc = tmp_path / "doc.md"
     doc.write_text(
         "\n".join(
@@ -121,7 +121,7 @@ def test_validate_markdown_doc_shape_reports_legacy_mismatch(tmp_path: Path) -> 
         encoding="utf-8",
     )
 
-    payload = validator.validate_markdown_doc_shape(markdown_file=doc, shape="compact_expanded")
+    payload = validator.validate_markdown_doc_shape(markdown_file=doc, shape="contract_guidance")
 
     assert payload["ok"] is False
     assert payload["reasons"] == ["shape_mismatch"]
@@ -144,7 +144,7 @@ def test_command_doc_token_footprint_reduction() -> None:
     payload = validator.validate_markdown_doc_shape(markdown_file=solution_doc)
 
     assert payload["ok"] is True
-    assert payload["matched_shape"] == "compact_expanded"
+    assert payload["matched_shape"] == "contract_guidance"
     assert current_tokens == repeated_tokens
     assert current_tokens * 10 <= baseline_tokens * 7
 
@@ -179,8 +179,8 @@ def test_validate_markdown_doc_shape_reports_missing_required_docs(tmp_path: Pat
             [
                 "# Title",
                 "## User Input",
-                "## Compact Contract (Load First)",
-                "## Expanded Guidance (Load On Demand)",
+                "## Contract",
+                "## Guidance",
                 "## Behavior rules",
             ]
         )

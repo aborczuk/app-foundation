@@ -73,7 +73,7 @@ def _assert_manifest_and_doc(repo_root: Path) -> None:
 
     command_doc = command_doc_path.read_text(encoding="utf-8")
     required_snippets = [
-        "Compact Contract",
+        "## Contract",
         "prepare-triage",
         "apply-strategy",
         "finalize",
