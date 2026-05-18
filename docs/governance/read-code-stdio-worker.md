@@ -115,6 +115,71 @@ When evaluating `read_code` performance:
 - direct agent reads should target the MCP `read_code_*` tools, not fresh CLI subprocesses
 - fresh standalone `uv run ... read_code.py ...` latency is still a process-boundary question
 
+## Runtime Setup
+
+Use this checklist when starting a new Codex session and expecting warm `read_code` behavior:
+
+1. Refresh the session so the project-local MCP server reloads the current `.codex/config.toml`.
+2. Confirm the MCP server exposes the direct read tools:
+   - `read_code_context`
+   - `read_code_find`
+   - `read_code_analyze`
+   - `read_code_window`
+3. Confirm accelerator visibility on the live MCP server before trusting rerank timings:
+   - call `get_runtime_capabilities`
+   - verify:
+     - `mps_built: true`
+     - `mps_available: true`
+     - `cuda_available: false` is expected on Apple silicon
+4. Prime the reranker before the first real read:
+   - call `warmup`
+   - verify:
+     - `warmup_completed: true`
+     - `selected_device: "mps"` when MPS is exposed
+5. Optionally measure the live rerank path after warmup:
+   - call `score_probe`
+
+If `mps_available` is `false`, the live MCP server is still CPU-bound even if the local repo Python environment can see MPS outside the sandbox.
+
+The stdio backend now also keeps an owner-scoped singleton pid file under `.codegraphcontext/read-code-mcp-runtime/`.
+That guard reaps older backend processes started by the same launcher domain before recording the current pid, which prevents repeated test and probe runs from piling up stale MCP server processes.
+
+## Expected Cold Starts
+
+Expected timings are now split into three categories:
+
+1. First rerank after MCP server start
+   - one-time model/backend load plus first MPS execution warmup
+   - observed fresh local MCP `warmup` on May 17, 2026:
+     - `selected_device: "mps"`
+     - `elapsed_ms: 5534.555`
+
+2. First rerank probe after explicit warmup
+   - same live MCP server, same model already loaded, but first bounded probe after the explicit warmup step
+   - observed fresh local MCP `score_probe` on May 17, 2026:
+     - `3` passages
+     - `selected_device: "mps"`
+     - `elapsed_ms: 1954.922`
+
+3. Warm rerank after the first probe
+   - same live MCP server, same model already loaded
+   - observed fresh local MCP `score_probe` on May 17, 2026:
+     - repeat `3`-passage probe
+     - `elapsed_ms: 25.313`
+
+4. Full `read_code_context` on a fresh session id
+   - includes semantic query plus shortlist rerank plus shared `read_code` orchestration
+   - observed live MCP reads on May 17, 2026:
+     - first scoped `_resolve_pattern_anchor` read after server refresh: about `5.66s`
+     - later fresh-session scoped reads on the same warm server: about `1.0s`
+
+These numbers are acceptance landmarks, not hard promises. The important split is:
+
+- first probe after server start pays warmup
+- calling `warmup` at session start moves that one-time hit off the first real user read
+- repeated rerank probes on the same server should be in the low hundreds of milliseconds or better on MPS
+- full direct contextual reads should be much faster after the first warmup than they were on the old CPU-bound path
+
 ## Next Requirement
 
 The original sandboxed-agent goal is now satisfied on the direct MCP path: direct `read_code_*` calls keep the same `pid` and `started_at` across agent turns. The CLI subprocess path remains compatibility-only and is not the accepted warm path for agent reads.

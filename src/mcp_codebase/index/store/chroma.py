@@ -115,8 +115,8 @@ class _LocalSequenceRerankerBackend:
             cache_dir=str(cache_dir),
             local_files_only=local_files_only,
         )
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        if self._device != "cpu":
+        self._device = _select_torch_device()
+        if self._device == "cuda":
             self._model = self._model.half()
         self._model.to(self._device)
         self._model.eval()
@@ -147,6 +147,18 @@ class _LocalSequenceRerankerBackend:
                 logits = self._model(**encoded, return_dict=True).logits.view(-1).float().cpu()
             scores.extend(float(value) for value in torch.sigmoid(logits).tolist())
         return scores
+
+
+def _select_torch_device() -> str:
+    """Prefer accelerated torch devices when available for local reranker inference."""
+    assert torch is not None
+    if torch.cuda.is_available():
+        return "cuda"
+    mps_backend = getattr(getattr(torch, "backends", None), "mps", None)
+    is_mps_available = getattr(mps_backend, "is_available", None)
+    if callable(is_mps_available) and is_mps_available():
+        return "mps"
+    return "cpu"
 
 
 class ChromaIndexStore:

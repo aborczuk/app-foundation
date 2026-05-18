@@ -164,6 +164,103 @@ def test_apply_staging_guardrails_prunes_oldest_dirs(tmp_path: Path, monkeypatch
     assert remaining == [f"stage-{index:02d}" for index in range(3, chroma_store._MAX_STAGING_DIRS + 3)]
 
 
+def test_select_torch_device_prefers_mps_when_cuda_is_unavailable(monkeypatch) -> None:
+    """Device selection should prefer Apple MPS before falling back to CPU."""
+
+    class _FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    class _FakeMps:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+    class _FakeBackends:
+        mps = _FakeMps()
+
+    class _FakeTorch:
+        cuda = _FakeCuda()
+        backends = _FakeBackends()
+
+    monkeypatch.setattr(chroma_store, "torch", _FakeTorch())
+
+    assert chroma_store._select_torch_device() == "mps"
+
+
+def test_local_sequence_reranker_backend_moves_model_to_mps_without_half_precision(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """MPS rerankers should use the accelerator without forcing the CUDA-only half path."""
+
+    class _FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    class _FakeMps:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+    class _FakeBackends:
+        mps = _FakeMps()
+
+    class _FakeTorch:
+        cuda = _FakeCuda()
+        backends = _FakeBackends()
+
+    class _FakeTokenizer:
+        pass
+
+    class _FakeTokenizerLoader:
+        @staticmethod
+        def from_pretrained(*_args, **_kwargs) -> _FakeTokenizer:
+            return _FakeTokenizer()
+
+    class _FakeModel:
+        def __init__(self) -> None:
+            self.half_called = False
+            self.moved_to: str | None = None
+            self.eval_called = False
+
+        def half(self) -> "_FakeModel":
+            self.half_called = True
+            return self
+
+        def to(self, device: str) -> "_FakeModel":
+            self.moved_to = device
+            return self
+
+        def eval(self) -> "_FakeModel":
+            self.eval_called = True
+            return self
+
+    fake_model = _FakeModel()
+
+    class _FakeModelLoader:
+        @staticmethod
+        def from_pretrained(*_args, **_kwargs) -> _FakeModel:
+            return fake_model
+
+    monkeypatch.setattr(chroma_store, "torch", _FakeTorch())
+    monkeypatch.setattr(chroma_store, "AutoTokenizer", _FakeTokenizerLoader)
+    monkeypatch.setattr(chroma_store, "AutoModelForSequenceClassification", _FakeModelLoader)
+
+    backend = chroma_store._LocalSequenceRerankerBackend(
+        "fake-model",
+        cache_dir=tmp_path / "reranker-cache",
+        local_files_only=True,
+    )
+
+    assert backend._device == "mps"
+    assert fake_model.half_called is False
+    assert fake_model.moved_to == "mps"
+    assert fake_model.eval_called is True
+
+
 def test_apply_staging_guardrails_raises_on_low_disk(tmp_path: Path, monkeypatch) -> None:
     """Guardrails should fail loudly before staging when free space is critically low."""
     config = IndexConfig(repo_root=tmp_path, db_path=tmp_path / "vector-index", embedding_model="local")

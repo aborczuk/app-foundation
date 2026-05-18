@@ -51,6 +51,14 @@ def _mcp_read_surface_artifact_path() -> Path:
     return Path(__file__).resolve().parents[2] / ".codegraphcontext" / "read-code-mcp-read-surface-probe.json"
 
 
+def _mcp_cold_start_artifact_path() -> Path:
+    """Return the artifact path used to capture direct MCP warmup and cold-start timing evidence."""
+    override = os.environ.get("READ_CODE_MCP_COLD_START_ARTIFACT_PATH")
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[2] / ".codegraphcontext" / "read-code-mcp-cold-start-probe.json"
+
+
 def _normalize_identity(identity: object) -> dict[str, object]:
     """Return one validated identity object with the expected bounded keys."""
     if not isinstance(identity, dict):
@@ -104,6 +112,16 @@ def _structured(tool_result: object) -> object:
     return structured
 
 
+async def _timed_tool_call(session: ClientSession, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+    """Call one MCP tool and return both elapsed time and structured payload."""
+    started = perf_counter()
+    payload = _structured(await session.call_tool(tool_name, arguments))
+    return {
+        "elapsed_ms": round((perf_counter() - started) * 1000, 3),
+        "payload": payload,
+    }
+
+
 async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
     """Spawn one live backend server over stdio and exercise its public tools."""
     server = StdioServerParameters(
@@ -119,7 +137,9 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
 
             first_payload = _structured(await session.call_tool("get_process_identity", {}))
             second_payload = _structured(await session.call_tool("get_process_identity", {}))
+            runtime_capabilities_payload = _structured(await session.call_tool("get_runtime_capabilities", {}))
             health_payload = _structured(await session.call_tool("health", {}))
+            warmup_payload = _structured(await session.call_tool("warmup", {}))
             query_payload_raw = _structured(
                 await session.call_tool(
                     "query",
@@ -158,6 +178,32 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
                         "passages": [first_passage, second_passage],
                     },
                 )
+            )
+            first_score_probe = await _timed_tool_call(
+                session,
+                "score_probe",
+                {
+                    "query_text": "vector trust decision",
+                    "passages": ["one", "two", "three"],
+                },
+            )
+            second_score_probe = await _timed_tool_call(
+                session,
+                "score_probe",
+                {
+                    "query_text": "vector trust decision",
+                    "passages": ["one", "two", "three"],
+                },
+            )
+            first_scoped_context_probe = await _timed_tool_call(
+                session,
+                "read_code_context",
+                {
+                    "pattern": "_resolve_pattern_anchor",
+                    "file_path": str(repo_root / "scripts" / "read_code.py"),
+                    "content_type": "code",
+                    "session_id": "live-mcp-cold-start-context",
+                },
             )
             read_code_context_payload = _structured(
                 await session.call_tool(
@@ -199,12 +245,17 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
             )
 
             return {
-                "tool_names": tool_names,
+                "tool_names": sorted(tool_names),
                 "identity_1": _normalize_identity(first_payload),
                 "identity_2": _normalize_identity(second_payload),
+                "runtime_capabilities": runtime_capabilities_payload,
                 "health": health_payload,
+                "warmup": warmup_payload,
                 "query": query_payload,
                 "score": score_payload,
+                "score_probe_first": first_score_probe,
+                "score_probe_second": second_score_probe,
+                "first_scoped_context_probe": first_scoped_context_probe,
                 "read_code_context": read_code_context_payload,
                 "read_code_find": read_code_find_payload,
                 "read_code_analyze": read_code_analyze_payload,
@@ -420,9 +471,12 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     repo_root = Path(__file__).resolve().parents[2]
     payload = asyncio.run(_exercise_live_backend_server(repo_root))
 
-    assert payload["tool_names"] == {
+    assert set(payload["tool_names"]) == {
         "get_process_identity",
+        "get_runtime_capabilities",
+        "warmup",
         "health",
+        "score_probe",
         "query",
         "score",
         "read_code_context",
@@ -433,9 +487,14 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
 
     identity_1 = _normalize_identity(payload["identity_1"])
     identity_2 = _normalize_identity(payload["identity_2"])
+    runtime_capabilities = payload["runtime_capabilities"]
     health = payload["health"]
+    warmup = payload["warmup"]
     query = payload["query"]
     score = payload["score"]
+    score_probe_first = payload["score_probe_first"]
+    score_probe_second = payload["score_probe_second"]
+    first_scoped_context_probe = payload["first_scoped_context_probe"]
     read_code_context_payload = payload["read_code_context"]
     read_code_find_payload = payload["read_code_find"]
     read_code_analyze_payload = payload["read_code_analyze"]
@@ -450,12 +509,27 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     assert health["pid"] == identity_1["pid"]
     assert health["started_at"] == identity_1["started_at"]
     assert health["name"] == identity_1["name"]
+    assert isinstance(runtime_capabilities, dict)
+    assert runtime_capabilities["pid"] == identity_1["pid"]
+    assert runtime_capabilities["started_at"] == identity_1["started_at"]
+    assert isinstance(warmup, dict)
+    assert warmup["warmup_completed"] is True
+    assert warmup["pid"] == identity_1["pid"]
+    assert warmup["started_at"] == identity_1["started_at"]
     assert isinstance(query, list)
     if query:
         assert query[0]["file_path"].endswith("read_code.py")
     assert isinstance(score, dict)
     assert len(score["scores"]) == 2
     assert all(isinstance(value, float) for value in score["scores"])
+    assert isinstance(score_probe_first, dict)
+    assert isinstance(score_probe_second, dict)
+    assert score_probe_first["payload"]["pid"] == identity_1["pid"]
+    assert score_probe_second["payload"]["pid"] == identity_1["pid"]
+    assert score_probe_first["payload"]["score_count"] == 3
+    assert score_probe_second["payload"]["score_count"] == 3
+    assert isinstance(first_scoped_context_probe, dict)
+    assert first_scoped_context_probe["payload"]["exit_code"] == 0
     assert read_code_context_payload["exit_code"] == 0
     assert "file_path:" in read_code_context_payload["stdout"]
     assert "ERROR:" not in read_code_context_payload["stderr"]
@@ -468,6 +542,44 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     assert read_code_window_payload["exit_code"] == 0
     assert "Python entrypoint for code discovery with semantic-first anchoring." in read_code_window_payload["stdout"]
     assert "ERROR:" not in read_code_window_payload["stderr"]
+
+
+def test_live_project_local_mcp_server_cold_start_thresholds_and_artifact() -> None:
+    """Opt-in live verification should enforce bounded warmup and first-read thresholds and persist the artifact."""
+    if os.environ.get("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 to run live backend verification.")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = asyncio.run(_exercise_live_backend_server(repo_root))
+    artifact_path = _mcp_cold_start_artifact_path()
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    runtime_capabilities = payload["runtime_capabilities"]
+    warmup = payload["warmup"]
+    score_probe_first = payload["score_probe_first"]
+    score_probe_second = payload["score_probe_second"]
+    first_scoped_context_probe = payload["first_scoped_context_probe"]
+
+    assert runtime_capabilities["torch_available"] is True
+    assert runtime_capabilities["mps_built"] is True
+    assert warmup["warmup_completed"] is True
+    assert warmup["selected_device"] in {"cpu", "mps"}
+    assert warmup["selected_device"] == score_probe_first["payload"]["selected_device"]
+    assert warmup["elapsed_ms"] < 5000.0
+
+    assert score_probe_first["payload"]["score_count"] == 3
+    assert score_probe_first["elapsed_ms"] < 500.0
+
+    assert score_probe_second["payload"]["selected_device"] == warmup["selected_device"]
+    assert score_probe_second["payload"]["score_count"] == 3
+    assert score_probe_second["elapsed_ms"] < 500.0
+
+    context_payload = first_scoped_context_probe["payload"]
+    assert context_payload["command"] == "read_code_context"
+    assert context_payload["exit_code"] == 0
+    assert "file_path:" in context_payload["stdout"]
+    assert first_scoped_context_probe["elapsed_ms"] < 7000.0
 
 
 def test_refresh_reindexes_changed_code_symbol_after_invalidation(

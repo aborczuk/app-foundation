@@ -1,7 +1,8 @@
  M AGENTS.md
  M docs/governance/read-code-stdio-worker.md
- M specs/031-speed-up-vector-context/plan.md
- M specs/031-speed-up-vector-context/tasks.md
+ M src/mcp_codebase/index/store/chroma.py
  M src/mcp_codebase/project_backend_server.py
  M tests/integration/test_codebase_vector_index_performance.py
+ M tests/unit/test_persistence_probe_server.py
  M tests/unit/test_project_backend_server.py
+ M tests/unit/test_vector_index_store.py

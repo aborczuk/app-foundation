@@ -51,7 +51,10 @@ def test_create_server_registers_backend_tools() -> None:
 
     assert tool_names == {
         "get_process_identity",
+        "get_runtime_capabilities",
+        "warmup",
         "health",
+        "score_probe",
         "query",
         "score",
         "read_code_context",

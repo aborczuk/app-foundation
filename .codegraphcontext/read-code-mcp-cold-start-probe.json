@@ -1,0 +1,184 @@
+{
+  "first_scoped_context_probe": {
+    "elapsed_ms": 94.927,
+    "payload": {
+      "argv": [
+        "_resolve_pattern_anchor",
+        "--path",
+        "/Users/andreborczuk/app-foundation/scripts/read_code.py",
+        "--content-type",
+        "code"
+      ],
+      "command": "read_code_context",
+      "exit_code": 0,
+      "name": "read-code-persistence-probe",
+      "pid": 73884,
+      "started_at": 1779071370.008925,
+      "stderr": "",
+      "stdout": "file_path: /Users/andreborczuk/app-foundation/scripts/read_code.py\nsignature: def _resolve_pattern_anchor(\ncosine_similarity: 87/100\n# --inline-body for function body and implementation, --next-candidate for the next ranked candidate, uv run cgc analyze callers 'function:_resolve_pattern_anchor' for call sites\n"
+    }
+  },
+  "health": {
+    "build_fingerprint": "3746594e634b0d2c",
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "project_root": "/Users/andreborczuk/app-foundation",
+    "reranker_cache_dir": "/Users/andreborczuk/app-foundation/.codegraphcontext/global/db/vector-index/flagembedding-cache",
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "reranker_model_cache_path": "/Users/andreborczuk/app-foundation/.codegraphcontext/global/db/vector-index/flagembedding-cache/models--BAAI--bge-reranker-v2-m3",
+    "reranker_model_cache_present": true,
+    "selected_device": "cpu",
+    "started_at": 1779071370.008925,
+    "warmup_completed": false
+  },
+  "identity_1": {
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "project_root": "/Users/andreborczuk/app-foundation",
+    "started_at": 1779071370.008925
+  },
+  "identity_2": {
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "project_root": "/Users/andreborczuk/app-foundation",
+    "started_at": 1779071370.008925
+  },
+  "query": [],
+  "read_code_analyze": {
+    "argv": [
+      "deps",
+      "src.mcp_codebase.project_backend_server"
+    ],
+    "command": "read_code_analyze",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "started_at": 1779071370.008925,
+    "stderr": "",
+    "stdout": "analyze_command: deps\nquery: src.mcp_codebase.project_backend_server\nmatch_count: 0\n# no parsed analyze matches; rerun with --verbose for raw cgc output\n"
+  },
+  "read_code_context": {
+    "argv": [
+      "_vector_query_candidates",
+      "--path",
+      "/Users/andreborczuk/app-foundation/scripts/read_code.py",
+      "--content-type",
+      "code"
+    ],
+    "command": "read_code_context",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "started_at": 1779071370.008925,
+    "stderr": "",
+    "stdout": "file_path: /Users/andreborczuk/app-foundation/scripts/read_code.py\nsignature: def _vector_find_candidates(\ndocstring: Return the bounded shortlist for a query using raw and normalized probes.\ncosine_similarity: 84/100\n# --inline-body for function body and implementation, --next-candidate for the next ranked candidate, uv run cgc analyze callers 'function:_vector_find_candidates' for call sites\n"
+  },
+  "read_code_find": {
+    "argv": [
+      "name",
+      "read_code_context"
+    ],
+    "command": "read_code_find",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "started_at": 1779071370.008925,
+    "stderr": "",
+    "stdout": "find_command: name\nquery: read_code_context\nmatch_count: 0\n# no parsed find matches; rerun with --verbose for raw cgc output\n"
+  },
+  "read_code_window": {
+    "argv": [
+      "/Users/andreborczuk/app-foundation/scripts/read_code.py",
+      "1",
+      "3"
+    ],
+    "command": "read_code_window",
+    "exit_code": 0,
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "started_at": 1779071370.008925,
+    "stderr": "",
+    "stdout": "     1\t#!/usr/bin/env python3\n     2\t\"\"\"Python entrypoint for code discovery with semantic-first anchoring.\n     3\t\n"
+  },
+  "runtime_capabilities": {
+    "cuda_available": false,
+    "mps_available": false,
+    "mps_built": true,
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "project_root": "/Users/andreborczuk/app-foundation",
+    "started_at": 1779071370.008925,
+    "torch_available": true,
+    "torch_version": "2.12.0"
+  },
+  "score": {
+    "model_name": "BAAI/bge-reranker-v2-m3",
+    "scores": [
+      2.081937054754235e-05,
+      1.6341042282874696e-05
+    ]
+  },
+  "score_probe_first": {
+    "elapsed_ms": 81.862,
+    "payload": {
+      "cuda_available": false,
+      "elapsed_ms": 79.307,
+      "model_name": "BAAI/bge-reranker-v2-m3",
+      "mps_available": false,
+      "mps_built": true,
+      "name": "read-code-persistence-probe",
+      "pid": 73884,
+      "project_root": "/Users/andreborczuk/app-foundation",
+      "score_count": 3,
+      "selected_device": "cpu",
+      "started_at": 1779071370.008925,
+      "torch_available": true,
+      "torch_version": "2.12.0"
+    }
+  },
+  "score_probe_second": {
+    "elapsed_ms": 86.874,
+    "payload": {
+      "cuda_available": false,
+      "elapsed_ms": 84.445,
+      "model_name": "BAAI/bge-reranker-v2-m3",
+      "mps_available": false,
+      "mps_built": true,
+      "name": "read-code-persistence-probe",
+      "pid": 73884,
+      "project_root": "/Users/andreborczuk/app-foundation",
+      "score_count": 3,
+      "selected_device": "cpu",
+      "started_at": 1779071370.008925,
+      "torch_available": true,
+      "torch_version": "2.12.0"
+    }
+  },
+  "tool_names": [
+    "get_process_identity",
+    "get_runtime_capabilities",
+    "health",
+    "query",
+    "read_code_analyze",
+    "read_code_context",
+    "read_code_find",
+    "read_code_window",
+    "score",
+    "score_probe",
+    "warmup"
+  ],
+  "warmup": {
+    "cuda_available": false,
+    "elapsed_ms": 164.594,
+    "mps_available": false,
+    "mps_built": true,
+    "name": "read-code-persistence-probe",
+    "pid": 73884,
+    "project_root": "/Users/andreborczuk/app-foundation",
+    "selected_device": "cpu",
+    "started_at": 1779071370.008925,
+    "torch_available": true,
+    "torch_version": "2.12.0",
+    "warmup_completed": true
+  }
+}

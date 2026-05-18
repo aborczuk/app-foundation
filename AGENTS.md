@@ -221,6 +221,14 @@ Examples:
 
 - Codex agents should prefer the persistent MCP read tools for normal code-reading work.
 - Do not assume fresh `uv run ... scripts/read_code.py ...` subprocesses are warm; that branch is intentionally not the accepted agent-read performance path.
+- At the start of a fresh session, verify the live MCP runtime before trusting performance:
+  - call `get_runtime_capabilities`
+  - call `warmup`
+  - optionally call `score_probe`
+- Expected live MCP cold-start shape on Apple silicon:
+  - the explicit `warmup` call pays model plus MPS warmup once
+  - repeated rerank probes on the same server should be much faster
+  - full `read_code_context` calls are still slower than raw rerank probes because they include semantic query and shared `read_code` orchestration
 
 
 ### Edit Efficiency
