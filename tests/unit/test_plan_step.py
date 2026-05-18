@@ -75,6 +75,25 @@ def _write_plan_template(repo_root: Path) -> None:
     )
 
 
+def _write_domain_doc(repo_root: Path, filename: str, checklist_lines: list[str]) -> None:
+    """Create one minimal domain document with a Subchecklists section."""
+    domain_file = repo_root / ".claude" / "domains" / filename
+    domain_file.parent.mkdir(parents=True, exist_ok=True)
+    domain_file.write_text(
+        "\n".join(
+            [
+                "# Domain",
+                "",
+                "## Subchecklists",
+                "",
+                *checklist_lines,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def _write_feature(tmp_path: Path) -> tuple[Path, Path]:
     """Create a minimal feature directory and return the feature and plan paths."""
     feature_dir = tmp_path / "specs" / "123-test-feature"
@@ -240,6 +259,16 @@ def test_apply_strategy_rewrites_only_selected_sections(monkeypatch, tmp_path: P
     """Strategy rewrite should add only the sections justified by triage."""
     feature_dir, plan_file = _write_feature(tmp_path)
     _write_plan_template(tmp_path)
+    _write_domain_doc(
+        tmp_path,
+        "01_api_integration.md",
+        ["- [ ] Are retries and rate limits explicit?"],
+    )
+    _write_domain_doc(
+        tmp_path,
+        "03_data_storage_persistence.md",
+        ["- [ ] Is data durability defined?"],
+    )
     monkeypatch.setattr(plan_step, "REPO_ROOT", tmp_path)
     _write_contract(
         plan_file,
@@ -277,6 +306,11 @@ def test_apply_strategy_rewrites_only_selected_sections(monkeypatch, tmp_path: P
     assert "## Architecture Diagram" in text
     assert "## Expanded Design Notes" in text
     assert "## Plan Completion Summary" in text
+    assert "### api integration" in text
+    assert "- Why it matters: api integration requires explicit planning treatment." in text
+    assert "- [ ] Are retries and rate limits explicit?" in text
+    assert "### storage" in text
+    assert "- [ ] Is data durability defined?" in text
 
 
 def test_normalize_contract_forces_external_research_for_net_new_surface() -> None:

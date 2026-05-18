@@ -49,6 +49,25 @@ CANONICAL_DOMAINS = (
     "code patterns",
 )
 DOMAIN_ALIAS_MAP = {domain.lower(): domain for domain in CANONICAL_DOMAINS}
+DOMAIN_DOC_MAP = {
+    "api integration": "01_api_integration.md",
+    "data modeling": "02_data_modeling_schemas.md",
+    "storage": "03_data_storage_persistence.md",
+    "caching": "04_caching_performance.md",
+    "client/UI": "05_client_ui.md",
+    "edge delivery": "06_edge_delivery.md",
+    "compute": "07_compute_orchestration.md",
+    "networking": "08_networking_connectivity.md",
+    "environment": "09_environment_config.md",
+    "observability": "10_observability.md",
+    "resilience": "11_resilience_continuity.md",
+    "testing": "12_testing_quality_gates.md",
+    "identity": "13_identity_access_control.md",
+    "security": "14_security_controls.md",
+    "build pipeline": "15_build_deployment_pipeline.md",
+    "ops governance": "16_ops_governance.md",
+    "code patterns": "17_code_patterns.md",
+}
 STOP_WORDS = {
     "a",
     "an",
@@ -251,6 +270,62 @@ def _render_template_subset(
     if missing:
         raise RuntimeError(f"plan_template_missing_sections:{','.join(missing)}")
     return _render_markdown_sections(preamble, rendered_sections)
+
+
+def _domain_docs_dir() -> Path:
+    """Return the directory that stores constitution domain reference documents."""
+    return REPO_ROOT / ".claude" / "domains"
+
+
+def _domain_doc_path(domain: str) -> Path | None:
+    """Return the mapped markdown file for one canonical domain label when present."""
+    filename = DOMAIN_DOC_MAP.get(domain)
+    if filename is None:
+        return None
+    return _domain_docs_dir() / filename
+
+
+def _extract_markdown_section(text: str, heading: str) -> str:
+    """Extract one second-level markdown section body by exact heading title."""
+    match = re.search(
+        rf"^## {re.escape(heading)}\s*$([\s\S]*?)(?=^##\s|\Z)",
+        text,
+        re.MULTILINE,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _load_domain_subchecklists(domain: str) -> list[str]:
+    """Return checklist prompts from one mapped domain doc's Subchecklists section."""
+    path = _domain_doc_path(domain)
+    if path is None or not path.is_file():
+        return []
+    section = _extract_markdown_section(path.read_text(encoding="utf-8"), "Subchecklists")
+    return [line.rstrip() for line in section.splitlines() if line.strip().startswith("- [ ]")]
+
+
+def _render_relevant_domains_body(contract: Mapping[str, Any]) -> str:
+    """Render required domains with planner rationale and pulled checklist prompts."""
+    domains = contract.get("domains", {})
+    relevant = list(domains.get("relevant") or [])
+    reasoning = dict(domains.get("reasoning", {}) or {})
+    if not relevant:
+        return "- No constitution domains require explicit planning treatment."
+
+    blocks: list[str] = []
+    for domain in relevant:
+        blocks.append(f"### {domain}")
+        reason = str(reasoning.get(domain) or "").strip()
+        if reason:
+            blocks.append(f"- Why it matters: {reason}")
+        checklist_lines = _load_domain_subchecklists(domain)
+        if checklist_lines:
+            blocks.append("- Required checklist prompts:")
+            blocks.extend([f"  {line}" for line in checklist_lines])
+        else:
+            blocks.append("- Required checklist prompts: No mapped subchecklist found.")
+        blocks.append("")
+    return "\n".join(blocks).strip()
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -723,6 +798,7 @@ def _write_selected_scaffold(
                         f"- reason: {triage.get('duplicate_reason') or strategy.get('strategy_reason') or ''}",
                     ]
                 ),
+                "Relevant Domains": _render_relevant_domains_body(contract),
                 "Strategy Contract": "\n".join(
                     [
                         "```json",

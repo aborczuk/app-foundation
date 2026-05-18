@@ -327,6 +327,76 @@ def test_read_code_context_classifies_before_refresh_and_resolution(monkeypatch)
     )
 
 
+def test_query_semantic_anchor_candidate_reports_empty_shortlist_explicitly(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An empty semantic shortlist should emit a direct selection error."""
+
+    monkeypatch.setattr(
+        read_code,
+        "_semantic_anchor_candidate_scopes",
+        lambda _request_scope, _content_type: ("code", "markdown"),
+    )
+    monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *_args, **_kwargs: [])
+
+    candidates, match, ok, rerank_debug, rerank_source = read_code._query_semantic_anchor_candidate_with_debug(
+        None,
+        "Compact Contract (Load First)",
+        "Compact Contract (Load First)",
+        candidate_index=0,
+        show_shortlist_hint=False,
+        content_type=None,
+    )
+    captured = capsys.readouterr()
+
+    assert candidates == []
+    assert match is None
+    assert ok is False
+    assert rerank_debug is not None
+    assert rerank_source == "heuristic"
+    assert "no ranked candidates available" in captured.err
+    assert "No match found" not in captured.err
+
+
+def test_backend_query_accepts_result_payload_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The MCP bridge should accept query payloads returned under the result key."""
+
+    backend = read_code._ReadCodeRerankerBackend("test-model", repo_root=Path("/tmp"))
+    monkeypatch.setattr(
+        backend,
+        "_backend_request",
+        lambda tool_name, arguments, timeout: {
+            "result": [
+                {
+                    "file_path": "/tmp/example.md",
+                    "line_start": 9,
+                    "line_end": 12,
+                    "scope": "markdown",
+                }
+            ]
+        },
+    )
+
+    payload = backend._backend_query(
+        query="Compact Contract (Load First)",
+        top_k=10,
+        scope="markdown",
+        file_path=None,
+    )
+
+    assert payload == {
+        "items": [
+            {
+                "file_path": "/tmp/example.md",
+                "line_start": 9,
+                "line_end": 12,
+                "scope": "markdown",
+            }
+        ]
+    }
+
+
 def test_resolve_pattern_anchor_forwards_request_scope_to_semantic_query(monkeypatch) -> None:
     """The anchor resolver should route request scope into semantic candidate lookup."""
     captured: dict[str, object] = {}

@@ -15,25 +15,25 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.query]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.score]
 approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_context]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_analyze]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_find]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_window]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.get_process_identity]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.get_runtime_capabilities]
 approval_mode = "auto"

@@ -405,6 +405,9 @@ class _ReadCodeRerankerBackend:
         )
         if isinstance(payload, list):
             return {"items": [dict(item) for item in payload if isinstance(item, dict)]}
+        result = payload.get("result")
+        if isinstance(result, list):
+            return {"items": [dict(item) for item in result if isinstance(item, dict)]}
         items = payload.get("items")
         if isinstance(items, list):
             return dict(payload)
@@ -2243,9 +2246,7 @@ def _select_vector_candidate(candidates: list[_VectorMatch], index: int) -> tupl
     if index < 0:
         return None, f"candidate index must be >= 0: {index}"
     if not candidates:
-        if index == 0:
-            return None, None
-        return None, "no ranked candidates available for requested candidate index"
+        return None, "no ranked candidates available"
     if index >= len(candidates):
         return None, f"candidate index {index} is out of range (available: 0..{len(candidates) - 1})"
     return candidates[index], None
@@ -3474,7 +3475,7 @@ def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
     result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     if matches is None:
         init_codegraph_env()
-        cmd = ["uv", "run", "cgc", "analyze", parsed.command] + parsed.forwarded_args
+        cmd = ["uv", "run", "--no-sync", "cgc", "analyze", parsed.command] + parsed.forwarded_args
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -3599,7 +3600,7 @@ def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
     result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     if matches is None:
         init_codegraph_env()
-        cmd = ["uv", "run", "cgc", "find", parsed.command] + parsed.forwarded_args
+        cmd = ["uv", "run", "--no-sync", "cgc", "find", parsed.command] + parsed.forwarded_args
         result = subprocess.run(
             cmd,
             capture_output=True,
