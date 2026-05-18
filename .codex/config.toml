@@ -2,11 +2,11 @@
 goals = true
 
 [mcp_servers.read_code_persistence_probe]
-command = "/Users/andreborczuk/app-foundation/.venv/bin/python"
+command = "/Users/andreborczuk/app-foundation/.venv/bin/read_code_mcp_server"
 args = ["-m", "src.mcp_codebase.project_backend_server"]
 
 [mcp_servers.read_code_persistence_probe.tools.warmup]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.score_probe]
 approval_mode = "auto"
