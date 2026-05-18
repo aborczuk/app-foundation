@@ -122,3 +122,49 @@ def test_show_latest_with_full_prints_full_log(tmp_path: Path, capsys) -> None:
 
     assert exit_code == 0
     assert stdout == "full output line\n"
+
+
+def test_run_serializes_opt_in_live_pytest_runs(monkeypatch, tmp_path: Path) -> None:
+    guard = _load_module()
+    monkeypatch.setenv("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS", "1")
+    monkeypatch.setattr(guard, "_build_pytest_command", lambda args: ["pytest", "dummy"])
+    monkeypatch.setattr(
+        guard.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args=["pytest"], returncode=0, stdout="", stderr=""),
+    )
+    flock_calls: list[int] = []
+
+    monkeypatch.setattr(
+        guard.fcntl,
+        "flock",
+        lambda fileno, operation: flock_calls.append(operation),
+    )
+
+    exit_code = guard.main(["run", "--log-dir", str(tmp_path), "--", "tests/integration/test_sample.py"])
+
+    assert exit_code == 0
+    assert flock_calls == [guard.fcntl.LOCK_EX, guard.fcntl.LOCK_UN]
+
+
+def test_run_skips_live_lock_for_normal_pytest_runs(monkeypatch, tmp_path: Path) -> None:
+    guard = _load_module()
+    monkeypatch.delenv("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS", raising=False)
+    monkeypatch.setattr(guard, "_build_pytest_command", lambda args: ["pytest", "dummy"])
+    monkeypatch.setattr(
+        guard.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args=["pytest"], returncode=0, stdout="", stderr=""),
+    )
+    flock_calls: list[int] = []
+
+    monkeypatch.setattr(
+        guard.fcntl,
+        "flock",
+        lambda fileno, operation: flock_calls.append(operation),
+    )
+
+    exit_code = guard.main(["run", "--log-dir", str(tmp_path), "--", "tests/unit/test_sample.py"])
+
+    assert exit_code == 0
+    assert flock_calls == []

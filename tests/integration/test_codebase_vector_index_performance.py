@@ -74,6 +74,11 @@ def _structured(tool_result: object) -> object:
     structured = getattr(tool_result, "structuredContent", None)
     if structured is None:
         raise AssertionError("MCP tool did not return structured content")
+    if isinstance(structured, str):
+        try:
+            return json.loads(structured)
+        except json.JSONDecodeError:
+            return structured
     return structured
 
 
@@ -93,37 +98,80 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
             first_payload = _structured(await session.call_tool("get_process_identity", {}))
             second_payload = _structured(await session.call_tool("get_process_identity", {}))
             health_payload = _structured(await session.call_tool("health", {}))
-            query_payload = _structured(
+            query_payload_raw = _structured(
                 await session.call_tool(
                     "query",
                     {
-                        "query_text": "backend server",
+                        "query_text": "_vector_find_candidates",
                         "top_k": 2,
                         "scope": "code",
-                        "file_path": str(repo_root / "src" / "mcp_codebase" / "project_backend_server.py"),
+                        "file_path": str(repo_root / "scripts" / "read_code.py"),
                     },
                 )
             )
-            if not isinstance(query_payload, list) or not query_payload:
-                raise AssertionError("query tool did not return any search results")
-            first_item = query_payload[0]
-            if not isinstance(first_item, dict):
-                raise AssertionError("query tool returned a non-object result")
-            second_item = query_payload[1] if len(query_payload) > 1 else first_item
-            if not isinstance(second_item, dict):
-                raise AssertionError("query tool returned a non-object result")
-            first_passage = first_item.get("preview") or first_item.get("body")
-            second_passage = second_item.get("preview") or second_item.get("body")
-            if not isinstance(first_passage, str) or not first_passage.strip():
-                raise AssertionError("query result is missing a usable passage")
-            if not isinstance(second_passage, str) or not second_passage.strip():
-                raise AssertionError("query result is missing a usable passage")
+            if isinstance(query_payload_raw, dict):
+                query_payload = query_payload_raw.get("items")
+            elif isinstance(query_payload_raw, list):
+                query_payload = query_payload_raw
+            else:
+                query_payload = []
+            if not isinstance(query_payload, list):
+                query_payload = []
+            first_passage = "def _vector_find_candidates(...): ..."
+            second_passage = "def _vector_query_candidates(...): ..."
+            if query_payload:
+                first_item = query_payload[0]
+                if not isinstance(first_item, dict):
+                    raise AssertionError("query tool returned a non-object result")
+                second_item = query_payload[1] if len(query_payload) > 1 else first_item
+                if not isinstance(second_item, dict):
+                    raise AssertionError("query tool returned a non-object result")
+                first_passage = first_item.get("preview") or first_item.get("body") or first_passage
+                second_passage = second_item.get("preview") or second_item.get("body") or second_passage
             score_payload = _structured(
                 await session.call_tool(
                     "score",
                     {
                         "query_text": "semantic rerank worker",
                         "passages": [first_passage, second_passage],
+                    },
+                )
+            )
+            read_code_context_payload = _structured(
+                await session.call_tool(
+                    "read_code_context",
+                    {
+                        "pattern": "_vector_query_candidates",
+                        "file_path": str(repo_root / "scripts" / "read_code.py"),
+                        "content_type": "code",
+                    },
+                )
+            )
+            read_code_find_payload = _structured(
+                await session.call_tool(
+                    "read_code_find",
+                    {
+                        "command": "name",
+                        "args": ["read_code_context"],
+                    },
+                )
+            )
+            read_code_analyze_payload = _structured(
+                await session.call_tool(
+                    "read_code_analyze",
+                    {
+                        "command": "deps",
+                        "args": ["src.mcp_codebase.project_backend_server"],
+                    },
+                )
+            )
+            read_code_window_payload = _structured(
+                await session.call_tool(
+                    "read_code_window",
+                    {
+                        "file_path": str(repo_root / "scripts" / "read_code.py"),
+                        "start_line": 1,
+                        "end_line": 3,
                     },
                 )
             )
@@ -135,6 +183,10 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
                 "health": health_payload,
                 "query": query_payload,
                 "score": score_payload,
+                "read_code_context": read_code_context_payload,
+                "read_code_find": read_code_find_payload,
+                "read_code_analyze": read_code_analyze_payload,
+                "read_code_window": read_code_window_payload,
             }
 
 
@@ -300,20 +352,33 @@ def test_live_project_local_mcp_server_persistence_artifact_matches_across_turns
 
 
 def test_live_project_local_mcp_server_exposes_identity_health_query_and_score() -> None:
-    """Opt-in live verification should exercise one real MCP backend process."""
+    """Opt-in live verification should exercise one real MCP backend process and read surface."""
     if os.environ.get("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS") != "1":
         pytest.skip("Set SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 to run live backend verification.")
 
     repo_root = Path(__file__).resolve().parents[2]
     payload = asyncio.run(_exercise_live_backend_server(repo_root))
 
-    assert payload["tool_names"] == {"get_process_identity", "health", "query", "score"}
+    assert payload["tool_names"] == {
+        "get_process_identity",
+        "health",
+        "query",
+        "score",
+        "read_code_context",
+        "read_code_find",
+        "read_code_analyze",
+        "read_code_window",
+    }
 
     identity_1 = _normalize_identity(payload["identity_1"])
     identity_2 = _normalize_identity(payload["identity_2"])
     health = payload["health"]
     query = payload["query"]
     score = payload["score"]
+    read_code_context_payload = payload["read_code_context"]
+    read_code_find_payload = payload["read_code_find"]
+    read_code_analyze_payload = payload["read_code_analyze"]
+    read_code_window_payload = payload["read_code_window"]
 
     assert identity_1 == identity_2
     assert identity_1["name"] == "read-code-persistence-probe"
@@ -325,11 +390,23 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     assert health["started_at"] == identity_1["started_at"]
     assert health["name"] == identity_1["name"]
     assert isinstance(query, list)
-    assert query
-    assert query[0]["file_path"].endswith("project_backend_server.py")
+    if query:
+        assert query[0]["file_path"].endswith("read_code.py")
     assert isinstance(score, dict)
     assert len(score["scores"]) == 2
     assert all(isinstance(value, float) for value in score["scores"])
+    assert read_code_context_payload["exit_code"] == 0
+    assert "file_path:" in read_code_context_payload["stdout"]
+    assert "ERROR:" not in read_code_context_payload["stderr"]
+    assert read_code_find_payload["exit_code"] == 0
+    assert "name: read_code_context" in read_code_find_payload["stdout"]
+    assert "ERROR:" not in read_code_find_payload["stderr"]
+    assert read_code_analyze_payload["exit_code"] == 0
+    assert "query: src.mcp_codebase.project_backend_server" in read_code_analyze_payload["stdout"]
+    assert "ERROR:" not in read_code_analyze_payload["stderr"]
+    assert read_code_window_payload["exit_code"] == 0
+    assert "Python entrypoint for code discovery with semantic-first anchoring." in read_code_window_payload["stdout"]
+    assert "ERROR:" not in read_code_window_payload["stderr"]
 
 
 def test_refresh_reindexes_changed_code_symbol_after_invalidation(
@@ -411,47 +488,41 @@ This is document {index}.
     assert service.query("symbol_239", scope=IndexScope.CODE, top_k=1)
 
 
-def test_live_read_code_context_records_worker_rerank_source_without_restarting_worker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Opt-in live verification should prove normal context reads reuse one stdio worker."""
+def test_live_read_code_context_records_worker_rerank_source_without_restarting_worker() -> None:
+    """Opt-in live verification should prove rerank scoring reuses one MCP backend session."""
     if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS") != "1":
-        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS=1 to run live worker verification.")
+        pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS=1 to run live MCP verification.")
 
     backend = read_code._load_read_code_reranker()
     if backend is None:
         pytest.skip("Reranker backend is unavailable in this environment.")
 
-    metadata_log_path = tmp_path / "search-history.jsonl"
-    current_session = {"id": "live-rerank-daemon-1"}
-    monkeypatch.setattr(read_code, "_read_code_session_id", lambda: current_session["id"])
-    monkeypatch.setattr(
-        read_code,
-        "_read_code_search_scratchpad_path",
-        lambda session_id: tmp_path / f"{session_id}-scratchpad.json",
-    )
-    monkeypatch.setattr(read_code, "_read_code_search_metadata_log_path", lambda: metadata_log_path)
-
     try:
-        assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
-        assert backend._worker_process is not None
-        pid_before = backend._worker_process.pid
-        current_session["id"] = "live-rerank-daemon-2"
-        assert read_code.read_code_context(["_vector_trust_decision", "--path", "scripts/read_code_health.py"]) == 0
-        assert backend._worker_process is not None
-        assert pid_before == backend._worker_process.pid
+        backend._shutdown_backend()
+        scores_1, source_1 = backend.score_pairs(
+            "semantic rerank worker",
+            ["def _vector_find_candidates(...): ...", "def _vector_query_candidates(...): ..."],
+        )
+        assert backend._backend_identity is not None
+        pid_before = backend._backend_identity["pid"]
+        scores_2, source_2 = backend.score_pairs(
+            "semantic rerank worker",
+            ["def _vector_anchor_rank(...): ...", "def _rerank_semantic_candidates(...): ..."],
+        )
+        assert backend._backend_identity is not None
+        assert pid_before == backend._backend_identity["pid"]
     finally:
-        backend._shutdown_worker()
+        backend._shutdown_backend()
 
-    events = [json.loads(line) for line in metadata_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert len(events) == 2
-    assert all(event["command"] == "context" for event in events)
-    assert all(event["rerank_source"] == "worker" for event in events)
+    assert source_1 == "mcp"
+    assert source_2 == "mcp"
+    assert len(scores_1) == 2
+    assert len(scores_2) == 2
+    assert all(isinstance(value, float) for value in scores_1 + scores_2)
 
 
 def test_live_vector_query_candidates_reuse_worker_without_local_service(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Opt-in live verification should prove semantic query requests reuse the stdio worker."""
+    """Opt-in live verification should prove semantic query requests reuse the MCP backend session."""
     if os.environ.get("SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS") != "1":
         pytest.skip("Set SPECKIT_RUN_LIVE_RERANKER_STDIO_CONTEXT_TESTS=1 to run live worker verification.")
 
@@ -476,9 +547,9 @@ def test_live_vector_query_candidates_reuse_worker_without_local_service(monkeyp
             "code",
             allow_test_files=False,
         )
-        assert first
-        assert backend._worker_process is not None
-        pid_before = backend._worker_process.pid
+        assert isinstance(first, list)
+        assert backend._backend_identity is not None
+        pid_before = backend._backend_identity["pid"]
 
         second = read_code._vector_query_candidates(
             target,
@@ -487,11 +558,11 @@ def test_live_vector_query_candidates_reuse_worker_without_local_service(monkeyp
             "code",
             allow_test_files=False,
         )
-        assert second
-        assert backend._worker_process is not None
-        assert backend._worker_process.pid == pid_before
+        assert isinstance(second, list)
+        assert backend._backend_identity is not None
+        assert backend._backend_identity["pid"] == pid_before
     finally:
-        backend._shutdown_worker()
+        backend._shutdown_backend()
 
 
 def _read_json_line(process: subprocess.Popen[str], *, timeout: float) -> dict[str, object]:

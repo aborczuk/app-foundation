@@ -1,10 +1,11 @@
-"""Probe whether fresh read_code invocations reuse the same stdio worker process."""
+"""Probe whether fresh read_code invocations reuse the same MCP-backed backend process."""
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -18,7 +19,7 @@ def _repo_root() -> Path:
 
 def _default_state_file() -> Path:
     """Return the default persisted comparison file for cross-invocation probes."""
-    return _repo_root() / ".codegraphcontext" / "read-code-worker-persistence-probe.json"
+    return _repo_root() / ".codegraphcontext" / "read-code-mcp-backend-persistence-probe.json"
 
 
 def _load_read_code_module() -> ModuleType:
@@ -53,31 +54,46 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _capture_worker_snapshot(read_code: ModuleType) -> dict[str, object]:
-    """Start the current stdio worker path and return its live identity payload."""
+def _capture_backend_snapshot(read_code: ModuleType) -> dict[str, object]:
+    """Start the current MCP-backed path, exercise query and score, and return its identity payload."""
     backend = read_code._load_read_code_reranker()
     if backend is None:
         return {
             "ok": False,
-            "error": "read_code reranker backend unavailable",
+            "error": "read_code MCP backend unavailable",
             "captured_at": time.time(),
         }
-    ready = backend._ensure_worker_ready()
-    if ready is None or backend._worker_process is None:
+    ready = backend._ensure_backend_ready()
+    if ready is None or backend._backend_identity is None:
         return {
             "ok": False,
-            "error": "stdio worker unavailable",
+            "error": "MCP backend unavailable",
             "captured_at": time.time(),
         }
-    health = backend._worker_request({"op": "health"}, timeout=10.0)
+    identity = dict(backend._backend_identity)
+    query_payload = backend._backend_query(
+        query="_vector_find_candidates",
+        top_k=2,
+        scope="code",
+        file_path=_repo_root() / "scripts" / "read_code.py",
+    )
+    score_payload = backend._backend_score(
+        "semantic rerank worker",
+        ["def _vector_find_candidates(...): ...", "def _vector_query_candidates(...): ..."],
+    )
+    query_items = query_payload.get("items") if isinstance(query_payload, dict) else None
+    score_values = score_payload.get("scores") if isinstance(score_payload, dict) else None
     return {
         "ok": True,
         "captured_at": time.time(),
-        "pid": backend._worker_process.pid,
-        "started_at": health.get("started_at"),
-        "model_name": health.get("model_name"),
-        "build_fingerprint": health.get("build_fingerprint"),
-        "parent_pid": backend._worker_process.pid,
+        "pid": identity.get("pid"),
+        "started_at": identity.get("started_at"),
+        "name": identity.get("name"),
+        "project_root": identity.get("project_root"),
+        "build_fingerprint": identity.get("build_fingerprint"),
+        "caller_pid": os.getpid(),
+        "query_items_count": len(query_items) if isinstance(query_items, list) else 0,
+        "score_count": len(score_values) if isinstance(score_values, list) else 0,
     }
 
 
@@ -85,7 +101,7 @@ def _compare_snapshots(
     previous: dict[str, object] | None,
     current: dict[str, object],
 ) -> dict[str, object]:
-    """Return a compact comparison between the previous and current worker identities."""
+    """Return a compact comparison between the previous and current backend identities."""
     previous_pid = previous.get("pid") if isinstance(previous, dict) else None
     current_pid = current.get("pid")
     previous_started_at = previous.get("started_at") if isinstance(previous, dict) else None
@@ -105,7 +121,7 @@ def _compare_snapshots(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for the cross-invocation worker persistence probe."""
+    """Build the CLI parser for the cross-invocation MCP backend persistence probe."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--state-file",
@@ -122,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Capture the current worker identity, compare it to the last invocation, and persist it."""
+    """Capture the current backend identity, compare it to the last invocation, and persist it."""
     args = build_parser().parse_args(argv)
     state_file = args.state_file.expanduser().resolve()
     if args.reset and state_file.exists():
@@ -130,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
 
     previous = _load_json(state_file)
     read_code = _load_read_code_module()
-    current = _capture_worker_snapshot(read_code)
+    current = _capture_backend_snapshot(read_code)
     comparison = _compare_snapshots(previous, current)
     payload = {
         "state_file": str(state_file),

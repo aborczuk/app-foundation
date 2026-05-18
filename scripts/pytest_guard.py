@@ -4,22 +4,27 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import re
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOG_DIR = REPO_ROOT / ".speckit" / "test-logs"
+LIVE_LOCK_DIR = REPO_ROOT / ".speckit" / "test-locks"
+LIVE_LOCK_PATH = LIVE_LOCK_DIR / "live-pytest.lock"
 FORCED_PYTEST_FLAGS = ("-q", "--maxfail=1", "--tb=short")
 SUMMARY_LINE_PATTERN = re.compile(r"=+ .* in [0-9.]+s =+")
 FAILURE_HEADER_PATTERN = re.compile(r"^_{3,} .+ _{3,}$")
 MAX_FIRST_FAILURE_LINES_ENV = "PYTEST_GUARD_MAX_FIRST_FAILURE_LINES"
 DEFAULT_MAX_FIRST_FAILURE_LINES = 40
+LIVE_TEST_ENV_PREFIX = "SPECKIT_RUN_LIVE_"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -158,6 +163,30 @@ def _max_first_failure_lines() -> int:
     return max(1, value)
 
 
+def _live_test_lock_requested() -> bool:
+    """Return whether the current pytest invocation requested an opt-in live test run."""
+    for key, value in os.environ.items():
+        if key.startswith(LIVE_TEST_ENV_PREFIX) and value.strip() == "1":
+            return True
+    return False
+
+
+@contextmanager
+def _live_test_lock():
+    """Serialize opt-in live pytest runs so backend processes do not stack up."""
+    if not _live_test_lock_requested():
+        with nullcontext():
+            yield
+        return
+    LIVE_LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    with LIVE_LOCK_PATH.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _emit_first_failure(first_failure: str, *, cap: int) -> None:
     """Print a bounded first-failure block and summarize omitted lines when truncated."""
     lines = first_failure.splitlines()
@@ -235,13 +264,14 @@ def _run_guarded_pytest(args: argparse.Namespace) -> int:
         sys.path.insert(0, str(repo_root))
     from uv_env import repo_uv_env
 
-    completed = subprocess.run(
-        command,
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-        text=True,
-        env=repo_uv_env(),
-    )
+    with _live_test_lock():
+        completed = subprocess.run(
+            command,
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            env=repo_uv_env(),
+        )
     output = f"{completed.stdout or ''}{completed.stderr or ''}"
     log_dir = _resolve_log_dir(args.log_dir)
     log_file = _log_path(log_dir, args.run_id.strip())

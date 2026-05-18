@@ -33,7 +33,7 @@ def _reranker_runtime_env(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_reranker_backend_uses_healthy_daemon_scores(tmp_path: Path, monkeypatch) -> None:
-    """A ready stdio worker should supply scores without falling back to heuristic order."""
+    """A ready MCP backend should supply scores without falling back to heuristic order."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
     monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(
@@ -45,11 +45,11 @@ def test_reranker_backend_uses_healthy_daemon_scores(tmp_path: Path, monkeypatch
     scores, source = backend.score_pairs("query", ["first", "second"])
 
     assert scores == [0.2, 0.9]
-    assert source == "worker"
+    assert source == "mcp"
 
 
 def test_reranker_backend_uses_worker_query_items(tmp_path: Path, monkeypatch) -> None:
-    """A ready stdio worker should supply semantic query items without local fallback."""
+    """A ready MCP backend should supply semantic query items without local fallback."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
     monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(
@@ -81,7 +81,7 @@ def test_reranker_backend_uses_worker_query_items(tmp_path: Path, monkeypatch) -
 
 
 def test_reranker_backend_query_items_fall_back_when_worker_query_fails(tmp_path: Path, monkeypatch) -> None:
-    """Worker query failures should fail fast and allow the local service fallback path."""
+    """MCP backend query failures should fail fast and allow the local fallback path."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
     monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(
@@ -102,7 +102,7 @@ def test_reranker_backend_falls_back_to_heuristic_when_socket_health_is_unavaila
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """An unavailable stdio worker should fail fast to heuristic ordering."""
+    """An unavailable MCP backend should fail fast to heuristic ordering."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
     monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: None)
 
@@ -116,7 +116,7 @@ def test_reranker_backend_falls_back_to_heuristic_when_socket_score_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Worker scoring failures should fail fast instead of taking a slow secondary path."""
+    """MCP backend scoring failures should fail fast instead of taking a slow secondary path."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
     monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(

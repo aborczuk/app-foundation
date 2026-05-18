@@ -1,0 +1,12 @@
+{
+  "build_fingerprint": null,
+  "caller_pid": 47834,
+  "captured_at": 1779061711.0334039,
+  "name": "read-code-persistence-probe",
+  "ok": true,
+  "pid": 47838,
+  "project_root": "/Users/andreborczuk/app-foundation",
+  "query_items_count": 0,
+  "score_count": 2,
+  "started_at": 1779061695.0396821
+}

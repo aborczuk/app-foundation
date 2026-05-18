@@ -49,4 +49,13 @@ def test_create_server_registers_backend_tools() -> None:
     server = create_server(project_root=Path.cwd())
     tool_names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
 
-    assert tool_names == {"get_process_identity", "health", "query", "score"}
+    assert tool_names == {
+        "get_process_identity",
+        "health",
+        "query",
+        "score",
+        "read_code_context",
+        "read_code_find",
+        "read_code_analyze",
+        "read_code_window",
+    }

@@ -1,25 +1,12 @@
- M .codex/config.toml
- M scripts/hook_refresh_indexes.py
- M scripts/speckit_implement_step.py
- M scripts/task_ledger.py
+ M docs/governance/read-code-stdio-worker.md
+ M scripts/probe_read_code_worker_persistence.py
+ M scripts/pytest_guard.py
+ M scripts/read_code.py
+ M specs/031-speed-up-vector-context/plan.md
  M specs/031-speed-up-vector-context/tasks.md
- M src/mcp_codebase/persistence_probe_server.py
+ M src/mcp_codebase/project_backend_server.py
  M tests/integration/test_codebase_vector_index_performance.py
  M tests/unit/test_persistence_probe_server.py
- M tests/unit/test_speckit_implement_step.py
- M tests/unit/test_task_ledger.py
-?? specs/031-speed-up-vector-context/huds/T016.md
-?? specs/031-speed-up-vector-context/huds/T017.md
-?? specs/031-speed-up-vector-context/huds/T018.md
-?? specs/031-speed-up-vector-context/huds/T019.md
-?? specs/031-speed-up-vector-context/huds/T020.md
-?? specs/031-speed-up-vector-context/huds/T021.md
-?? specs/031-speed-up-vector-context/huds/T022.md
-?? specs/031-speed-up-vector-context/huds/T023.md
-?? specs/031-speed-up-vector-context/huds/T024.md
-?? specs/031-speed-up-vector-context/huds/T025.md
-?? specs/031-speed-up-vector-context/huds/T027.md
-?? specs/031-speed-up-vector-context/huds/T028.md
-?? specs/031-speed-up-vector-context/huds/T029.md
-?? specs/031-speed-up-vector-context/huds/T030.md
-?? src/mcp_codebase/project_backend_server.py
+ M tests/unit/test_pytest_guard.py
+ M tests/unit/test_read_code_reranker_daemon.py
+?? tests/unit/test_project_backend_server.py

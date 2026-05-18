@@ -83,7 +83,7 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-**Purpose**: Lock the benchmark artifact, prove the persistent rerank path is actually consumed by normal `context` queries, and finish the remaining first-search startup migration on the only transport now proven to persist across sandboxed agent turns: a project-local MCP stdio server.
+**Purpose**: Lock the benchmark artifact, prove the persistent rerank path is actually consumed by normal `context` queries, close out the failed standalone-CLI persistence branch honestly, and move the accepted agent path onto the only transport now proven to persist across sandboxed agent turns: a project-local MCP stdio server.
 
 - [X] T014 Capture the post-change benchmark evidence and accepted validation commands in `specs/031-speed-up-vector-context/tasks.md` and `tests/integration/test_codebase_vector_index_performance.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
   - Evidence corpus: scoped exact-path / exact-symbol reads, broad code-plus-markdown discovery, markdown-first reads, and stale/escalation cases remain covered by the existing performance and regression suite.
@@ -122,10 +122,10 @@
 - [X] T026 [P] Add failing contract and live-backend persistence coverage for the project-local MCP stdio server in `tests/unit/test_persistence_probe_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
   - Prove the MCP server keeps the same `pid` and `started_at` across separate agent turns.
   - Prove the persistence check is the gate before migrating `read_code` warm backend ownership onto the MCP path.
-- [ ] T027 Build a project-local MCP stdio backend server that owns warm semantic query and rerank operations in `src/mcp_codebase/` and wire it in `.codex/config.toml` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
+- [X] T027 Build a project-local MCP stdio backend server that owns warm semantic query and rerank operations in `src/mcp_codebase/` and wire it in `.codex/config.toml` — `src/mcp_codebase/persistence_probe_server.py:get_process_identity`
   - Keep the persistence-probe server contract as the base shape and extend it into the real backend server instead of introducing another socket daemon or another repo-local worker.
   - Expose bounded backend operations that can serve semantic query startup reuse and rerank startup reuse from one persistent process.
-- [ ] T028 Route `read_code` backend requests through the MCP-persistent server with bounded fallback in `scripts/read_code.py` and `tests/unit/test_read_code_reranker_daemon.py` — `scripts/read_code.py:_vector_query_candidates`
+- [X] T028 Route `read_code` backend requests through the MCP-persistent server with bounded fallback in `scripts/read_code.py` and `tests/unit/test_read_code_reranker_daemon.py` — `scripts/read_code.py:_vector_query_candidates`
   - Keep the synchronous client path minimal: `server call -> result -> fallback`.
   - Remove dependency on the per-invocation stdio worker for the active `read_code` path once the MCP server contract is live.
 - [ ] T029 [P] Add live-backend verification that fresh `uv run ... scripts/read_code.py context ...` invocations reuse the same MCP-owned warm backend for both semantic query and rerank in `tests/integration/test_codebase_vector_index_performance.py` and `scripts/probe_read_code_worker_persistence.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
@@ -134,6 +134,19 @@
 - [ ] T030 Capture the accepted MCP persistence proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
   - Record the exact persistence proof commands and the backend identity values used to verify the platform-owned server survives across turns.
   - Retire obsolete daemon/file-RPC wording where it conflicts with the accepted MCP-persistent path.
+- [ ] T031 [P] Add failing contract and live-backend coverage for an MCP-native `read_code` agent surface in `tests/unit/test_project_backend_server.py` and `tests/integration/test_codebase_vector_index_performance.py` — `src/mcp_codebase/project_backend_server.py:module`
+  - Prove the persistent project-local MCP server exposes bounded `context`, `find`, `analyze`, and `window` operations suitable for direct agent use.
+  - Prove repeated agent-turn calls keep the same backend `pid` and `started_at` while preserving the accepted scoped and broad benchmark corpus behavior.
+  - Preserve clean bounded failures for unsupported arguments or unavailable backend state.
+- [X] T032 Route the reusable `read_code` orchestration into importable helpers and expose MCP-native `context`, `find`, `analyze`, and `window` tools in `scripts/read_code.py` and `src/mcp_codebase/project_backend_server.py` — `scripts/read_code.py:read_code_context`
+  - Keep `scripts/read_code.py` as the CLI compatibility layer, not the primary warm path for agent reads.
+  - Reuse the existing classification, scratchpad/history, metadata, and rendering logic instead of re-implementing a second read stack inside the MCP server.
+- [ ] T033 Migrate live agent-path verification onto the MCP-native read surface in `tests/integration/test_codebase_vector_index_performance.py` and `src/mcp_codebase/persistence_probe_server.py` — `tests/integration/test_codebase_vector_index_performance.py:module`
+  - Prove direct MCP `context`/`find`/`analyze`/`window` calls return parity-equivalent results without spawning fresh `uv run ... scripts/read_code.py ...` subprocesses.
+  - Prove the same persistent backend serves both semantic query and rerank work across separate agent turns in the sandbox.
+- [ ] T034 Capture the accepted MCP-native agent-read proof, verification commands, and operator guidance in `docs/governance/read-code-stdio-worker.md`, `specs/031-speed-up-vector-context/plan.md`, and `specs/031-speed-up-vector-context/tasks.md` — `docs/governance/read-code-stdio-worker.md`
+  - Record `T029` as the failed standalone-CLI persistence branch and `T031` through `T033` as the accepted sandboxed-agent path.
+  - Retire obsolete “CLI subprocesses can be warm” wording and document the direct-MCP usage contract for agents.
 
 ## Dependencies & Execution Order
 
@@ -168,6 +181,9 @@
 - T016 should land before or alongside T017 so the shortlist-sized rerank boundary has regression coverage before the transport contract changes.
 - T017 and T018 should stay sequential because the shortlist-sized rerank boundary must be stable before the shared transport contract is finalized.
 - T019 and T020 can run in parallel at the end once the daemon path and metadata outputs are stable.
+- T029 and T030 stay paired as the standalone-CLI persistence proof and its documentation closeout; if that proof fails, use it as the gate before starting the MCP-native agent branch.
+- T031 and T032 should stay sequential because the MCP-native read contract needs to exist before the shared `read_code` orchestration can be moved behind it.
+- T033 and T034 can run in parallel at the end once the MCP-native read surface is stable.
 - T021 should land before or alongside T022 so the daemon semantic-retrieval contract is pinned down before the client routing changes.
 - T022 and T023 should stay sequential because the daemon client contract needs to stabilize before the daemon-side semantic query handler is finalized.
 - T024 and T025 can run in parallel at the end once daemon-backed semantic retrieval and metadata fields are stable.
@@ -196,7 +212,7 @@
 
 ## Notes
 
-- The task graph follows the approved design-slice ordering from `plan.md`: `PL-01` then `PL-02` then `PL-03`, followed by the transport/startup extensions. The older daemon-worker tasks remain for audit history, while `T026` through `T030` capture the accepted MCP-persistent route proven by the live persistence probe.
+- The task graph follows the approved design-slice ordering from `plan.md`: `PL-01` then `PL-02` then `PL-03`, followed by the transport/startup extensions. The older daemon-worker tasks remain for audit history, while `T026` through `T030` capture the standalone-CLI MCP branch that proved the persistence boundary and `T031` through `T034` capture the accepted MCP-native agent route.
 - Every non-human task is anchored to an explicit file path and primary seam so HUD scaffolding can attach concrete implementation context.
 - No task is intentionally estimated at `8` or `13`; the later estimate phase should either confirm medium-sized tasks or force a breakdown before finalize.
 
@@ -224,3 +240,4 @@ Use these plan slices as the authoritative tasking inputs:
 - `PL-05` — Daemon Lifecycle, Observability, and Live Proof
 - `PL-06` — Daemon-Backed Semantic Retrieval
 - `PL-07` — Daemon-Owned Remaining First-Search Startup
+- `PL-08` — MCP-Native Agent Read Surface

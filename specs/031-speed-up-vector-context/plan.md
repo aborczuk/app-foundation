@@ -214,6 +214,22 @@ Observability remains part of the feature. Status surfaces, failure markers, res
 - Estimate: large
 - Implementation Directive: Move the remaining expensive first-search runtime starts that still occur on the `read_code` side into the existing long-lived daemon instead of creating a second service. That includes warm ownership of the semantic query service, any per-query vector backend initialization still triggered from `read_code.py`, and the metadata needed to prove whether a given first-search result came from daemon-owned startup or local fallback. The synchronous client path must stay minimal: `health -> daemon query -> fallback`, with daemon lifecycle work and heavyweight initialization remaining outside the normal read path.
 
+### Slice PL-08 - MCP-Native Agent Read Surface
+
+- Estimate: large
+- Implementation Directive: Stop treating fresh `uv run ... scripts/read_code.py ...` subprocesses as the agent path. Expose bounded `read_code` operations (`context`, `find`, `analyze`, and `window`) directly on the project-local MCP server so the agent can call one persistent in-sandbox process across turns. Reuse the existing `read_code.py` orchestration logic as shared library code where possible, preserve scratchpad/history behavior and first-read `--inline-body` gating, and keep the CLI as a compatibility wrapper rather than the primary warm path. Live verification must prove the platform-owned MCP server keeps the same `pid` and `started_at` across agent turns while returning parity-equivalent read results.
+
 ## Plan Completion Summary
 
-Kept the original latency-routing plan intact and extended it with daemon-specific transport and verification work because the reread performance target is already solved while the persistent reranker path was still incomplete. The next phase should keep the earlier trust-routing slices, then add the reranker transport boundary, live-proof slices, daemon-backed semantic retrieval, and remaining first-search startup migration slice so the same long-lived service can remove both reranker startup and vector-query startup from first-search reads without splitting the runtime into multiple daemons.
+Kept the original latency-routing plan intact and migrated the active warm backend path onto the project-local MCP server. That migration is now complete for the in-process `read_code` query and rerank path, and the live proofs pass for:
+
+- direct backend server identity, health, query, and score
+- same-process rerank reuse
+- same-process semantic query reuse
+
+The remaining open gap is cross-invocation persistence for fresh standalone CLI calls. The current probe commands:
+
+- `uv run --no-sync python scripts/probe_read_code_worker_persistence.py --reset`
+- `uv run --no-sync python scripts/probe_read_code_worker_persistence.py`
+
+showed a backend `pid` change from `47366` to `47540` on May 17, 2026, with `same_pid: false` and `same_started_at: false`. So the active path is MCP-backed but still per-invocation for standalone `uv run ... scripts/read_code.py ...` usage. That means the standalone-CLI persistence branch is not the accepted solve for the sandboxed-agent goal. The next accepted phase is `PL-08`: move the agent read surface itself onto the persistent MCP server and treat the CLI as compatibility-only.

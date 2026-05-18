@@ -34,13 +34,14 @@ Validation:
 
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import hashlib
 import json
 import os
 import plistlib
+import queue
 import re
-import select
 import shutil
 import signal
 import subprocess
@@ -193,7 +194,7 @@ class _AnchorResolution:
 
 
 class _ReadCodeRerankerBackend:
-    """Persistent stdio worker client for rerank scoring plus daemon lifecycle control."""
+    """Persistent MCP stdio client for query and rerank plus legacy daemon control."""
 
     def __init__(self, model_name: str, *, repo_root: Path) -> None:
         """Create a client bound to one repo-local daemon runtime."""
@@ -211,6 +212,9 @@ class _ReadCodeRerankerBackend:
         self._launch_agent_label = reranker_launch_agent_label(self._repo_root)
         self._launch_agent_path = reranker_launch_agent_path(self._repo_root)
         self._worker_process: subprocess.Popen[str] | None = None
+        self._backend_thread: threading.Thread | None = None
+        self._backend_requests: queue.Queue[object] | None = None
+        self._backend_identity: dict[str, object] | None = None
         self._worker_lock = threading.Lock()
 
     @property
@@ -219,21 +223,21 @@ class _ReadCodeRerankerBackend:
         return self._model_name
 
     def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
-        """Return persistent stdio-worker scores when available, otherwise fall back."""
+        """Return persistent MCP-backed scores when available, otherwise fall back."""
         if not passages:
             return [], "heuristic"
         try:
             payload = self._worker_score(query, passages)
         except Exception as exc:
-            self._record_startup_failure(f"worker score failed: {exc}")
+            self._record_startup_failure(f"backend score failed: {exc}")
             self._shutdown_worker()
             return [], "heuristic"
         self._clear_startup_failure()
         scores = payload.get("scores")
         if not isinstance(scores, list) or not all(isinstance(item, (int, float)) for item in scores):
-            self._record_startup_failure("worker score payload missing numeric scores")
+            self._record_startup_failure("backend score payload missing numeric scores")
             return [], "heuristic"
-        return [float(item) for item in scores], "worker"
+        return [float(item) for item in scores], "mcp"
 
     def query_items(
         self,
@@ -243,98 +247,191 @@ class _ReadCodeRerankerBackend:
         scope: str,
         file_path: Path | None,
     ) -> list[dict[str, object]] | None:
-        """Return worker-backed semantic query items when the stdio worker is healthy."""
+        """Return MCP-backed semantic query items when the backend session is healthy."""
         try:
             payload = self._worker_query(query=query, top_k=top_k, scope=scope, file_path=file_path)
         except Exception as exc:
-            self._record_startup_failure(f"worker query failed: {exc}")
+            self._record_startup_failure(f"backend query failed: {exc}")
             self._shutdown_worker()
             return None
         self._clear_startup_failure()
         items = payload.get("items")
         if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
-            self._record_startup_failure("worker query payload missing item objects")
+            self._record_startup_failure("backend query payload missing item objects")
             return None
         return [dict(item) for item in items]
 
-    def _read_worker_json(self, *, timeout: float) -> dict[str, object]:
-        """Read one JSON response from the live stdio worker within a bounded timeout."""
-        assert self._worker_process is not None
-        assert self._worker_process.stdout is not None
-        ready, _, _ = select.select([self._worker_process.stdout], [], [], timeout)
-        if not ready:
-            raise TimeoutError(f"stdio worker did not respond within {timeout} seconds")
-        line = self._worker_process.stdout.readline()
-        if not line:
-            stderr = self._worker_process.stderr.read() if self._worker_process.stderr is not None else ""
-            raise RuntimeError(f"stdio worker closed stdout unexpectedly: {stderr}")
-        payload = json.loads(line)
-        if not isinstance(payload, dict):
-            raise ValueError("stdio worker returned a non-object payload")
+    def _structured_mcp_payload(self, tool_result: object) -> object:
+        """Return one structured MCP tool payload, decoding JSON strings when needed."""
+        payload = getattr(tool_result, "structuredContent", None)
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return payload
+        if payload is None:
+            raise ValueError("MCP backend returned no structured payload")
         return payload
 
-    def _ensure_worker_ready(self) -> dict[str, object] | None:
-        """Start the persistent stdio worker on demand and return its ready payload."""
+    async def _backend_session_main(self, ready_queue: "queue.Queue[object]") -> None:
+        """Own one live MCP stdio session and serve queued tool requests serially."""
+        from mcp import ClientSession
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        server = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "src.mcp_codebase.project_backend_server"],
+            cwd=self._repo_root,
+        )
+        assert self._backend_requests is not None
+        async with stdio_client(server) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                identity = self._structured_mcp_payload(await session.call_tool("get_process_identity", {}))
+                if not isinstance(identity, dict):
+                    raise ValueError("MCP identity payload must be an object")
+                self._backend_identity = dict(identity)
+                ready_queue.put(dict(identity))
+                while True:
+                    request = await asyncio.to_thread(self._backend_requests.get)
+                    if request is None:
+                        break
+                    tool_name, arguments, response_queue = request
+                    try:
+                        payload = self._structured_mcp_payload(await session.call_tool(tool_name, arguments))
+                    except Exception as exc:
+                        response_queue.put((False, exc))
+                        continue
+                    response_queue.put((True, payload))
+
+    def _backend_thread_main(self, ready_queue: "queue.Queue[object]") -> None:
+        """Run the MCP stdio session loop in a dedicated thread."""
+        try:
+            asyncio.run(self._backend_session_main(ready_queue))
+        except Exception as exc:
+            ready_queue.put(exc)
+        finally:
+            self._backend_identity = None
+
+    def _ensure_backend_ready(self) -> dict[str, object] | None:
+        """Start the persistent MCP stdio session on demand and return its identity payload."""
         with self._worker_lock:
-            if self._worker_process is not None and self._worker_process.poll() is None:
-                return {
-                    "ok": True,
-                    "pid": self._worker_process.pid,
-                }
+            if self._backend_thread is not None and self._backend_thread.is_alive() and self._backend_identity is not None:
+                return dict(self._backend_identity)
             if self._should_skip_restart():
                 return None
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "src.mcp_codebase.index.reranker_stdio_worker",
-                    "--repo-root",
-                    str(self._repo_root),
-                    "--reranker-model",
-                    self._model_name,
-                ],
-                cwd=str(self._repo_root),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
+            self._backend_requests = queue.Queue()
+            ready_queue: "queue.Queue[object]" = queue.Queue(maxsize=1)
+            thread = threading.Thread(
+                target=self._backend_thread_main,
+                args=(ready_queue,),
+                name="read-code-mcp-backend",
+                daemon=True,
             )
-            self._worker_process = process
+            self._backend_thread = thread
+            thread.start()
             try:
-                payload = self._read_worker_json(timeout=max(READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS, 120.0))
-            except Exception as exc:
-                self._record_startup_failure(f"worker startup failed: {exc}")
-                self._shutdown_worker()
+                payload = ready_queue.get(timeout=max(READ_CODE_RERANKER_DAEMON_START_TIMEOUT_SECONDS, 120.0))
+            except queue.Empty:
+                self._record_startup_failure("MCP backend startup timed out")
+                self._shutdown_backend()
                 return None
-            if payload.get("ok") is not True:
-                self._record_startup_failure(f"worker startup failed: {payload.get('error')}")
-                self._shutdown_worker()
+            if isinstance(payload, Exception):
+                self._record_startup_failure(f"MCP backend startup failed: {payload}")
+                self._shutdown_backend()
                 return None
-            return payload
+            if not isinstance(payload, dict):
+                self._record_startup_failure("MCP backend startup returned a malformed identity payload")
+                self._shutdown_backend()
+                return None
+            self._backend_identity = dict(payload)
+            self._clear_startup_failure()
+            return dict(payload)
 
-    def _worker_request(self, payload: dict[str, object], *, timeout: float) -> dict[str, object]:
-        """Send one JSON request to the persistent stdio worker and return its JSON response."""
-        ready = self._ensure_worker_ready()
+    def _backend_request(
+        self,
+        tool_name: str,
+        arguments: dict[str, object],
+        *,
+        timeout: float,
+    ) -> object:
+        """Send one request to the persistent MCP backend and return its structured payload."""
+        ready = self._ensure_backend_ready()
         if ready is None:
-            raise RuntimeError("stdio worker is unavailable")
-        assert self._worker_process is not None
-        assert self._worker_process.stdin is not None
-        with self._worker_lock:
-            self._worker_process.stdin.write(json.dumps(payload) + "\n")
-            self._worker_process.stdin.flush()
-            return self._read_worker_json(timeout=timeout)
+            raise RuntimeError("MCP backend is unavailable")
+        assert self._backend_requests is not None
+        response_queue: "queue.Queue[tuple[bool, object]]" = queue.Queue(maxsize=1)
+        self._backend_requests.put((tool_name, arguments, response_queue))
+        try:
+            ok, payload = response_queue.get(timeout=timeout)
+        except queue.Empty as exc:
+            raise TimeoutError(f"MCP backend did not respond within {timeout} seconds") from exc
+        if not ok:
+            raise RuntimeError(f"MCP backend request failed: {payload}")
+        return payload
 
-    def _worker_score(self, query: str, passages: list[str]) -> dict[str, object]:
-        """Submit one bounded rerank request to the persistent stdio worker."""
-        return self._worker_request(
+    def _backend_score(self, query: str, passages: list[str]) -> dict[str, object]:
+        """Submit one bounded rerank request to the persistent MCP backend."""
+        payload = self._backend_request(
+            "score",
             {
-                "op": "score",
-                "query": query,
+                "query_text": query,
                 "passages": passages,
             },
             timeout=30.0,
         )
+        if not isinstance(payload, dict):
+            raise ValueError("MCP backend score returned a non-object payload")
+        return dict(payload)
+
+    def _backend_query(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str,
+        file_path: Path | None,
+    ) -> dict[str, object]:
+        """Submit one semantic query request to the persistent MCP backend."""
+        payload = self._backend_request(
+            "query",
+            {
+                "query_text": query,
+                "top_k": top_k,
+                "scope": scope,
+                "file_path": str(file_path.resolve()) if file_path is not None else None,
+            },
+            timeout=30.0,
+        )
+        if isinstance(payload, list):
+            return {"items": [dict(item) for item in payload if isinstance(item, dict)]}
+        items = payload.get("items")
+        if isinstance(items, list):
+            return dict(payload)
+        return {"items": []}
+
+    def _shutdown_backend(self) -> None:
+        """Terminate the live MCP backend session and clear the cached state."""
+        with self._worker_lock:
+            requests = self._backend_requests
+            thread = self._backend_thread
+            self._backend_requests = None
+            self._backend_thread = None
+            self._backend_identity = None
+        if requests is None and thread is None:
+            return
+        if requests is not None:
+            requests.put(None)
+        if thread is not None:
+            thread.join(timeout=5.0)
+
+    def _ensure_worker_ready(self) -> dict[str, object] | None:
+        """Compatibility wrapper for MCP backend startup checks in older tests."""
+        return self._ensure_backend_ready()
+
+    def _worker_score(self, query: str, passages: list[str]) -> dict[str, object]:
+        """Compatibility wrapper for MCP-backed rerank scoring."""
+        return self._backend_score(query, passages)
 
     def _worker_query(
         self,
@@ -344,38 +441,12 @@ class _ReadCodeRerankerBackend:
         scope: str,
         file_path: Path | None,
     ) -> dict[str, object]:
-        """Submit one semantic query request to the persistent stdio worker."""
-        return self._worker_request(
-            {
-                "op": "query",
-                "query": query,
-                "top_k": top_k,
-                "scope": scope,
-                "file_path": str(file_path.resolve()) if file_path is not None else None,
-            },
-            timeout=30.0,
-        )
+        """Compatibility wrapper for MCP-backed semantic queries."""
+        return self._backend_query(query=query, top_k=top_k, scope=scope, file_path=file_path)
 
     def _shutdown_worker(self) -> None:
-        """Terminate the live stdio worker and clear the cached process handle."""
-        process = self._worker_process
-        self._worker_process = None
-        if process is None:
-            return
-        try:
-            if process.poll() is None and process.stdin is not None:
-                process.stdin.write(json.dumps({"op": "shutdown"}) + "\n")
-                process.stdin.flush()
-        except Exception:
-            pass
-        try:
-            process.wait(timeout=5.0)
-        except Exception:
-            process.kill()
-            try:
-                process.wait(timeout=5.0)
-            except Exception:
-                pass
+        """Compatibility wrapper for tearing down the MCP backend session."""
+        self._shutdown_backend()
 
     def _http_client(self, *, timeout: float) -> httpx.Client:
         """Return an HTTP client for the active local daemon transport."""
