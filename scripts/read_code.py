@@ -682,7 +682,11 @@ class _ReadCodeRerankerBackend:
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "").strip()
                 raise RuntimeError(f"launchctl bootstrap failed: {detail or 'unknown error'}")
-        result = self._run_launchctl(["kickstart", "-k", self._launchctl_service_target()])
+        kickstart_args = ["kickstart"]
+        if force:
+            kickstart_args.append("-k")
+        kickstart_args.append(self._launchctl_service_target())
+        result = self._run_launchctl(kickstart_args)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(f"launchctl kickstart failed: {detail or 'unknown error'}")
@@ -818,6 +822,11 @@ class _ReadCodeRerankerBackend:
         """Ensure the daemon is running, optionally clearing the restart cooldown first."""
         if force:
             self._clear_startup_failure()
+        else:
+            healthy = self._health()
+            if healthy is not None:
+                self._clear_startup_failure()
+                return self.status()
         if self._managed_service_installed() and self._launchctl_path() is not None:
             try:
                 self._start_managed_service(force=force)

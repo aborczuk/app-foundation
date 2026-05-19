@@ -337,6 +337,67 @@ def test_reranker_backend_install_writes_launch_agent_and_bootstraps(tmp_path: P
     assert any(args[:2] == ["kickstart", "-k"] for args in commands)
 
 
+def test_reranker_backend_start_skips_managed_restart_when_already_healthy(tmp_path: Path, monkeypatch) -> None:
+    """A healthy daemon should not be restarted just because a client called start()."""
+    backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
+    managed_start_calls: list[bool] = []
+    healthy_payload = {
+        "status": "healthy",
+        "pid": 123,
+        "model_loaded": True,
+        "model_name": backend.model_name,
+        "build_fingerprint": backend._build_fingerprint,
+        "started_at": time.time(),
+    }
+    expected_status = read_code._DaemonStatus(
+        healthy=True,
+        managed=True,
+        launch_agent_loaded=True,
+        launch_agent_label="com.appfoundation.read-code-reranker.test",
+        launch_agent_path=Path("/tmp/com.appfoundation.read-code-reranker.test.plist"),
+        transport="uds",
+        endpoint="/tmp/example.sock",
+        pid=123,
+        model_loaded=True,
+        model_name=backend.model_name,
+        startup_timestamp=float(healthy_payload["started_at"]),
+        build_fingerprint=backend._build_fingerprint,
+        failure_reason=None,
+        failure_age_seconds=None,
+        cooldown_active=False,
+        log_path=Path("/tmp/daemon.log"),
+    )
+    monkeypatch.setattr(backend, "_managed_service_installed", lambda: True)
+    monkeypatch.setattr(backend, "_launchctl_path", lambda: "/bin/launchctl")
+    monkeypatch.setattr(backend, "_health", lambda: healthy_payload)
+    monkeypatch.setattr(backend, "_start_managed_service", lambda *, force: managed_start_calls.append(force))
+    monkeypatch.setattr(backend, "status", lambda: expected_status)
+
+    status = backend.start()
+
+    assert status is expected_status
+    assert managed_start_calls == []
+
+
+def test_reranker_backend_non_force_managed_start_avoids_kill_flag(tmp_path: Path, monkeypatch) -> None:
+    """A non-force managed start should ask launchd to start the service without killing it first."""
+    backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
+    backend._write_launch_agent_plist()
+    commands: list[list[str]] = []
+
+    def fake_run_launchctl(args: list[str]):
+        commands.append(args)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(backend, "_run_launchctl", fake_run_launchctl)
+    monkeypatch.setattr(backend, "_launchctl_path", lambda: "/bin/launchctl")
+    monkeypatch.setattr(backend, "_managed_service_loaded", lambda: True)
+
+    backend._start_managed_service(force=False)
+
+    assert commands == [["kickstart", backend._launchctl_service_target()]]
+
+
 def test_reranker_backend_uninstall_boots_out_and_removes_plist(tmp_path: Path, monkeypatch) -> None:
     """Managed uninstall should stop launchd ownership and remove the plist."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
