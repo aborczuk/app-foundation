@@ -1,4 +1,4 @@
-"""Local Unix-socket reranker daemon for read-code shortlist rescoring."""
+"""Local Unix-socket daemon for read-code semantic query and shortlist rescoring."""
 
 from __future__ import annotations
 
@@ -7,11 +7,13 @@ import asyncio
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from src.mcp_codebase.index import IndexScope
 from src.mcp_codebase.index.config import (
     DEFAULT_EMBEDDING_MODEL_NAME,
     DEFAULT_RERANKER_MODEL_NAME,
@@ -45,6 +47,21 @@ class ScoreResponse(BaseModel):
     model_name: str
 
 
+class QueryRequest(BaseModel):
+    """Structured semantic query request for the external daemon."""
+
+    query_text: str = Field(min_length=1)
+    top_k: int = Field(default=10, ge=1)
+    scope: str | None = None
+    file_path: str | None = None
+
+
+class QueryResponse(BaseModel):
+    """Daemon response payload for bounded semantic query results."""
+
+    items: list[dict[str, Any]]
+
+
 class HealthResponse(BaseModel):
     """Bounded daemon health payload for client startup checks."""
 
@@ -68,6 +85,13 @@ def _build_service(repo_root: Path, *, reranker_model: str) -> VectorIndexServic
     return VectorIndexService(config)
 
 
+def _serialize_query_result(result: object) -> dict[str, object]:
+    """Return one JSON-safe semantic query payload for daemon clients."""
+    if hasattr(result, "model_dump"):
+        return result.model_dump(mode="json")
+    raise TypeError(f"unexpected query result type: {type(result)!r}")
+
+
 def build_app(
     *,
     repo_root: Path,
@@ -75,11 +99,26 @@ def build_app(
     pid_file: Path | None = None,
     endpoint_file: Path | None = None,
 ) -> FastAPI:
-    """Create the reranker daemon application with warmed model state."""
+    """Create the daemon application with warmed rerank and semantic-query state."""
     app = FastAPI()
     service = _build_service(repo_root, reranker_model=reranker_model)
     started_at = time.time()
     build_fingerprint = reranker_build_fingerprint(repo_root, reranker_model)
+    vector_index_ready = False
+
+    def _ensure_query_ready() -> None:
+        """Build the vector index once before serving semantic query requests."""
+        nonlocal vector_index_ready
+        if vector_index_ready:
+            return
+        store = getattr(service, "_store", None)
+        load_active_metadata = getattr(store, "_load_active_metadata", None)
+        active_metadata = load_active_metadata() if callable(load_active_metadata) else None
+        if active_metadata is None and not callable(load_active_metadata):
+            active_metadata = service.status()
+        if active_metadata is None:
+            service.build_full_index(revision="local")
+        vector_index_ready = True
 
     @app.on_event("startup")
     async def _startup() -> None:
@@ -125,6 +164,24 @@ def build_app(
             model_name=str(payload["model_name"]),
         )
 
+    @app.post("/query", response_model=QueryResponse)
+    async def _query(request: QueryRequest) -> QueryResponse:
+        """Return serialized semantic query results from the daemon-owned vector service."""
+        await asyncio.to_thread(_ensure_query_ready)
+        try:
+            parsed_scope = IndexScope(request.scope) if request.scope else None
+        except ValueError:
+            return QueryResponse(items=[])
+        file_path = Path(request.file_path).resolve() if request.file_path else None
+        results = await asyncio.to_thread(
+            service.query,
+            request.query_text,
+            top_k=request.top_k,
+            scope=parsed_scope,
+            file_path=file_path,
+        )
+        return QueryResponse(items=[_serialize_query_result(result) for result in results])
+
     return app
 
 
@@ -147,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     repo_root = args.repo_root.expanduser().resolve()
-    socket_path = args.socket_path.expanduser().resolve()
+    socket_path = args.socket_path.expanduser()
     pid_file = args.pid_file.expanduser().resolve() if args.pid_file is not None else reranker_pid_path(repo_root)
     endpoint_file = args.endpoint_file.expanduser().resolve() if args.endpoint_file is not None else reranker_endpoint_path(repo_root)
     log_file = args.log_file.expanduser().resolve() if args.log_file is not None else reranker_log_path(repo_root)
@@ -181,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         server = uvicorn.Server(config)
         return 0 if server.run() is None else 0
-    except PermissionError:
+    except OSError:
         persist_json_object(
             endpoint_file,
             {

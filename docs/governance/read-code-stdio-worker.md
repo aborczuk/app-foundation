@@ -18,6 +18,9 @@ The live backend is:
 - [`src/mcp_codebase/project_backend_server.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
 - launched over stdio
 - spoken to through an MCP client/session inside [`_ReadCodeRerankerBackend`](/Users/andreborczuk/app-foundation/scripts/read_code.py)
+- paired with one detached repo-local daemon:
+  - [`src/mcp_codebase/index/reranker_daemon.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/reranker_daemon.py)
+  - owns semantic query and rerank state behind one shared local endpoint
 
 The backend exposes bounded MCP tools:
 
@@ -36,20 +39,23 @@ The main runtime symbols for this path are:
 
 - [`_ReadCodeRerankerBackend`](/Users/andreborczuk/app-foundation/scripts/read_code.py)
   - the `read_code.py` side MCP client/session owner
-  - routes semantic query and rerank requests into the live backend
+  - owns stdio child reuse for CLI callers
+  - owns daemon lifecycle and endpoint discovery for the detached background daemon
 - [`project_backend_server.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
   - the live MCP stdio server process
   - registers `query`, `score`, `read_code_context`, `read_code_find`, `read_code_analyze`, `read_code_window`, `warmup`, `health`, `daemon_runtime_report`, and identity/runtime probe tools
 - [`_DirectReadCodeBackend`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
-  - the in-server adapter that keeps semantic query local but routes rerank requests through the external daemon-backed backend
+  - the in-server adapter that routes semantic query and rerank requests through the detached daemon-backed backend
+- [`_DaemonVectorQueryService`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+  - the in-server proxy that lets `read_code.py` query helpers use daemon-owned semantic results without re-instantiating a local `VectorIndexService`
 - [`daemon_runtime_report`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
   - the bounded ownership evidence tool for the spike path
   - reports shim identity separately from daemon identity so child-churn reattachment can be verified directly
-- [`_ensure_vector_index_ready`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
-  - the MCP-server readiness gate
-  - it now uses the cheap active-snapshot seam instead of the old heavy `status()` walk on each read
+- [`reranker_daemon.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/reranker_daemon.py)
+  - the detached daemon entrypoint
+  - serves both `/query` and `/score` over the shared local endpoint
 - [`warmup`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
-  - primes one representative scoped semantic query and one five-passage rerank so the first real contextual read does not pay a separate compile/warmup hit
+  - primes one representative scoped semantic query and one five-passage rerank through the daemon so the first real contextual read does not pay a separate query/rerank warmup hit
 - [`_LocalSequenceRerankerBackend`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py)
   - local Hugging Face reranker wrapper used by the vector index store
 - [`_select_torch_device`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py)
@@ -84,13 +90,14 @@ The current precision policy is:
 The current memory/latency tradeoff is:
 
 - `mps` gives the accepted warm-path latency for direct MCP reads
-- `mps` also keeps a large resident model footprint because the reranker is long-lived in the MCP server
+- `mps` also keeps a large resident model footprint because the reranker is long-lived in the detached daemon
 - `cpu` avoids the MPS accelerator footprint, but rerank latency is materially worse
 
 This means:
 
-- the accepted fast agent path is a warm MCP server with the reranker already loaded
-- the main runtime cost is now intentional model residency, not repeated process startup
+- the accepted fast agent path is a warm detached daemon with semantic query and rerank already loaded
+- the stdio MCP child is now disposable; the warm-state owner is the daemon, not the MCP process
+- the main runtime cost is now intentional daemon residency, not repeated stdio child startup
 - when memory pressure matters more than latency, the relevant seam is the reranker backend in [`chroma.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/index/store/chroma.py), not the MCP transport layer
 
 ## Ownership Split
@@ -103,11 +110,14 @@ The shared [`scripts/read_code.py`](/Users/andreborczuk/app-foundation/scripts/r
 - fallback policy
 - metadata logging
 
-The MCP backend now owns:
+The detached daemon now owns:
 
 - `VectorIndexService`
 - semantic `query`
 - reranker `score`
+
+The MCP stdio child now owns:
+
 - direct agent-facing `read_code_context`
 - direct agent-facing `read_code_find`
 - direct agent-facing `read_code_analyze`
@@ -118,15 +128,16 @@ The MCP backend now owns:
 Guaranteed now:
 
 - repeated direct MCP read calls reuse one warm backend `pid` inside one live server process
-- repeated backend calls inside one `read_code` Python process also reuse one backend `pid`
-- semantic query and rerank use the same backend process
-- backend failures fail fast to local/heuristic fallback
+- repeated fresh stdio MCP child sessions can reconnect to the same daemon `pid`
+- repeated backend calls inside one `read_code` Python process also reuse one daemon `pid`
+- semantic query and rerank use the same daemon process
+- stdio child churn does not require daemon churn
 
 Not guaranteed now:
 
-- separate fresh `uv run --no-sync python scripts/read_code.py ...` invocations do not reuse one backend automatically
-- command hooks or helper subprocesses that open their own stdio MCP client session do not attach to the already-running Codex-managed MCP server
-- separate agent/chat sessions should not assume they will inherit the same backend `pid`
+- separate fresh `uv run --no-sync python scripts/read_code.py ...` invocations do not reuse one stdio child automatically
+- separate agent/chat sessions should not assume they will inherit the same stdio child `pid`
+- if the daemon is intentionally stopped, the next caller will pay the daemon startup cost again
 
 That distinction is the current boundary of the design.
 
@@ -202,10 +213,11 @@ Use this checklist when starting a new Codex session and expecting warm `read_co
    - call `warmup`
    - verify:
       - `warmup_completed: true`
-      - `selected_device: "mps"` when MPS is exposed
+      - `daemon.healthy: true`
    - `warmup` now primes:
       - one representative scoped semantic query against `scripts/read_code.py`
       - one five-passage shortlist rerank shaped like a real `read_code_context` call
+      - both of those now run through the detached daemon rather than a local in-process vector service
 5. Optionally measure the live rerank path after warmup:
    - call `score_probe`
 
@@ -218,30 +230,21 @@ That guard reaps older backend processes started by the same launcher domain bef
 
 Expected timings are now split into three categories:
 
-1. First rerank after MCP server start
-   - one-time model/backend load plus first MPS execution warmup
-   - observed fresh local MCP `warmup` on May 17, 2026:
-     - `selected_device: "mps"`
-     - `elapsed_ms: 5534.555`
+1. First daemon warmup after the detached daemon starts
+   - one-time model/backend load plus first semantic-query/rerank warmup
+   - the stdio child may still be fresh even when the daemon is already warm
 
-2. First rerank probe after explicit warmup
-   - same live MCP server, same model already loaded, but first bounded probe after the explicit warmup step
-   - observed fresh local MCP `score_probe` on May 17, 2026:
-     - `3` passages
-     - `selected_device: "mps"`
-     - `elapsed_ms: 1954.922`
+2. First bounded probe after explicit warmup
+   - same daemon, same model already loaded, but first bounded probe after the explicit warmup step
 
 3. Warm rerank after the first probe
-   - same live MCP server, same model already loaded
-   - observed fresh local MCP `score_probe` on May 17, 2026:
-     - repeat `3`-passage probe
-     - `elapsed_ms: 25.313`
+   - same daemon, same model already loaded
 
 4. Full `read_code_context` on a fresh session id
    - includes semantic query plus shortlist rerank plus shared `read_code` orchestration
-   - observed live MCP reads on May 17, 2026:
-     - first scoped `_resolve_pattern_anchor` read after server refresh: about `5.66s`
-     - later fresh-session scoped reads on the same warm server: about `1.0s`
+   - the important invariant is now:
+     - the daemon `pid` and `startup_timestamp` stay stable
+     - fresh stdio child `pid`s can change without forcing daemon reload
 
 These numbers are acceptance landmarks, not hard promises. The important split is:
 

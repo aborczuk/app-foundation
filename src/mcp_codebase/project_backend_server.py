@@ -12,17 +12,15 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from time import monotonic
 
 from mcp.server.fastmcp import FastMCP
 
 from src.mcp_codebase import config
-from src.mcp_codebase.index import IndexScope
 from src.mcp_codebase.index.config import DEFAULT_RERANKER_MODEL_NAME
 from src.mcp_codebase.index.reranker_runtime import reranker_build_fingerprint
-from src.mcp_codebase.index.reranker_stdio_worker import _build_service
 from src.mcp_codebase.index.store import chroma as chroma_store
 
 _SERVER_NAME = "read-code-persistence-probe"
@@ -198,9 +196,74 @@ def _terminate_backend_pid(pid: int) -> None:
 
 def _serialize_query_result(result: object) -> dict[str, object]:
     """Return one JSON-safe query result payload."""
+    if isinstance(result, dict):
+        return dict(result)
     if hasattr(result, "model_dump"):
         return result.model_dump(mode="json")
     raise TypeError(f"unexpected query result type: {type(result)!r}")
+
+
+@dataclass(frozen=True)
+class _DaemonQueryContent:
+    """Expose symbol identity fields in the same shape as local semantic query results."""
+
+    symbol_name: str
+    qualified_name: str
+
+
+@dataclass(frozen=True)
+class _DaemonQueryResult:
+    """Wrap one daemon query payload in the attribute shape expected by read_code."""
+
+    file_path: Path
+    line_start: int
+    line_end: int
+    score: float
+    body: str
+    preview: str
+    signature: str
+    docstring: str
+    symbol_type: str
+    content: _DaemonQueryContent
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, object]) -> "_DaemonQueryResult":
+        """Convert one daemon item payload into the local query-result shape."""
+        file_path = Path(str(payload.get("file_path") or ""))
+        line_start = int(payload.get("line_start") or 0)
+        line_end = int(payload.get("line_end") or line_start)
+        return cls(
+            file_path=file_path,
+            line_start=line_start,
+            line_end=line_end,
+            score=float(payload.get("score") or 0.0),
+            body=str(payload.get("body") or ""),
+            preview=str(payload.get("preview") or ""),
+            signature=str(payload.get("signature") or ""),
+            docstring=str(payload.get("docstring") or ""),
+            symbol_type=str(payload.get("symbol_type") or ""),
+            content=_DaemonQueryContent(
+                symbol_name=str(payload.get("symbol_name") or ""),
+                qualified_name=str(payload.get("qualified_name") or ""),
+            ),
+        )
+
+    def model_dump(self, *, mode: str = "json") -> dict[str, object]:
+        """Return the JSON-safe payload shape shared by MCP query responses."""
+        assert mode == "json"
+        return {
+            "file_path": str(self.file_path),
+            "line_start": self.line_start,
+            "line_end": self.line_end,
+            "score": self.score,
+            "body": self.body,
+            "preview": self.preview,
+            "signature": self.signature,
+            "docstring": self.docstring,
+            "symbol_type": self.symbol_type,
+            "symbol_name": self.content.symbol_name,
+            "qualified_name": self.content.qualified_name,
+        }
 
 
 def _load_read_code_module(project_root: Path):
@@ -246,19 +309,34 @@ class _DirectReadCodeBackend:
         scope: str,
         file_path: Path | None,
     ) -> list[dict[str, object]] | None:
-        """Return local warm semantic query items in the same shape as read_code expects."""
-        self._server_ref._ensure_vector_index_ready()
-        try:
-            parsed_scope = IndexScope(scope)
-        except ValueError:
-            return []
-        results = self._server_ref._vector_index_service.query(
-            query,
+        """Return daemon-backed semantic query items without falling back to local ownership."""
+        return self._server_ref._daemon_query_items(query=query, top_k=top_k, scope=scope, file_path=file_path)
+
+
+class _DaemonVectorQueryService:
+    """Expose daemon-owned semantic query results in the same shape as the local vector service."""
+
+    def __init__(self, server_ref: "ProjectBackendServer") -> None:
+        """Bind one daemon-backed query service proxy to the warm MCP server."""
+        self._server_ref = server_ref
+
+    def query(
+        self,
+        query_text: str,
+        *,
+        top_k: int,
+        scope: object,
+        file_path: Path | None,
+    ) -> list[_DaemonQueryResult]:
+        """Return daemon-backed semantic query results in the local result-object shape."""
+        scope_value = getattr(scope, "value", scope)
+        scope_text = str(scope_value) if isinstance(scope_value, str) else None
+        return self._server_ref._daemon_query_result_objects(
+            query=query_text,
             top_k=top_k,
-            scope=parsed_scope,
-            file_path=file_path.resolve() if file_path is not None else None,
+            scope=scope_text,
+            file_path=file_path,
         )
-        return [_serialize_query_result(result) for result in results]
 
 
 class ProjectBackendServer:
@@ -270,7 +348,7 @@ class ProjectBackendServer:
         project_root: Path | None = None,
         reranker_model: str = DEFAULT_RERANKER_MODEL_NAME,
     ) -> None:
-        """Capture one process identity and build one warm vector service."""
+        """Capture one process identity and bind one daemon-backed query/rerank surface."""
         self._project_root = (project_root or config.PROJECT_ROOT).resolve()
         self._instance_owner = _resolve_backend_owner()
         _apply_process_name(self._instance_owner)
@@ -278,11 +356,10 @@ class ProjectBackendServer:
         self._started_at = time.time()
         self._reranker_model = reranker_model
         self._build_fingerprint = reranker_build_fingerprint(self._project_root, reranker_model)
-        self._vector_index_service = _build_service(self._project_root, reranker_model=reranker_model)
         self._read_code_module = _load_read_code_module(self._project_root)
         self._daemon_backend = self._load_daemon_backend()
         self._read_code_backend = _DirectReadCodeBackend(self)
-        self._vector_index_ready = False
+        self._read_code_query_service = _DaemonVectorQueryService(self)
         self._reranker_warmed = False
         self.mcp = FastMCP(_SERVER_NAME)
         self._register_tools()
@@ -293,19 +370,6 @@ class ProjectBackendServer:
         if not callable(loader):
             raise RuntimeError("read_code daemon backend loader is unavailable")
         return loader()
-
-    def _ensure_vector_index_ready(self) -> None:
-        """Build the local vector index once using the active manifest, not stale diagnostics."""
-        if self._vector_index_ready:
-            return
-        store = getattr(self._vector_index_service, "_store", None)
-        load_active_metadata = getattr(store, "_load_active_metadata", None)
-        active_metadata = load_active_metadata() if callable(load_active_metadata) else None
-        if active_metadata is None and not callable(load_active_metadata):
-            active_metadata = self._vector_index_service.status()
-        if active_metadata is None:
-            self._vector_index_service.build_full_index(revision="local")
-        self._vector_index_ready = True
 
     @contextmanager
     def _read_code_session(self, session_id: str | None):
@@ -325,12 +389,12 @@ class ProjectBackendServer:
 
     @contextmanager
     def _patched_read_code_runtime(self):
-        """Route read_code's local backend globals to this warm server instance."""
+        """Route read_code's backend globals to this daemon-backed server instance."""
         module = self._read_code_module
         previous_backend = getattr(module, "_READ_CODE_RERANKER_BACKEND", None)
         previous_service = getattr(module, "_READ_CODE_VECTOR_QUERY_SERVICE", None)
         module._READ_CODE_RERANKER_BACKEND = self._read_code_backend
-        module._READ_CODE_VECTOR_QUERY_SERVICE = self._vector_index_service
+        module._READ_CODE_VECTOR_QUERY_SERVICE = self._read_code_query_service
         try:
             yield module
         finally:
@@ -440,17 +504,72 @@ class ProjectBackendServer:
         payload = score(query, passages)
         return dict(payload) if isinstance(payload, dict) else None
 
+    def _daemon_query_payload(
+        self,
+        query: str,
+        *,
+        top_k: int,
+        scope: str | None,
+        file_path: Path | None,
+        ensure_started: bool = False,
+    ) -> dict[str, object] | None:
+        """Return daemon query payload when healthy, otherwise None for daemon-only fallback."""
+        status_payload = self._serialize_daemon_status(self._daemon_status(start=ensure_started))
+        if not bool(status_payload.get("healthy")):
+            return None
+        query_fn = getattr(self._daemon_backend, "_query", None)
+        if not callable(query_fn):
+            return None
+        payload = query_fn(query=query, top_k=top_k, scope=scope, file_path=file_path)
+        return dict(payload) if isinstance(payload, dict) else None
+
+    def _daemon_query_items(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str | None,
+        file_path: Path | None,
+        ensure_started: bool = False,
+    ) -> list[dict[str, object]]:
+        """Return daemon query items or an empty list without reviving local query ownership."""
+        payload = self._daemon_query_payload(
+            query,
+            top_k=top_k,
+            scope=scope,
+            file_path=file_path,
+            ensure_started=ensure_started,
+        )
+        items = payload.get("items") if isinstance(payload, dict) else None
+        if not isinstance(items, list):
+            return []
+        return [dict(item) for item in items if isinstance(item, dict)]
+
+    def _daemon_query_result_objects(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str | None,
+        file_path: Path | None,
+    ) -> list[_DaemonQueryResult]:
+        """Return daemon query items wrapped in the local result-object shape."""
+        return [
+            _DaemonQueryResult.from_payload(item)
+            for item in self._daemon_query_items(query=query, top_k=top_k, scope=scope, file_path=file_path)
+        ]
+
     def _warmup_reranker_runtime(self) -> dict[str, object]:
-        """Prime the daemon-backed reranker plus one representative local query path."""
-        self._ensure_vector_index_ready()
+        """Prime the daemon-backed semantic query and rerank path once."""
         started = monotonic()
         if not self._reranker_warmed:
             self._daemon_status(start=True)
-            self._vector_index_service.query(
-                _WARMUP_QUERY_TEXT,
+            self._daemon_query_items(
+                query=_WARMUP_QUERY_TEXT,
                 top_k=_WARMUP_QUERY_TOP_K,
                 scope=None,
                 file_path=_warmup_query_file_path(self._project_root),
+                ensure_started=False,
             )
             self._daemon_score_payload(
                 _WARMUP_QUERY_TEXT,
@@ -542,16 +661,14 @@ class ProjectBackendServer:
             scope: str | None = None,
             file_path: str | None = None,
         ) -> list[dict[str, object]]:
-            """Return semantic query results from the warm vector index."""
-            self._ensure_vector_index_ready()
-            parsed_scope = IndexScope(scope) if scope else None
-            results = self._vector_index_service.query(
-                query_text,
+            """Return semantic query results from the daemon-owned vector index."""
+            return self._daemon_query_items(
+                query=query_text,
                 top_k=top_k,
-                scope=parsed_scope,
+                scope=scope,
                 file_path=Path(file_path).resolve() if file_path else None,
+                ensure_started=True,
             )
-            return [_serialize_query_result(result) for result in results]
 
         @self.mcp.tool()
         async def score(query_text: str, passages: list[str]) -> dict[str, object]:

@@ -510,6 +510,31 @@ class _ReadCodeRerankerBackend:
             raise ValueError("reranker daemon returned a non-object score payload")
         return payload
 
+    def _query(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str | None,
+        file_path: Path | None,
+    ) -> dict[str, object]:
+        """Submit one bounded semantic query request to the daemon."""
+        with self._http_client(timeout=max(READ_CODE_RERANKER_DAEMON_HEALTH_TIMEOUT_SECONDS, 30.0)) as client:
+            response = client.post(
+                "/query",
+                json={
+                    "query_text": query,
+                    "top_k": top_k,
+                    "scope": scope,
+                    "file_path": str(file_path.resolve()) if file_path is not None else None,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("reranker daemon returned a non-object query payload")
+        return payload
+
     def _should_skip_restart(self) -> bool:
         """Return whether the daemon startup cooldown is still active."""
         payload = _load_runtime_json_object(self._failure_marker_path)
@@ -675,6 +700,7 @@ class _ReadCodeRerankerBackend:
         """Start or restart the launchd-managed daemon for this repo."""
         if not self._managed_service_installed():
             raise RuntimeError("managed daemon is not installed")
+        self._write_launch_agent_plist()
         if force:
             self._bootout_managed_service()
         if not self._managed_service_loaded():
@@ -774,11 +800,11 @@ class _ReadCodeRerankerBackend:
                     return healthy
                 self._record_startup_failure("daemon process is alive but never reported healthy")
                 return None
+            if self._managed_service_loaded():
+                self._bootout_managed_service()
+                self._remove_stale_artifacts()
             try:
-                if self._managed_service_installed() and self._launchctl_path() is not None:
-                    self._start_managed_service(force=False)
-                else:
-                    self._spawn_daemon()
+                self._spawn_daemon()
             except Exception as exc:
                 self._record_startup_failure(f"spawn failed: {exc}")
                 return None
@@ -827,11 +853,8 @@ class _ReadCodeRerankerBackend:
             if healthy is not None:
                 self._clear_startup_failure()
                 return self.status()
-        if self._managed_service_installed() and self._launchctl_path() is not None:
-            try:
-                self._start_managed_service(force=force)
-            except Exception as exc:
-                self._record_startup_failure(f"managed start failed: {exc}")
+        if self._managed_service_loaded():
+            self._bootout_managed_service()
         self._ensure_healthy()
         return self.status()
 

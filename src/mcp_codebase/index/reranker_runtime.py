@@ -29,27 +29,19 @@ def _repo_runtime_slug(repo_root: Path) -> str:
 
 
 def reranker_runtime_root() -> Path:
-    """Return the durable host-local root for reranker daemon runtime artifacts."""
+    """Return the default repo-independent root for optional runtime overrides."""
     override = os.environ.get("SPECKIT_READ_CODE_RERANKER_RUNTIME_ROOT")
     if override:
         return Path(override).expanduser().resolve()
     return (Path.home() / "Library" / "Caches" / "app-foundation" / "read-code-reranker").resolve()
 
 
-def _path_can_create(path: Path) -> bool:
-    """Return whether the current process can create entries under the nearest existing parent."""
-    probe = path
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    return probe.exists() and os.access(probe, os.W_OK | os.X_OK)
-
-
 def reranker_runtime_dir(repo_root: Path) -> Path:
-    """Return the durable per-repo runtime directory for the reranker daemon."""
-    runtime_root = reranker_runtime_root()
-    if _path_can_create(runtime_root):
-        return runtime_root / _repo_runtime_slug(repo_root)
-    return repo_root.resolve() / ".codegraphcontext" / "read-code-reranker-runtime" / _repo_runtime_slug(repo_root)
+    """Return the per-repo runtime directory shared across sandboxed and host processes."""
+    runtime_root = os.environ.get("SPECKIT_READ_CODE_RERANKER_RUNTIME_ROOT")
+    if runtime_root:
+        return Path(runtime_root).expanduser().resolve() / _repo_runtime_slug(repo_root)
+    return reranker_shared_runtime_dir(repo_root)
 
 
 def reranker_shared_runtime_dir(repo_root: Path) -> Path:
@@ -60,7 +52,7 @@ def reranker_shared_runtime_dir(repo_root: Path) -> Path:
 def reranker_socket_path(repo_root: Path) -> Path:
     """Return a short stable Unix socket path that stays under AF_UNIX length limits."""
     digest = hashlib.sha1(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:16]
-    return (Path("/private/tmp") / f"appf-rcd-{digest}.sock").resolve()
+    return Path("/tmp") / f"appf-rcd-{digest}.sock"
 
 
 def reranker_pid_path(repo_root: Path) -> Path:

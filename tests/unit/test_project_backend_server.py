@@ -55,6 +55,8 @@ class _FakeDaemonBackend:
         """Seed one healthy daemon status and score capture list."""
         self.status_calls = 0
         self.start_calls = 0
+        self.query_calls = 0
+        self.query_payloads: list[dict[str, object]] = []
         self.score_calls = 0
         self.score_payloads: list[dict[str, object]] = []
         self._status = _FakeDaemonStatus(
@@ -108,6 +110,43 @@ class _FakeDaemonBackend:
         return {
             "scores": [float(index + 1) for index, _ in enumerate(passages)],
             "model_name": self._status.model_name,
+        }
+
+    def _query(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        scope: str | None,
+        file_path: Path | None,
+    ) -> dict[str, object]:
+        """Return one deterministic daemon query payload for bounded tests."""
+        self.query_calls += 1
+        self.query_payloads.append(
+            {
+                "query": query,
+                "top_k": top_k,
+                "scope": scope,
+                "file_path": file_path,
+            }
+        )
+        resolved = file_path.resolve() if file_path is not None else Path("/tmp/example.py")
+        return {
+            "items": [
+                {
+                    "file_path": str(resolved),
+                    "line_start": 1,
+                    "line_end": 3,
+                    "score": 0.75,
+                    "body": f"def {query}():\n    return 1",
+                    "preview": f"def {query}(): ...",
+                    "signature": f"def {query}()",
+                    "docstring": "Fake daemon query result.",
+                    "symbol_type": "function",
+                    "symbol_name": query,
+                    "qualified_name": query,
+                }
+            ]
         }
 
 
@@ -217,10 +256,24 @@ def _extract_tool_payload(tool_result: object) -> dict[str, object]:
     raise AssertionError("tool did not return a JSON object")
 
 
+def _extract_structured_payload(tool_result: object) -> object:
+    """Extract the structured payload returned by one MCP tool call without forcing an object shape."""
+    if isinstance(tool_result, tuple) and len(tool_result) == 2:
+        return tool_result[1]
+    structured = getattr(tool_result, "structuredContent", None)
+    if structured is not None:
+        return structured
+    content = getattr(tool_result, "content", None)
+    if content and getattr(content[0], "text", None):
+        import json
+
+        return json.loads(content[0].text)
+    raise AssertionError("tool did not return structured content")
+
+
 @pytest.fixture()
-def server(monkeypatch: pytest.MonkeyPatch) -> backend_server.ProjectBackendServer:
-    """Create one backend server with a fake in-memory vector service."""
-    monkeypatch.setattr(backend_server, "_build_service", lambda *_args, **_kwargs: _FakeVectorIndexService())
+def server() -> backend_server.ProjectBackendServer:
+    """Create one backend server with a fake daemon backend."""
     server = backend_server.create_server(project_root=Path.cwd())
     server._daemon_backend = _FakeDaemonBackend()
     return server
@@ -270,7 +323,7 @@ def test_run_read_code_command_injects_local_backend_and_restores_session(
         def read_code_context(self, argv: list[str], *, verbose: bool = False) -> int:
             calls.append((list(argv), verbose, os.environ.get("READ_CODE_SESSION_ID")))
             assert self._READ_CODE_RERANKER_BACKEND is server._read_code_backend
-            assert self._READ_CODE_VECTOR_QUERY_SERVICE is server._vector_index_service
+            assert self._READ_CODE_VECTOR_QUERY_SERVICE is server._read_code_query_service
             print("context stdout")
             print("context stderr", file=sys.stderr)
             return 0
@@ -337,7 +390,7 @@ def test_runtime_capabilities_tool_returns_bounded_probe_payload(
 
 
 def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendServer) -> None:
-    """The explicit warmup tool should start the daemon and prime one local query plus daemon rerank."""
+    """The explicit warmup tool should start the daemon and prime daemon query plus daemon rerank."""
     first = _extract_tool_payload(asyncio.run(server.mcp.call_tool("warmup", {})))
     second = _extract_tool_payload(asyncio.run(server.mcp.call_tool("warmup", {})))
 
@@ -345,12 +398,11 @@ def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendS
     assert second["warmup_completed"] is True
     assert second["elapsed_ms"] <= first["elapsed_ms"]
     assert server._daemon_backend.start_calls == 1
-    assert server._vector_index_service.query_calls == 1
-    assert server._vector_index_service.rerank_calls == 0
+    assert server._daemon_backend.query_calls == 1
     assert server._daemon_backend.score_calls == 1
-    assert server._vector_index_service.query_payloads == [
+    assert server._daemon_backend.query_payloads == [
         {
-            "query_text": "_resolve_pattern_anchor",
+            "query": "_resolve_pattern_anchor",
             "top_k": 5,
             "scope": None,
             "file_path": (Path.cwd() / "scripts" / "read_code.py").resolve(),
@@ -362,6 +414,36 @@ def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendS
             "passage_count": 5,
         }
     ]
+
+
+def test_query_tool_uses_daemon_owned_semantic_query(server: backend_server.ProjectBackendServer) -> None:
+    """The direct query tool should route semantic retrieval through the daemon, not local state."""
+    structured = _extract_structured_payload(
+        asyncio.run(
+            server.mcp.call_tool(
+                "query",
+                {
+                    "query_text": "_vector_find_candidates",
+                    "top_k": 2,
+                    "scope": "code",
+                    "file_path": str(Path.cwd() / "scripts" / "read_code.py"),
+                },
+            )
+        )
+    )
+
+    query_items = structured.get("result") if isinstance(structured, dict) else structured
+
+    assert isinstance(query_items, list)
+    assert len(query_items) == 1
+    assert query_items[0]["symbol_name"] == "_vector_find_candidates"
+    assert server._daemon_backend.start_calls == 1
+    assert server._daemon_backend.query_payloads[-1] == {
+        "query": "_vector_find_candidates",
+        "top_k": 2,
+        "scope": "code",
+        "file_path": (Path.cwd() / "scripts" / "read_code.py").resolve(),
+    }
 
 
 def test_score_probe_tool_reports_elapsed_time_and_score_count(
@@ -401,35 +483,11 @@ def test_daemon_runtime_report_exposes_shim_and_daemon_identity(
     assert payload["daemon"]["startup_timestamp"] == 1234.5
 
 
-def test_ensure_vector_index_ready_uses_store_metadata_without_service_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """MCP readiness should use active snapshot metadata instead of full service status diagnostics."""
-
-    class _StatusShouldNotRunService(_FakeVectorIndexService):
-        def status(self) -> dict[str, object]:
-            """Fail loudly if the heavy service status path is touched."""
-            raise AssertionError("service.status() should not run for MCP readiness")
-
-    monkeypatch.setattr(
-        backend_server,
-        "_build_service",
-        lambda *_args, **_kwargs: _StatusShouldNotRunService(),
-    )
-    server = backend_server.create_server(project_root=Path.cwd())
-
-    server._ensure_vector_index_ready()
-    server._ensure_vector_index_ready()
-
-    assert server._vector_index_ready is True
-
-
 def test_prepare_stdio_runtime_reaps_previous_backend_pid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Starting a new backend server should reap the previously tracked backend pid once."""
     monkeypatch.setenv("READ_CODE_MCP_INSTANCE_OWNER", "unit-owner")
-    monkeypatch.setattr(backend_server, "_build_service", lambda *_args, **_kwargs: _FakeVectorIndexService())
     server = backend_server.create_server(project_root=tmp_path)
     pid_path = backend_server._backend_pid_path(tmp_path, "unit-owner")
     pid_path.parent.mkdir(parents=True, exist_ok=True)
@@ -451,7 +509,6 @@ def test_prepare_stdio_runtime_leaves_unrelated_pid_untouched(
 ) -> None:
     """The singleton guard should not terminate unrelated pids recorded in the pid file."""
     monkeypatch.setenv("READ_CODE_MCP_INSTANCE_OWNER", "unit-owner")
-    monkeypatch.setattr(backend_server, "_build_service", lambda *_args, **_kwargs: _FakeVectorIndexService())
     server = backend_server.create_server(project_root=tmp_path)
     pid_path = backend_server._backend_pid_path(tmp_path, "unit-owner")
     pid_path.parent.mkdir(parents=True, exist_ok=True)
