@@ -39,9 +39,12 @@ The main runtime symbols for this path are:
   - routes semantic query and rerank requests into the live backend
 - [`project_backend_server.py`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
   - the live MCP stdio server process
-  - registers `query`, `score`, `read_code_context`, `read_code_find`, `read_code_analyze`, `read_code_window`, `warmup`, `health`, and identity/runtime probe tools
+  - registers `query`, `score`, `read_code_context`, `read_code_find`, `read_code_analyze`, `read_code_window`, `warmup`, `health`, `daemon_runtime_report`, and identity/runtime probe tools
 - [`_DirectReadCodeBackend`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
-  - the in-server adapter that lets direct `read_code_*` MCP tools reuse the already-live vector/rerank backend without spawning a nested client
+  - the in-server adapter that keeps semantic query local but routes rerank requests through the external daemon-backed backend
+- [`daemon_runtime_report`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
+  - the bounded ownership evidence tool for the spike path
+  - reports shim identity separately from daemon identity so child-churn reattachment can be verified directly
 - [`_ensure_vector_index_ready`](/Users/andreborczuk/app-foundation/src/mcp_codebase/project_backend_server.py)
   - the MCP-server readiness gate
   - it now uses the cheap active-snapshot seam instead of the old heavy `status()` walk on each read
@@ -132,6 +135,8 @@ That distinction is the current boundary of the design.
 Direct live backend proof passes and now exercises the MCP-native read surface:
 
 - `SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py::test_live_project_local_mcp_server_exposes_identity_health_query_and_score`
+- daemon-vs-shim ownership proof on fresh stdio sessions:
+  - `SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/test_codebase_vector_index_performance.py::test_live_project_local_mcp_daemon_runtime_report_matches_across_stdio_sessions`
 - artifact-backed cross-turn direct-MCP proof passes:
   - baseline: `.codegraphcontext/read-code-mcp-read-surface-baseline.json`
   - comparison: `.codegraphcontext/read-code-mcp-read-surface-probe.json`

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from time import monotonic
 
@@ -220,7 +221,7 @@ def _load_read_code_module(project_root: Path):
 
 
 class _DirectReadCodeBackend:
-    """Serve read_code semantic query and rerank requests from the local warm service."""
+    """Serve read_code semantic queries locally and rerank through the persistent daemon."""
 
     def __init__(self, server_ref: "ProjectBackendServer") -> None:
         """Bind the adapter to one already-warm project backend server."""
@@ -228,13 +229,14 @@ class _DirectReadCodeBackend:
         self.model_name = server_ref._reranker_model
 
     def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
-        """Return local warm reranker scores in the same shape as read_code expects."""
-        self._server_ref._ensure_vector_index_ready()
-        payload = self._server_ref._vector_index_service.rerank_scores(query, passages)
+        """Return daemon-backed scores in the same shape as read_code expects."""
+        payload = self._server_ref._daemon_score_payload(query, passages)
+        if payload is None:
+            return [], "heuristic"
         scores = payload.get("scores")
         if not isinstance(scores, list) or not all(isinstance(value, (int, float)) for value in scores):
             return [], "heuristic"
-        return [float(value) for value in scores], "mcp"
+        return [float(value) for value in scores], "daemon"
 
     def query_items(
         self,
@@ -278,11 +280,19 @@ class ProjectBackendServer:
         self._build_fingerprint = reranker_build_fingerprint(self._project_root, reranker_model)
         self._vector_index_service = _build_service(self._project_root, reranker_model=reranker_model)
         self._read_code_module = _load_read_code_module(self._project_root)
+        self._daemon_backend = self._load_daemon_backend()
         self._read_code_backend = _DirectReadCodeBackend(self)
         self._vector_index_ready = False
         self._reranker_warmed = False
         self.mcp = FastMCP(_SERVER_NAME)
         self._register_tools()
+
+    def _load_daemon_backend(self):
+        """Return the shared daemon-backed reranker client exposed by read_code.py."""
+        loader = getattr(self._read_code_module, "_load_read_code_reranker", None)
+        if not callable(loader):
+            raise RuntimeError("read_code daemon backend loader is unavailable")
+        return loader()
 
     def _ensure_vector_index_ready(self) -> None:
         """Build the local vector index once using the active manifest, not stale diagnostics."""
@@ -354,35 +364,102 @@ class ProjectBackendServer:
         }
 
     def _current_reranker_device(self) -> str | None:
-        """Return the currently selected local reranker device when available."""
-        store = getattr(self._vector_index_service, "_store", None)
-        ensure_backend = getattr(store, "_ensure_reranker_backend", None)
-        if not callable(ensure_backend):
+        """Return the device advertised by the external daemon when healthy."""
+        payload = self._daemon_health_payload()
+        device = payload.get("selected_device")
+        return str(device) if isinstance(device, str) else None
+
+    def _daemon_status(self, *, start: bool = False) -> object:
+        """Return the shared daemon status, optionally ensuring the daemon is started first."""
+        command = getattr(self._daemon_backend, "start" if start else "status", None)
+        if not callable(command):
+            raise RuntimeError("daemon backend status API is unavailable")
+        return command()
+
+    def _serialize_daemon_status(self, status: object) -> dict[str, object]:
+        """Return one bounded JSON-safe snapshot of the daemon status object."""
+        payload = asdict(status) if is_dataclass(status) else {}
+        if not payload:
+            payload = {
+                key: getattr(status, key)
+                for key in (
+                    "healthy",
+                    "transport",
+                    "endpoint",
+                    "pid",
+                    "model_loaded",
+                    "model_name",
+                    "startup_timestamp",
+                    "build_fingerprint",
+                    "failure_reason",
+                    "failure_age_seconds",
+                    "cooldown_active",
+                    "log_path",
+                    "managed",
+                    "launch_agent_loaded",
+                    "launch_agent_label",
+                    "launch_agent_path",
+                )
+                if hasattr(status, key)
+            }
+        for key in ("log_path", "launch_agent_path"):
+            value = payload.get(key)
+            if isinstance(value, Path):
+                payload[key] = str(value)
+        return dict(payload)
+
+    def _daemon_health_payload(self) -> dict[str, object]:
+        """Return the daemon health payload when the external daemon is reachable and healthy."""
+        health = getattr(self._daemon_backend, "_health", None)
+        if not callable(health):
+            return {}
+        payload = health()
+        return dict(payload) if isinstance(payload, dict) else {}
+
+    def _daemon_runtime_report(self, *, ensure_started: bool = False) -> dict[str, object]:
+        """Return one bounded combined report for the shim process and external daemon."""
+        status = self._daemon_status(start=ensure_started)
+        return {
+            **_capture_process_identity(self),
+            "shim_pid": self._pid,
+            "shim_started_at": self._started_at,
+            "daemon": self._serialize_daemon_status(status),
+            "active_rerank_path": "daemon"
+            if bool(self._serialize_daemon_status(status).get("healthy"))
+            else "heuristic",
+        }
+
+    def _daemon_score_payload(self, query: str, passages: list[str], *, ensure_started: bool = False) -> dict[str, object] | None:
+        """Return daemon score payload when healthy, otherwise None for heuristic fallback."""
+        status_payload = self._serialize_daemon_status(self._daemon_status(start=ensure_started))
+        if not bool(status_payload.get("healthy")):
             return None
-        backend = ensure_backend()
-        return getattr(backend, "_device", None)
+        score = getattr(self._daemon_backend, "_score", None)
+        if not callable(score):
+            return None
+        payload = score(query, passages)
+        return dict(payload) if isinstance(payload, dict) else None
 
     def _warmup_reranker_runtime(self) -> dict[str, object]:
-        """Prime the scoped query path and shortlist-sized reranker forward once per server."""
+        """Prime the daemon-backed reranker plus one representative local query path."""
         self._ensure_vector_index_ready()
         started = monotonic()
         if not self._reranker_warmed:
-            self._vector_index_service.ensure_reranker_model_local()
+            self._daemon_status(start=True)
             self._vector_index_service.query(
                 _WARMUP_QUERY_TEXT,
                 top_k=_WARMUP_QUERY_TOP_K,
                 scope=None,
                 file_path=_warmup_query_file_path(self._project_root),
             )
-            self._vector_index_service.rerank_scores(
+            self._daemon_score_payload(
                 _WARMUP_QUERY_TEXT,
                 list(_WARMUP_RERANK_PASSAGES),
+                ensure_started=False,
             )
             self._reranker_warmed = True
         return {
-            **_capture_process_identity(self),
-            **_capture_torch_runtime(),
-            "selected_device": self._current_reranker_device(),
+            **self._daemon_runtime_report(ensure_started=False),
             "warmup_completed": self._reranker_warmed,
             "elapsed_ms": round((monotonic() - started) * 1000, 3),
         }
@@ -429,39 +506,33 @@ class ProjectBackendServer:
 
         @self.mcp.tool()
         async def health() -> dict[str, object]:
-            """Return the warmed reranker cache state and process identity."""
-            payload = self._vector_index_service.ensure_reranker_model_local()
-            payload.update(
-                {
-                    "name": _SERVER_NAME,
-                    "project_root": str(self._project_root),
-                    "pid": self._pid,
-                    "started_at": self._started_at,
-                    "build_fingerprint": self._build_fingerprint,
-                    "selected_device": self._current_reranker_device(),
-                    "warmup_completed": self._reranker_warmed,
-                }
-            )
+            """Return the external daemon health plus shim identity for the spike path."""
+            payload = self._daemon_runtime_report(ensure_started=False)
+            payload["warmup_completed"] = self._reranker_warmed
+            return payload
+
+        @self.mcp.tool()
+        async def daemon_runtime_report() -> dict[str, object]:
+            """Return one bounded runtime report for shim-vs-daemon ownership evidence."""
+            payload = self._daemon_runtime_report(ensure_started=False)
+            payload["warmup_completed"] = self._reranker_warmed
             return payload
 
         @self.mcp.tool()
         async def score_probe(query_text: str, passages: list[str]) -> dict[str, object]:
-            """Return one bounded rerank timing probe for this MCP runtime."""
-            self._ensure_vector_index_ready()
+            """Return one bounded rerank timing probe through the external daemon."""
             started = monotonic()
-            payload = self._vector_index_service.rerank_scores(query_text, passages)
+            payload = self._daemon_score_payload(query_text, passages, ensure_started=True)
             elapsed_ms = round((monotonic() - started) * 1000, 3)
-            score_count = payload.get("score_count")
-            if not isinstance(score_count, int):
-                scores = payload.get("scores")
-                score_count = len(scores) if isinstance(scores, list) else 0
+            scores = payload.get("scores") if isinstance(payload, dict) else None
+            score_count = len(scores) if isinstance(scores, list) else 0
             return {
-                **_capture_process_identity(self),
-                **_capture_torch_runtime(),
-                "selected_device": self._current_reranker_device(),
+                **self._daemon_runtime_report(ensure_started=False),
                 "elapsed_ms": elapsed_ms,
                 "score_count": score_count,
-                "model_name": payload.get("model_name"),
+                "model_name": payload.get("model_name") if isinstance(payload, dict) else None,
+                "rerank_source": "daemon" if isinstance(payload, dict) else "heuristic",
+                "selected_device": self._current_reranker_device(),
             }
 
         @self.mcp.tool()
@@ -484,9 +555,11 @@ class ProjectBackendServer:
 
         @self.mcp.tool()
         async def score(query_text: str, passages: list[str]) -> dict[str, object]:
-            """Return reranker scores for one query and bounded passage shortlist."""
-            self._ensure_vector_index_ready()
-            return self._vector_index_service.rerank_scores(query_text, passages)
+            """Return reranker scores from the external daemon or an empty heuristic payload."""
+            payload = self._daemon_score_payload(query_text, passages, ensure_started=True)
+            if payload is not None:
+                return payload
+            return {"scores": [], "model_name": None, "rerank_source": "heuristic"}
 
         @self.mcp.tool()
         async def read_code_context(

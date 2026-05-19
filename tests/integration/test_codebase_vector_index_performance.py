@@ -68,6 +68,28 @@ def _normalize_identity(identity: object) -> dict[str, object]:
     return identity
 
 
+def _normalize_daemon_runtime_report(payload: object) -> dict[str, object]:
+    """Return one validated daemon runtime report payload."""
+    if not isinstance(payload, dict):
+        raise AssertionError("daemon runtime report must be a JSON object")
+    required = {
+        "name",
+        "project_root",
+        "pid",
+        "started_at",
+        "shim_pid",
+        "shim_started_at",
+        "daemon",
+        "active_rerank_path",
+    }
+    if set(payload) != required:
+        raise AssertionError(f"daemon runtime report must contain exactly {sorted(required)}")
+    daemon = payload.get("daemon")
+    if not isinstance(daemon, dict):
+        raise AssertionError("daemon runtime report must include a daemon object")
+    return payload
+
+
 def _load_persistence_artifact(path: Path) -> dict[str, object]:
     """Load the externally captured MCP persistence artifact from disk."""
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -139,6 +161,7 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
             second_payload = _structured(await session.call_tool("get_process_identity", {}))
             runtime_capabilities_payload = _structured(await session.call_tool("get_runtime_capabilities", {}))
             health_payload = _structured(await session.call_tool("health", {}))
+            daemon_runtime_report_payload = _structured(await session.call_tool("daemon_runtime_report", {}))
             warmup_payload = _structured(await session.call_tool("warmup", {}))
             query_payload_raw = _structured(
                 await session.call_tool(
@@ -250,6 +273,7 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
                 "identity_2": _normalize_identity(second_payload),
                 "runtime_capabilities": runtime_capabilities_payload,
                 "health": health_payload,
+                "daemon_runtime_report": daemon_runtime_report_payload,
                 "warmup": warmup_payload,
                 "query": query_payload,
                 "score": score_payload,
@@ -261,6 +285,22 @@ async def _exercise_live_backend_server(repo_root: Path) -> dict[str, object]:
                 "read_code_analyze": read_code_analyze_payload,
                 "read_code_window": read_code_window_payload,
             }
+
+
+async def _capture_daemon_runtime_report(repo_root: Path) -> dict[str, object]:
+    """Spawn one fresh stdio session, warm it, and capture the daemon runtime report."""
+    server = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "src.mcp_codebase.project_backend_server"],
+        cwd=repo_root,
+    )
+    async with stdio_client(server) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            await session.call_tool("warmup", {})
+            return _normalize_daemon_runtime_report(
+                _structured(await session.call_tool("daemon_runtime_report", {}))
+            )
 
 
 def _build_offline_vector_index_service(
@@ -476,6 +516,7 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
         "get_runtime_capabilities",
         "warmup",
         "health",
+        "daemon_runtime_report",
         "score_probe",
         "query",
         "score",
@@ -489,6 +530,7 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     identity_2 = _normalize_identity(payload["identity_2"])
     runtime_capabilities = payload["runtime_capabilities"]
     health = payload["health"]
+    daemon_runtime_report = _normalize_daemon_runtime_report(payload["daemon_runtime_report"])
     warmup = payload["warmup"]
     query = payload["query"]
     score = payload["score"]
@@ -509,6 +551,10 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     assert health["pid"] == identity_1["pid"]
     assert health["started_at"] == identity_1["started_at"]
     assert health["name"] == identity_1["name"]
+    assert daemon_runtime_report["shim_pid"] == identity_1["pid"]
+    assert daemon_runtime_report["shim_started_at"] == identity_1["started_at"]
+    assert daemon_runtime_report["active_rerank_path"] == "daemon"
+    assert daemon_runtime_report["daemon"]["healthy"] is True
     assert isinstance(runtime_capabilities, dict)
     assert runtime_capabilities["pid"] == identity_1["pid"]
     assert runtime_capabilities["started_at"] == identity_1["started_at"]
@@ -542,6 +588,22 @@ def test_live_project_local_mcp_server_exposes_identity_health_query_and_score()
     assert read_code_window_payload["exit_code"] == 0
     assert "Python entrypoint for code discovery with semantic-first anchoring." in read_code_window_payload["stdout"]
     assert "ERROR:" not in read_code_window_payload["stderr"]
+
+
+def test_live_project_local_mcp_daemon_runtime_report_matches_across_stdio_sessions() -> None:
+    """Opt-in live verification should prove daemon identity survives stdio child churn."""
+    if os.environ.get("SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS") != "1":
+        pytest.skip("Set SPECKIT_RUN_LIVE_MCP_PERSISTENCE_TESTS=1 to run live backend verification.")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    first = asyncio.run(_capture_daemon_runtime_report(repo_root))
+    second = asyncio.run(_capture_daemon_runtime_report(repo_root))
+
+    assert first["active_rerank_path"] == second["active_rerank_path"] == "daemon"
+    assert first["daemon"]["healthy"] is True
+    assert second["daemon"]["healthy"] is True
+    assert first["daemon"]["pid"] == second["daemon"]["pid"]
+    assert first["daemon"]["startup_timestamp"] == second["daemon"]["startup_timestamp"]
 
 
 def test_live_project_local_mcp_server_cold_start_thresholds_and_artifact() -> None:

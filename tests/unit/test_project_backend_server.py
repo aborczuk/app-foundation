@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,91 @@ class _FakeQueryResult:
         """Return the stored JSON-safe payload."""
         assert mode == "json"
         return dict(self._payload)
+
+
+@dataclass(frozen=True)
+class _FakeDaemonStatus:
+    """Provide one bounded daemon status payload for project-backend tests."""
+
+    healthy: bool
+    transport: str
+    endpoint: str
+    pid: int | None
+    model_loaded: bool
+    model_name: str
+    startup_timestamp: float | None
+    build_fingerprint: str | None
+    failure_reason: str | None
+    failure_age_seconds: float | None
+    cooldown_active: bool
+    log_path: str
+    managed: bool
+    launch_agent_loaded: bool
+    launch_agent_label: str
+    launch_agent_path: str
+
+
+class _FakeDaemonBackend:
+    """Expose one daemon-like backend without touching the real runtime."""
+
+    def __init__(self) -> None:
+        """Seed one healthy daemon status and score capture list."""
+        self.status_calls = 0
+        self.start_calls = 0
+        self.score_calls = 0
+        self.score_payloads: list[dict[str, object]] = []
+        self._status = _FakeDaemonStatus(
+            healthy=True,
+            transport="uds",
+            endpoint="/tmp/fake-read-code.sock",
+            pid=4242,
+            model_loaded=True,
+            model_name="fake-daemon-model",
+            startup_timestamp=1234.5,
+            build_fingerprint="fake-build",
+            failure_reason=None,
+            failure_age_seconds=None,
+            cooldown_active=False,
+            log_path="/tmp/fake-daemon.log",
+            managed=False,
+            launch_agent_loaded=False,
+            launch_agent_label="fake.label",
+            launch_agent_path="/tmp/fake.plist",
+        )
+
+    def status(self) -> _FakeDaemonStatus:
+        """Return one healthy status snapshot without starting anything."""
+        self.status_calls += 1
+        return self._status
+
+    def start(self, *, force: bool = False) -> _FakeDaemonStatus:
+        """Pretend to start the daemon and return the same healthy status."""
+        _ = force
+        self.start_calls += 1
+        return self._status
+
+    def _health(self) -> dict[str, object]:
+        """Return one healthy daemon payload in the existing daemon wire shape."""
+        return {
+            "status": "healthy",
+            "transport": self._status.transport,
+            "endpoint": self._status.endpoint,
+            "pid": self._status.pid,
+            "model_loaded": self._status.model_loaded,
+            "model_name": self._status.model_name,
+            "started_at": self._status.startup_timestamp,
+            "build_fingerprint": self._status.build_fingerprint,
+            "selected_device": "mps",
+        }
+
+    def _score(self, query: str, passages: list[str]) -> dict[str, object]:
+        """Return one deterministic daemon score payload for bounded tests."""
+        self.score_calls += 1
+        self.score_payloads.append({"query": query, "passage_count": len(passages)})
+        return {
+            "scores": [float(index + 1) for index, _ in enumerate(passages)],
+            "model_name": self._status.model_name,
+        }
 
 
 class _FakeVectorIndexService:
@@ -135,7 +221,9 @@ def _extract_tool_payload(tool_result: object) -> dict[str, object]:
 def server(monkeypatch: pytest.MonkeyPatch) -> backend_server.ProjectBackendServer:
     """Create one backend server with a fake in-memory vector service."""
     monkeypatch.setattr(backend_server, "_build_service", lambda *_args, **_kwargs: _FakeVectorIndexService())
-    return backend_server.create_server(project_root=Path.cwd())
+    server = backend_server.create_server(project_root=Path.cwd())
+    server._daemon_backend = _FakeDaemonBackend()
+    return server
 
 
 def test_mcp_process_name_is_bounded_and_labeled() -> None:
@@ -157,6 +245,7 @@ def test_create_server_registers_mcp_native_read_code_tools(
         "get_runtime_capabilities",
         "warmup",
         "health",
+        "daemon_runtime_report",
         "score_probe",
         "query",
         "score",
@@ -248,16 +337,17 @@ def test_runtime_capabilities_tool_returns_bounded_probe_payload(
 
 
 def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendServer) -> None:
-    """The explicit warmup tool should prime the full context query and shortlist rerank once."""
+    """The explicit warmup tool should start the daemon and prime one local query plus daemon rerank."""
     first = _extract_tool_payload(asyncio.run(server.mcp.call_tool("warmup", {})))
     second = _extract_tool_payload(asyncio.run(server.mcp.call_tool("warmup", {})))
 
     assert first["warmup_completed"] is True
     assert second["warmup_completed"] is True
     assert second["elapsed_ms"] <= first["elapsed_ms"]
-    assert server._vector_index_service.ensure_reranker_calls == 1
+    assert server._daemon_backend.start_calls == 1
     assert server._vector_index_service.query_calls == 1
-    assert server._vector_index_service.rerank_calls == 1
+    assert server._vector_index_service.rerank_calls == 0
+    assert server._daemon_backend.score_calls == 1
     assert server._vector_index_service.query_payloads == [
         {
             "query_text": "_resolve_pattern_anchor",
@@ -266,16 +356,18 @@ def test_warmup_tool_primes_reranker_once(server: backend_server.ProjectBackendS
             "file_path": (Path.cwd() / "scripts" / "read_code.py").resolve(),
         }
     ]
-    assert server._vector_index_service.rerank_payloads == [
+    assert server._daemon_backend.score_payloads == [
         {
-            "query_text": "_resolve_pattern_anchor",
+            "query": "_resolve_pattern_anchor",
             "passage_count": 5,
         }
     ]
+
+
 def test_score_probe_tool_reports_elapsed_time_and_score_count(
     server: backend_server.ProjectBackendServer,
 ) -> None:
-    """The rerank timing probe should return bounded score metadata."""
+    """The rerank timing probe should report daemon-backed score metadata."""
     payload = _extract_tool_payload(
         asyncio.run(
             server.mcp.call_tool(
@@ -291,7 +383,22 @@ def test_score_probe_tool_reports_elapsed_time_and_score_count(
     assert payload["name"] == "read-code-persistence-probe"
     assert payload["score_count"] == 3
     assert payload["elapsed_ms"] >= 0
-    assert payload["selected_device"] is None
+    assert payload["selected_device"] == "mps"
+    assert payload["rerank_source"] == "daemon"
+
+
+def test_daemon_runtime_report_exposes_shim_and_daemon_identity(
+    server: backend_server.ProjectBackendServer,
+) -> None:
+    """The runtime report should make shim-vs-daemon ownership explicit for the spike."""
+    payload = _extract_tool_payload(asyncio.run(server.mcp.call_tool("daemon_runtime_report", {})))
+
+    assert payload["shim_pid"] == server._pid
+    assert payload["shim_started_at"] == server._started_at
+    assert payload["active_rerank_path"] == "daemon"
+    assert payload["daemon"]["healthy"] is True
+    assert payload["daemon"]["pid"] == 4242
+    assert payload["daemon"]["startup_timestamp"] == 1234.5
 
 
 def test_ensure_vector_index_ready_uses_store_metadata_without_service_status(
