@@ -1,6 +1,8 @@
 [features]
 goals = true
 
+# Read-only read-code MCP tools are auto-approved so normal repo reads do not
+# require repeated prompts once a fresh Codex session loads this config.
 [mcp_servers.read_code_persistence_probe]
 command = "/Users/andreborczuk/app-foundation/.venv/bin/read_code_mcp_server"
 args = ["-m", "src.mcp_codebase.project_backend_server"]
@@ -12,7 +14,7 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.health]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.query]
 approval_mode = "approve"
@@ -21,19 +23,19 @@ approval_mode = "approve"
 approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_context]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_analyze]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_find]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_window]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.get_process_identity]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.get_runtime_capabilities]
 approval_mode = "auto"

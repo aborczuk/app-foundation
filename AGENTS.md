@@ -241,6 +241,16 @@ Examples:
 
 - Codex agents should prefer the persistent MCP read tools for normal code-reading work.
 - Do not assume fresh `uv run ... scripts/read_code.py ...` subprocesses are warm; that branch is intentionally not the accepted agent-read performance path.
+- The persistence boundary is the repo daemon/backend, not the MCP transport child. Each Codex session may need to create a fresh transport child to talk to the persistent daemon.
+- Treat `Transport closed` as a likely session-transport failure first, not proof that the daemon died. Recreate or reattach the transport child before escalating to daemon restart/debug.
+- Expected agent operating sequence:
+  - ensure the read-code MCP tools are attached in the current session
+  - create or reattach a fresh transport child for this session if needed
+  - call `get_runtime_capabilities`
+  - call `warmup`
+  - optionally call `score_probe`
+  - only then rely on `read_code_context`, `read_code_find`, `read_code_analyze`, or `read_code_window` for normal work
+- A successful warmup/read in one session child does not guarantee another fresh child is warm. Verify and warm the current session child you are actually using.
 - At the start of a fresh session, verify the live MCP runtime before trusting performance:
   - call `get_runtime_capabilities`
   - call `warmup`
