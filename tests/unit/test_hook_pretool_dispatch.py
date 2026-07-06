@@ -86,3 +86,22 @@ def test_denies_rg_with_repo_reader_guidance() -> None:
     reason = decision["permissionDecisionReason"]
     assert "grep/rg" in reason
     assert "scripts/read_code.py context" in reason
+
+
+def test_denies_cmd_shaped_payload_with_repo_reader_guidance() -> None:
+    """The dispatcher should normalize exec payloads that use `cmd` instead of `command`."""
+    stdout = _run_hook(
+        {
+            "tool_name": "exec_command",
+            "tool_input": {
+                "cmd": "rg needle src",
+            },
+        }
+    )
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    reason = decision["permissionDecisionReason"]
+    assert "grep/rg" in reason
+    assert "scripts/read_code.py context" in reason

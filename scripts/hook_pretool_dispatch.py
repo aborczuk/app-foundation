@@ -79,6 +79,27 @@ def _payload_contains_delete_file_marker(payload: Any) -> bool:
     return False
 
 
+def _normalize_tool_input_command(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Normalize command-bearing tool inputs so hooks can read one canonical field."""
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return payload, ""
+
+    command = str(tool_input.get("command", "")).strip()
+    if command:
+        return payload, command
+
+    fallback_command = str(tool_input.get("cmd", "")).strip()
+    if not fallback_command:
+        return payload, ""
+
+    normalized_tool_input = dict(tool_input)
+    normalized_tool_input["command"] = fallback_command
+    normalized_payload = dict(payload)
+    normalized_payload["tool_input"] = normalized_tool_input
+    return normalized_payload, fallback_command
+
+
 def _load_guard_main(script_name: str) -> Callable[[], int] | None:
     """Load a guard module and return its main function if available."""
     module_path = SCRIPT_DIR / script_name
@@ -127,13 +148,16 @@ def main() -> int:
     except Exception:
         return 0
 
+    payload, command = _normalize_tool_input_command(payload)
+
     if _payload_contains_delete_file_marker(payload.get("tool_input")):
         _emit_deny("apply_patch payloads containing `*** Delete File:` are denied.")
         return 0
 
-    command = str(payload.get("tool_input", {}).get("command", "")).strip()
     if not command:
         return 0
+
+    payload_text = json.dumps(payload)
 
     deny_reason = _worktree_guard(command)
     if deny_reason is not None:
