@@ -71,6 +71,12 @@ set -euo pipefail
 printf '%s\\n' "$*" >> "$FAKE_UV_LOG"
 if [ "${1:-}" = "run" ] && [ "${3:-}" = "cgc" ] && [ "${4:-}" = "index" ]; then
   printf '%s\\n' "$*" >> "$FAKE_CGC_LOG"
+  printf 'KUZUDB_PATH=%s\\n' "${KUZUDB_PATH:-}" >> "$FAKE_CGC_LOG"
+  printf 'FALKORDB_PATH=%s\\n' "${FALKORDB_PATH:-}" >> "$FAKE_CGC_LOG"
+  printf 'FALKORDB_SOCKET_PATH=%s\\n' "${FALKORDB_SOCKET_PATH:-}" >> "$FAKE_CGC_LOG"
+  printf 'CODEGRAPH_CONTEXT_DIR=%s\\n' "${CODEGRAPH_CONTEXT_DIR:-}" >> "$FAKE_CGC_LOG"
+  printf 'CODEGRAPH_DB_DIR=%s\\n' "${CODEGRAPH_DB_DIR:-}" >> "$FAKE_CGC_LOG"
+  printf 'UV_CACHE_DIR=%s\\n' "${UV_CACHE_DIR:-}" >> "$FAKE_CGC_LOG"
   case "${FAKE_UV_MODE:-success}" in
     success)
       exit 0
@@ -367,3 +373,39 @@ def test_index_repo_reuses_safe_index_and_full_repo_opt_in(tmp_path: Path) -> No
     assert result.returncode == 0, result.stderr
     assert "Running incremental index for:" in result.stdout
     assert "cgc index" in log_file.read_text(encoding="utf-8")
+
+
+def test_safe_index_overrides_inherited_codegraph_paths(tmp_path: Path) -> None:
+    repo = _copy_script_repo(tmp_path)
+    bin_dir, log_file = _install_fake_uv(tmp_path)
+    inherited_root = tmp_path / "inherited-main-repo"
+    inherited_db = inherited_root / ".codegraphcontext" / "db"
+
+    result = _run_script(
+        repo,
+        "cgc_safe_index.py",
+        "scripts",
+        env={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "FAKE_UV_LOG": str(log_file),
+            "FAKE_CGC_LOG": str(log_file),
+            "KUZUDB_PATH": str(inherited_db / "kuzudb"),
+            "FALKORDB_PATH": str(inherited_db / "falkordb"),
+            "FALKORDB_SOCKET_PATH": str(inherited_db / "falkordb.sock"),
+            "CODEGRAPH_CONTEXT_DIR": str(inherited_root / ".codegraphcontext"),
+            "CODEGRAPH_DB_DIR": str(inherited_db),
+            "UV_CACHE_DIR": str(inherited_root / ".codegraphcontext" / ".uv-cache"),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    log_text = log_file.read_text(encoding="utf-8")
+    expected_context = repo / ".codegraphcontext"
+    expected_db = expected_context / "db"
+    assert f"KUZUDB_PATH={expected_db / 'kuzudb'}" in log_text
+    assert f"FALKORDB_PATH={expected_db / 'falkordb'}" in log_text
+    assert f"FALKORDB_SOCKET_PATH={expected_db / 'falkordb.sock'}" in log_text
+    assert f"CODEGRAPH_CONTEXT_DIR={expected_context}" in log_text
+    assert f"CODEGRAPH_DB_DIR={expected_db}" in log_text
+    assert f"UV_CACHE_DIR={expected_context / '.uv-cache'}" in log_text
+    assert str(inherited_root) not in log_text

@@ -204,6 +204,33 @@ Use this checklist when starting a new Codex session and expecting warm `read_co
 5. Optionally measure the live rerank path after warmup:
    - call `score_probe`
 
+## Refresh Triggers
+
+The intended local index-refresh path for read-code discovery state is commit-scoped, not push-scoped.
+
+Live Git hook wiring:
+
+- repo Git hooks are loaded from `.githooks/` via `core.hooksPath`
+- the active refresh hook is [`.githooks/post-commit`](/Users/andreborczuk/app-foundation/.githooks/post-commit)
+- that hook dispatches to [`scripts/git_post_commit_refresh.py`](/Users/andreborczuk/app-foundation/scripts/git_post_commit_refresh.py)
+- `git_post_commit_refresh.py` computes the files changed in `HEAD` and passes them to [`scripts/hook_refresh_indexes.py`](/Users/andreborczuk/app-foundation/scripts/hook_refresh_indexes.py)
+
+Refresh behavior:
+
+- `hook_refresh_indexes.py` requests both:
+  - CodeGraph refresh
+  - vector index refresh
+- changed paths are collected from the commit diff and scoped before refresh
+- codegraph refresh is routed through [`scripts/cgc_safe_index.py`](/Users/andreborczuk/app-foundation/scripts/cgc_safe_index.py)
+- vector refresh is routed through `src.mcp_codebase.indexer refresh ...`
+
+Important boundary:
+
+- there is currently no repo-local `pre-push` refresh hook under `.githooks/`
+- pushing code is therefore not the trigger that refreshes local read-code discovery state
+- the intended automatic Git-triggered refresh boundary is `post-commit`
+- deterministic edit flows may also invoke `hook_refresh_indexes.py` directly as part of local validation/sync workflows
+
 If `mps_available` is `false`, the live MCP server is still CPU-bound even if the local repo Python environment can see MPS outside the sandbox.
 
 The stdio backend now also keeps an owner-scoped singleton pid file under `.codegraphcontext/read-code-mcp-runtime/`.

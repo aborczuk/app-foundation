@@ -20,17 +20,22 @@ def _prepare_environment(repo_root: Path) -> None:
     """Populate the environment expected by the CodeGraph CLI."""
     codegraph_context_dir = repo_root / ".codegraphcontext"
     codegraph_db_dir = codegraph_context_dir / "db"
+    repo_uv_cache = Path(os.environ.get("CGC_UV_CACHE_DIR", str(codegraph_context_dir / ".uv-cache")))
     codegraph_db_dir.mkdir(parents=True, exist_ok=True)
-    (codegraph_context_dir / ".uv-cache").mkdir(parents=True, exist_ok=True)
+    repo_uv_cache.mkdir(parents=True, exist_ok=True)
 
-    os.environ.setdefault("UV_CACHE_DIR", os.environ.get("CGC_UV_CACHE_DIR", str(codegraph_context_dir / ".uv-cache")))
-    os.environ.setdefault("DEFAULT_DATABASE", "kuzudb")
-    os.environ.setdefault("FALKORDB_PATH", str(codegraph_db_dir / "falkordb"))
-    os.environ.setdefault("FALKORDB_SOCKET_PATH", str(codegraph_db_dir / "falkordb.sock"))
-    os.environ.setdefault("KUZUDB_PATH", str(codegraph_db_dir / "kuzudb"))
-    os.environ.setdefault("IGNORE_DIRS", os.environ.get("IGNORE_DIRS", "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs"))
-    os.environ.setdefault("CODEGRAPH_CONTEXT_DIR", str(codegraph_context_dir))
-    os.environ.setdefault("CODEGRAPH_DB_DIR", str(codegraph_db_dir))
+    # Force child indexing work onto the target repo's own CodeGraph state.
+    os.environ["UV_CACHE_DIR"] = str(repo_uv_cache)
+    os.environ["DEFAULT_DATABASE"] = "kuzudb"
+    os.environ["FALKORDB_PATH"] = str(codegraph_db_dir / "falkordb")
+    os.environ["FALKORDB_SOCKET_PATH"] = str(codegraph_db_dir / "falkordb.sock")
+    os.environ["KUZUDB_PATH"] = str(codegraph_db_dir / "kuzudb")
+    os.environ["IGNORE_DIRS"] = os.environ.get(
+        "IGNORE_DIRS",
+        "node_modules,venv,.venv,env,.env,dist,build,target,out,.git,.idea,.vscode,__pycache__,.uv-cache,logs,shadow-runs",
+    )
+    os.environ["CODEGRAPH_CONTEXT_DIR"] = str(codegraph_context_dir)
+    os.environ["CODEGRAPH_DB_DIR"] = str(codegraph_db_dir)
 
 
 def main(argv: list[str]) -> int:

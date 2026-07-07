@@ -758,11 +758,13 @@ def init_codegraph_env() -> None:
     repo_uv_cache.mkdir(parents=True, exist_ok=True)
 
     os.environ["UV_CACHE_DIR"] = str(repo_uv_cache)
-    os.environ.setdefault("DEFAULT_DATABASE", "kuzudb")
-    os.environ.setdefault("FALKORDB_PATH", str(CODEGRAPH_DB_DIR / "falkordb"))
-    os.environ.setdefault("FALKORDB_SOCKET_PATH", str(CODEGRAPH_DB_DIR / "falkordb.sock"))
-    os.environ.setdefault("KUZUDB_PATH", str(CODEGRAPH_DB_DIR / "kuzudb"))
-    os.environ.setdefault("IGNORE_DIRS", IGNORE_DIRS_DEFAULT)
+    os.environ["DEFAULT_DATABASE"] = "kuzudb"
+    os.environ["FALKORDB_PATH"] = str(CODEGRAPH_DB_DIR / "falkordb")
+    os.environ["FALKORDB_SOCKET_PATH"] = str(CODEGRAPH_DB_DIR / "falkordb.sock")
+    os.environ["KUZUDB_PATH"] = str(CODEGRAPH_DB_DIR / "kuzudb")
+    os.environ["CODEGRAPH_CONTEXT_DIR"] = str(CODEGRAPH_CONTEXT_DIR)
+    os.environ["CODEGRAPH_DB_DIR"] = str(CODEGRAPH_DB_DIR)
+    os.environ["IGNORE_DIRS"] = os.environ.get("IGNORE_DIRS", IGNORE_DIRS_DEFAULT)
 
 
 def codegraph_edit_signature_file(project_root: Path | None = None) -> Path:
