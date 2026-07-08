@@ -149,7 +149,7 @@ def _extract_edit_sync_args(command: str) -> dict[str, str]:
 def _payload_looks_like_edit(payload: dict[str, Any]) -> bool:
     """Return true when the tool payload looks like a direct edit/write request."""
     tool_name = str(payload.get("tool_name", "")).strip()
-    if tool_name in {"Edit", "Write"}:
+    if tool_name in {"Edit", "Write", "MultiEdit"}:
         return True
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):

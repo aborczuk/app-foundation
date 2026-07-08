@@ -49,6 +49,24 @@ def test_allows_non_delete_apply_patch_payload() -> None:
     assert stdout == ""
 
 
+def test_denies_multiedit_payload_on_non_feature_branch() -> None:
+    """The dispatcher should treat MultiEdit as a direct edit event."""
+    stdout = _run_hook(
+        {
+            "tool_name": "MultiEdit",
+            "tool_input": {
+                "file_path": "src/example.py",
+                "content": "x = 1\n",
+            },
+        }
+    )
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "feature branch" in decision["permissionDecisionReason"]
+
+
 def test_denies_git_grep_with_repo_specific_guidance() -> None:
     """The dispatcher should give explicit repo guidance for git grep usage."""
     stdout = _run_hook(
