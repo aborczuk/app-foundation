@@ -18,8 +18,9 @@ They exist to:
 - keep high-volume shell output bounded
 - prevent direct shell workflows from bypassing repo-specific process rules
 
-This repo also has a `PostToolUse` edit hook path that runs after `Edit` and `Write`
-actions to validate changed files and refresh read-code state.
+This repo also has an `Edit`/`Write` pretool gate and a `PostToolUse` edit hook path.
+The pretool gate blocks code edits before they start; the posttool hook validates
+changed files and refreshes read-code state after the edit lands.
 
 ## Active Hook Entry Point
 
@@ -37,7 +38,9 @@ The active shell guard entrypoint for Bash commands is:
 
 - [`scripts/hook_pretool_dispatch.py`](/Users/andreborczuk/app-foundation/scripts/hook_pretool_dispatch.py)
 
-The dispatcher is registered through the repo-local Codex `PreToolUse` Bash hook and runs the repo guard checks in one process.
+The dispatcher is registered through the repo-local Codex `PreToolUse` Bash hook and
+the repo-local `PreToolUse` `Edit|Write` hook, so the same guard logic applies to both
+shell-triggered edit flows and direct editor writes.
 
 ## Ownership Split
 
@@ -98,6 +101,22 @@ The dispatcher denies:
 - direct `git grep`
 
 The intended replacement is semantic or bounded repo-local reading, not unrestricted text search.
+
+### 2b. Edit-start guard
+
+Primary enforcement file:
+
+- [`scripts/hook_pretool_dispatch.py`](/Users/andreborczuk/app-foundation/scripts/hook_pretool_dispatch.py)
+
+This guard now runs before both shell-driven edit syncs and direct `Edit`/`Write`
+actions.
+
+It blocks code edits until:
+
+- the current branch is a feature branch, validated through the existing branch helper
+- the edit sync has a feature/task pair that passes the existing task start gate
+
+The hook reuses the existing spec-process checks instead of reimplementing them.
 
 ### 3. Refresh-index guard
 

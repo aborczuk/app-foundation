@@ -22,6 +22,16 @@
             "statusMessage": "Running consolidated pre-tool guards..."
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/andreborczuk/app-foundation/scripts/hook_pretool_dispatch.py",
+            "statusMessage": "Running consolidated pre-tool guards..."
+          }
+        ]
       }
     ],
     "PostToolUse": [

@@ -21,6 +21,7 @@ GUARD_SCRIPTS = (
     "hook_enforce_ruff_guard.py",
     "hook_enforce_git_diff_guard.py",
 )
+REPO_ROOT = SCRIPT_DIR.parent
 
 
 def _emit_deny(reason: str) -> None:
@@ -117,6 +118,115 @@ def _load_guard_main(script_name: str) -> Callable[[], int] | None:
     return cast(Callable[[], int], main) if callable(main) else None
 
 
+def _load_module(script_path: Path) -> Any | None:
+    """Load a helper module from a repository path."""
+    spec = importlib.util.spec_from_file_location(f"codex_hook_{script_path.stem}", script_path)
+    if spec is None or spec.loader is None:
+        return None
+
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        return None
+    return module
+
+
+def _extract_edit_sync_args(command: str) -> dict[str, str]:
+    """Extract edit sync arguments from a shell command string."""
+    match = re.search(r"(?<!\\S)scripts/edit_code\\.py\\s+sync(?:\\s|$)", command)
+    if match is None:
+        return {}
+
+    args: dict[str, str] = {}
+    for name in ("feature-id", "task-id", "tasks-file", "actor"):
+        value_match = re.search(rf"--{name}\\s+([^\\s]+)", command)
+        if value_match is not None:
+            args[name] = value_match.group(1).strip("\"' ")
+    return args
+
+
+def _payload_looks_like_edit(payload: dict[str, Any]) -> bool:
+    """Return true when the tool payload looks like a direct edit/write request."""
+    tool_name = str(payload.get("tool_name", "")).strip()
+    if tool_name in {"Edit", "Write"}:
+        return True
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return False
+    return any(key in tool_input for key in ("file_path", "path", "file_paths", "paths", "content", "text"))
+
+
+def _current_branch() -> str:
+    """Return the current git branch name, or an empty string when unavailable."""
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return ""
+    return result.stdout.strip()
+
+
+def _branch_guard() -> str | None:
+    """Return a deny reason when code edits are attempted from a non-feature branch."""
+    branch = _current_branch()
+    if not branch:
+        return "Unable to determine the current git branch before edit sync."
+
+    common_module = _load_module(REPO_ROOT / ".specify" / "scripts" / "python" / "common.py")
+    if common_module is None:
+        return None
+
+    check_feature_branch = getattr(common_module, "check_feature_branch", None)
+    if not callable(check_feature_branch):
+        return None
+
+    try:
+        check_feature_branch(branch, True)
+    except SystemExit:
+        return (
+            f"Edit sync is blocked on branch '{branch}'. "
+            "Switch to the feature branch for the spec before editing."
+        )
+    return None
+
+
+def _task_start_guard(command: str) -> str | None:
+    """Return a deny reason when an edit sync skips the existing task start gate."""
+    sync_args = _extract_edit_sync_args(command)
+    feature_id = sync_args.get("feature-id")
+    task_id = sync_args.get("task-id")
+    if not feature_id or not task_id:
+        return None
+
+    task_ledger_module = _load_module(SCRIPT_DIR / "task_ledger.py")
+    if task_ledger_module is None:
+        return None
+
+    assert_can_start_task = getattr(task_ledger_module, "assert_can_start_task", None)
+    if not callable(assert_can_start_task):
+        return None
+
+    tasks_file = Path(sync_args.get("tasks-file", REPO_ROOT / "specs" / feature_id / "tasks.md"))
+    ledger_path = REPO_ROOT / ".speckit" / "task-ledger.jsonl"
+    actor = sync_args.get("actor")
+    try:
+        assert_can_start_task(ledger_path, tasks_file, feature_id, task_id, actor=actor)
+    except SystemExit:
+        return (
+            f"Edit sync is blocked until the existing task start gate passes for {feature_id}/{task_id}. "
+            "Run the speckit implement preflight gate first."
+        )
+    return None
+
+
 def _run_guard(main: Callable[[], int], payload_text: str) -> str:
     """Run a guard main with the provided payload and capture its stdout."""
     buffer = io.StringIO()
@@ -154,7 +264,8 @@ def main() -> int:
         _emit_deny("apply_patch payloads containing `*** Delete File:` are denied.")
         return 0
 
-    if not command:
+    edit_payload = _payload_looks_like_edit(payload)
+    if not command and not edit_payload:
         return 0
 
     payload_text = json.dumps(payload)
@@ -168,6 +279,23 @@ def main() -> int:
     if deny_reason is not None:
         _emit_deny(deny_reason)
         return 0
+
+    edit_sync_guard = _extract_edit_sync_args(command)
+    if edit_sync_guard:
+        deny_reason = _branch_guard()
+        if deny_reason is not None:
+            _emit_deny(deny_reason)
+            return 0
+        deny_reason = _task_start_guard(command)
+        if deny_reason is not None:
+            _emit_deny(deny_reason)
+            return 0
+
+    if edit_payload:
+        deny_reason = _branch_guard()
+        if deny_reason is not None:
+            _emit_deny(deny_reason)
+            return 0
 
     # Load the remaining checks lazily so a cheap early deny does not pay for every import.
     for script_name in GUARD_SCRIPTS:
