@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -38,6 +39,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised by import-iso
 
 VECTOR_SUFFIXES = {".py", ".pyi", ".md", ".markdown", ".mdown", ".sh", ".bash", ".zsh"}
 EMBEDDING_AVAILABILITY_CACHE_VERSION = 1
+PATCH_FILE_PATTERN = re.compile(
+    r"^\*\*\* (?P<op>Add|Update|Delete) File: (?P<path>.+)$",
+    re.MULTILINE,
+)
 
 
 def _repo_root() -> Path:
@@ -67,8 +72,22 @@ def _emit_error(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
 
 
+def _patch_changed_paths(patch: str) -> list[str]:
+    """Return file path candidates extracted from an apply_patch-style patch payload."""
+    candidates: list[str] = []
+    for match in PATCH_FILE_PATTERN.finditer(patch):
+        raw_path = match.group("path").strip()
+        if not raw_path:
+            continue
+        if match.group("op") == "Delete":
+            candidates.append(str(Path(raw_path).parent))
+        else:
+            candidates.append(raw_path)
+    return candidates
+
+
 def _collect_changed_paths(payload: dict) -> list[Path]:
-    """Accept hook payloads with `file_path`, `path`, `file_paths`, or `paths` keys."""
+    """Accept hook payloads with direct path keys or apply_patch-style patch text."""
     tool_input = payload.get("tool_input") or {}
     candidates: list[str] = []
 
@@ -81,6 +100,10 @@ def _collect_changed_paths(payload: dict) -> list[Path]:
         value = tool_input.get(key)
         if isinstance(value, list):
             candidates.extend(item.strip() for item in value if isinstance(item, str) and item.strip())
+
+    patch = tool_input.get("patch")
+    if isinstance(patch, str) and patch.strip():
+        candidates.extend(_patch_changed_paths(patch))
 
     root = _repo_root()
     resolved: set[Path] = set()

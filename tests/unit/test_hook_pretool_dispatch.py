@@ -35,8 +35,8 @@ def test_denies_apply_patch_delete_file_marker() -> None:
     assert "`*** Delete File:`" in decision["permissionDecisionReason"]
 
 
-def test_allows_non_delete_apply_patch_payload() -> None:
-    """The dispatcher should not block apply_patch payloads without delete-file markers."""
+def test_denies_apply_patch_payload_on_non_feature_branch() -> None:
+    """The dispatcher should treat apply_patch as a direct edit event."""
     stdout = _run_hook(
         {
             "tool_name": "apply_patch",
@@ -46,7 +46,10 @@ def test_allows_non_delete_apply_patch_payload() -> None:
         }
     )
 
-    assert stdout == ""
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "feature branch" in decision["permissionDecisionReason"]
 
 
 def test_denies_multiedit_payload_on_non_feature_branch() -> None:

@@ -124,5 +124,5 @@ def test_repo_local_codex_hooks_register_guard_entrypoints() -> None:
     assert '"matcher": "Bash"' in hooks
     assert '"command": "python3 /Users/andreborczuk/app-foundation/scripts/hook_pretool_dispatch.py"' in hooks
     assert '"PostToolUse"' in hooks
-    assert '"matcher": "Edit|Write"' in hooks
+    assert '"matcher": "Edit|Write|MultiEdit|apply_patch"' in hooks
     assert '"command": "python3 /Users/andreborczuk/app-foundation/scripts/hook_posttool_edit_validation.py"' in hooks
