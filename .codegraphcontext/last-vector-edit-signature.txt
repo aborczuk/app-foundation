@@ -1,2 +1,16 @@
- M .codex/config.toml
- M AGENTS.md
+ M .claude/settings.json
+ M docs/governance/read-code-stdio-worker.md
+ M docs/governance/shell-hook-guards.md
+?? scripts/hook_posttool_edit_validation.py
+?? specs/034-post-tool-edit-validation-refresh/
+?? tests/unit/test_hook_posttool_edit_validation.py
+?? weekly_experiment_readout_executive_decision.html
+?? weekly_experiment_readout_final_status.html
+?? weekly_experiment_readout_learning_exec_notes.html
+?? weekly_experiment_readout_minimal.html
+?? weekly_experiment_readout_minimal_with_completed_cards.html
+?? weekly_experiment_readout_no_footer.html
+?? weekly_experiment_readout_rollout_status.html
+?? weekly_experiment_readout_slide.pptx
+?? weekly_experiment_readout_slide_exact.pptx
+?? weekly_experiment_readout_template.html

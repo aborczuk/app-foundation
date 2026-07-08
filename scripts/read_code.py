@@ -2581,7 +2581,7 @@ def _parse_context_args(argv: list[str]) -> _ContextArgs | None:
     context = READ_CODE_DEFAULT_CONTEXT_LINES
     context_set = False
     allow_fallback = False
-    show_shortlist = False
+    show_shortlist = True
     show_rerank = False
     inline_body = False
     candidate_index = 0

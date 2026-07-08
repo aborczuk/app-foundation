@@ -110,6 +110,39 @@ The MCP backend now owns:
 - direct agent-facing `read_code_analyze`
 - direct agent-facing `read_code_window`
 
+## Default Context Payload
+
+The default `read_code_context` response is intentionally bounded and now returns two layers:
+
+- one selected match block
+- one ranked shortlist with up to three candidates from the same result set
+
+Selected match block fields:
+
+- `file_path`
+- `signature`
+- optional `docstring`
+- `cosine_similarity`
+- one hint line with bounded follow-up actions such as `--inline-body`, `--next-candidate`, and call-site analysis guidance
+
+Default shortlist fields:
+
+- `cosine_similarity`
+- `file_path`
+- `unit_id`
+- `line_num-line_end`
+- `type`
+- `body`
+- `docstring`
+- `raw`
+
+Operational notes:
+
+- the shortlist is rendered by default; `--show-shortlist` remains accepted but is no longer required for the first response
+- the shortlist stays capped at three rows even when the backend returned more candidates
+- when more than three candidates exist, the response prints a truncation hint that points operators to `--next-candidate` or `--candidate-index N`
+- `--inline-body` remains a second-step read and still requires a prior matching context query in the current session scratchpad
+
 ## Current Reuse Boundary
 
 Guaranteed now:
@@ -230,6 +263,7 @@ Important boundary:
 - pushing code is therefore not the trigger that refreshes local read-code discovery state
 - the intended automatic Git-triggered refresh boundary is `post-commit`
 - deterministic edit flows may also invoke `hook_refresh_indexes.py` directly as part of local validation/sync workflows
+- Codex `PostToolUse` edit hooks now route through [`scripts/hook_posttool_edit_validation.py`](/Users/andreborczuk/app-foundation/scripts/hook_posttool_edit_validation.py), which runs guarded Ruff and Pyright checks for changed Python files before delegating scoped CodeGraph and vector refreshes to [`scripts/hook_refresh_indexes.py`](/Users/andreborczuk/app-foundation/scripts/hook_refresh_indexes.py)
 
 If `mps_available` is `false`, the live MCP server is still CPU-bound even if the local repo Python environment can see MPS outside the sandbox.
 

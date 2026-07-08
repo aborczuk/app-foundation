@@ -974,6 +974,61 @@ def test_read_code_context_rerank_debug_is_opt_in(
     assert "result_source: worker" in shown.out
 
 
+def test_read_code_context_includes_top_three_shortlist_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Default context output should include the selected match and a bounded top-three shortlist."""
+    candidates = [
+        read_code._VectorMatch(
+            unit_id=f"function:item_{index}",
+            symbol_name=f"item_{index}",
+            qualified_name=f"item_{index}",
+            line_num=(index + 1) * 10,
+            line_end=((index + 1) * 10) + 2,
+            raw_score=0.9 - (index * 0.1),
+            cosine_similarity=95 - index,
+            symbol_type="function",
+            has_body=True,
+            has_docstring=index % 2 == 0,
+            file_path=Path("/tmp/example.py"),
+            signature=f"def item_{index}():",
+            docstring=f"doc {index}",
+        )
+        for index in range(4)
+    ]
+    resolution = read_code._AnchorResolution(
+        vector_candidates=candidates,
+        vector_match=candidates[0],
+        strict_status=0,
+        line_num=candidates[0].line_num,
+    )
+
+    monkeypatch.setattr(
+        read_code,
+        "_refresh_indexes_for_read",
+        lambda preflight_path, *, verbose=False, request_is_scoped=None: True,
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_resolve_pattern_anchor_with_scratchpad",
+        lambda parsed, *, request_scope, normalized_pattern: (resolution, False, "clean"),
+    )
+    monkeypatch.setattr(read_code, "_append_search_metadata_event", lambda **kwargs: None)
+
+    assert read_code.read_code_context(["sample"]) == 0
+    captured = capsys.readouterr()
+
+    assert "file_path: /tmp/example.py" in captured.out
+    assert "signature: def item_0():" in captured.out
+    assert "# shortlist for: sample" in captured.out
+    assert "function:item_0" in captured.out
+    assert "function:item_1" in captured.out
+    assert "function:item_2" in captured.out
+    assert "function:item_3" not in captured.out
+    assert "# shortlist truncated to top 3; use --next-candidate or --candidate-index N to step further" in captured.out
+
+
 def test_vector_anchor_rank_penalizes_test_files_for_regular_context(monkeypatch) -> None:
     """Regular discovery should prefer implementation files over test files."""
     implementation = Path("/tmp/example.py")

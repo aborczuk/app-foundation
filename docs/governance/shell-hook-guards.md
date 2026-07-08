@@ -18,13 +18,26 @@ They exist to:
 - keep high-volume shell output bounded
 - prevent direct shell workflows from bypassing repo-specific process rules
 
+This repo also has a `PostToolUse` edit hook path that runs after `Edit` and `Write`
+actions to validate changed files and refresh read-code state.
+
 ## Active Hook Entry Point
 
-The active shell guard entrypoint is:
+The active Codex hook registration file is:
+
+- [`.codex/hooks.json`](/Users/andreborczuk/app-foundation/.codex/hooks.json)
+
+Repo-local ownership matters here:
+
+- this repo should not depend on `~/.codex/hooks.json` for its core guard behavior
+- the repo-local hook file is the intended source of truth for SessionStart, PreToolUse, and PostToolUse registration in this checkout
+- user-level Codex hooks may still exist, but they are not the governance contract for this repo
+
+The active shell guard entrypoint for Bash commands is:
 
 - [`scripts/hook_pretool_dispatch.py`](/Users/andreborczuk/app-foundation/scripts/hook_pretool_dispatch.py)
 
-The dispatcher is registered through the Codex `PreToolUse` Bash hook and runs the repo guard checks in one process.
+The dispatcher is registered through the repo-local Codex `PreToolUse` Bash hook and runs the repo guard checks in one process.
 
 ## Ownership Split
 
@@ -183,6 +196,35 @@ The guards are designed to support a compact-output operating model:
 - wrapper commands are preferred because they can bound scope and failure output
 
 This is why the wrappers are the intended execution path rather than an optional convenience layer.
+
+## PostToolUse Edit Path
+
+Primary edit hook files:
+
+- [`.codex/hooks.json`](/Users/andreborczuk/app-foundation/.codex/hooks.json)
+- [`scripts/hook_posttool_edit_validation.py`](/Users/andreborczuk/app-foundation/scripts/hook_posttool_edit_validation.py)
+- [`scripts/hook_refresh_indexes.py`](/Users/andreborczuk/app-foundation/scripts/hook_refresh_indexes.py)
+
+For `Edit|Write` events, the repo-local Codex hook configuration routes through one repo-local script:
+
+- collect repo-local changed paths from the hook payload
+- run guarded `ruff` validation for changed Python files
+- run guarded `pyright` validation for changed Python files
+- run Python docstring validation for changed Python files
+- refresh CodeGraph for the smallest covering repo-local scope
+- refresh the vector index only for supported changed file types
+
+This path is intentionally fail-closed:
+
+- validation failure stops the edit flow before refresh success can be reported
+- refresh failure stops the edit flow even if validation passed
+- non-Python edits skip Python-only validation but still run scoped refreshes when applicable
+
+Current local registration shape:
+
+- `SessionStart` with matcher `startup|resume` routes to `.codex/hooks/session_start_context.py`
+- `PreToolUse` with matcher `Bash` routes to `scripts/hook_pretool_dispatch.py`
+- `PostToolUse` with matcher `Edit|Write` routes to `scripts/hook_posttool_edit_validation.py`
 
 ## Practical Reading Order
 
