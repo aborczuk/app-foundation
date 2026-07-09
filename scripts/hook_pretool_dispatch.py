@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any, cast
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+from scripts import hook_edit_paths  # noqa: E402
+
 GUARD_SCRIPTS = (
     "hook_enforce_code_reads.py",
     "hook_enforce_refresh_guard.py",
@@ -157,6 +162,14 @@ def _payload_looks_like_edit(payload: dict[str, Any]) -> bool:
     return any(key in tool_input for key in ("file_path", "path", "file_paths", "paths", "content", "text"))
 
 
+def _direct_edit_requires_branch_guard(payload: dict[str, Any]) -> bool:
+    """Return true when a direct edit payload targets any branch-guarded path."""
+    changed_paths = hook_edit_paths.collect_changed_paths(payload, root=REPO_ROOT)
+    if not changed_paths:
+        return True
+    return bool(hook_edit_paths.direct_edit_branch_guard_paths(changed_paths, root=REPO_ROOT))
+
+
 def _current_branch() -> str:
     """Return the current git branch name, or an empty string when unavailable."""
     try:
@@ -291,7 +304,7 @@ def main() -> int:
             _emit_deny(deny_reason)
             return 0
 
-    if edit_payload:
+    if edit_payload and _direct_edit_requires_branch_guard(payload):
         deny_reason = _branch_guard()
         if deny_reason is not None:
             _emit_deny(deny_reason)

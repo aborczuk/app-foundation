@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import subprocess
 import sys
@@ -13,14 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts import hook_refresh_indexes  # noqa: E402
-
-PYTHON_SUFFIXES = {".py", ".pyi"}
-
+hook_edit_paths = importlib.import_module("scripts.hook_edit_paths")
+hook_refresh_indexes = importlib.import_module("scripts.hook_refresh_indexes")
 
 def _python_paths(paths: Iterable[Path]) -> list[Path]:
     """Return repo-local changed paths that need Python validation."""
-    return [path for path in paths if path.suffix.lower() in PYTHON_SUFFIXES]
+    return hook_edit_paths.python_paths(paths)
 
 
 def _run_check(command: list[str], label: str) -> str | None:
@@ -65,7 +64,7 @@ def _validate_python_paths(paths: list[Path]) -> list[str]:
 
 def run_posttool_request(payload: dict) -> list[str]:
     """Validate changed files and refresh scoped indexes for a PostToolUse payload."""
-    changed_paths = hook_refresh_indexes._collect_changed_paths(payload)
+    changed_paths = hook_edit_paths.collect_changed_paths(payload, root=ROOT)
     if not changed_paths:
         return []
 

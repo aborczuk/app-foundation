@@ -1,6 +1,18 @@
 [features]
 goals = true
 
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.context7.tools.resolve-library-id]
+approval_mode = "auto"
+
+[mcp_servers.context7.tools.query-docs]
+approval_mode = "auto"
+
+[mcp_servers.composio]
+url = "https://connect.composio.dev/mcp"
+
 # Read-only read-code MCP tools are auto-approved so normal repo reads do not
 # require repeated prompts once a fresh Codex session loads this config.
 [mcp_servers.read_code_persistence_probe]
@@ -29,10 +41,10 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_find]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.read_code_window]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.read_code_persistence_probe.tools.get_process_identity]
 approval_mode = "auto"

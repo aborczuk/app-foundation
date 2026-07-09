@@ -113,12 +113,18 @@ Primary enforcement file:
 This guard now runs before both shell-driven edit syncs and direct `Edit`/`Write`
 `MultiEdit`/`apply_patch` actions.
 
-It blocks code edits until:
+It blocks branch-guarded edits until:
 
 - the current branch is a feature branch, validated through the existing branch helper
 - the edit sync has a feature/task pair that passes the existing task start gate
 
-The hook reuses the existing spec-process checks instead of reimplementing them.
+Direct edit payloads now inspect the target paths first:
+
+- `specs/**/*.md` is exempt so spec scaffolds can be created before a feature branch exists
+- `docs/governance/**/*.md` is exempt for governance-document maintenance
+- other direct edits stay behind the feature-branch guard
+
+The hook reuses the existing spec-process checks instead of reimplementing them and keeps the path-policy logic in a shared helper.
 
 ### 3. Refresh-index guard
 
@@ -240,6 +246,8 @@ This path is intentionally fail-closed:
 - validation failure stops the edit flow before refresh success can be reported
 - refresh failure stops the edit flow even if validation passed
 - non-Python edits skip Python-only validation but still run scoped refreshes when applicable
+
+The post-edit path checks reuse the same shared helper as the pre-edit branch guard, but the validation and refresh actions remain local to this hook.
 
 Current local registration shape:
 
