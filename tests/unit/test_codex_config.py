@@ -15,9 +15,10 @@ def test_codex_config_registers_context7_mcp_server() -> None:
 
 
 def test_codex_config_registers_composio_mcp_server() -> None:
-    """The repo-local Codex config should load the Composio key from env."""
+    """The repo-local Codex config should let Codex use Composio OAuth."""
     config = tomllib.loads(Path(".codex/config.toml").read_text(encoding="utf-8"))
     composio = config["mcp_servers"]["composio"]
 
     assert composio["url"] == "https://connect.composio.dev/mcp"
-    assert composio["env_http_headers"]["x-consumer-api-key"] == "COMPOSIO_API_KEY"
+    assert "http_headers" not in composio
+    assert "env_http_headers" not in composio
