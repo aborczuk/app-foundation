@@ -13,6 +13,12 @@ approval_mode = "auto"
 [mcp_servers.composio]
 url = "https://connect.composio.dev/mcp"
 
+[mcp_servers.composio.tools.COMPOSIO_MANAGE_CONNECTIONS]
+approval_mode = "approve"
+
+[mcp_servers.composio.tools.COMPOSIO_MULTI_EXECUTE_TOOL]
+approval_mode = "approve"
+
 # Read-only read-code MCP tools are auto-approved so normal repo reads do not
 # require repeated prompts once a fresh Codex session loads this config.
 [mcp_servers.read_code_persistence_probe]

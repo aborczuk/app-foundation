@@ -13,6 +13,9 @@ logs/
 # Speckit runtime artifacts
 .speckit/runtime/
 
+# Read-code MCP runtime pid markers
+.codegraphcontext/read-code-mcp-runtime/project_backend_server.ppid-*.pid
+
 # Universal local/editor artifacts
 .DS_Store
 Thumbs.db
