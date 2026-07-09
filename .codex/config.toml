@@ -10,6 +10,10 @@ approval_mode = "auto"
 [mcp_servers.context7.tools.query-docs]
 approval_mode = "auto"
 
+[mcp_servers.composio]
+url = "https://connect.composio.dev/mcp"
+env_http_headers = { "x-consumer-api-key" = "COMPOSIO_API_KEY" }
+
 # Read-only read-code MCP tools are auto-approved so normal repo reads do not
 # require repeated prompts once a fresh Codex session loads this config.
 [mcp_servers.read_code_persistence_probe]

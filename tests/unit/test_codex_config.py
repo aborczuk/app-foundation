@@ -12,3 +12,12 @@ def test_codex_config_registers_context7_mcp_server() -> None:
     assert context7["url"] == "https://mcp.context7.com/mcp"
     assert context7["tools"]["resolve-library-id"]["approval_mode"] == "auto"
     assert context7["tools"]["query-docs"]["approval_mode"] == "auto"
+
+
+def test_codex_config_registers_composio_mcp_server() -> None:
+    """The repo-local Codex config should load the Composio key from env."""
+    config = tomllib.loads(Path(".codex/config.toml").read_text(encoding="utf-8"))
+    composio = config["mcp_servers"]["composio"]
+
+    assert composio["url"] == "https://connect.composio.dev/mcp"
+    assert composio["env_http_headers"]["x-consumer-api-key"] == "COMPOSIO_API_KEY"
