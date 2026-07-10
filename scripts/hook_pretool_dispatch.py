@@ -106,6 +106,23 @@ def _normalize_tool_input_command(payload: dict[str, Any]) -> tuple[dict[str, An
     return normalized_payload, fallback_command
 
 
+def _redact_verbose_tool_input(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy with large user-authored payload fields replaced for delegated guards."""
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return payload
+
+    redacted_tool_input = dict(tool_input)
+    for key in ("patch", "content", "text"):
+        value = redacted_tool_input.get(key)
+        if isinstance(value, str) and value:
+            redacted_tool_input[key] = f"[redacted {key}: {len(value)} chars]"
+
+    redacted_payload = dict(payload)
+    redacted_payload["tool_input"] = redacted_tool_input
+    return redacted_payload
+
+
 def _load_guard_main(script_name: str) -> Callable[[], int] | None:
     """Load a guard module and return its main function if available."""
     module_path = SCRIPT_DIR / script_name
@@ -281,8 +298,6 @@ def main() -> int:
     if not command and not edit_payload:
         return 0
 
-    payload_text = json.dumps(payload)
-
     deny_reason = _worktree_guard(command)
     if deny_reason is not None:
         _emit_deny(deny_reason)
@@ -309,6 +324,8 @@ def main() -> int:
         if deny_reason is not None:
             _emit_deny(deny_reason)
             return 0
+
+    payload_text = json.dumps(_redact_verbose_tool_input(payload))
 
     # Load the remaining checks lazily so a cheap early deny does not pay for every import.
     for script_name in GUARD_SCRIPTS:

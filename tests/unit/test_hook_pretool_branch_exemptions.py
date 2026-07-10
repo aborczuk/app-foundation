@@ -71,3 +71,54 @@ def test_denies_non_exempt_markdown_payload_on_non_feature_branch(monkeypatch, c
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "feature branch" in decision["permissionDecisionReason"]
+
+
+def test_redacts_apply_patch_payload_before_delegated_guards(monkeypatch, capsys) -> None:
+    """Delegated guards should not receive raw patch bodies that can be echoed on denial."""
+    seen_payload: dict[str, Any] = {}
+
+    def guard_main() -> int:
+        seen_payload.update(json.loads(sys.stdin.read()))
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": "delegated deny",
+                    }
+                }
+            )
+        )
+        return 0
+
+    patch_body = (
+        "*** Begin Patch\n"
+        "*** Update File: docs/governance/example.md\n"
+        "@@\n"
+        "-old\n"
+        "+sensitive patch body\n"
+        "*** End Patch\n"
+    )
+    monkeypatch.setattr(hook_pretool_dispatch, "_branch_guard", lambda: "feature branch required")
+    monkeypatch.setattr(hook_pretool_dispatch, "_worktree_guard", lambda command: None)
+    monkeypatch.setattr(hook_pretool_dispatch, "_grep_guard", lambda command: None)
+    monkeypatch.setattr(hook_pretool_dispatch, "_load_guard_main", lambda script_name: guard_main)
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            json.dumps(
+                {
+                    "tool_name": "apply_patch",
+                    "tool_input": {"patch": patch_body},
+                }
+            )
+        ),
+    )
+
+    assert hook_pretool_dispatch.main() == 0
+    stdout = capsys.readouterr().out.strip()
+
+    assert "sensitive patch body" not in stdout
+    assert seen_payload["tool_input"]["patch"] == f"[redacted patch: {len(patch_body)} chars]"

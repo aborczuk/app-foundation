@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
 from typing import Any
+
+from scripts import hook_pretool_dispatch
 
 
 def _run_hook(payload: dict[str, Any]) -> str:
@@ -16,6 +19,15 @@ def _run_hook(payload: dict[str, Any]) -> str:
         check=True,
     )
     return result.stdout.strip()
+
+
+def _run_hook_in_process(payload: dict[str, Any], monkeypatch, capsys) -> str:
+    """Run the dispatcher with monkeypatched guard seams for deterministic tests."""
+    monkeypatch.setattr(hook_pretool_dispatch, "_branch_guard", lambda: "feature branch required")
+    monkeypatch.setattr(hook_pretool_dispatch, "_load_guard_main", lambda script_name: None)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    assert hook_pretool_dispatch.main() == 0
+    return capsys.readouterr().out.strip()
 
 
 def test_denies_apply_patch_delete_file_marker() -> None:
@@ -35,15 +47,17 @@ def test_denies_apply_patch_delete_file_marker() -> None:
     assert "`*** Delete File:`" in decision["permissionDecisionReason"]
 
 
-def test_denies_apply_patch_payload_on_non_feature_branch() -> None:
+def test_denies_apply_patch_payload_on_non_feature_branch(monkeypatch, capsys) -> None:
     """The dispatcher should treat apply_patch as a direct edit event."""
-    stdout = _run_hook(
+    stdout = _run_hook_in_process(
         {
             "tool_name": "apply_patch",
             "tool_input": {
                 "patch": "*** Begin Patch\n*** Update File: /tmp/example.txt\n@@\n-old\n+new\n*** End Patch\n",
             },
-        }
+        },
+        monkeypatch,
+        capsys,
     )
 
     assert stdout
@@ -52,16 +66,18 @@ def test_denies_apply_patch_payload_on_non_feature_branch() -> None:
     assert "feature branch" in decision["permissionDecisionReason"]
 
 
-def test_denies_multiedit_payload_on_non_feature_branch() -> None:
+def test_denies_multiedit_payload_on_non_feature_branch(monkeypatch, capsys) -> None:
     """The dispatcher should treat MultiEdit as a direct edit event."""
-    stdout = _run_hook(
+    stdout = _run_hook_in_process(
         {
             "tool_name": "MultiEdit",
             "tool_input": {
                 "file_path": "src/example.py",
                 "content": "x = 1\n",
             },
-        }
+        },
+        monkeypatch,
+        capsys,
     )
 
     assert stdout
