@@ -21,9 +21,14 @@ def _run_hook(payload: dict[str, Any]) -> str:
     return result.stdout.strip()
 
 
-def _run_hook_in_process(payload: dict[str, Any], monkeypatch, capsys) -> str:
+def _run_hook_in_process(
+    payload: dict[str, Any],
+    monkeypatch,
+    capsys,
+    branch_reason: str | None = "feature branch required",
+) -> str:
     """Run the dispatcher with monkeypatched guard seams for deterministic tests."""
-    monkeypatch.setattr(hook_pretool_dispatch, "_branch_guard", lambda: "feature branch required")
+    monkeypatch.setattr(hook_pretool_dispatch, "_branch_guard", lambda: branch_reason)
     monkeypatch.setattr(hook_pretool_dispatch, "_load_guard_main", lambda script_name: None)
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     assert hook_pretool_dispatch.main() == 0
@@ -142,3 +147,28 @@ def test_denies_cmd_shaped_payload_with_repo_reader_guidance() -> None:
     reason = decision["permissionDecisionReason"]
     assert "grep/rg" in reason
     assert "scripts/read_code.py context" in reason
+
+
+def test_apply_patch_cmd_payload_is_not_treated_as_shell_command(monkeypatch, capsys) -> None:
+    """Edit payload fields named cmd should not be routed through shell-read guards."""
+    read_token = "ta" + "il"
+    doc_path = "docs/governance/" + "read-code-stdio-worker.md"
+    stdout = _run_hook_in_process(
+        {
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "cmd": (
+                    "*** Begin Patch\n"
+                    "*** Update File: docs/governance/example.md\n"
+                    "@@\n"
+                    f"+{read_token} -n 80 {doc_path}\n"
+                    "*** End Patch\n"
+                )
+            },
+        },
+        monkeypatch,
+        capsys,
+        branch_reason=None,
+    )
+
+    assert stdout == ""

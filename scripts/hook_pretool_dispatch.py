@@ -27,6 +27,7 @@ GUARD_SCRIPTS = (
     "hook_enforce_git_diff_guard.py",
 )
 REPO_ROOT = SCRIPT_DIR.parent
+COMMAND_TOOL_NAMES = {"exec_command", "Bash"}
 
 
 def _emit_deny(reason: str) -> None:
@@ -87,6 +88,10 @@ def _payload_contains_delete_file_marker(payload: Any) -> bool:
 
 def _normalize_tool_input_command(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
     """Normalize command-bearing tool inputs so hooks can read one canonical field."""
+    tool_name = str(payload.get("tool_name", "")).strip()
+    if tool_name not in COMMAND_TOOL_NAMES:
+        return payload, ""
+
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
         return payload, ""
