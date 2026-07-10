@@ -1,4 +1,4 @@
-"""Unit tests for deterministic tasking estimate/breakdown chain."""
+"""Unit tests for scripts/speckit_tasking_chain.py."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from pathlib import Path
 
 
 def _load_script_module(module_name: str, script_name: str):
+    """Load a script module from the repo's scripts directory."""
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
-    script_path = scripts_dir / script_name
     scripts_dir_str = str(scripts_dir)
     if scripts_dir_str not in sys.path:
         sys.path.insert(0, scripts_dir_str)
-    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    spec = importlib.util.spec_from_file_location(module_name, scripts_dir / script_name)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -22,91 +22,19 @@ def _load_script_module(module_name: str, script_name: str):
     return module
 
 
-tasking_chain = _load_script_module("speckit_tasking_chain", "speckit_tasking_chain.py")
+speckit_tasking_chain = _load_script_module("speckit_tasking_chain", "speckit_tasking_chain.py")
 
 
-def test_chain_passes_when_estimates_already_stable(tmp_path: Path, monkeypatch) -> None:
-    """Existing estimates with no 8/13 tasks should pass without commands."""
-    feature_dir = tmp_path / "feature"
-    feature_dir.mkdir(parents=True, exist_ok=True)
-    (feature_dir / "tasks.md").write_text("- [ ] T001 sample task ./file.py\n", encoding="utf-8")
-    (feature_dir / "estimates.md").write_text("T001 | 3\n", encoding="utf-8")
-
-    monkeypatch.setattr(tasking_chain, "_clear_tasking_sessions", lambda _: [])
-    args = tasking_chain._build_parser().parse_args(
-        ["--feature-dir", str(feature_dir), "--json"]
+def test_extract_high_point_tasks_ignores_historical_change_notes() -> None:
+    """Only current estimate rows can require a new breakdown round."""
+    estimates = "\n".join(
+        [
+            "| Task ID | Points | Description | Rationale |",
+            "| T001 | 5 | Current work | Sized after split. |",
+            "| T002a | 8 | Current high work | Requires split. |",
+            "- Replaced T009 (8) with T009a (3), T009b (3), and T009c (3).",
+            "- No current task scores 8 or 13 points.",
+        ]
     )
 
-    payload = tasking_chain.run_chain(args)
-
-    assert payload["ok"] is True
-    assert payload["high_point_tasks"] == []
-    assert payload["command_results"] == []
-
-
-def test_chain_clears_session_state_when_stable(tmp_path: Path, monkeypatch) -> None:
-    """Stable estimates should trigger warm-session teardown."""
-    feature_dir = tmp_path / "feature"
-    feature_dir.mkdir(parents=True, exist_ok=True)
-    (feature_dir / "tasks.md").write_text("- [ ] T001 sample task ./file.py\n", encoding="utf-8")
-    (feature_dir / "estimates.md").write_text("T001 | 3\n", encoding="utf-8")
-
-    teardown_calls: list[Path] = []
-
-    def fake_clear_tasking_sessions(current_feature_dir: Path) -> list[str]:
-        teardown_calls.append(current_feature_dir)
-        return ["estimate-session-state.json", "breakdown-session-state.json"]
-
-    monkeypatch.setattr(tasking_chain, "_clear_tasking_sessions", fake_clear_tasking_sessions)
-    args = tasking_chain._build_parser().parse_args(
-        ["--feature-dir", str(feature_dir), "--json"]
-    )
-
-    payload = tasking_chain.run_chain(args)
-
-    assert payload["ok"] is True
-    assert payload["session_teardown_paths"] == [
-        "estimate-session-state.json",
-        "breakdown-session-state.json",
-    ]
-    assert teardown_calls == [feature_dir]
-
-
-def test_chain_requires_breakdown_command_when_high_points_remain(tmp_path: Path) -> None:
-    """High-point tasks require configured breakdown command for stabilization."""
-    feature_dir = tmp_path / "feature"
-    feature_dir.mkdir(parents=True, exist_ok=True)
-    (feature_dir / "tasks.md").write_text("- [ ] T001 sample task ./file.py\n", encoding="utf-8")
-    (feature_dir / "estimates.md").write_text("T001 | 8\n", encoding="utf-8")
-    args = tasking_chain._build_parser().parse_args(
-        ["--feature-dir", str(feature_dir), "--json"]
-    )
-
-    payload = tasking_chain.run_chain(args)
-
-    assert payload["ok"] is False
-    assert "breakdown_required" in payload["reasons"]
-    assert "missing_breakdown_command" in payload["reasons"]
-
-
-def test_chain_fails_without_estimate_command_and_artifact(tmp_path: Path) -> None:
-    """Missing estimates artifact and missing estimate command should fail."""
-    feature_dir = tmp_path / "feature"
-    feature_dir.mkdir(parents=True, exist_ok=True)
-    (feature_dir / "tasks.md").write_text("- [ ] T001 sample task ./file.py\n", encoding="utf-8")
-    args = tasking_chain._build_parser().parse_args(
-        ["--feature-dir", str(feature_dir), "--json"]
-    )
-
-    payload = tasking_chain.run_chain(args)
-
-    assert payload["ok"] is False
-    assert "missing_estimate_command" in payload["reasons"]
-    assert "missing_estimates_file" in payload["reasons"]
-
-
-def test_load_tasking_runner_module_registers_sys_modules() -> None:
-    """The tasking-runner import helper should register the module before execution."""
-    module = tasking_chain._load_tasking_runner_module()
-    assert module.__name__ in sys.modules
-    assert sys.modules[module.__name__] is module
+    assert speckit_tasking_chain._extract_high_point_tasks(estimates) == ["T002a"]

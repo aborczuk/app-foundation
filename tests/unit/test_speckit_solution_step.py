@@ -233,6 +233,25 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
     ]
 
 
+def test_ledger_feature_id_extracts_numeric_prefix_from_feature_slug(tmp_path: Path) -> None:
+    """Task registration receives the numeric id rather than a feature slug."""
+    feature_dir = tmp_path / "039-autonomous-spec-pipeline-upgrade"
+
+    assert speckit_solution_step._ledger_feature_id(feature_dir) == "039"
+
+
+def test_count_stories_uses_task_labels_when_phases_are_not_story_headings(tmp_path: Path) -> None:
+    """Phase-oriented task files still report their user-story traceability."""
+    tasks_file = tmp_path / "tasks.md"
+    tasks_file.write_text(
+        "## Phase 1: Setup\n- [ ] T001 [US4] Add preflight in scripts/preflight.py.\n"
+        "## Phase 2: Routing\n- [ ] T002 [US1] Add route in scripts/routes.py.\n",
+        encoding="utf-8",
+    )
+
+    assert speckit_solution_step._count_stories(tasks_file) == 2
+
+
 def test_run_tasking_stabilization_uses_validation_only_chain(
     tmp_path: Path, monkeypatch
 ) -> None:

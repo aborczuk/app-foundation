@@ -22,9 +22,9 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 DEFAULT_LEDGER = Path(".speckit/task-ledger.jsonl")
-TASK_ID_RE = re.compile(r"^T\d{3}$")
+TASK_ID_RE = re.compile(r"^T\d{3}(?:[a-c])?$")
 FEATURE_ID_RE = re.compile(r"^\d{3}$")
-TASK_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(T\d{3})\b")
+TASK_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(T\d{3}(?:[a-c])?)\b")
 INDEXABLE_SUFFIXES = {".py", ".pyi"}
 
 AUTO_CODEGRAPH_INDEX_ENV = "SPECKIT_AUTO_CODEGRAPH_INDEX"

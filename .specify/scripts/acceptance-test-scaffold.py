@@ -22,6 +22,10 @@ INDEPENDENT_TEST_RE = re.compile(
     r"^\*\*Independent Test\*\*:\s*(?P<text>.+)$", re.MULTILINE
 )
 ACCEPTANCE_LINE_RE = re.compile(r"^\|\s*\d+\s*\|\s*(?P<given>.+?)\s*\|\s*(?P<when>.+?)\s*\|\s*(?P<then>.+?)\s*\|$", re.MULTILINE)
+TASK_STORY_RE = re.compile(
+    r"^\s*-\s*\[[ xX]\]\s+T\d{3}(?:[a-c])?(?:\s+\[P\])?(?:\s+\[H\])?\s+\[US(?P<num>\d+)\]\s+(?P<description>.+)$",
+    re.MULTILINE,
+)
 
 
 def slugify(value: str) -> str:
@@ -54,7 +58,22 @@ def extract_story_sections(tasks_text: str) -> list[dict[str, str]]:
                 ],
             }
         )
-    return sections
+    if sections:
+        return sections
+
+    discovered: dict[str, dict[str, str]] = {}
+    for match in TASK_STORY_RE.finditer(tasks_text):
+        number = match.group("num")
+        discovered.setdefault(
+            number,
+            {
+                "num": number,
+                "title": f"User Story {number}",
+                "independent_test": match.group("description").strip(),
+                "scenarios": [],
+            },
+        )
+    return [discovered[number] for number in sorted(discovered, key=int)]
 
 
 def render_story_test(story: dict[str, str]) -> str:

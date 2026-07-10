@@ -277,6 +277,14 @@ def _register_tasks(*, repo_root: Path, feature_dir: Path, feature_id: str) -> d
     return parsed
 
 
+def _ledger_feature_id(feature_dir: Path) -> str:
+    """Return the numeric feature id required by the task-ledger interface."""
+    match = re.match(r"^(?P<feature_id>\d{3})(?:[-_]|$)", feature_dir.name)
+    if match is None:
+        raise RuntimeError(f"invalid_feature_directory:{feature_dir}")
+    return match.group("feature_id")
+
+
 def _validate_huds(*, repo_root: Path, feature_dir: Path) -> dict[str, Any]:
     """Validate completed task HUD artifacts before task registration handoff."""
     command = [
@@ -311,13 +319,16 @@ def _generate_acceptance_tests(*, repo_root: Path, feature_dir: Path) -> dict[st
 
 
 def _count_stories(tasks_file: Path) -> int:
-    """Count the story sections in tasks.md."""
+    """Count story headings or unique `[USn]` task labels in tasks.md."""
     story_heading = re.compile(r"^##\s+.*User Story\b", re.IGNORECASE)
+    story_label = re.compile(r"\[US(?P<number>\d+)\]")
     count = 0
+    labels: set[str] = set()
     for line in tasks_file.read_text(encoding="utf-8").splitlines():
         if story_heading.match(line):
             count += 1
-    return count
+        labels.update(match.group("number") for match in story_label.finditer(line))
+    return count or len(labels)
 
 
 def _estimate_points(estimates_file: Path) -> int:
@@ -396,7 +407,11 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     if not bool(huds.get("ok", False)):
         raise RuntimeError("hud_validation_failed")
 
-    registration = _register_tasks(repo_root=repo_root, feature_dir=feature_dir, feature_id=feature_id)
+    registration = _register_tasks(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id=_ledger_feature_id(feature_dir),
+    )
     stages.append({"stage": "task_registration", "result": registration})
 
     acceptance = _generate_acceptance_tests(repo_root=repo_root, feature_dir=feature_dir)

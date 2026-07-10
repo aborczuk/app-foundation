@@ -219,3 +219,17 @@ def test_extract_summary_and_ref_keeps_inline_seam_in_summary() -> None:
         "`src/clickup_control_plane/tetris/routes.py` scaffolding so the app has a dedicated mount seam."
     )
     assert ref == "src/clickup_control_plane/app.py:create_app"
+
+
+def test_iter_tasks_preserves_breakdown_suffix_ids(tmp_path: Path) -> None:
+    """HUD scaffolding must retain the mandated a/b/c breakdown task IDs."""
+    module = _load_module()
+    tasks_file = tmp_path / "tasks.md"
+    tasks_file.write_text(
+        "## Phase 1: Setup\n- [ ] T009a [US1] Define policy in `scripts/adapter.py`.\n",
+        encoding="utf-8",
+    )
+
+    tasks = list(module._iter_tasks(tasks_file))
+
+    assert [task.task_id for task in tasks] == ["T009a"]

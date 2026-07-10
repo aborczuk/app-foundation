@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any, Sequence
 
 PHASE_HEADER_RE = re.compile(r"^\s*##\s+Phase\s+\d+:\s+(?P<title>.+?)\s*$")
-TASK_PREFIX_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*T\d{3}\b")
+TASK_PREFIX_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*T\d{3}(?:[a-c])?\b")
 TASKISH_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(?P<token>T\S+)")
 TASK_LINE_RE = re.compile(
     r"^\s*-\s*\[(?P<checked>[xX ])\]\s+"
-    r"(?P<task_id>T\d{3})"
+    r"(?P<task_id>T\d{3}(?:[a-c])?)"
     r"(?:\s+\[(?P<parallel>P)\])?"
     r"(?:\s+\[(?P<human>H)\])?"
     r"(?:\s+\[(?P<story>US\d+)\])?"
@@ -64,8 +64,12 @@ def _phase_type(phase_title: str) -> str:
 
 
 def _contains_path(description: str) -> bool:
-    """Return true when description appears to include a concrete file path."""
-    return "/" in description or "\\" in description
+    """Return true when description names a nested or repository-root file path."""
+    return bool(
+        "/" in description
+        or "\\" in description
+        or re.search(r"(?<![\w.-])[\w.-]+\.(?:md|py|toml|ya?ml|json)(?![\w.-])", description)
+    )
 
 
 def _validate(tasks_file: Path) -> tuple[int, dict[str, Any]]:
@@ -152,15 +156,6 @@ def _validate(tasks_file: Path) -> tuple[int, dict[str, Any]]:
                 }
             )
 
-        if phase_kind != "story" and task.story_label is not None:
-            errors.append(
-                {
-                    "line": line_no,
-                    "code": "unexpected_story_label",
-                    "message": "Non-story phase task must not include [USn] label.",
-                }
-            )
-
         if not _contains_path(task.description):
             errors.append(
                 {
@@ -172,10 +167,8 @@ def _validate(tasks_file: Path) -> tuple[int, dict[str, Any]]:
 
     seen_ids: set[str] = set()
     duplicate_ids: list[str] = []
-    task_numbers: list[int] = []
+    task_groups: list[list[TaskLine]] = []
     for task in parsed_tasks:
-        number = int(task.task_id[1:])
-        task_numbers.append(number)
         if task.task_id in seen_ids:
             duplicate_ids.append(task.task_id)
         seen_ids.add(task.task_id)
@@ -189,16 +182,29 @@ def _validate(tasks_file: Path) -> tuple[int, dict[str, Any]]:
             }
         )
 
-    if task_numbers:
-        expected = list(range(task_numbers[0], task_numbers[0] + len(task_numbers)))
-        if task_numbers != expected:
-            errors.append(
-                {
-                    "line": None,
-                    "code": "non_sequential_task_ids",
-                    "message": "Task IDs are not strictly sequential in file order.",
-                }
-            )
+    for task in parsed_tasks:
+        number = int(task.task_id[1:4])
+        if not task_groups or int(task_groups[-1][0].task_id[1:4]) != number:
+            task_groups.append([task])
+        else:
+            task_groups[-1].append(task)
+
+    if task_groups:
+        expected_number = int(task_groups[0][0].task_id[1:4])
+        for group in task_groups:
+            number = int(group[0].task_id[1:4])
+            suffixes = [task.task_id[4:] for task in group]
+            valid_split = suffixes in ([""], ["a", "b"], ["a", "b", "c"])
+            if number != expected_number or not valid_split:
+                errors.append(
+                    {
+                        "line": None,
+                        "code": "non_sequential_task_ids",
+                        "message": "Task IDs must be sequential, with split tasks ordered as a/b or a/b/c.",
+                    }
+                )
+                break
+            expected_number += 1
 
     payload: dict[str, Any] = {
         "mode": "validate_format",

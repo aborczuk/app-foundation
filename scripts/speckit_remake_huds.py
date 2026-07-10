@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 TASK_LINE_RE = re.compile(
     r"^\s*-\s*\[(?P<checked>[xX ])\]\s+"
-    r"(?P<task_id>T\d{3})"
+    r"(?P<task_id>T\d{3}(?:[a-c])?)"
     r"(?:\s+\[(?P<parallel>P)\])?"
     r"(?:\s+\[(?P<human>H)\])?"
     r"(?:\s+\[(?P<story>US\d+)\])?"

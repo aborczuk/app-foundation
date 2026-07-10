@@ -90,6 +90,22 @@ def test_register_tasks_appends_missing_tasks_and_returns_next_registered_task(
     assert states["023"].tasks["T002"].registered is True
 
 
+def test_parse_task_definitions_preserves_breakdown_suffix_ids(tmp_path: Path) -> None:
+    """Task registration must retain the mandated a/b/c breakdown task ids."""
+    tasks_file = tmp_path / "tasks.md"
+    _write_tasks_file(
+        tasks_file,
+        task_lines=[
+            "## implement",
+            "- [ ] T009a first split task",
+            "- [ ] T009b second split task",
+            "- [ ] T010 next task",
+        ],
+    )
+
+    assert task_ledger.ordered_tasks_from_markdown(tasks_file) == ["T009a", "T009b", "T010"]
+
+
 def test_next_registered_task_requires_registration() -> None:
     feature_state = task_ledger.FeatureState(
         tasks={

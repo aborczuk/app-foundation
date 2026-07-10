@@ -17,8 +17,9 @@ from typing import Any
 
 from bootstrap_session import bootstrap_session
 
-TASK_ID_RE = re.compile(r"\bT\d{3}\b")
-HIGH_POINT_RE = re.compile(r"\b(8|13)\b")
+HIGH_POINT_ESTIMATE_ROW_RE = re.compile(
+    r"^\|\s*(?P<task_id>T\d{3}(?:[a-c])?)\s*\|\s*(?:8|13)\s*\|"
+)
 
 
 @dataclass(frozen=True)
@@ -55,14 +56,12 @@ def _run_command(command: str, *, cwd: Path) -> CommandResult:
 
 
 def _extract_high_point_tasks(estimates_text: str) -> list[str]:
-    """Return unique task IDs that still appear with 8/13-point values."""
+    """Return 8/13-point task IDs from current estimate-table rows only."""
     high_point_tasks: list[str] = []
     for line in estimates_text.splitlines():
-        if not HIGH_POINT_RE.search(line):
-            continue
-        task_match = TASK_ID_RE.search(line)
-        if task_match:
-            task_id = task_match.group(0)
+        match = HIGH_POINT_ESTIMATE_ROW_RE.match(line)
+        if match:
+            task_id = match.group("task_id")
             if task_id not in high_point_tasks:
                 high_point_tasks.append(task_id)
     return high_point_tasks

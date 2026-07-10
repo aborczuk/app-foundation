@@ -1,1 +1,13 @@
- M .codex/config.toml
+ M .specify/scripts/acceptance-test-scaffold.py
+ M scripts/speckit_remake_huds.py
+ M scripts/speckit_solution_step.py
+ M scripts/speckit_tasking_chain.py
+ M scripts/speckit_tasks_gate.py
+ M tests/unit/test_speckit_remake_huds.py
+ M tests/unit/test_speckit_solution_step.py
+ M tests/unit/test_speckit_tasking_chain.py
+ M tests/unit/test_speckit_tasks_gate.py
+?? specs/039-autonomous-spec-pipeline-upgrade/estimates.md
+?? specs/039-autonomous-spec-pipeline-upgrade/huds/
+?? specs/039-autonomous-spec-pipeline-upgrade/tasks.md
+?? tests/unit/test_acceptance_test_scaffold.py
