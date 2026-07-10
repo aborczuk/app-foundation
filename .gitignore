@@ -10,11 +10,15 @@ logs/
 # Claude Code local settings (machine-specific, personal overrides)
 .claude/settings.local.json
 
+# Codex local settings (machine-specific, personal overrides)
+.codex/config.toml
+
 # Speckit runtime artifacts
 .speckit/runtime/
 
 # Read-code MCP runtime pid markers
 .codegraphcontext/read-code-mcp-runtime/project_backend_server.ppid-*.pid
+.codegraphcontext/read-code-search-history.jsonl
 
 # Universal local/editor artifacts
 .DS_Store
