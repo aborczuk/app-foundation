@@ -1,0 +1,143 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/039-autonomous-spec-pipeline-upgrade/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Build the non-mutating capability and migration preflight for pinned Spec Kit `v0.12.9`, including current CLI/project/customization inventory, isolated checkout rehearsal, clean-checkout reproduction proof, version/capability JSON validation, and rollback plan that preserves feature artifacts and ledger history.",
+      "slice_id": "PL-01",
+      "title": "Pin and Rehearse Spec Kit Upgrade",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Convert the command manifest and retained command/skill surfaces into one validated integration-neutral source for pre-implementation lifecycle ownership, route status, workflow step mapping, script adapter, timeout, permission class, artifact, validator, event, version, and provenance.",
+      "slice_id": "PL-02",
+      "title": "Define Workflow Ownership and Manifest Routing",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Implement the repo-owned deterministic command adapter behind upstream `shell` steps with fixed executable/argv contracts, validated inputs, root cwd, timeouts, output caps, redaction, structured JSON stdout, stderr diagnostics, permission classes, and pre-process rejection for any unreviewed effective command.",
+      "slice_id": "PL-03",
+      "title": "Build Safe Command and Shell Adapter Contract",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Wire prompt-to-handoff phases so each generative phase declares template/scaffold, output, mutation scope, runner, validator, diagnostics, success event, and side-effect contract, and ensure scaffold-only or failed generated artifacts cannot emit phase success.",
+      "slice_id": "PL-04",
+      "title": "Implement Pre-Implementation Phase Workflow Adapters",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Add structured outcome classification, bounded `while`/`do-while` repair/convergence loops, post-loop assertions, human reason-code policy, pause-before-effect behavior, and typed resume input validation for all protected decisions.",
+      "slice_id": "PL-05",
+      "title": "Add Loop, Outcome, and Human Pause Policy",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Correlate workflow state, ledgers, runtime results, artifacts, manifest, versions, attempts, actor, and lease; enforce idempotent replay and drift blocking; and emit one compact implementation-ready handoff envelope for the separate implementation workflow.",
+      "slice_id": "PL-06",
+      "title": "Add Durable Resume, Reconciliation, Lease, and Handoff Envelope",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Add deterministic unit/contract tests plus live pinned-engine verification, fault injection, security fixtures, clean-checkout rehearsal, rollback proof, and fake-only test labeling so prompt-to-handoff behavior is proven without starting implementation.",
+      "slice_id": "PL-07",
+      "title": "Prove Live Prompt-to-Handoff Safety",
+      "why": ""
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "build pipeline": "The feature changes command orchestration, manifest ownership, generated artifacts, and the pre-implementation handoff route.",
+      "code patterns": "The workflow must preserve Python-owned adapters, bounded command contracts, and existing repo helper patterns rather than embedding behavior in ad hoc prompts.",
+      "environment": "Pinned Spec Kit CLI, project scaffolding, Codex integration paths, and clean-checkout reproduction depend on explicit environment and install contracts.",
+      "observability": "Status, diagnostics, rehydration envelopes, stderr/stdout contracts, and artifact pointers are core behavior rather than optional logging.",
+      "ops governance": "Ledger authority, human pause policy, approval boundaries, branch/cwd inference, and implementation handoff are governance-owned decisions.",
+      "resilience": "Crash recovery, idempotent replay, loop exhaustion, leases, rollback, and resume compatibility determine whether the workflow is safe to run unattended.",
+      "security": "Upstream shell runs without a capability sandbox, so allowlisting, input validation, redaction, permission classes, and protected-effect boundaries are first-class.",
+      "testing": "The feature requires live engine verification, fault injection, clean-checkout rehearsal, contract tests, and clear separation between fake-only and live tests."
+    },
+    "relevant": [
+      "build pipeline",
+      "code patterns",
+      "environment",
+      "observability",
+      "ops governance",
+      "resilience",
+      "security",
+      "testing"
+    ]
+  },
+  "feature_id": "039-autonomous-spec-pipeline-upgrade",
+  "risk": {
+    "external_dependency_uncertainty": "high",
+    "human_operator_dependency": "medium",
+    "overall": "high",
+    "repo_uncertainty": "high",
+    "requirement_clarity": "medium",
+    "runtime_side_effect_risk": "high",
+    "state_data_migration_risk": "high"
+  },
+  "routing": {
+    "architecture_diagram": true,
+    "external_research": true,
+    "plan_level": "comprehensive",
+    "relevant_domains": [
+      "build pipeline",
+      "code patterns",
+      "environment",
+      "observability",
+      "ops governance",
+      "resilience",
+      "security",
+      "testing"
+    ],
+    "routing_reason": "The feature adds a net-new operator-facing workflow surface and spans upstream Spec Kit capabilities, repo adapters, ledgers, manifests, leases, human gates, and handoff state. Risk is high because command routing, shell safety, state recovery, upgrade reproduction, and live verification all need explicit ownership before implementation.",
+    "sketch_level": "expanded"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": true,
+    "architecture_strategy": true,
+    "expanded_design_notes": true,
+    "external_research": true,
+    "net_new_surface": true,
+    "strategy_reason": "The feature adds a net-new operator-facing workflow surface and spans upstream Spec Kit capabilities, repo adapters, ledgers, manifests, leases, human gates, and handoff state. Risk is high because command routing, shell safety, state recovery, upgrade reproduction, and live verification all need explicit ownership before implementation."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [
+      "023-deterministic-phase-orchestration"
+    ],
+    "duplicate_reason": "Feature 023 is a prerequisite and baseline, not a duplicate; this feature upgrades the engine and makes autonomous pre-implementation continuation, pause, resume, and implementation-ready handoff executable.",
+    "risk_level": "high",
+    "tshirt_size": "xl"
+  }
+}
