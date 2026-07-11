@@ -194,7 +194,7 @@ class _AnchorResolution:
 
 
 class _ReadCodeRerankerBackend:
-    """Persistent MCP stdio client for query and rerank plus legacy daemon control."""
+    """In-process query and rerank adapter plus legacy daemon control helpers."""
 
     def __init__(self, model_name: str, *, repo_root: Path) -> None:
         """Create a client bound to one repo-local daemon runtime."""
@@ -223,21 +223,20 @@ class _ReadCodeRerankerBackend:
         return self._model_name
 
     def score_pairs(self, query: str, passages: list[str]) -> tuple[list[float], str]:
-        """Return persistent MCP-backed scores when available, otherwise fall back."""
+        """Return scores from the shared in-process vector service."""
         if not passages:
             return [], "heuristic"
         try:
-            payload = self._worker_score(query, passages)
+            payload = _load_read_code_vector_query_service().rerank_scores(query, passages)
         except Exception as exc:
-            self._record_startup_failure(f"backend score failed: {exc}")
-            self._shutdown_worker()
+            self._record_startup_failure(f"in-process score failed: {exc}")
             return [], "heuristic"
         self._clear_startup_failure()
-        scores = payload.get("scores")
+        scores = payload.get("scores") if isinstance(payload, dict) else payload
         if not isinstance(scores, list) or not all(isinstance(item, (int, float)) for item in scores):
-            self._record_startup_failure("backend score payload missing numeric scores")
+            self._record_startup_failure("in-process score payload missing numeric scores")
             return [], "heuristic"
-        return [float(item) for item in scores], "mcp"
+        return [float(item) for item in scores], "in_process"
 
     def query_items(
         self,
@@ -247,19 +246,36 @@ class _ReadCodeRerankerBackend:
         scope: str,
         file_path: Path | None,
     ) -> list[dict[str, object]] | None:
-        """Return MCP-backed semantic query items when the backend session is healthy."""
+        """Return semantic query items from the shared in-process vector service."""
+        from src.mcp_codebase.index.domain import IndexScope
+
         try:
-            payload = self._worker_query(query=query, top_k=top_k, scope=scope, file_path=file_path)
+            results = _load_read_code_vector_query_service().query(
+                query,
+                top_k=top_k,
+                scope=IndexScope(scope),
+                file_path=file_path.resolve() if file_path is not None else None,
+            )
         except Exception as exc:
-            self._record_startup_failure(f"backend query failed: {exc}")
-            self._shutdown_worker()
+            self._record_startup_failure(f"in-process query failed: {exc}")
             return None
         self._clear_startup_failure()
-        items = payload.get("items")
-        if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
-            self._record_startup_failure("backend query payload missing item objects")
-            return None
-        return [dict(item) for item in items]
+        return [
+            {
+                "file_path": str(result.file_path),
+                "line_start": result.line_start,
+                "line_end": result.line_end,
+                "score": result.score,
+                "body": result.body,
+                "preview": result.preview,
+                "signature": result.signature,
+                "docstring": result.docstring,
+                "symbol_type": result.symbol_type,
+                "symbol_name": getattr(result.content, "symbol_name", ""),
+                "qualified_name": getattr(result.content, "qualified_name", ""),
+            }
+            for result in results
+        ]
 
     def _structured_mcp_payload(self, tool_result: object) -> object:
         """Return one structured MCP tool payload, decoding JSON strings when needed."""
@@ -274,35 +290,9 @@ class _ReadCodeRerankerBackend:
         return payload
 
     async def _backend_session_main(self, ready_queue: "queue.Queue[object]") -> None:
-        """Own one live MCP stdio session and serve queued tool requests serially."""
-        from mcp import ClientSession
-        from mcp.client.stdio import StdioServerParameters, stdio_client
-
-        server = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "src.mcp_codebase.project_backend_server"],
-            cwd=self._repo_root,
-        )
-        assert self._backend_requests is not None
-        async with stdio_client(server) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                identity = self._structured_mcp_payload(await session.call_tool("get_process_identity", {}))
-                if not isinstance(identity, dict):
-                    raise ValueError("MCP identity payload must be an object")
-                self._backend_identity = dict(identity)
-                ready_queue.put(dict(identity))
-                while True:
-                    request = await asyncio.to_thread(self._backend_requests.get)
-                    if request is None:
-                        break
-                    tool_name, arguments, response_queue = request
-                    try:
-                        payload = self._structured_mcp_payload(await session.call_tool(tool_name, arguments))
-                    except Exception as exc:
-                        response_queue.put((False, exc))
-                        continue
-                    response_queue.put((True, payload))
+        """Reject the retired MCP transport instead of launching a stdio server."""
+        del ready_queue
+        raise RuntimeError("read-code MCP transport has been retired; use the in-process vector service")
 
     def _backend_thread_main(self, ready_queue: "queue.Queue[object]") -> None:
         """Run the MCP stdio session loop in a dedicated thread."""

@@ -32,47 +32,69 @@ def _reranker_runtime_env(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("SPECKIT_READ_CODE_RERANKER_LAUNCH_AGENTS_DIR", str(tmp_path / "LaunchAgents"))
 
 
+class _InProcessService:
+    """Provide a controllable direct vector service for read-code runtime tests."""
+
+    def __init__(self, *, scores: list[float] | None = None, error: Exception | None = None) -> None:
+        """Store the intended direct-service score response or failure."""
+        self._scores = scores if scores is not None else [0.2, 0.9]
+        self._error = error
+
+    def rerank_scores(self, query: str, passages: list[str]) -> dict[str, object]:
+        """Return one bounded direct rerank payload or raise the configured error."""
+        del query, passages
+        if self._error is not None:
+            raise self._error
+        return {"scores": self._scores}
+
+
 def test_reranker_backend_uses_healthy_daemon_scores(tmp_path: Path, monkeypatch) -> None:
-    """A ready MCP backend should supply scores without falling back to heuristic order."""
+    """The direct vector service should supply scores without heuristic fallback."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
-    monkeypatch.setattr(
-        backend,
-        "_worker_score",
-        lambda query, passages: {"scores": [0.2, 0.9], "model_name": backend.model_name},
-    )
+    monkeypatch.setattr(read_code, "_load_read_code_vector_query_service", _InProcessService)
 
     scores, source = backend.score_pairs("query", ["first", "second"])
 
     assert scores == [0.2, 0.9]
-    assert source == "mcp"
+    assert source == "in_process"
 
 
 def test_reranker_backend_uses_worker_query_items(tmp_path: Path, monkeypatch) -> None:
-    """A ready MCP backend should supply semantic query items without local fallback."""
+    """The direct vector service should supply serialized semantic query items."""
+
+    class _Content:
+        """Provide the symbol metadata carried by the direct result."""
+
+        symbol_name = "sample"
+        qualified_name = "sample"
+
+    class _Result:
+        """Provide one minimal direct vector query result."""
+
+        file_path = Path("/tmp/example.py")
+        line_start = 5
+        line_end = 7
+        score = 0.75
+        body = "def sample():\n    return 1"
+        preview = "def sample(): ..."
+        signature = "def sample()"
+        docstring = "Sample helper."
+        symbol_type = "function"
+        content = _Content()
+
+    class _QueryService:
+        """Return one direct query result without an MCP transport."""
+
+        def query(self, query: str, *, top_k: int, scope: object, file_path: Path | None) -> list[_Result]:
+            """Return the fixed result after checking scoped query arguments."""
+            assert query == "sample"
+            assert top_k == 5
+            assert getattr(scope, "value", None) == "code"
+            assert file_path == Path("/tmp/example.py").resolve()
+            return [_Result()]
+
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
-    monkeypatch.setattr(
-        backend,
-        "_worker_query",
-        lambda **kwargs: {
-            "items": [
-                {
-                    "file_path": "/tmp/example.py",
-                    "line_start": 5,
-                    "line_end": 7,
-                    "score": 0.75,
-                    "body": "def sample():\n    return 1",
-                    "preview": "def sample(): ...",
-                    "signature": "def sample()",
-                    "docstring": "Sample helper.",
-                    "symbol_type": "function",
-                    "symbol_name": "sample",
-                    "qualified_name": "sample",
-                }
-            ]
-        },
-    )
+    monkeypatch.setattr(read_code, "_load_read_code_vector_query_service", _QueryService)
 
     items = backend.query_items(query="sample", top_k=5, scope="code", file_path=Path("/tmp/example.py"))
 
@@ -81,30 +103,34 @@ def test_reranker_backend_uses_worker_query_items(tmp_path: Path, monkeypatch) -
 
 
 def test_reranker_backend_query_items_fall_back_when_worker_query_fails(tmp_path: Path, monkeypatch) -> None:
-    """MCP backend query failures should fail fast and allow the local fallback path."""
+    """Direct vector-query failures should fail fast and allow fallback behavior."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(
-        backend,
-        "_worker_query",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("worker query failed")),
+        read_code,
+        "_load_read_code_vector_query_service",
+        lambda: type(
+            "Service",
+            (),
+            {"query": lambda self, *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("query failed"))},
+        )(),
     )
-    shutdown_calls: list[str] = []
-    monkeypatch.setattr(backend, "_shutdown_worker", lambda: shutdown_calls.append("shutdown"))
 
     items = backend.query_items(query="sample", top_k=5, scope="code", file_path=Path("/tmp/example.py"))
 
     assert items is None
-    assert shutdown_calls == ["shutdown"]
 
 
 def test_reranker_backend_falls_back_to_heuristic_when_socket_health_is_unavailable(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """An unavailable MCP backend should fail fast to heuristic ordering."""
+    """An unavailable direct service should fail fast to heuristic ordering."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: None)
+    monkeypatch.setattr(
+        read_code,
+        "_load_read_code_vector_query_service",
+        lambda: _InProcessService(error=RuntimeError("service unavailable")),
+    )
 
     scores, source = backend.score_pairs("query", ["first", "second"])
 
@@ -116,32 +142,32 @@ def test_reranker_backend_falls_back_to_heuristic_when_socket_score_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """MCP backend scoring failures should fail fast instead of taking a slow secondary path."""
+    """Direct scoring failures should fail fast instead of taking a secondary path."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_ensure_worker_ready", lambda: {"ok": True, "pid": 123})
     monkeypatch.setattr(
-        backend,
-        "_worker_score",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("worker failed")),
+        read_code,
+        "_load_read_code_vector_query_service",
+        lambda: _InProcessService(error=RuntimeError("service failed")),
     )
-    shutdown_calls: list[str] = []
-    monkeypatch.setattr(backend, "_shutdown_worker", lambda: shutdown_calls.append("shutdown"))
 
     scores, source = backend.score_pairs("query", ["first", "second"])
 
     assert scores == []
     assert source == "heuristic"
-    assert shutdown_calls == ["shutdown"]
 
 
 def test_reranker_backend_does_not_start_daemon_on_query_path_when_unhealthy(tmp_path: Path, monkeypatch) -> None:
-    """Query-time scoring should fall back immediately instead of managing daemon lifecycle."""
+    """Query-time scoring should avoid daemon lifecycle management entirely."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
-    monkeypatch.setattr(backend, "_health", lambda: None)
     monkeypatch.setattr(
         backend,
         "_ensure_healthy",
         lambda: (_ for _ in ()).throw(AssertionError("query path should not call _ensure_healthy")),
+    )
+    monkeypatch.setattr(
+        read_code,
+        "_load_read_code_vector_query_service",
+        lambda: _InProcessService(error=RuntimeError("service unavailable")),
     )
 
     scores, source = backend.score_pairs("query", ["first", "second"])
@@ -151,7 +177,7 @@ def test_reranker_backend_does_not_start_daemon_on_query_path_when_unhealthy(tmp
 
 
 def test_reranker_backend_skips_restart_during_recent_failure_cooldown(tmp_path: Path, monkeypatch) -> None:
-    """A recent startup failure should suppress immediate restart thrash and fall back cleanly."""
+    """A failure marker must not block a fresh direct in-process query."""
     backend = read_code._ReadCodeRerankerBackend("BAAI/bge-reranker-v2-m3", repo_root=tmp_path)
     read_code._persist_runtime_json_object(
         backend._failure_marker_path,
@@ -162,13 +188,13 @@ def test_reranker_backend_skips_restart_during_recent_failure_cooldown(tmp_path:
         sort_keys=True,
     )
     spawn_calls: list[str] = []
-    monkeypatch.setattr(backend, "_health", lambda: None)
     monkeypatch.setattr(backend, "_spawn_daemon", lambda: spawn_calls.append("spawn"))
+    monkeypatch.setattr(read_code, "_load_read_code_vector_query_service", _InProcessService)
 
     scores, source = backend.score_pairs("query", ["first"])
 
-    assert scores == []
-    assert source == "heuristic"
+    assert scores == [0.2, 0.9]
+    assert source == "in_process"
     assert spawn_calls == []
 
 

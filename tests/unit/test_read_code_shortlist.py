@@ -24,6 +24,74 @@ def _load_module(module_name: str, script_name: str):
 read_code = _load_module("read_code_shortlist", "read_code.py")
 
 
+def test_reranker_backend_uses_the_in_process_service(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Read-code query and rerank calls must not open an MCP worker transport."""
+
+    class _Content:
+        """Provide the symbol metadata carried by a vector result."""
+
+        symbol_name = "sample"
+        qualified_name = "module.sample"
+
+    class _Result:
+        """Provide one minimal vector result for in-process serialization."""
+
+        file_path = tmp_path / "sample.py"
+        line_start = 3
+        line_end = 5
+        score = 0.9
+        body = "def sample():\n    return 1\n"
+        preview = "def sample(): ..."
+        signature = "def sample()"
+        docstring = "Return one."
+        symbol_type = "function"
+        content = _Content()
+
+    class _Service:
+        """Record direct vector-service calls without an MCP client."""
+
+        def rerank_scores(self, query: str, passages: list[str]) -> dict[str, object]:
+            """Return deterministic rerank scores for the supplied passages."""
+            assert query == "sample"
+            assert passages == ["one", "two"]
+            return {"scores": [0.2, 0.8]}
+
+        def query(self, query: str, *, top_k: int, scope: object, file_path: Path | None) -> list[_Result]:
+            """Return one result while asserting the direct query arguments."""
+            assert query == "sample"
+            assert top_k == 3
+            assert getattr(scope, "value", None) == "code"
+            assert file_path == (tmp_path / "sample.py").resolve()
+            return [_Result()]
+
+    backend = read_code._ReadCodeRerankerBackend("test-model", repo_root=tmp_path)
+    monkeypatch.setattr(read_code, "_load_read_code_vector_query_service", _Service)
+    monkeypatch.setattr(backend, "_worker_score", lambda *_args: pytest.fail("MCP worker must not be used"))
+    monkeypatch.setattr(backend, "_worker_query", lambda **_kwargs: pytest.fail("MCP worker must not be used"))
+
+    assert backend.score_pairs("sample", ["one", "two"]) == ([0.2, 0.8], "in_process")
+    assert backend.query_items(
+        query="sample",
+        top_k=3,
+        scope="code",
+        file_path=tmp_path / "sample.py",
+    ) == [
+        {
+            "file_path": str(tmp_path / "sample.py"),
+            "line_start": 3,
+            "line_end": 5,
+            "score": 0.9,
+            "body": "def sample():\n    return 1\n",
+            "preview": "def sample(): ...",
+            "signature": "def sample()",
+            "docstring": "Return one.",
+            "symbol_type": "function",
+            "symbol_name": "sample",
+            "qualified_name": "module.sample",
+        }
+    ]
+
+
 def _configure_search_cache_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1292,6 +1360,18 @@ def test_read_code_context_keeps_top_candidate_for_exact_symbol_scope(monkeypatc
     monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: candidates)
     monkeypatch.setattr(
         read_code,
+        "_load_read_code_reranker",
+        lambda: type(
+            "Backend",
+            (),
+            {
+                "model_name": "BAAI/bge-reranker-v2-m3",
+                "score_pairs": lambda self, query, passages: ([0.9, 0.1], "in_process"),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        read_code,
         "_render_compact_match",
         lambda vector_match, **kwargs: calls.setdefault("selected", vector_match),
     )
@@ -1340,6 +1420,18 @@ def test_read_code_context_keeps_top_candidate_for_file_local_scope(monkeypatch,
         or True,
     )
     monkeypatch.setattr(read_code, "_vector_find_candidates", lambda *args, **kwargs: candidates)
+    monkeypatch.setattr(
+        read_code,
+        "_load_read_code_reranker",
+        lambda: type(
+            "Backend",
+            (),
+            {
+                "model_name": "BAAI/bge-reranker-v2-m3",
+                "score_pairs": lambda self, query, passages: ([0.9, 0.1], "in_process"),
+            },
+        )(),
+    )
     monkeypatch.setattr(
         read_code,
         "_render_compact_match",

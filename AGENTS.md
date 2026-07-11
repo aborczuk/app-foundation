@@ -140,46 +140,46 @@ Primary tools:
 
 Read code by intent, not by guessing file windows.
 
-Use the direct MCP read surface:
+Use the guarded CLI read surface:
 
-- `read_code_context`
-- `read_code_find`
-- `read_code_analyze`
-- `read_code_window`
+- `uv run --no-sync python scripts/read_code.py context "<query>" --path <file>`
+- `uv run --no-sync python scripts/read_code.py find <command> <query>`
+- `uv run --no-sync python scripts/read_code.py analyze <command> <query>`
+- `uv run --no-sync python scripts/read_code.py window <file> <start> <end>`
 
-Those MCP tools run inside the persistent project-local MCP server and are the accepted path when the agent needs warm reuse across turns.
+These commands run semantic query and reranking in the same Python process as the read. Scratchpad state supports bounded follow-up reads across invocations.
 
 1. **Start with `context`**
-   - Use `read_code_context` for natural-language queries, symbols, strings, markdown, or the best matching seam. It will get you to some starting confidence to explore from.
+   - Use `read_code.py context` for natural-language queries, symbols, strings, markdown, or the best matching seam.
 
 
    Examples:
 
-   - `read_code_context("how read_code resolves semantic candidates")`
-   - `read_code_context("_resolve_pattern_anchor")`
+   - `uv run --no-sync python scripts/read_code.py context "how read_code resolves semantic candidates"`
+   - `uv run --no-sync python scripts/read_code.py context "_resolve_pattern_anchor"`
 2. **Inspect ranked results sequentially**
     - It returns one result at a time.
     - If the first result is not the right seam, step through candidates by using `--next-candidate` or `--candidate-index N`.
 
    Examples:
 
-   - `read_code_context("semantic candidate resolution", next_candidate=True)`
-   - `read_code_context("semantic candidate resolution", candidate_index=2)`
+   - `uv run --no-sync python scripts/read_code.py context "semantic candidate resolution" --next-candidate`
+   - `uv run --no-sync python scripts/read_code.py context "semantic candidate resolution" --candidate-index 2`
 3. **Dig for Body**
     - If you believe it is the right candidate, send `--inline-body` to get the body of the function.
-    - For agents on the MCP path, prefer the same flow through `read_code_context` first and only request the inline body after the first bounded read, matching the existing gating behavior.
+    - Prefer the same `context` query first and request `--inline-body` only after that bounded read, matching the existing gating behavior.
 
    Examples:
 
-   - `read_code_context("_resolve_pattern_anchor", inline_body=True)`
+   - `uv run --no-sync python scripts/read_code.py context "_resolve_pattern_anchor" --inline-body`
 
 4. **For code symbols, Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
 
    Once `context` or `find` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
 
-   - `read_code_analyze("callers", ["_resolve_pattern_anchor"])` to find all functions that call this
-   - `read_code_analyze("calls", ["read_code_context"])` to find all functions this calls
-   - `read_code_analyze("variable", ["vector_candidates"])` to find where a variable is used
+   - `uv run --no-sync python scripts/read_code.py analyze callers _resolve_pattern_anchor` to find all functions that call this
+   - `uv run --no-sync python scripts/read_code.py analyze calls read_code_context` to find all functions this calls
+   - `uv run --no-sync python scripts/read_code.py analyze variable vector_candidates` to find where a variable is used
 
    The compact match output will hint which analysis to run next.
 
@@ -187,7 +187,7 @@ Those MCP tools run inside the persistent project-local MCP server and are the a
 
    Examples:
 
-   - `read_code_context("_resolve_pattern_anchor", file_path="/Users/andreborczuk/app-foundation/src/mcp_codebase/read_code.py")`
+   - `uv run --no-sync python scripts/read_code.py context "_resolve_pattern_anchor" --path src/mcp_codebase/read_code.py`
 
 6. **Advanced Graph Analysis (when needed)**
 
@@ -239,27 +239,10 @@ Examples:
 
 ### Accepted Read Path Summary
 
-- Codex agents should prefer the persistent MCP read tools for normal code-reading work.
-- Do not assume fresh `uv run ... scripts/read_code.py ...` subprocesses are warm; that branch is intentionally not the accepted agent-read performance path.
-- The persistence boundary is the repo daemon/backend, not the MCP transport child. Each Codex session may need to create a fresh transport child to talk to the persistent daemon.
-- Treat `Transport closed` as a likely session-transport failure first, not proof that the daemon died. Recreate or reattach the transport child before escalating to daemon restart/debug.
-- Expected agent operating sequence:
-  - ensure the read-code MCP tools are attached in the current session
-  - create or reattach a fresh transport child for this session if needed
-  - call `get_runtime_capabilities`
-  - call `warmup`
-  - optionally call `score_probe`
-  - only then rely on `read_code_context`, `read_code_find`, `read_code_analyze`, or `read_code_window` for normal work
-- A successful warmup/read in one session child does not guarantee another fresh child is warm. Verify and warm the current session child you are actually using.
-- At the start of a fresh session, verify the live MCP runtime before trusting performance:
-  - call `get_runtime_capabilities`
-  - call `warmup`
-  - optionally call `score_probe`
-- Expected live MCP cold-start shape on Apple silicon:
-  - the explicit `warmup` call pays model plus MPS warmup once
-  - `warmup` primes one representative scoped query and one five-passage rerank so the first real `read_code_context` call does not pay a separate context-shaped warmup hit
-  - repeated rerank probes on the same server should be much faster
-  - full `read_code_context` calls are still slower than raw rerank probes because they include semantic query and shared `read_code` orchestration
+- Codex agents should use the guarded `scripts/read_code.py` CLI for normal code-reading work.
+- Semantic query and rerank run in the same Python process as the command; no read-code MCP server is registered or launched.
+- Fresh CLI invocations pay local service/model initialization independently. Scratchpad candidate stepping and metadata history persist as repository artifacts across invocations.
+- The expected command sequence is: run bounded `context`, step a shortlist if needed, then request `--inline-body` only after the matching context result.
 
 
 ### Edit Efficiency

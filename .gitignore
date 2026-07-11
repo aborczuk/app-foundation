@@ -19,6 +19,7 @@ logs/
 # Read-code MCP runtime pid markers
 .codegraphcontext/read-code-mcp-runtime/project_backend_server.ppid-*.pid
 .codegraphcontext/read-code-search-history.jsonl
+.codegraphcontext/last-vector-edit-signature.txt
 
 # Universal local/editor artifacts
 .DS_Store
