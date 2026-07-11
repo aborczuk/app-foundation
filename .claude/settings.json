@@ -104,6 +104,15 @@
         "mcp_codebase"
       ],
       "cwd": "/Users/andreborczuk/app-foundation"
+    },
+    "semble": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "semble[mcp]",
+        "semble"
+      ],
+      "cwd": "/Users/andreborczuk/app-foundation"
     }
   }
 }
