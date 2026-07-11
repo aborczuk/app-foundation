@@ -35,21 +35,23 @@ def _run_hook_in_process(
     return capsys.readouterr().out.strip()
 
 
-def test_denies_apply_patch_delete_file_marker() -> None:
-    """The dispatcher should hard-block apply_patch delete-file payloads."""
-    stdout = _run_hook(
+def test_apply_patch_delete_file_payload_uses_branch_guard(monkeypatch, capsys) -> None:
+    """Delete-file apply_patch payloads should use the normal edit branch guard."""
+    stdout = _run_hook_in_process(
         {
             "tool_name": "apply_patch",
             "tool_input": {
                 "patch": "*** Begin Patch\n*** Delete File: /tmp/example.txt\n*** End Patch\n",
             },
-        }
+        },
+        monkeypatch,
+        capsys,
     )
 
     assert stdout
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
-    assert "`*** Delete File:`" in decision["permissionDecisionReason"]
+    assert "feature branch" in decision["permissionDecisionReason"]
 
 
 def test_denies_apply_patch_payload_on_non_feature_branch(monkeypatch, capsys) -> None:
@@ -172,3 +174,40 @@ def test_apply_patch_cmd_payload_is_not_treated_as_shell_command(monkeypatch, ca
     )
 
     assert stdout == ""
+
+
+def test_apply_patch_payload_without_command_skips_code_read_guard(monkeypatch, capsys) -> None:
+    """Edit payload prose should not be scanned by command-only code-read guards."""
+    loaded_scripts: list[str] = []
+
+    def fake_load_guard(script_name: str):
+        loaded_scripts.append(script_name)
+        return lambda: 0
+
+    monkeypatch.setattr(hook_pretool_dispatch, "_branch_guard", lambda: None)
+    monkeypatch.setattr(hook_pretool_dispatch, "_load_guard_main", fake_load_guard)
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            json.dumps(
+                {
+                    "tool_name": "apply_patch",
+                    "tool_input": {
+                        "patch": (
+                            "*** Begin Patch\n"
+                            "*** Update File: docs/governance/example.md\n"
+                            "@@\n"
+                            "+Direct shell reads are denied.\n"
+                            "*** End Patch\n"
+                        )
+                    },
+                }
+            )
+        ),
+    )
+
+    assert hook_pretool_dispatch.main() == 0
+    assert capsys.readouterr().out.strip() == ""
+    assert "hook_enforce_code_reads.py" not in loaded_scripts
+    assert "hook_enforce_refresh_guard.py" in loaded_scripts
