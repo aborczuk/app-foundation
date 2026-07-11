@@ -26,6 +26,7 @@ GUARD_SCRIPTS = (
     "hook_enforce_ruff_guard.py",
     "hook_enforce_git_diff_guard.py",
 )
+COMMAND_ONLY_GUARD_SCRIPTS = {"hook_enforce_code_reads.py"}
 REPO_ROOT = SCRIPT_DIR.parent
 COMMAND_TOOL_NAMES = {"exec_command", "Bash"}
 
@@ -132,6 +133,13 @@ def _load_guard_main(script_name: str) -> Callable[[], int] | None:
 
     main = getattr(module, "main", None)
     return cast(Callable[[], int], main) if callable(main) else None
+
+
+def _guard_scripts_for_payload(command: str) -> tuple[str, ...]:
+    """Return delegated guard scripts that apply to the normalized payload."""
+    if command:
+        return GUARD_SCRIPTS
+    return tuple(script for script in GUARD_SCRIPTS if script not in COMMAND_ONLY_GUARD_SCRIPTS)
 
 
 def _load_module(script_path: Path) -> Any | None:
@@ -319,7 +327,7 @@ def main() -> int:
     payload_text = json.dumps(_redact_verbose_tool_input(payload))
 
     # Load the remaining checks lazily so a cheap early deny does not pay for every import.
-    for script_name in GUARD_SCRIPTS:
+    for script_name in _guard_scripts_for_payload(command):
         guard_main = _load_guard_main(script_name)
         if guard_main is None:
             continue

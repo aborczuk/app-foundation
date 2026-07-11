@@ -69,16 +69,6 @@
             "statusMessage": "Enforcing low-payload GitHub CLI policy..."
           }
         ]
-      },
-      {
-        "matcher": "Grep|Glob|Regex",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/vexp-guard.sh",
-            "timeout": 3000
-          }
-        ]
       }
     ],
     "PostToolUse": [
