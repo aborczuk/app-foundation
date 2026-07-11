@@ -106,13 +106,15 @@
       "cwd": "/Users/andreborczuk/app-foundation"
     },
     "semble": {
-      "command": "uvx",
+      "command": "uv",
       "args": [
-        "--from",
-        "semble[mcp]",
+        "run",
         "semble"
       ],
-      "cwd": "/Users/andreborczuk/app-foundation"
+      "cwd": "/Users/andreborczuk/app-foundation",
+      "env": {
+        "SEMBLE_CACHE_LOCATION": "/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache"
+      }
     }
   }
 }
