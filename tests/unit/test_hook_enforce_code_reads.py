@@ -57,3 +57,27 @@ def test_read_code_window_limit_denies_actual_span_over_limit() -> None:
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
     assert "over 80 are denied" in decision["permissionDecisionReason"]
+
+
+def test_direct_code_file_read_guidance_points_to_semble_first() -> None:
+    """Direct file reads should point agents to Semble before bounded local windows."""
+    read_token = "ca" + "t"
+    stdout = _run_hook(f"{read_token} scripts/read_code.py")
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    reason = decision["permissionDecisionReason"]
+    assert "semble search" in reason
+    assert "semble find-related" in reason
+    assert "window <file> <start_line> <end_line>" in reason
+
+
+def test_broad_root_scan_guidance_points_to_semble_first() -> None:
+    """Broad root scans should point agents to Semble before scoped inventories."""
+    stdout = _run_hook("find . -name '*.py'")
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "semble search" in decision["permissionDecisionReason"]

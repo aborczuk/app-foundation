@@ -109,7 +109,8 @@ def test_denies_git_grep_with_repo_specific_guidance() -> None:
     assert decision["permissionDecision"] == "deny"
     reason = decision["permissionDecisionReason"]
     assert "git grep" in reason
-    assert "scripts/read_code.py context" in reason
+    assert "semble search" in reason
+    assert "read_code windows" in reason
     assert "scripts/github_guard.py run -- gh" in reason
 
 
@@ -129,7 +130,8 @@ def test_denies_rg_with_repo_reader_guidance() -> None:
     assert decision["permissionDecision"] == "deny"
     reason = decision["permissionDecisionReason"]
     assert "grep/rg" in reason
-    assert "scripts/read_code.py context" in reason
+    assert "semble search" in reason
+    assert "read_code windows" in reason
 
 
 def test_denies_cmd_shaped_payload_with_repo_reader_guidance() -> None:
@@ -148,7 +150,8 @@ def test_denies_cmd_shaped_payload_with_repo_reader_guidance() -> None:
     assert decision["permissionDecision"] == "deny"
     reason = decision["permissionDecisionReason"]
     assert "grep/rg" in reason
-    assert "scripts/read_code.py context" in reason
+    assert "semble search" in reason
+    assert "read_code windows" in reason
 
 
 def test_apply_patch_cmd_payload_is_not_treated_as_shell_command(monkeypatch, capsys) -> None:

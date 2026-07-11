@@ -54,13 +54,15 @@ The shell hook layer owns:
 
 The shell hook layer does not own:
 
-- semantic search ranking, vector retrieval, or reranking
+- Semble search ranking, related-code discovery, vector retrieval, or reranking
 - graph/AST discovery
 - pipeline phase routing or ledger state
 
 Those responsibilities remain with:
 
-- `read_code` and MCP/codegraph tooling for search and structural discovery
+- Semble MCP for first-pass candidate anchoring and related-code discovery
+- `read_code` for bounded local windows and fallback semantic lookup
+- CodeGraph tooling for structural discovery
 - pipeline driver and gate scripts for phase progression
 
 ## Guard Families
@@ -78,6 +80,13 @@ This guard enforces the repo reading contract:
 - direct shell reads of repo-local code/doc files are denied
 - repo-local `read_code` helper windows over the configured max line count are denied
 - repo-local `read_code` helper usage with `--allow-fallback` is denied
+
+The guard's redirect guidance should point agents to the accepted discovery order:
+
+1. Semble `search` for first-pass file and line anchors.
+2. Semble `find_related` when a candidate anchor needs related chunks.
+3. `scripts/read_code.py window` or `context` for bounded exact inspection.
+4. CodeGraph analysis for callers, callees, dependencies, hierarchy, and blast radius.
 
 Accepted read paths are:
 

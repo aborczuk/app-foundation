@@ -72,6 +72,12 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 
 ### Codebase MCP Toolkit
 
+**Semble** (server name: `semble`) — MCP-managed codebase research via fast candidate search and related-code discovery.
+
+Registration: `uv run semble` with `cwd: /Users/andreborczuk/app-foundation` and `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache`.
+
+Use Semble first for codebase research. It returns file and line anchors without dumping file bodies. After Semble anchors a candidate, use bounded local windows for exact inspection and CodeGraph for structural callers/callees/dependency blast radius.
+
 **CodeGraphContext** (server name: `codegraph`) — graph-based code intelligence via tree-sitter + Redis (FalkorDB module, via redislite).
 
 Start server: `uv run cgc mcp start` (runs in foreground; stop with Ctrl+C or background with `&`)
@@ -122,17 +128,20 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 ### Codebase Reading and Discovery
 
-Use repository `read_code.py` instead of `grep`, `ripgrep`, `cat`, or broad shell search. Direct text-search tools are banned in this repo by hook.
+Use Semble first for repository codebase research. Use repository `read_code.py` for bounded local inspection after Semble returns file and line anchors. Direct text-search tools and broad shell reads are banned in this repo by hook.
 
 Pick the query mode by what you need:
 
-- `context` as the default lookup mode for natural-language descriptions, symbols, strings, or the best matching seam.
+- Semble `search` as the first lookup mode for natural-language descriptions, behavior, symbols, strings, or the best matching seam.
+- Semble `find_related` after a Semble result gives a file and line anchor and you need similar chunks before structural analysis.
+- `context` when Semble is unavailable or when you need the existing read-code semantic reader for a focused follow-up.
 - `find` when you want exact structural matches or need to enumerate occurrences of a known symbol, pattern, or text.
 - `analyze` after you have a candidate and need callers, callees, dependencies, or structural context.
 
 Primary tools:
 
-- `scripts/read_code.py` — unified reader for Python, shell, YAML, Markdown, and code-like files. It exposes both structural search and semantic context lookup.
+- Semble MCP tools (`search`, `find_related`) — first-pass codebase research and related-code candidate discovery. CLI fallback for diagnostics: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content code docs config`.
+- `scripts/read_code.py` — bounded local reader for Python, shell, YAML, Markdown, and code-like files after candidate anchoring. It also exposes structural search and semantic context lookup when Semble is unavailable.
 - `codebase-lsp` — type inference and diagnostics for Python files.
 
 
@@ -140,17 +149,33 @@ Primary tools:
 
 Read code by intent, not by guessing file windows.
 
-Use the guarded CLI read surface:
+First use Semble to get anchors without body dumps:
+
+- MCP: `search(query, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
+- MCP: `find_related(file_path, line, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
+- CLI fallback: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content code docs config`
+
+Then use the guarded CLI read surface for exact bounded inspection:
 
 - `uv run --no-sync python scripts/read_code.py context "<query>" --path <file>`
 - `uv run --no-sync python scripts/read_code.py find <command> <query>`
 - `uv run --no-sync python scripts/read_code.py analyze <command> <query>`
 - `uv run --no-sync python scripts/read_code.py window <file> <start> <end>`
 
-These commands run semantic query and reranking in the same Python process as the read. Scratchpad state supports bounded follow-up reads across invocations.
+The Semble MCP server keeps model/index state warm for the agent session. The CLI fallback uses the same workspace cache. The read-code commands run semantic query and reranking in the same Python process as the read. Scratchpad state supports bounded follow-up reads across invocations.
 
-1. **Start with `context`**
-   - Use `read_code.py context` for natural-language queries, symbols, strings, markdown, or the best matching seam.
+0. **Start with Semble**
+   - Use Semble `search` for natural-language queries, symbols, strings, docs, config, or the best matching seam.
+   - Keep `max_snippet_lines=0` until you choose a candidate; this returns file and line anchors without code/body dumps.
+   - If the first anchor is close but not enough, use Semble `find_related` from the candidate file and line.
+
+   Examples:
+
+   - `search("task validator format gate", repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
+   - `find_related("scripts/speckit_tasks_gate.py", 75, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
+
+1. **Use read-code `context` only when needed**
+   - Use `read_code.py context` when Semble is unavailable, when you need read-code's semantic reader specifically, or when a Semble anchor needs a focused semantic follow-up.
 
 
    Examples:
@@ -175,7 +200,7 @@ These commands run semantic query and reranking in the same Python process as th
 
 4. **For code symbols, Find Call Sites and Usages with Graph Discovery (The Standard Next Step)**
 
-   Once `context` or `find` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
+   Once Semble or `context` anchors a candidate and `find` returns a result with a `unit_id`, use read_code's analyze mode to find where it's called:
 
    - `uv run --no-sync python scripts/read_code.py analyze callers _resolve_pattern_anchor` to find all functions that call this
    - `uv run --no-sync python scripts/read_code.py analyze calls read_code_context` to find all functions this calls
@@ -239,10 +264,12 @@ Examples:
 
 ### Accepted Read Path Summary
 
-- Codex agents should use the guarded `scripts/read_code.py` CLI for normal code-reading work.
+- Codex agents should use Semble first for normal codebase research.
+- Codex agents should use the guarded `scripts/read_code.py` CLI for bounded local inspection after Semble anchoring, or as fallback when Semble is unavailable.
+- CodeGraph remains the structural follow-up path for callers, callees, dependencies, hierarchy, and blast-radius analysis.
 - Semantic query and rerank run in the same Python process as the command; no read-code MCP server is registered or launched.
 - Fresh CLI invocations pay local service/model initialization independently. Scratchpad candidate stepping and metadata history persist as repository artifacts across invocations.
-- The expected command sequence is: run bounded `context`, step a shortlist if needed, then request `--inline-body` only after the matching context result.
+- The expected command sequence is: run Semble `search`, optionally run Semble `find_related`, open a bounded local window for the selected file/line anchor, then use read-code `context`/`find`/`analyze` only as needed.
 
 
 ### Edit Efficiency

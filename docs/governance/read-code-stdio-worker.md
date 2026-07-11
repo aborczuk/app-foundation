@@ -175,6 +175,10 @@ Refresh behavior:
 
 Important boundary:
 
+- Semble is now the accepted first-pass codebase research layer for agents.
+- Semble returns file and line anchors through its MCP `search` and `find_related` tools before agents open local windows.
+- `read_code.py` remains the accepted bounded local inspection and fallback semantic lookup path after Semble anchoring.
+- CodeGraph remains the accepted structural follow-up path for callers, callees, dependencies, hierarchy, and blast-radius analysis.
 - there is currently no repo-local `pre-push` refresh hook under `.githooks/`
 - pushing code is therefore not the trigger that refreshes local read-code discovery state
 - the intended automatic Git-triggered refresh boundary is `post-commit`
