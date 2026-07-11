@@ -35,21 +35,23 @@ def _run_hook_in_process(
     return capsys.readouterr().out.strip()
 
 
-def test_denies_apply_patch_delete_file_marker() -> None:
-    """The dispatcher should hard-block apply_patch delete-file payloads."""
-    stdout = _run_hook(
+def test_apply_patch_delete_file_payload_uses_branch_guard(monkeypatch, capsys) -> None:
+    """Delete-file apply_patch payloads should use the normal edit branch guard."""
+    stdout = _run_hook_in_process(
         {
             "tool_name": "apply_patch",
             "tool_input": {
                 "patch": "*** Begin Patch\n*** Delete File: /tmp/example.txt\n*** End Patch\n",
             },
-        }
+        },
+        monkeypatch,
+        capsys,
     )
 
     assert stdout
     decision = json.loads(stdout)["hookSpecificOutput"]
     assert decision["permissionDecision"] == "deny"
-    assert "`*** Delete File:`" in decision["permissionDecisionReason"]
+    assert "feature branch" in decision["permissionDecisionReason"]
 
 
 def test_denies_apply_patch_payload_on_non_feature_branch(monkeypatch, capsys) -> None:

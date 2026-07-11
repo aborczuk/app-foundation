@@ -75,17 +75,6 @@ def _grep_guard(command: str) -> str | None:
     return None
 
 
-def _payload_contains_delete_file_marker(payload: Any) -> bool:
-    """Return true when any tool-input string contains the apply_patch delete-file marker."""
-    if isinstance(payload, str):
-        return "*** Delete File:" in payload
-    if isinstance(payload, dict):
-        return any(_payload_contains_delete_file_marker(value) for value in payload.values())
-    if isinstance(payload, list):
-        return any(_payload_contains_delete_file_marker(value) for value in payload)
-    return False
-
-
 def _normalize_tool_input_command(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
     """Normalize command-bearing tool inputs so hooks can read one canonical field."""
     tool_name = str(payload.get("tool_name", "")).strip()
@@ -295,9 +284,6 @@ def main() -> int:
 
     payload, command = _normalize_tool_input_command(payload)
 
-    if _payload_contains_delete_file_marker(payload.get("tool_input")):
-        _emit_deny("apply_patch payloads containing `*** Delete File:` are denied.")
-        return 0
 
     edit_payload = _payload_looks_like_edit(payload)
     if not command and not edit_payload:
