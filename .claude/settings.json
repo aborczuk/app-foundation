@@ -109,7 +109,9 @@
       "command": "uv",
       "args": [
         "run",
-        "semble"
+        "semble",
+        "--content",
+        "all"
       ],
       "cwd": "/Users/andreborczuk/app-foundation",
       "env": {
