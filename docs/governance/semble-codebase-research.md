@@ -6,7 +6,7 @@ Semble provides the first-pass codebase research backend for agents in this repo
 
 ## Active Design
 
-- Server entrypoint: `uv run semble`
+- Server entrypoint: `uv run semble --content all`
 - Transport: MCP stdio when launched by Codex or Claude from repo configuration
 - Process owner: the current agent session that loads the `semble` MCP server
 - Registered MCP tools: `search` and `find_related`
@@ -17,7 +17,7 @@ Repo MCP configuration must set:
 
 ```text
 command = "uv"
-args = ["run", "semble"]
+args = ["run", "semble", "--content", "all"]
 cwd = "/Users/andreborczuk/app-foundation"
 SEMBLE_CACHE_LOCATION = "/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache"
 ```
@@ -90,7 +90,7 @@ The install was verified with the repo-managed runtime:
 
 ```bash
 SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache \
-  uv run --no-sync semble search "spec workflow governance" . -k 5 --max-snippet-lines 0 --content code docs config
+  uv run --no-sync semble search "spec workflow governance" . -k 5 --max-snippet-lines 0 --content all
 ```
 
 This returned bounded file and line anchors without body dumps.
@@ -104,20 +104,20 @@ SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/sembl
 
 This returned related file and line anchors.
 
-The MCP-style entrypoint was verified by launching `uv run semble` with the workspace cache environment and confirming the process stayed running without stderr cache-permission errors.
+The MCP-style entrypoint was verified by launching `uv run semble --content all` with the workspace cache environment and confirming the process stayed running without stderr cache-permission errors.
 
 ## Runtime Setup
 
 1. Ensure `pyproject.toml` and `uv.lock` include `semble[mcp]`.
-2. Ensure `.codex/config.toml` and `.claude/settings.json` register `semble` with `uv run semble`.
+2. Ensure `.codex/config.toml` and `.claude/settings.json` register `semble` with `uv run semble --content all`.
 3. Ensure both MCP entries set `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache`.
 4. Restart or reload the agent session so the `semble` MCP server is visible.
 5. Warm the index with a bounded anchor-only search:
 
-   ```bash
-   SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache \
-     uv run --no-sync semble search "task validator format gate" . -k 5 --max-snippet-lines 0 --content code docs config
-   ```
+  ```bash
+  SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache \
+    uv run --no-sync semble search "task validator format gate" . -k 5 --max-snippet-lines 0 --content all
+  ```
 
 ## Expected Cold Starts
 

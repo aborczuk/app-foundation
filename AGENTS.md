@@ -74,7 +74,7 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 
 **Semble** (server name: `semble`) — MCP-managed codebase research via fast candidate search and related-code discovery.
 
-Registration: `uv run semble` with `cwd: /Users/andreborczuk/app-foundation` and `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache`.
+Registration: `uv run semble --content all` with `cwd: /Users/andreborczuk/app-foundation` and `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache`.
 
 Use Semble first for codebase research. It returns file and line anchors without dumping file bodies. After Semble anchors a candidate, use bounded local windows for exact inspection and CodeGraph for structural callers/callees/dependency blast radius.
 
@@ -140,7 +140,7 @@ Pick the query mode by what you need:
 
 Primary tools:
 
-- Semble MCP tools (`search`, `find_related`) — first-pass codebase research and related-code candidate discovery. CLI fallback for diagnostics: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content code docs config`.
+- Semble MCP tools (`search`, `find_related`) — first-pass codebase research and related-code candidate discovery across code, docs, and config. CLI fallback for diagnostics: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content all`.
 - `scripts/read_code.py` — bounded local reader for Python, shell, YAML, Markdown, and code-like files after candidate anchoring. It also exposes structural search and semantic context lookup when Semble is unavailable.
 - `codebase-lsp` — type inference and diagnostics for Python files.
 
@@ -153,7 +153,7 @@ First use Semble to get anchors without body dumps:
 
 - MCP: `search(query, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
 - MCP: `find_related(file_path, line, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
-- CLI fallback: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content code docs config`
+- CLI fallback: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content all`
 
 Then use the guarded CLI read surface for exact bounded inspection:
 
