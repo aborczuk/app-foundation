@@ -43,6 +43,14 @@ def load_manifest(path: Path) -> SyncManifest:
         lists=dict(payload.get("lists", {})),
         tasks=dict(payload.get("tasks", {})),
         subtasks=dict(payload.get("subtasks", {})),
+        feature_projection_meta={
+            str(key): dict(value)
+            for key, value in dict(payload.get("feature_projection_meta", {})).items()
+        },
+        task_projection_meta={
+            str(key): dict(value)
+            for key, value in dict(payload.get("task_projection_meta", {})).items()
+        },
     )
 
 

@@ -55,6 +55,21 @@ def test_save_manifest_writes_via_atomic_replace(tmp_path: Path, monkeypatch: py
         lists={"015": "l1"},
         tasks={"015:US1": "t1"},
         subtasks={"015:T001": "st1"},
+        feature_projection_meta={
+            "015": {
+                "title": "015 Dispatch",
+                "artifact_links": {"spec": "specs/015-control-plane-dispatch/spec.md"},
+            }
+        },
+        task_projection_meta={
+            "015:T001": {
+                "title": "Implement first task",
+                "acceptance_criteria": "Routes dispatch deterministically.",
+                "story_label": "US1",
+                "parallel": False,
+                "estimate_points": 3,
+            }
+        },
     )
 
     save_manifest(manifest_path, manifest)
@@ -64,3 +79,5 @@ def test_save_manifest_writes_via_atomic_replace(tmp_path: Path, monkeypatch: py
     assert calls[0][1] == str(manifest_path)
     loaded = load_manifest(manifest_path)
     assert loaded.subtasks["015:T001"] == "st1"
+    assert loaded.feature_projection_meta["015"]["title"] == "015 Dispatch"
+    assert loaded.task_projection_meta["015:T001"]["estimate_points"] == 3

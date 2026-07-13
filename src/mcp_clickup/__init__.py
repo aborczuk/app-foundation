@@ -57,6 +57,8 @@ class SyncManifest:
     lists: dict[str, str] = field(default_factory=dict)
     tasks: dict[str, str] = field(default_factory=dict)
     subtasks: dict[str, str] = field(default_factory=dict)
+    feature_projection_meta: dict[str, dict[str, object]] = field(default_factory=dict)
+    task_projection_meta: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass
