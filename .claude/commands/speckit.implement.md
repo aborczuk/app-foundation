@@ -50,6 +50,12 @@ Run setup verification:
 
 Treat non-zero as hard-block.
 
+Context loading rule:
+- Do not reread `spec.md` as routine per-task grounding during implement.
+- Read only the current task line from `tasks.md`, the relevant `plan.md` slice for that task's seam, and the exact code/doc seam to be changed.
+- Carry forward the active task's local context across adjacent work on the same seam.
+- Reread broader feature context only when the next task changes seam materially or when tests/QA contradict the current task-local model.
+
 Before task execution or handoff:
 - Ensure the implementation branch named after `FEATURE_DIR` is checked out or created from `main`.
 - Keep `specify` on `main`; branch creation belongs to the implement path, not the spec path.
@@ -74,6 +80,7 @@ Before task execution or handoff:
   - advance to the next task
 - Preserve task-ledger and dependency gates exactly. Do not begin another task until the current task has passed QA and closeout is complete.
 - In the normal case, the root agent should implement directly from the selected task entry and feature context rather than creating an extra builder delegation layer.
+- Do not broad-reground in the full feature spec between tasks when the active seam has not changed.
 - Additional root-agent investigation is only justified on concrete signals such as:
   - invalid or empty QA completion
   - QA findings that need clarification before retry

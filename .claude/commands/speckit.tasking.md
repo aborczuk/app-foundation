@@ -49,6 +49,9 @@ Required:
 - Treat each design slice's `Implementation Directive` as required source material for task generation.
 - Solve each design slice before decomposing it into tasks; do not only restate the directive.
 - Turn the solved slice-local implementation approach into story-grouped tasks, not a HUD replacement.
+- Group tasks by coherent implementation seam, not by counting separate requirements on the same request path or file seam.
+- If one seam carries multiple closely related requirements, prefer one task with richer story-level acceptance criteria over multiple tiny tasks that would force repeated ledger/QA/closeout overhead on the same seam.
+- Do not split a single execution seam into separate tasks for routing, validation, and reporting unless they are truly independent closeout units with different files or dependency boundaries.
 - Each user story phase must include `Goal`, `Independent Test`, and `Acceptance Criteria`.
 - Each task line must contain a concrete action plus an exact file path.
 - If a task cannot be described clearly enough to name the intended action and file path, mark tasking blocked and stop before acceptance generation.
