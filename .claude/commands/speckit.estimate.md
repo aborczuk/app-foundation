@@ -62,18 +62,16 @@ Execution steps:
    - Are there dependencies on libraries with limited documentation or unfamiliar APIs?
    - Does the task involve error handling for poorly documented external behavior?
 
-5. **Validate implementation-ticket detail for each task**: For each task, evaluate the executable task entry in `tasks.md` while the codebase context is loaded. Do not invent missing implementation design during estimation. Record per task:
-    - Whether the task entry has verified current behavior, target behavior, concrete required edits, touched symbols, tests, constraints, dependencies, and done criteria
-    - Which existing symbols will be modified and how (name + intended change), as already stated in `tasks.md`
-    - Which new symbols will be created, in which files, with what signatures, as already stated in `tasks.md`
-    - How the pieces compose to satisfy the task's goal, as already stated in `tasks.md`
-    - What the failing unit test assertion looks like (describe the assertion, not full code), as already stated in `tasks.md`
+5. **Validate the lightweight task contract for each task**: For each task, evaluate `tasks.md` while the codebase context is loaded. Do not invent missing implementation design during estimation. Record per task:
+    - Whether the task line is concrete, names an exact file path, and avoids placeholder language
+    - Whether the surrounding story phase has `Goal`, `Independent Test`, and `Acceptance Criteria`
+    - Whether dependency/order cues are clear enough to estimate responsibly
     - Which coding convention rules from `.claude/domains/` apply (identify touched domains only)
     - Whether the routing contract says this task should reuse an existing estimate or refresh it after tasking
 
-   For 1–2 point tasks: the task entry may mark implementation as trivial only if it still includes current behavior, target behavior, concrete required edits, test assertions, and done criteria.
+   For 1–2 point tasks: concise wording is acceptable if the action, file path, and story-level acceptance are still clear.
 
-   If any executable task entry is missing or incomplete, flag the task with `Task contract incomplete — rerun /speckit.tasking` and do not fill in the missing solution detail inside estimates.md.
+   If any executable task entry is vague, placeholder-like, or its story phase lacks acceptance criteria, flag the task with `Task contract incomplete — rerun /speckit.tasking` and do not fill in missing design detail inside estimates.md.
 5b. **Assign fibonacci points** per task using this calibration:
 
    | Points | Meaning | Examples |
