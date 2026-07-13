@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import re
 import sys
@@ -46,6 +47,26 @@ def _sanitize_message(message: str) -> str:
 def _print_error(code: str, message: str, hint: str) -> None:
     print(f"ERROR [{code}]: {_sanitize_message(message)}", file=sys.stderr)
     print(f"  -> {hint}", file=sys.stderr)
+
+
+def _result_payload(
+    *,
+    mode: str,
+    ok: bool,
+    exit_code: int,
+    space_id: str | None = None,
+    error_code: str | None = None,
+    message: str | None = None,
+) -> dict[str, Any]:
+    """Build a structured CLI result payload for automation callers."""
+    return {
+        "mode": mode,
+        "ok": ok,
+        "exit_code": exit_code,
+        "space_id": space_id,
+        "error_code": error_code,
+        "message": message,
+    }
 
 
 def build_direct_clickup_transport(api_token: str) -> ClickUpClient:
@@ -100,9 +121,20 @@ def _render_status_summary(space_id: str, summary: object) -> None:
 
 async def bootstrap_async() -> int:
     """Run bootstrap flow asynchronously."""
+    return (await bootstrap_async_result())["exit_code"]
+
+
+async def bootstrap_async_result() -> dict[str, Any]:
+    """Run bootstrap flow and return a structured result payload."""
     env = _load_runtime_env()
     if env is None:
-        return 1
+        return _result_payload(
+            mode="bootstrap",
+            ok=False,
+            exit_code=1,
+            error_code="missing_env",
+            message="CLICKUP_API_TOKEN and CLICKUP_SPACE_ID are required",
+        )
 
     token, space_id = env
     specs_root, manifest_path = _runtime_paths()
@@ -114,7 +146,14 @@ async def bootstrap_async() -> int:
             manifest = load_manifest(manifest_path)
         except ManifestVersionError as exc:
             _print_error("manifest_version", str(exc), "Regenerate or migrate the manifest schema")
-            return 1
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="manifest_version",
+                message=str(exc),
+            )
 
     async with build_transport(token) as transport:
         engine = SyncEngine(transport)
@@ -127,35 +166,88 @@ async def bootstrap_async() -> int:
             )
         except MissingCustomFieldsError as exc:
             _print_error("missing_field", str(exc), "Pre-create missing routing fields at the Space level")
-            return 2
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=2,
+                space_id=space_id,
+                error_code="missing_field",
+                message=str(exc),
+            )
         except ClickUpNotFoundError as exc:
             _print_error("space_not_found", str(exc), "Verify CLICKUP_SPACE_ID and token access")
-            return 1
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="space_not_found",
+                message=str(exc),
+            )
         except ClickUpRateLimitError as exc:
             _print_error("rate_limit", str(exc), "Re-run bootstrap; manifest retains partial progress")
-            return 1
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="rate_limit",
+                message=str(exc),
+            )
         except ManifestRebuildAmbiguousError as exc:
             _print_error(
                 "manifest_rebuild_ambiguous",
                 str(exc),
                 "Resolve duplicate ClickUp items for the same canonical key and rerun",
             )
-            return 1
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="manifest_rebuild_ambiguous",
+                message=str(exc),
+            )
         except ClickUpAuthError as exc:
             _print_error("auth_error", str(exc), "Verify CLICKUP_API_TOKEN")
-            return 1
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="auth_error",
+                message=str(exc),
+            )
         except (ClickUpTimeoutError, ClickUpApiError) as exc:
             _print_error("api_error", str(exc), "Retry and inspect ClickUp availability")
-            return 1
+            return _result_payload(
+                mode="bootstrap",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="api_error",
+                message=str(exc),
+            )
 
-    return 0
+    return _result_payload(mode="bootstrap", ok=True, exit_code=0, space_id=space_id)
 
 
 async def status_async() -> int:
     """Run read-only status flow asynchronously."""
+    return (await status_async_result())["exit_code"]
+
+
+async def status_async_result() -> dict[str, Any]:
+    """Run read-only status flow and return a structured result payload."""
     env = _load_runtime_env()
     if env is None:
-        return 1
+        return _result_payload(
+            mode="status",
+            ok=False,
+            exit_code=1,
+            error_code="missing_env",
+            message="CLICKUP_API_TOKEN and CLICKUP_SPACE_ID are required",
+        )
 
     token, space_id = env
     _, manifest_path = _runtime_paths()
@@ -165,13 +257,27 @@ async def status_async() -> int:
             "Manifest file does not exist",
             "Run bootstrap first to create .speckit/clickup-manifest.json",
         )
-        return 1
+        return _result_payload(
+            mode="status",
+            ok=False,
+            exit_code=1,
+            space_id=space_id,
+            error_code="manifest_missing",
+            message="Manifest file does not exist",
+        )
 
     try:
         manifest = load_manifest(manifest_path)
     except ManifestVersionError as exc:
         _print_error("manifest_version", str(exc), "Regenerate or migrate the manifest schema")
-        return 1
+        return _result_payload(
+            mode="status",
+            ok=False,
+            exit_code=1,
+            space_id=space_id,
+            error_code="manifest_version",
+            message=str(exc),
+        )
 
     async with build_transport(token) as transport:
         engine = SyncEngine(transport)
@@ -179,22 +285,50 @@ async def status_async() -> int:
             summary = await engine.status_from_manifest(manifest)
         except ClickUpNotFoundError as exc:
             _print_error("space_not_found", str(exc), "Verify CLICKUP_SPACE_ID and token access")
-            return 1
+            return _result_payload(
+                mode="status",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="space_not_found",
+                message=str(exc),
+            )
         except ClickUpRateLimitError as exc:
             _print_error("rate_limit", str(exc), "Retry status query after rate-limit window")
-            return 1
+            return _result_payload(
+                mode="status",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="rate_limit",
+                message=str(exc),
+            )
         except ClickUpAuthError as exc:
             _print_error("auth_error", str(exc), "Verify CLICKUP_API_TOKEN")
-            return 1
+            return _result_payload(
+                mode="status",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="auth_error",
+                message=str(exc),
+            )
         except (ClickUpTimeoutError, ClickUpApiError) as exc:
             _print_error("api_error", str(exc), "Retry and inspect ClickUp availability")
-            return 1
+            return _result_payload(
+                mode="status",
+                ok=False,
+                exit_code=1,
+                space_id=space_id,
+                error_code="api_error",
+                message=str(exc),
+            )
 
     _render_status_summary(space_id, summary)
-    return 0
+    return _result_payload(mode="status", ok=True, exit_code=0, space_id=space_id)
 
 
-def _run_entrypoint(factory: Callable[[], Coroutine[Any, Any, int]]) -> int:
+def _run_entrypoint(factory: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
     """Run an async CLI entrypoint unless already inside a running loop."""
     try:
         asyncio.get_running_loop()
@@ -209,20 +343,35 @@ def run_bootstrap() -> int:
     return _run_entrypoint(bootstrap_async)
 
 
+def run_bootstrap_result() -> dict[str, Any]:
+    """Run bootstrap entrypoint and return a structured result."""
+    return _run_entrypoint(bootstrap_async_result)
+
+
 def run_status() -> int:
     """Run status entrypoint from sync context."""
     return _run_entrypoint(status_async)
+
+
+def run_status_result() -> dict[str, Any]:
+    """Run status entrypoint and return a structured result."""
+    return _run_entrypoint(status_async_result)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Parse CLI flags and execute bootstrap or status mode."""
     parser = argparse.ArgumentParser(prog="python -m mcp_clickup")
     parser.add_argument("--status", action="store_true", help="Run read-only status summary")
+    parser.add_argument("--json", action="store_true", help="Emit structured JSON result to stdout")
     args = parser.parse_args(argv)
 
     if args.status:
-        return run_status()
-    return run_bootstrap()
+        result = run_status_result()
+    else:
+        result = run_bootstrap_result()
+    if args.json:
+        print(json.dumps(result))
+    return int(result["exit_code"])
 
 
 if __name__ == "__main__":
