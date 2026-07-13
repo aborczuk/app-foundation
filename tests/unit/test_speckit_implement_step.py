@@ -252,6 +252,91 @@ def test_resolve_explicit_task_start_gate_reports_blocking_reason_without_mutati
     assert ledger_path.read_text(encoding="utf-8") == before
 
 
+def test_start_explicit_task_request_starts_eligible_task(tmp_path: Path) -> None:
+    """Explicit start requests should append a task_started event for eligible work."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    _write_tasks_file(
+        feature_dir / "tasks.md",
+        task_lines=[
+            "## Implement",
+            "- [ ] T001 Setup — ./README.md",
+            "- [ ] T002 [P] Parallel one — ./README.md",
+        ],
+    )
+    ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        "\n".join(
+            json.dumps(event, sort_keys=True)
+            for event in [
+                _task_event("task_registered", task_id="T001"),
+                _task_event("task_registered", task_id="T002"),
+                _task_event("task_started", task_id="T001"),
+                _task_event("human_action_verified", task_id="T001", verification_method="manual-review"),
+                _task_event("task_closed", task_id="T001"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = speckit_implement_step._start_explicit_task_request(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id="023",
+        task_id="T002",
+        actor="agent-b",
+        correlation_id="clickup:CU-2",
+    )
+
+    assert summary["task_id"] == "T002"
+    assert summary["task_action"] == "started"
+    assert summary["task_started"] is True
+    assert summary["task_owner_actor"] == "agent-b"
+
+
+def test_start_explicit_task_request_resumes_same_actor_task_without_new_event(tmp_path: Path) -> None:
+    """Explicit start requests should resume an already-started task for the same actor."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    _write_tasks_file(
+        feature_dir / "tasks.md",
+        task_lines=[
+            "## Implement",
+            "- [ ] T001 Setup — ./README.md",
+        ],
+    )
+    ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    before = (
+        "\n".join(
+            json.dumps(event, sort_keys=True)
+            for event in [
+                _task_event("task_registered", task_id="T001", actor="agent-b"),
+                _task_event("task_started", task_id="T001", actor="agent-b"),
+            ]
+        )
+        + "\n"
+    )
+    ledger_path.write_text(before, encoding="utf-8")
+
+    summary = speckit_implement_step._start_explicit_task_request(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id="023",
+        task_id="T001",
+        actor="agent-b",
+        correlation_id="clickup:CU-1",
+    )
+
+    assert summary["task_action"] == "resumed"
+    assert summary["task_started"] is True
+    assert ledger_path.read_text(encoding="utf-8") == before
+
+
 def test_main_blocks_when_feature_not_found(tmp_path: Path, monkeypatch, capsys) -> None:
     """Missing feature directories should fail before any task work begins."""
     bootstrap_calls: list[Path] = []

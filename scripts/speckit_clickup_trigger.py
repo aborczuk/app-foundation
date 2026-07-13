@@ -7,9 +7,11 @@ import json
 import sys
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Protocol, Sequence
 
+from scripts import speckit_implement_step
 from src.mcp_clickup import SyncManifest
+from src.mcp_clickup.composio_adapter import ComposioClickUpAdapter
 from src.mcp_clickup.manifest import ClickUpTaskMappingError, load_manifest, resolve_task_projection_mapping
 
 READY_FOR_IMPLEMENT_STATUS = "ready-for-implement"
@@ -27,6 +29,20 @@ class ClickUpTriggerRequest:
     status: str = READY_FOR_IMPLEMENT_STATUS
 
 
+class TriggerRejectionReporter(Protocol):
+    """Minimal contract for writing trigger rejection feedback back to ClickUp."""
+
+    async def update_task(
+        self,
+        task_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        """Update one ClickUp task with rejection feedback."""
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the scaffold CLI parser."""
     parser = argparse.ArgumentParser(
@@ -37,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-id")
     parser.add_argument("--actor", default="clickup")
     parser.add_argument("--status", default=READY_FOR_IMPLEMENT_STATUS)
+    parser.add_argument("--repo-root", default=".")
     parser.add_argument(
         "--manifest-path",
         default=".speckit/clickup-manifest.json",
@@ -61,7 +78,7 @@ def _resolve_manifest_path(manifest_path: str) -> Path:
     return Path(manifest_path).expanduser().resolve()
 
 
-def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool, Path]:
+def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool, Path, Path]:
     """Parse argv into a normalized scaffold request."""
     args = build_parser().parse_args(list(argv))
     feature_id = str(args.feature_id or "").strip()
@@ -76,7 +93,12 @@ def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool, Pat
         dry_run=not args.execute,
         status=str(args.status).strip(),
     )
-    return request, bool(args.json), _resolve_manifest_path(str(args.manifest_path))
+    return (
+        request,
+        bool(args.json),
+        Path(str(args.repo_root)).expanduser().resolve(),
+        _resolve_manifest_path(str(args.manifest_path)),
+    )
 
 
 def resolve_request_mapping(
@@ -166,9 +188,93 @@ def render_response(
     }
 
 
+def render_started_response(
+    request: ClickUpTriggerRequest,
+    *,
+    start_summary: dict[str, Any],
+) -> dict[str, object]:
+    """Render a deterministic start-or-resume result for one explicit trigger request."""
+    return {
+        "ok": True,
+        "mode": "trigger_execute",
+        "decision": str(start_summary.get("task_action") or "started"),
+        "ledger_mutation": str(start_summary.get("task_action")) == "started",
+        "request": asdict(request),
+        "start": {
+            "feature_id": str(start_summary.get("feature_id") or request.feature_id),
+            "task_id": str(start_summary.get("task_id") or request.task_id),
+            "task_action": str(start_summary.get("task_action") or ""),
+            "task_attempt": int(start_summary.get("task_attempt") or 0),
+            "parallel": bool(start_summary.get("parallel", False)),
+            "task_owner_actor": str(start_summary.get("task_owner_actor") or request.actor),
+        },
+        "next_step": "Continue normal repo implement orchestration from the started task.",
+    }
+
+
+def _rejection_message(payload: dict[str, object]) -> str:
+    """Build one operator-visible rejection message from a trigger payload."""
+    reason_code = str(payload.get("reason_code") or "trigger_rejected")
+    gate = payload.get("gate")
+    if isinstance(gate, dict):
+        blocking_reason = str(gate.get("blocking_reason") or "").strip()
+        if blocking_reason:
+            return f"{reason_code}: {blocking_reason}"
+    return f"{reason_code}: trigger request was rejected by repo-side gating"
+
+
+async def write_rejection_feedback(
+    reporter: TriggerRejectionReporter | ComposioClickUpAdapter,
+    request: ClickUpTriggerRequest,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    """Write one blocked or ambiguous trigger rejection back to the ClickUp task."""
+    result = await reporter.update_task(
+        request.clickup_task_id,
+        description=_rejection_message(payload),
+    )
+    response = dict(result)
+    response["feedback_written"] = True
+    response["clickup_task_id"] = request.clickup_task_id
+    return response
+
+
+def _resolve_gate_summary(
+    *,
+    repo_root: Path,
+    request: ClickUpTriggerRequest,
+) -> dict[str, Any]:
+    """Resolve the explicit task gate summary for one request."""
+    feature_dir = speckit_implement_step._resolve_feature_dir(repo_root, request.feature_id)
+    return speckit_implement_step._resolve_explicit_task_start_gate(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id=request.feature_id,
+        task_id=request.task_id,
+        actor=request.actor,
+    )
+
+
+def _start_request(
+    *,
+    repo_root: Path,
+    request: ClickUpTriggerRequest,
+) -> dict[str, Any]:
+    """Start or resume one explicit request through the normal ledger-owned seam."""
+    feature_dir = speckit_implement_step._resolve_feature_dir(repo_root, request.feature_id)
+    return speckit_implement_step._start_explicit_task_request(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id=request.feature_id,
+        task_id=request.task_id,
+        actor=request.actor,
+        correlation_id=f"clickup:{request.clickup_task_id}",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the scaffold trigger CLI."""
-    request, as_json, manifest_path = parse_request(argv if argv is not None else sys.argv[1:])
+    request, as_json, repo_root, manifest_path = parse_request(argv if argv is not None else sys.argv[1:])
     resolved_request = request
     if status_is_start_request(request.status) and (not request.feature_id or not request.task_id):
         if not manifest_path.exists():
@@ -184,7 +290,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             try:
                 resolved_request = resolve_request_mapping(request, load_manifest(manifest_path))
-                payload = render_response(resolved_request)
+                if resolved_request.dry_run:
+                    payload = render_response(
+                        resolved_request,
+                        gate_summary=_resolve_gate_summary(repo_root=repo_root, request=resolved_request),
+                    )
+                else:
+                    payload = render_started_response(
+                        resolved_request,
+                        start_summary=_start_request(repo_root=repo_root, request=resolved_request),
+                    )
             except ClickUpTaskMappingError as exc:
                 reason_code, _, clickup_task_id = str(exc).partition(":")
                 mapping_count = 2 if reason_code == "ambiguous_mapping" else 0
@@ -192,7 +307,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload["clickup_task_id"] = clickup_task_id
                 payload["manifest_path"] = str(manifest_path)
     else:
-        payload = render_response(resolved_request)
+        if status_is_start_request(resolved_request.status) and resolved_request.feature_id and resolved_request.task_id:
+            if resolved_request.dry_run:
+                payload = render_response(
+                    resolved_request,
+                    gate_summary=_resolve_gate_summary(repo_root=repo_root, request=resolved_request),
+                )
+            else:
+                payload = render_started_response(
+                    resolved_request,
+                    start_summary=_start_request(repo_root=repo_root, request=resolved_request),
+                )
+        else:
+            payload = render_response(resolved_request)
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:

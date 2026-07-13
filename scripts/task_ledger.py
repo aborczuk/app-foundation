@@ -931,6 +931,89 @@ def explicit_task_start_gate(
     return result
 
 
+def explicit_task_start_or_resume(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+    details: str | None = None,
+) -> dict[str, Any]:
+    """Start or resume one explicit task while preserving the normal ledger gates."""
+    ensure_feature_id(feature_id)
+    ensure_task_id(task_id)
+
+    events = read_events(ledger_path)
+    errors, feature_states = validate_sequence(events)
+    if errors:
+        print("ERROR: ledger is invalid; cannot continue:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+
+    actor_name = resolve_actor(actor)
+    feature_state = feature_states.get(feature_id, FeatureState())
+    task_state = feature_state.tasks.get(task_id)
+    if task_state is None or not task_state.registered:
+        fail(f"Cannot start {task_id}; it is not registered in the ledger")
+
+    if task_state.started and not task_state.closed:
+        owner = task_state.owner_actor or "unknown"
+        if owner != actor_name:
+            fail(f"Cannot start {task_id}; it is already started by actor {owner!r} and not yet closed")
+        return {
+            "feature_id": feature_id,
+            "task_id": task_id,
+            "actor": actor_name,
+            "task_action": "resumed",
+            "task_registered": True,
+            "task_started": True,
+            "task_closed": False,
+            "task_owner_actor": owner,
+            "task_attempt": latest_attempt(events, feature_id, task_id),
+            "parallel": explicit_task_start_gate(
+                ledger_path,
+                tasks_file,
+                feature_id,
+                task_id,
+                actor=actor_name,
+            )["parallel"],
+        }
+
+    summary = assert_can_start_task(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor_name,
+    )
+    append_task_started_event(
+        ledger_path,
+        feature_id,
+        task_id,
+        actor=actor_name,
+        details=details,
+    )
+    events = read_events(ledger_path)
+    feature_state = feature_state_for(ledger_path, feature_id)
+    task_state = feature_state.tasks.get(task_id)
+    if task_state is None:
+        fail(f"Cannot start {task_id}; ledger state missing after start")
+    return {
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "actor": actor_name,
+        "task_action": "started",
+        "task_registered": True,
+        "task_started": True,
+        "task_closed": bool(task_state.closed),
+        "task_owner_actor": task_state.owner_actor or actor_name,
+        "task_attempt": latest_attempt(events, feature_id, task_id),
+        "parallel": bool(summary["parallel"]),
+    }
+
+
 def append_task_started_event(
     ledger_path: Path,
     feature_id: str,

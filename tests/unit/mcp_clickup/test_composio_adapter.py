@@ -137,7 +137,9 @@ def test_write_operations_call_expected_tool_slugs_and_arguments() -> None:
         "id": "task-1",
         "name": "015:T001",
     }
-    assert asyncio.run(adapter.update_task("task-1", name="Renamed task")) == {
+    assert asyncio.run(
+        adapter.update_task("task-1", name="Renamed task", description="because blocked", status="blocked")
+    ) == {
         "id": "task-1",
         "name": "Renamed task",
     }
@@ -147,7 +149,15 @@ def test_write_operations_call_expected_tool_slugs_and_arguments() -> None:
         ("CLICKUP_CREATE_FOLDER", {"space_id": "space-1", "name": "Specs"}),
         ("CLICKUP_CREATE_LIST", {"folder_id": "folder-1", "name": "Phase 1"}),
         ("CLICKUP_CREATE_TASK", {"list_id": "list-1", "name": "015:T001", "parent": "task-parent"}),
-        ("CLICKUP_UPDATE_TASK", {"task_id": "task-1", "name": "Renamed task"}),
+        (
+            "CLICKUP_UPDATE_TASK",
+            {
+                "task_id": "task-1",
+                "name": "Renamed task",
+                "description": "because blocked",
+                "status": "blocked",
+            },
+        ),
         ("CLICKUP_SET_CUSTOM_FIELD_VALUE", {"task_id": "task-1", "field_id": "field-1", "value": "manual-test"}),
     ]
 

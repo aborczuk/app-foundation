@@ -442,6 +442,37 @@ def _resolve_explicit_task_start_gate(
     return summary
 
 
+def _start_explicit_task_request(
+    *,
+    repo_root: Path,
+    feature_dir: Path,
+    feature_id: str,
+    task_id: str,
+    actor: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Start or resume one explicit task using the same ledger rules as normal implement flow."""
+    ledger_path = _task_ledger_path(repo_root)
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        raise ValueError("missing_tasks_md")
+    summary = task_ledger.explicit_task_start_or_resume(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor,
+        details=f"queued by {correlation_id}",
+    )
+    summary.update(
+        {
+            "ledger_path": str(ledger_path),
+            "tasks_file": str(tasks_file),
+        }
+    )
+    return summary
+
+
 def _ensure_implement_branch(repo_root: Path, feature_dir: Path, *, timeout_seconds: int) -> dict[str, Any]:
     """Create or activate the implementation branch for the feature."""
     branch_name = feature_dir.name

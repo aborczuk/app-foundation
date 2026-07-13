@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
+from scripts import speckit_clickup_trigger as trigger_module
 from scripts.speckit_clickup_trigger import (
     READY_FOR_IMPLEMENT_STATUS,
     ClickUpTriggerRequest,
@@ -14,6 +17,7 @@ from scripts.speckit_clickup_trigger import (
     render_response,
     resolve_request_mapping,
     status_is_start_request,
+    write_rejection_feedback,
 )
 from src.mcp_clickup import SyncManifest
 from src.mcp_clickup.manifest import ClickUpTaskMappingError
@@ -21,7 +25,7 @@ from src.mcp_clickup.manifest import ClickUpTaskMappingError
 
 def test_parse_request_defaults_to_dry_run() -> None:
     """Parsing should keep scaffold requests in dry-run mode unless execute is requested."""
-    request, as_json, manifest_path = parse_request(
+    request, as_json, repo_root, manifest_path = parse_request(
         ["--feature-id", "048", "--task-id", "T002", "--clickup-task-id", "CU-2", "--json"]
     )
 
@@ -34,12 +38,13 @@ def test_parse_request_defaults_to_dry_run() -> None:
         status=READY_FOR_IMPLEMENT_STATUS,
     )
     assert as_json is True
+    assert repo_root == Path(".").resolve()
     assert manifest_path.name == "clickup-manifest.json"
 
 
 def test_parse_request_execute_disables_dry_run() -> None:
     """Execute mode should preserve the requested task identity while clearing dry-run mode."""
-    request, as_json, _ = parse_request(
+    request, as_json, _, _ = parse_request(
         ["--feature-id", "048", "--task-id", "T014", "--clickup-task-id", "CU-14", "--execute"]
     )
 
@@ -56,7 +61,7 @@ def test_parse_request_execute_disables_dry_run() -> None:
 
 def test_parse_request_allows_manifest_backed_mapping_resolution() -> None:
     """Feature and task ids may be omitted when the ClickUp task id will drive manifest lookup."""
-    request, as_json, _ = parse_request(["--clickup-task-id", "CU-14", "--json"])
+    request, as_json, _, _ = parse_request(["--clickup-task-id", "CU-14", "--json"])
 
     assert request == ClickUpTriggerRequest(
         clickup_task_id="CU-14",
@@ -177,6 +182,147 @@ def test_render_response_rejects_ambiguous_mapping() -> None:
     assert payload["reason_code"] == "ambiguous_mapping"
     assert payload["mapping_count"] == 2
     assert payload["ledger_mutation"] is False
+
+
+class _RecordingReporter:
+    """Minimal async reporter for trigger rejection feedback tests."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object | None]]] = []
+
+    async def update_task(
+        self,
+        task_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, object]:
+        self.calls.append(
+            (
+                task_id,
+                {"name": name, "description": description, "status": status},
+            )
+        )
+        return {"id": task_id}
+
+
+def test_write_rejection_feedback_updates_clickup_task_description() -> None:
+    """Blocked requests should produce one operator-visible rejection update."""
+    reporter = _RecordingReporter()
+    payload = render_response(
+        ClickUpTriggerRequest(
+            feature_id="048",
+            task_id="T015",
+            clickup_task_id="CU-15",
+            actor="clickup",
+            dry_run=False,
+            status=READY_FOR_IMPLEMENT_STATUS,
+        ),
+        gate_summary={
+            "feature_id": "048",
+            "task_id": "T015",
+            "parallel": False,
+            "task_started": False,
+            "task_closed": False,
+            "blocking_reason": "Cannot start T015; prior task T014 is not closed in the ledger",
+        },
+    )
+
+    result = asyncio.run(
+        write_rejection_feedback(
+            reporter,
+            ClickUpTriggerRequest(
+                feature_id="048",
+                task_id="T015",
+                clickup_task_id="CU-15",
+                actor="clickup",
+                dry_run=False,
+                status=READY_FOR_IMPLEMENT_STATUS,
+            ),
+            payload,
+        )
+    )
+
+    assert result["feedback_written"] is True
+    assert reporter.calls == [
+        (
+            "CU-15",
+            {
+                "name": None,
+                "description": "task_not_startable: Cannot start T015; prior task T014 is not closed in the ledger",
+                "status": None,
+            },
+        )
+    ]
+
+
+def test_main_execute_starts_explicit_task(monkeypatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Execute mode should route an explicit request through the mutating start seam."""
+    monkeypatch.setattr(
+        trigger_module,
+        "_start_request",
+        lambda *, repo_root, request: {
+            "feature_id": request.feature_id,
+            "task_id": request.task_id,
+            "task_action": "started",
+            "task_attempt": 1,
+            "parallel": False,
+            "task_owner_actor": request.actor,
+        },
+    )
+
+    exit_code = main(
+        [
+            "--feature-id",
+            "048",
+            "--task-id",
+            "T015",
+            "--clickup-task-id",
+            "CU-15",
+            "--execute",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["mode"] == "trigger_execute"
+    assert payload["decision"] == "started"
+    assert payload["ledger_mutation"] is True
+
+
+def test_main_dry_run_reports_gate_summary(monkeypatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Dry-run ready requests should surface the non-mutating gate result for the resolved task."""
+    monkeypatch.setattr(
+        trigger_module,
+        "_resolve_gate_summary",
+        lambda *, repo_root, request: {
+            "feature_id": request.feature_id,
+            "task_id": request.task_id,
+            "parallel": False,
+            "task_started": False,
+            "task_closed": False,
+            "blocking_reason": None,
+        },
+    )
+
+    exit_code = main(
+        [
+            "--feature-id",
+            "048",
+            "--task-id",
+            "T015",
+            "--clickup-task-id",
+            "CU-15",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["mode"] == "trigger_gate"
+    assert payload["decision"] == "eligible"
 
 
 def test_render_response_ignores_non_ready_status() -> None:

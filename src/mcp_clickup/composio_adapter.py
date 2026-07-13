@@ -156,9 +156,23 @@ class ComposioClickUpAdapter:
         payload = await self._call_tool("CLICKUP_CREATE_TASK", arguments)
         return self._extract_object(payload, tool_name="CLICKUP_CREATE_TASK")
 
-    async def update_task(self, task_id: str, *, name: str) -> dict[str, Any]:
+    async def update_task(
+        self,
+        task_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """Update task mutable fields."""
-        payload = await self._call_tool("CLICKUP_UPDATE_TASK", {"task_id": task_id, "name": name})
+        arguments: dict[str, Any] = {"task_id": task_id}
+        if name is not None:
+            arguments["name"] = name
+        if description is not None:
+            arguments["description"] = description
+        if status is not None:
+            arguments["status"] = status
+        payload = await self._call_tool("CLICKUP_UPDATE_TASK", arguments)
         return self._extract_object(payload, tool_name="CLICKUP_UPDATE_TASK")
 
     async def list_custom_fields(self, list_id: str) -> list[dict[str, Any]]:
