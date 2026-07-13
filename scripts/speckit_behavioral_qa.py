@@ -42,15 +42,17 @@ def _json_print(payload: dict[str, Any]) -> None:
 
 
 def _read_tasks_acceptance(tasks_file: Path, task_id: str) -> str:
-    """Extract 'Independent Test' from tasks.md for the task's phase."""
+    """Extract task acceptance from tasks.md using the documented fallback order."""
     if not tasks_file.exists():
         return ""
 
     lines = tasks_file.read_text(encoding="utf-8").splitlines()
     task_idx = -1
+    task_line = ""
     for idx, line in enumerate(lines):
         if task_id in line and line.strip().startswith("-"):
             task_idx = idx
+            task_line = line.strip()
             break
 
     if task_idx < 0:
@@ -69,10 +71,34 @@ def _read_tasks_acceptance(tasks_file: Path, task_id: str) -> str:
             phase_end = idx
             break
 
-    for line in lines[phase_start:phase_end]:
+    phase_lines = lines[phase_start:phase_end]
+
+    acceptance_heading = "### Acceptance Criteria"
+    if acceptance_heading in phase_lines:
+        heading_idx = phase_lines.index(acceptance_heading)
+        acceptance_items: list[str] = []
+        for line in phase_lines[heading_idx + 1 :]:
+            stripped = line.strip()
+            if stripped.startswith("### ") or stripped.startswith("## "):
+                break
+            if stripped.startswith("- ["):
+                break
+            if stripped.startswith("- "):
+                acceptance_items.append(stripped[2:].strip())
+            elif acceptance_items and stripped:
+                acceptance_items[-1] = f"{acceptance_items[-1]} {stripped}"
+        if acceptance_items:
+            return " ".join(acceptance_items)
+
+    for line in phase_lines:
         marker = "**Independent Test**:"
         if marker in line:
             return line.split(marker, 1)[1].strip()
+
+    if task_line:
+        synthetic = re.sub(r"^- \[[ xX]\]\s*", "", task_line).strip()
+        if synthetic:
+            return f"Complete {synthetic}"
 
     return ""
 
