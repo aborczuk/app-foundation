@@ -26,6 +26,8 @@ description: "Task list for Composio ClickUp trigger sync"
 
 **Purpose**: Create the new Composio transport and trigger surfaces without changing runtime behavior yet.
 
+**Independent Test**: Import the scaffold modules, run the trigger CLI in scaffold mode, and verify the current ClickUp runtime path remains unchanged.
+
 - [ ] T001 Create the Composio transport and trigger scaffolds in src/mcp_clickup/composio_adapter.py and scripts/speckit_clickup_trigger.py
 - [ ] T002 [P] Create the initial unit-test scaffolds in tests/unit/mcp_clickup/test_composio_adapter.py and tests/unit/test_speckit_clickup_trigger.py
 
@@ -38,6 +40,8 @@ description: "Task list for Composio ClickUp trigger sync"
 **Purpose**: Establish the shared projection, mapping, and orchestration seams that every story depends on.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
+
+**Independent Test**: Parse stabilized feature artifacts into the shared model, persist mapping state, and confirm sync and implement orchestration can consume the new seams without the direct-transport dependency.
 
 - [ ] T003 Extend the ClickUp projection data model in src/mcp_clickup/__init__.py and src/mcp_clickup/artifact_parser.py to carry acceptance criteria, story labels, parallel markers, estimates, and artifact links
 - [ ] T004 Persist stable repo-to-ClickUp mapping state in src/mcp_clickup/manifest.py and tests/unit/mcp_clickup/test_manifest.py for richer feature/task projections
@@ -154,6 +158,8 @@ description: "Task list for Composio ClickUp trigger sync"
 ## Phase 7: Polish & Cross-Cutting Concerns
 
 **Purpose**: Run focused validation and update the operator-facing architecture docs for the new flow.
+
+**Independent Test**: Run the focused regression suite and confirm the operator docs describe the shipped Composio sync, trigger, and closeout flow without stale direct-transport guidance.
 
 - [ ] T024 [P] Run focused sync, trigger, and closeout validation in tests/unit/mcp_clickup/test_artifact_parser.py, tests/unit/mcp_clickup/test_manifest.py, tests/unit/mcp_clickup/test_sync_engine.py, tests/unit/test_speckit_clickup_trigger.py, and tests/unit/test_speckit_closeout_task.py
 - [ ] T025 Update operator/runtime documentation for Composio-owned ClickUp sync, trigger, and closeout behavior in docs/architecture/mcp-clickup.md and docs/architecture/workflow-overview.md
