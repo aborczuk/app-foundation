@@ -180,7 +180,6 @@ commands:
       - .specify/scripts/pipeline-scaffold.py
       - scripts/speckit_tasking_chain.py
       - scripts/speckit_tasking_codex_runner.py
-      - scripts/speckit_remake_huds.py
       - .specify/scripts/acceptance-test-scaffold.py
       - scripts/speckit_tasks_gate.py
       - scripts/pipeline_ledger.py
@@ -196,24 +195,6 @@ commands:
       required_fields:
       - task_count
       - story_count
-  speckit.tasking.hud-code:
-    description: Scaffold a code-task HUD artifact for a task in the active feature directory
-    mode: legacy
-    scripts:
-    - .specify/scripts/pipeline-scaffold.py
-    artifacts:
-    - output_path: ${FEATURE_DIR}/huds/${TASK_ID}.md
-      template: hud-code-template.md
-    emits: []
-  speckit.tasking.hud-runbook:
-    description: Scaffold a human-task runbook HUD artifact for a task in the active feature directory
-    mode: legacy
-    scripts:
-    - .specify/scripts/pipeline-scaffold.py
-    artifacts:
-    - output_path: ${FEATURE_DIR}/huds/${TASK_ID}.md
-      template: hud-runbook-template.md
-    emits: []
   speckit.sketch:
     description: Legacy sketch command retained for compatibility; design slices now live in plan.md
     mode: legacy
@@ -239,8 +220,6 @@ commands:
     artifacts:
     - output_path: ${FEATURE_DIR}/estimates.md
       template: estimates-template.md
-    - output_path: ${FEATURE_DIR}/huds/${TASK_ID}.md
-      template: hud-code-template.md
     emits:
     - event: estimation_completed
       required_fields:
@@ -300,7 +279,6 @@ commands:
     - scripts/speckit_tasking_codex_runner.py
     - scripts/speckit_tasks_gate.py
     - scripts/task_ledger.py
-    - scripts/speckit_remake_huds.py
     - .specify/scripts/pipeline-scaffold.py
     - .specify/scripts/acceptance-test-scaffold.py
     - scripts/pipeline_ledger.py

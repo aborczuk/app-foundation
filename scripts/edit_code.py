@@ -662,13 +662,13 @@ def _emit_generative_qa_handoff(
         print("ERROR: Payload file contains invalid JSON", file=sys.stderr)
         return
 
-    print(f"\n### HUD Acceptance Criteria ({task_id}):")
+    print(f"\n### Task Acceptance Criteria ({task_id}):")
     ac = behavioral_result.get("acceptance_criteria") if behavioral_result else None
     if not ac:
         ac = "\n".join(payload.get("acceptance_criteria", []))
     print(ac or "No acceptance criteria found.")
 
-    print("\n### File:Symbol Contract:")
+    print("\n### Primary Edit Seam:")
     fs = behavioral_result.get("file_symbol") if behavioral_result else payload.get("file_symbol")
     print(fs or "No specific file:symbol defined.")
 
@@ -879,7 +879,7 @@ def _run_task_add(
     story: str | None = None,
     points: int = 1,
 ) -> int:
-    """Add a task to tasks.md and materialize its HUD/Ledger state."""
+    """Add a task to tasks.md and register its ledger state."""
     try:
         feature_dir = _resolve_feature_dir(feature_id)
     except ValueError as exc:
@@ -919,20 +919,8 @@ def _run_task_add(
     tasks_file.write_text(new_content, encoding="utf-8")
     print(f"[edit-code] Registered {next_id} in tasks.md")
 
-    # 3. Materialize HUD
-    print(f"[edit-code] Materializing HUD for {next_id}...")
-    rc = subprocess.run([
-        sys.executable, "scripts/speckit_remake_huds.py",
-        "--feature-dir", str(feature_dir),
-        "--task-id", next_id
-    ], check=False).returncode
-    
-    if rc == 0:
-        print(f"[edit-code] Task {next_id} registered and HUD generated.")
-    else:
-        print(f"[edit-code] WARNING: HUD materialization failed (exit code {rc}).", file=sys.stderr)
-    
-    return rc
+    print(f"[edit-code] Task {next_id} registered.")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:

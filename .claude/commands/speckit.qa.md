@@ -10,8 +10,8 @@ $ARGUMENTS
 
 Act as the persistent implement-session QA subagent for one completed task at a time. Own the canonical offline-QA stage for the active task: prepare the minimum valid task-scoped payload, run `scripts/speckit_offline_qa_handoff.py` immediately, and emit a structured PASS/FIX_REQUIRED result for the orchestrator using that canonical result. `scripts/speckit_closeout_task.py` remains orchestrator-owned after QA passes.
 
-1. Resolve feature context and task HUD.
-2. Read acceptance criteria from HUD (or tasks.md fallback).
+1. Resolve feature context and the active task entry in `tasks.md`.
+2. Read acceptance criteria from `tasks.md`.
 3. Build or correct the minimum valid task-scoped offline-QA payload from the builder output, changed files, and test evidence.
 4. Run `scripts/speckit_offline_qa_handoff.py` for the active task immediately.
 5. If offline QA fails or returns an invalid/contradictory result, inspect the task more deeply only as needed to explain the failure and route fixes.
@@ -32,16 +32,13 @@ Optional:
 
 Resolve:
 - `FEATURE_DIR` from `specs/{feature_id}-*`
-- `HUD_PATH` from `FEATURE_DIR/huds/{task_id}.md`
 - `TASKS_FILE` from `FEATURE_DIR/tasks.md`
 
 ### 2. Acceptance criteria extraction
 
-Primary source: HUD `Functional Goal > Acceptance Criteria`
+Primary source: the executable task entry in `tasks.md`. At minimum, the task contract must expose acceptance via the task's `Independent Test` in the task phase.
 
-If HUD is missing or lacks acceptance criteria, fall back to tasks.md `Independent Test` within the task's phase.
-
-If neither exists → `FIX_REQUIRED: MISSING_ACCEPTANCE_CRITERIA`
+If no acceptance criteria can be extracted from tasks.md → `FIX_REQUIRED: MISSING_ACCEPTANCE_CRITERIA`
 
 ### 3. Fail-fast offline QA
 
@@ -67,7 +64,7 @@ Do not run tests manually unless the provided logs are ambiguous or missing. Do 
 ### 5. Drift detection
 
 Check that the builder implementation addresses the acceptance criteria:
-- **File symbol check**: Was the HUD's `File:Symbol` actually modified?
+- **Primary seam check**: If the task contract or payload names a primary edit seam, was it actually modified?
 - **Keyword match**: Do changed files contain keywords from acceptance criteria?
 - **Test coverage**: Do tests verify the acceptance criteria?
 
@@ -98,9 +95,9 @@ Verdict rules:
 - `FIX_REQUIRED` — one or more blocking findings
 
 Findings are specific and actionable:
-- `MISSING_ACCEPTANCE_CRITERIA` — no acceptance criteria in HUD or tasks.md
+- `MISSING_ACCEPTANCE_CRITERIA` — no acceptance criteria in tasks.md
 - `MISSING_CHANGED_FILES` — no changed files in payload
-- `IMPLEMENTATION_DRIFT` — changed files don't match HUD file:symbol
+- `IMPLEMENTATION_DRIFT` — changed files don't match the task's declared seams or required edits
 - `TESTS_FAILED` — one or more test runs failed
 - `MISSING_TEST_EVIDENCE` — no tests found or run
 - `INVALID_COMPLETION` — missing required result fields or empty completion payload

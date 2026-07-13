@@ -41,15 +41,16 @@ def test_speckit_solution_doc_consumes_plan_design_slices() -> None:
     assert "plan.md` design slices" in doc_text
     assert "spec.json" in doc_text
     assert "Solve each design slice" in doc_text
-    assert "speckit_remake_huds.py prepare" in doc_text
     assert "estimate` subagent on `gpt-5.4-mini`" in doc_text
     assert "breakdown` subagent on `gpt-5.4-mini`" in doc_text
     assert "speckit_tasking_chain.py --feature-dir" in doc_text
-    assert "Write explicit task-local acceptance criteria into the HUD." in doc_text
-    assert "Assume `/speckit.implement` will read only this HUD for the task." in doc_text
-    assert "Attach each matched design slice to the task by translating the slice directive into task-specific obligations." in doc_text
-    assert "matched slice directives attached and specialized into task-specific required edits" in doc_text
+    assert "tasks.md` entries that implement that slice" in doc_text
+    assert "without a per-task HUD file" in doc_text
+    assert "Decompose approved `plan.md` design slices into `tasks.md` directly in this command." in doc_text
+    assert "Write tasks from the solved slice, not from a restated headline." in doc_text
     assert "Do not call `/speckit.tasking`" in doc_text
+    assert "task and HUD generation" not in doc_text
+    assert "tasks/HUDs" not in doc_text
     assert ".specify/templates/task-hud-contract-template.json" not in doc_text
     assert "per-task HUD contract JSON" not in doc_text
     assert "Auto-invoke `/speckit.sketch`" not in doc_text

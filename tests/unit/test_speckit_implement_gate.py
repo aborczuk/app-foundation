@@ -29,14 +29,12 @@ speckit_implement_gate = _load_script_module(
 )
 
 
-def _preflight_args(
-    feature_dir: Path, tasks_file: Path, hud_path: Path | None
-) -> argparse.Namespace:
+def _preflight_args(feature_dir: Path, tasks_file: Path) -> argparse.Namespace:
     return argparse.Namespace(
         feature_dir=str(feature_dir),
         task_id="T048",
         tasks_file=str(tasks_file),
-        hud_path=str(hud_path) if hud_path else None,
+        hud_path=None,
         json=True,
     )
 
@@ -48,14 +46,10 @@ def test_task_preflight_returns_feature_branch_stale_when_task_exists_on_main(
     feature_dir.mkdir(parents=True)
     tasks_file = feature_dir / "tasks.md"
     tasks_file.write_text("- [X] T047 previous task\n", encoding="utf-8")
-    hud_path = feature_dir / "huds" / "T048.md"
-    hud_path.parent.mkdir(parents=True)
-    hud_path.write_text("# HUD T048\n", encoding="utf-8")
-
     monkeypatch.setattr(speckit_implement_gate, "_task_exists_on_main", lambda *_: True)
 
     exit_code, payload = speckit_implement_gate._task_preflight(
-        _preflight_args(feature_dir, tasks_file, hud_path)
+        _preflight_args(feature_dir, tasks_file)
     )
     assert exit_code == 2
     assert payload["ok"] is False
@@ -71,14 +65,10 @@ def test_task_preflight_returns_task_not_found_when_task_missing_everywhere(
     feature_dir.mkdir(parents=True)
     tasks_file = feature_dir / "tasks.md"
     tasks_file.write_text("- [X] T047 previous task\n", encoding="utf-8")
-    hud_path = feature_dir / "huds" / "T048.md"
-    hud_path.parent.mkdir(parents=True)
-    hud_path.write_text("# HUD T048\n", encoding="utf-8")
-
     monkeypatch.setattr(speckit_implement_gate, "_task_exists_on_main", lambda *_: False)
 
     exit_code, payload = speckit_implement_gate._task_preflight(
-        _preflight_args(feature_dir, tasks_file, hud_path)
+        _preflight_args(feature_dir, tasks_file)
     )
     assert exit_code == 2
     assert payload["ok"] is False
@@ -92,12 +82,8 @@ def test_task_preflight_passes_when_task_exists_locally(tmp_path: Path) -> None:
     feature_dir.mkdir(parents=True)
     tasks_file = feature_dir / "tasks.md"
     tasks_file.write_text("- [ ] T048 new task\n", encoding="utf-8")
-    hud_path = feature_dir / "huds" / "T048.md"
-    hud_path.parent.mkdir(parents=True)
-    hud_path.write_text("# HUD T048\n", encoding="utf-8")
-
     exit_code, payload = speckit_implement_gate._task_preflight(
-        _preflight_args(feature_dir, tasks_file, hud_path)
+        _preflight_args(feature_dir, tasks_file)
     )
     assert exit_code == 0
     assert payload["ok"] is True
@@ -106,21 +92,18 @@ def test_task_preflight_passes_when_task_exists_locally(tmp_path: Path) -> None:
     assert payload["task_present_in_main"] is None
 
 
-def test_task_preflight_defaults_hud_to_feature_local_path(tmp_path: Path) -> None:
+def test_task_preflight_reports_tasks_file_without_hud_path(tmp_path: Path) -> None:
     feature_dir = tmp_path / "specs" / "019-token-efficiency-docs"
     feature_dir.mkdir(parents=True)
     tasks_file = feature_dir / "tasks.md"
     tasks_file.write_text("- [ ] T048 new task\n", encoding="utf-8")
-    default_hud_path = feature_dir / "huds" / "T048.md"
-    default_hud_path.parent.mkdir(parents=True)
-    default_hud_path.write_text("# HUD T048\n", encoding="utf-8")
 
     exit_code, payload = speckit_implement_gate._task_preflight(
-        _preflight_args(feature_dir, tasks_file, None)
+        _preflight_args(feature_dir, tasks_file)
     )
     assert exit_code == 0
     assert payload["ok"] is True
-    assert payload["hud_path"] == str(default_hud_path.resolve())
+    assert payload["tasks_file"] == str(tasks_file.resolve())
 
 
 def test_task_gate_emits_implementation_completed_once(tmp_path: Path, monkeypatch) -> None:

@@ -32,21 +32,21 @@ Use speckit commands to drive the pipeline:
 /speckit.research
 /speckit.plan
 
-# Generate tasks and HUDs
+# Generate tasks
 /speckit.tasking
 ```
 
 ### 2. Implement Tasks
 
-Implement one task at a time using the HUD as your contract:
+Implement one task at a time using the task entry in `tasks.md` as your contract:
 
 ```bash
 /speckit.implement --feature-id 023 --task-id T001
 ```
 
-Each task has a HUD file at `specs/{feature_id}-*/huds/{task_id}.md` containing:
-- **Acceptance Criteria** — what must be true for the task to be complete
-- **File:Symbol** — the primary implementation target
+Each executable task entry in `tasks.md` carries the task contract, including:
+- **Acceptance Criteria / Independent Test** — what must be true for the task to be complete
+- **Primary Edit Seam** — the main implementation target
 - **Required Edits** — concrete changes to make
 - **Tests to Add/Update** — test coverage requirements
 

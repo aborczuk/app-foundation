@@ -40,7 +40,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - If contracts/ exists: Map interface contracts to user stories
    - If research.md exists: Extract decisions for setup tasks
    - Detect async/event-loop/background-worker integrations from plan.md and research.md
-   - **Detect human tasks**: For each user story, identify any work requiring a human to act in an external system (configure a webhook URL, create an API key, set up a third-party workflow, provision infrastructure, etc.). Emit these as `[H]` tasks within the story phase, sequenced before the first implementation task. Each `[H]` task description must name the external system and the action. The runbook and verification command are generated in the HUD by `speckit.estimate`.
+   - **Detect human tasks**: For each user story, identify any work requiring a human to act in an external system (configure a webhook URL, create an API key, set up a third-party workflow, provision infrastructure, etc.). Emit these as `[H]` tasks within the story phase, sequenced before the first implementation task. Each `[H]` task description must name the external system and the action. The executable task entry should carry any required runbook and verification detail directly.
    - Generate tasks organized by user story (see Task Generation Rules below)
    - Generate dependency graph showing user story completion order
    - Create parallel execution examples per user story

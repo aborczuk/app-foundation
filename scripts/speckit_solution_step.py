@@ -19,7 +19,6 @@ SCHEMA_VERSION = "1.0.0"
 DEFAULT_TASKING_CHAIN = Path(__file__).resolve().parent / "speckit_tasking_chain.py"
 DEFAULT_TASKS_GATE = Path(__file__).resolve().parent / "speckit_tasks_gate.py"
 DEFAULT_TASK_LEDGER = Path(__file__).resolve().parent / "task_ledger.py"
-DEFAULT_HUDS = Path(__file__).resolve().parent / "speckit_remake_huds.py"
 DEFAULT_ACCEPTANCE = (
     Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
 )
@@ -285,25 +284,6 @@ def _ledger_feature_id(feature_dir: Path) -> str:
     return match.group("feature_id")
 
 
-def _validate_huds(*, repo_root: Path, feature_dir: Path) -> dict[str, Any]:
-    """Validate completed task HUD artifacts before task registration handoff."""
-    command = [
-        sys.executable,
-        str(DEFAULT_HUDS),
-        "validate",
-        "--feature-dir",
-        str(feature_dir),
-        "--json",
-    ]
-    completed = _run_command(command, cwd=repo_root)
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "hud_validation_failed")
-    parsed = json.loads(completed.stdout or "{}")
-    if not isinstance(parsed, dict):
-        raise RuntimeError("hud validation must return JSON")
-    return parsed
-
-
 def _generate_acceptance_tests(*, repo_root: Path, feature_dir: Path) -> dict[str, Any]:
     """Generate acceptance test scaffolding from tasks.md."""
     command = [
@@ -401,11 +381,6 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
     stages.append({"stage": "tasks_gate", "result": tasks_gate})
     if not bool(tasks_gate.get("ok", False)):
         raise RuntimeError("tasks_format_gate_failed")
-
-    huds = _validate_huds(repo_root=repo_root, feature_dir=feature_dir)
-    stages.append({"stage": "huds_validate", "result": huds})
-    if not bool(huds.get("ok", False)):
-        raise RuntimeError("hud_validation_failed")
 
     registration = _register_tasks(
         repo_root=repo_root,

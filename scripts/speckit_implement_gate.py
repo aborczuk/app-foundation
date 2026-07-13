@@ -105,12 +105,6 @@ def _task_preflight(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     """Validate that implement-time artifacts exist before task execution begins."""
     feature_dir = Path(args.feature_dir).resolve()
     tasks_file = Path(args.tasks_file).resolve() if args.tasks_file else feature_dir / "tasks.md"
-    hud_path = (
-        Path(args.hud_path).resolve()
-        if args.hud_path
-        else feature_dir / "huds" / f"{args.task_id}.md"
-    )
-    hud_path = hud_path.resolve()
     reasons: list[str] = []
     task_present_in_tasks_file: bool | None = None
     task_present_in_main: bool | None = None
@@ -127,15 +121,12 @@ def _task_preflight(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 reasons.append("feature_branch_stale")
             else:
                 reasons.append("task_not_found_in_tasks_md")
-    if not hud_path.exists():
-        reasons.append("missing_hud")
 
     payload: dict[str, Any] = {
         "mode": "task_preflight",
         "feature_dir": str(feature_dir),
         "task_id": args.task_id,
         "tasks_file": str(tasks_file),
-        "hud_path": str(hud_path),
         "task_present_in_tasks_file": task_present_in_tasks_file,
         "task_present_in_main": task_present_in_main,
         "reasons": reasons,
@@ -202,7 +193,7 @@ def _offline_qa_payload(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             },
         )
 
-    for field in ("feature_id", "task_id", "hud_path", "diff", "payload_run_id", "payload_digest"):
+    for field in ("feature_id", "task_id", "diff", "payload_run_id", "payload_digest"):
         if not _nonempty_string(data.get(field)):
             reasons.append(f"invalid_{field}")
     if _nonempty_string(data.get("payload_digest")):
@@ -217,10 +208,6 @@ def _offline_qa_payload(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         reasons.append("invalid_changed_files")
     if "known_risks" in data and not _string_list(data.get("known_risks"), allow_empty=True):
         reasons.append("invalid_known_risks")
-
-    hud_path = Path(data.get("hud_path") or "")
-    if _nonempty_string(data.get("hud_path")) and not hud_path.exists():
-        reasons.append("missing_hud_path")
 
     _validate_test_runs(data, reasons, warnings)
 

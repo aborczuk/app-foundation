@@ -28,40 +28,33 @@ speckit_behavioral_qa = _load_script_module(
 )
 
 
-def test_read_hud_supports_current_hud_shape(tmp_path: Path) -> None:
-    """The parser should read acceptance criteria and file symbol from current HUDs."""
-    hud_path = tmp_path / "T001.md"
-    hud_path.write_text(
+def test_read_tasks_acceptance_uses_independent_test_from_task_phase(tmp_path: Path) -> None:
+    """Behavioral QA should read task acceptance from the task phase in tasks.md."""
+    tasks_file = tmp_path / "tasks.md"
+    tasks_file.write_text(
         "\n".join(
             [
-                "# HUD: T001",
+                "## Story 1",
                 "",
-                "## Relevant Domains",
+                "**Independent Test**: The app factory exposes one dedicated Tetris mount seam and preserves existing endpoints.",
                 "",
-                "- Runtime Surface: keep one mount seam.",
+                "- [ ] T001 Add Tetris mount seam",
                 "",
-                "## Primary Edit Seam",
+                "## Story 2",
                 "",
-                "**File:Symbol**: `src/clickup_control_plane/app.py:create_app`",
+                "**Independent Test**: Another story acceptance.",
                 "",
-                "## Acceptance Criteria",
-                "",
-                "- The app factory exposes one dedicated Tetris mount seam.",
-                "- Existing control-plane endpoints keep their behavior.",
-                "",
+                "- [ ] T002 Different task",
             ]
         ),
         encoding="utf-8",
     )
 
-    parsed = speckit_behavioral_qa._read_hud(hud_path)
+    acceptance = speckit_behavioral_qa._read_tasks_acceptance(tasks_file, "T001")
 
-    assert parsed["file_symbol"] == "src/clickup_control_plane/app.py:create_app"
-    assert parsed["acceptance_criteria"] == (
-        "The app factory exposes one dedicated Tetris mount seam.\n"
-        "Existing control-plane endpoints keep their behavior."
+    assert acceptance == (
+        "The app factory exposes one dedicated Tetris mount seam and preserves existing endpoints."
     )
-    assert parsed["quality_guards"] == ["Runtime Surface: keep one mount seam."]
 
 
 def test_payload_test_runs_accepts_explicit_evidence() -> None:

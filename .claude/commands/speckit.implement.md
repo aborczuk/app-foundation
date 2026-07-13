@@ -10,8 +10,8 @@ $ARGUMENTS
 
 Execute implementation through script-owned preflight, task start, persistent builder/QA subagent orchestration, script-owned QA handoff, and documentation updates. `/speckit.implement` itself is the orchestrator. It owns the helper sequence, mediates all builder↔QA handoff directly, and keeps the Codex session warm across queued tasks until the task gate says implementation is complete.
 
-1. Resolve feature context and run HUD-only pre-implementation gate checks.
-2. Consume the next registered task from `.speckit/task-ledger.jsonl` and the matching `tasks.md` / HUD contract.
+1. Resolve feature context and run task pre-implementation gate checks.
+2. Consume the next registered task from `.speckit/task-ledger.jsonl` and the matching `tasks.md` contract.
 3. Spawn and reuse two persistent `spawn_agent` subagents on `gpt-5.4-mini`: one builder and one QA reviewer.
 4. Mediate builder→QA handoff for one task at a time; route QA failures back to the same builder before closeout.
 5. Run script-owned offline QA handoff and canonical ledger closeout only after the orchestrator has a QA-pass-worthy task result.
@@ -31,7 +31,6 @@ Execute implementation through script-owned preflight, task start, persistent bu
 3. Run gate status:
    - `uv run --no-sync python3 scripts/speckit_gate_status.py --mode implement --feature-dir "$FEATURE_DIR" --json`
 4. Gate handling (required):
-   - If `missing_task_hud`, stop and require at least one task HUD under `huds/`.
    - Map failures to `docs/governance/gate-reason-codes.yaml`.
 
 ### 2. Context + setup verification
@@ -61,7 +60,7 @@ Before task execution or handoff:
 - Tasking has already registered the task queue into `.speckit/task-ledger.jsonl`.
 - Select the next registered task in `tasks.md` order.
 - Append `task_started` only when the selected task is not already active.
-- Execute only the next eligible task from `tasks.md` and corresponding HUD.
+- Execute only the next eligible task from `tasks.md` and the resolved feature context.
 - `/speckit.implement` itself must use `spawn_agent` directly.
 - Do not use `fork_context: true` because the builder and QA subagents must run on `gpt-5.4-mini`.
 - Spawn exactly two persistent subagents and reuse them for the full implement session:
@@ -70,12 +69,12 @@ Before task execution or handoff:
 - The orchestrator agent is the mediator. Do not let the subagents coordinate closeout directly.
 - The orchestrator default is intentionally minimal:
   - check the next eligible task/start gate
-  - send the next task HUD to the builder
+  - send the next task packet from `tasks.md` to the builder
   - forward the builder result to QA
   - when QA returns a pass-worthy offline-QA result, create the implementation commit and run closeout
   - advance to the next task
 - When the builder finishes a task and that task moves into QA/offline-QA, do not idle the builder if another task is already ledger-eligible.
-- If `assert-can-start` allows a parallel or otherwise dependency-safe next task, send that next task HUD to the builder while QA/offline-QA continues on the previous task.
+- If `assert-can-start` allows a parallel or otherwise dependency-safe next task, send that next task packet to the builder while QA/offline-QA continues on the previous task.
 - Preserve task-ledger and dependency gates exactly; parallel continuation is allowed only when the ledger says the next task can start.
 - In the normal case, the orchestrator role is managerial rather than implementation-focused. Do not add extra repo exploration, seam rereads, or independent code analysis before every task handoff.
 - Additional orchestrator investigation is only justified on concrete signals such as:
@@ -85,7 +84,7 @@ Before task execution or handoff:
   - a builder request for more bounded context
 - The orchestrator should not be the source of routine delay. When the task packet is already clear enough, pass it through immediately instead of expanding the context on the orchestrator side.
 - Do not send the full implement command doc as the builder subagent prompt.
-- The builder subagent should receive the selected task HUD as the default implementation packet.
+- The builder subagent should receive the selected task entry plus feature context as the default implementation packet.
 - Only add extra context when the builder explicitly asks for it or a concrete failure requires it.
 - Any extra context must stay narrow and task-local.
 - The QA subagent may use `.claude/commands/speckit.qa.md` as its standing review contract because it is a task reviewer rather than the implementation worker.
@@ -94,9 +93,9 @@ Before task execution or handoff:
   - then apply the `/speckit.qa` behavioral review rules to interpret that canonical result
   - only do deeper manual inspection when the offline-QA result fails, is invalid, or needs explanation for a builder retry
 - Per task, the orchestrator must:
-  1. send the selected task, HUD, and feature context to the builder
+  1. send the selected task and feature context to the builder
   2. collect the builder result
-  3. send the builder result, task id, HUD path, changed files, and test evidence to the QA subagent
+  3. send the builder result, task id, changed files, and test evidence to the QA subagent
   4. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
   5. if QA returns `FIX_REQUIRED`, send those findings back to the same builder and retry the same task
   6. once QA returns a pass-worthy offline-QA result, stop the subagent loop for that task, create the implementation commit, and run `scripts/speckit_closeout_task.py`

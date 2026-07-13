@@ -34,7 +34,6 @@ def test_validate_offline_payload_rejects_invalid_digest(tmp_path: Path) -> None
             {
                 "feature_id": "029",
                 "task_id": "T005",
-                "hud_path": str(payload_file),
                 "diff": "diff",
                 "acceptance_criteria": ["criterion"],
                 "quality_guards": ["guard"],

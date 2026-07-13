@@ -14,7 +14,6 @@
 | Score tasks and write `estimates.md` | `speckit.estimate` | `pipeline-scaffold.py speckit.estimate` |
 | Decompose approved sketch into tasks | `speckit.tasking` | `pipeline-scaffold.py speckit.tasking` |
 | Enforce deterministic tasks format gate | `speckit.tasking` | `scripts/speckit_tasks_gate.py validate-format` |
-| Create HUDs after task stabilization | `speckit.tasking` | `pipeline-scaffold.py speckit.tasking.hud-code|hud-runbook` |
 | Generate story acceptance tests | `speckit.tasking` | `.claude/commands/speckit.tasking.md` contract |
 | Post-solution drift gate (`spec -> plan -> sketch -> tasks`) | `speckit.analyze` | `.claude/commands/speckit.analyze.md` + `analysis_completed` event |
 | Legacy tasks command | `speckit.tasks` | Deprecated, no artifact generation |
@@ -28,8 +27,6 @@
 | `speckit.sketch` | `command-manifest.yaml:commands.speckit.sketch` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.sketch` | `sketch-template.md` |
 | `speckit.solutionreview` | `command-manifest.yaml:commands.speckit.solutionreview` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.solutionreview` | `solutionreview-template.md` |
 | `speckit.tasking` | `command-manifest.yaml:commands.speckit.tasking` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking` | `tasks-template.md` |
-| `speckit.tasking.hud-code` | `command-manifest.yaml:commands.speckit.tasking.hud-code` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-code` | `hud-code-template.md` |
-| `speckit.tasking.hud-runbook` | `command-manifest.yaml:commands.speckit.tasking.hud-runbook` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.tasking.hud-runbook` | `hud-runbook-template.md` |
 | `speckit.e2e` | `command-manifest.yaml:commands.speckit.e2e` | required (`cmp -s` must pass) | `pipeline-scaffold.py speckit.e2e` | `e2e-template.md` + `e2e-script-template.sh` |
 
 Coverage notes:
