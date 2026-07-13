@@ -1,4 +1,4 @@
-"""Scaffold CLI for future ClickUp-triggered speckit implement starts."""
+"""CLI helpers for future ClickUp-triggered speckit implement starts."""
 
 from __future__ import annotations
 
@@ -51,16 +51,64 @@ def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool]:
     return request, bool(args.json)
 
 
-def render_response(request: ClickUpTriggerRequest) -> dict[str, object]:
-    """Render a deterministic scaffold response without invoking repo gates yet."""
+def render_response(
+    request: ClickUpTriggerRequest,
+    *,
+    mapping_count: int = 1,
+    gate_summary: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Render a deterministic trigger response for scaffold and gate-only flows."""
+    if mapping_count != 1:
+        return {
+            "ok": False,
+            "mode": "trigger_gate",
+            "decision": "rejected",
+            "reason_code": "ambiguous_mapping",
+            "mapping_count": mapping_count,
+            "ledger_mutation": False,
+            "request": asdict(request),
+            "next_step": "Resolve ClickUp-to-repo mapping ambiguity before starting implement work.",
+        }
+
+    if gate_summary is None:
+        return {
+            "ok": True,
+            "mode": "scaffold",
+            "request": asdict(request),
+            "next_step": (
+                "Ledger-gated ClickUp trigger execution is intentionally deferred to later "
+                "feature 048 tasks."
+            ),
+        }
+
+    blocking_reason = str(gate_summary.get("blocking_reason") or "").strip() or None
+    gate_payload = {
+        "feature_id": str(gate_summary.get("feature_id") or request.feature_id),
+        "task_id": str(gate_summary.get("task_id") or request.task_id),
+        "parallel": bool(gate_summary.get("parallel", False)),
+        "task_started": bool(gate_summary.get("task_started", False)),
+        "task_closed": bool(gate_summary.get("task_closed", False)),
+        "blocking_reason": blocking_reason,
+    }
+    if blocking_reason is not None:
+        return {
+            "ok": False,
+            "mode": "trigger_gate",
+            "decision": "blocked",
+            "reason_code": "task_not_startable",
+            "ledger_mutation": False,
+            "request": asdict(request),
+            "gate": gate_payload,
+            "next_step": "Keep the ClickUp task out of implement until the repo gate reports eligible.",
+        }
     return {
         "ok": True,
-        "mode": "scaffold",
+        "mode": "trigger_gate",
+        "decision": "eligible",
+        "ledger_mutation": False,
         "request": asdict(request),
-        "next_step": (
-            "Ledger-gated ClickUp trigger execution is intentionally deferred to later "
-            "feature 048 tasks."
-        ),
+        "gate": gate_payload,
+        "next_step": "Route this request into the normal repo implement flow.",
     }
 
 
