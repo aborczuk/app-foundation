@@ -98,7 +98,15 @@ def _task_event(
 class _FakeCloseoutResult:
     """Minimal closeout result stub used to exercise the implement flow."""
 
-    def __init__(self, *, task_id: str, commit_sha: str, qa_run_id: str) -> None:
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        commit_sha: str,
+        qa_run_id: str,
+        clickup_sync_status: str = "updated",
+        clickup_sync_reason: str | None = None,
+    ) -> None:
         self.ok = True
         self.qa_verdict = "PASS"
         self.next_action = "complete"
@@ -111,6 +119,8 @@ class _FakeCloseoutResult:
             "qa_verdict": "PASS",
             "next_action": "complete",
             "next_task_id": None,
+            "clickup_sync_status": clickup_sync_status,
+            "clickup_sync_reason": clickup_sync_reason,
         }
 
     def to_json(self) -> str:
@@ -1016,6 +1026,164 @@ def test_main_retries_after_qa_failure_with_same_session(
     assert second_handoff["qa_feedback"]["qa_run_id"] == "qa-023-T001-attempt-1"
     assert second_handoff["qa_feedback"]["result_verdict"] == "FAIL"
     assert closeout_calls and closeout_calls[0]["commit_sha"] == "2222222222222222222222222222222222222222"
+
+
+def test_main_continues_when_clickup_done_reflection_requires_retry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Implement should keep repo closeout successful when external done reflection needs retry."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    _write_tasks_file(feature_dir / "tasks.md", task_lines=["## Implement", "- [ ] T001 Say hooray! — ./README.md"])
+    _write_registered_tasks_ledger(repo_root / ".speckit" / "task-ledger.jsonl")
+
+    monkeypatch.setenv("SPECKIT_AGENT_ID", "codex")
+    monkeypatch.setattr(speckit_implement_step, "_resolve_feature_dir", lambda _repo_root, _feature_id: feature_dir)
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_ensure_implement_branch",
+        lambda *args, **kwargs: {
+            "branch_name": feature_dir.name,
+            "current_branch": "023-deterministic-phase-orchestration",
+            "branch_exists": True,
+            "status": "already_checked_out",
+        },
+    )
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_run_offline_qa_handoff",
+        lambda *, feature_id, task_id, attempt: {
+            "mode": "offline_qa_handoff",
+            "feature_id": feature_id,
+            "task_id": task_id,
+            "attempt": attempt,
+            "payload_file": str(repo_root / ".speckit" / "offline-qa" / f"{feature_id}_{task_id}_attempt_{attempt}.handoff.json"),
+            "result_file": str(repo_root / ".speckit" / "offline-qa" / f"{feature_id}_{task_id}_attempt_{attempt}.result.json"),
+            "reasons": [],
+            "ok": True,
+            "result_verdict": "PASS",
+            "qa_run_id": f"qa-{feature_id}-{task_id}-attempt-{attempt}",
+        },
+    )
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_closeout_task",
+        lambda **kwargs: _FakeCloseoutResult(
+            task_id=kwargs["task_id"],
+            commit_sha=kwargs["commit_sha"] or "",
+            qa_run_id=kwargs["qa_run_id"],
+            clickup_sync_status="retry_required",
+            clickup_sync_reason="clickup_done_update_failed:temporary",
+        ),
+    )
+    monkeypatch.setattr(
+        speckit_implement_step,
+        "_update_implementation_docs",
+        lambda **kwargs: {
+            "entry_id": kwargs["correlation_id"],
+            "updated": True,
+            "commit_sha": kwargs["commit_sha"],
+        },
+    )
+
+    def fake_run_command(command, *, cwd, timeout_seconds, input_payload=None):  # noqa: ANN001
+        command_text = " ".join(str(part) for part in command)
+        if "speckit_gate_status.py" in command_text:
+            return speckit_implement_step.CommandResult(0, json.dumps({"ok": True}), "", False, [str(part) for part in command], timeout_seconds)
+        if "speckit_implement_gate.py" in command_text:
+            return speckit_implement_step.CommandResult(
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "mode": "task_gate",
+                        "feature_id": "023",
+                        "open_task_ids": [],
+                        "closed_task_ids": ["T001"],
+                        "continuation_task_id": None,
+                        "implementation_completed_state": "emitted",
+                        "reasons": [],
+                    }
+                ),
+                "",
+                False,
+                [str(part) for part in command],
+                timeout_seconds,
+            )
+        if "speckit_codex_handoff_runner.py" in command_text:
+            return speckit_implement_step.CommandResult(
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "exit_code": 0,
+                        "correlation_id": "run-test:speckit.implement",
+                        "feature_id": "023",
+                        "phase": "implement",
+                        "task_id": "T001",
+                        "task_attempt": 1,
+                        "task_action": "started",
+                        "artifact_path": "",
+                        "completion_marker": "",
+                        "runner": "codex-local",
+                        "handoff_execution": "codex_exec",
+                        "session_mode": "fresh",
+                        "reasons": [],
+                        "error_code": None,
+                        "debug_path": None,
+                        "commit_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                        "summary": "Implementation complete",
+                        "changed_files": ["README.md"],
+                        "stdout_tail": [],
+                        "stderr_tail": [],
+                        "runner_log_path": str(
+                            repo_root
+                            / ".speckit"
+                            / "runtime"
+                            / "implement"
+                            / "runner"
+                            / "run-test_speckit.implement__T001__attempt-1__retry-0.json"
+                        ),
+                        "handoff": {"task_id": "T001", "task_attempt": 1, "task_action": "started"},
+                    }
+                ),
+                "",
+                False,
+                [str(part) for part in command],
+                timeout_seconds,
+            )
+        raise AssertionError(f"unexpected command: {command_text}")
+
+    monkeypatch.setattr(speckit_implement_step, "_run_command", fake_run_command)
+
+    exit_code = speckit_implement_step.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--feature-id",
+            "023",
+            "--correlation-id",
+            "run-test:speckit.implement",
+            "--phase",
+            "implement",
+            "--phase-type",
+            "story",
+            "--next-phase",
+            "closed",
+            "--require-handoff",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["ok"] is True
+    debug_payload = json.loads(Path(payload["debug_path"]).read_text(encoding="utf-8"))
+    closeout_stage = next(stage for stage in debug_payload["stages"] if stage["name"] == "closeout")
+    assert closeout_stage["status"] == "pass"
+    assert closeout_stage["details"]["clickup_sync_status"] == "retry_required"
 
 def test_ensure_implement_branch_creates_branch_from_main(monkeypatch, tmp_path: Path) -> None:
     """Implement should create the feature branch from local main when needed."""

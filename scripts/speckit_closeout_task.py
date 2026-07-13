@@ -20,11 +20,16 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, NoReturn
+from typing import Iterable, Mapping, NoReturn
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 TASK_LINE_RE = re.compile(r"^(?P<prefix>\s*-\s*)\[(?P<mark>[ XH])\]\s*(?P<task>T\d+)(?P<rest>\b.*)$")
 
 VERDICT_PASS = "PASS"
+CLICKUP_DONE_STATUS = "done"
 
 
 @dataclass(frozen=True)
@@ -39,6 +44,10 @@ class CloseoutResult:
     next_action: str
     next_task_id: str | None
     qa_verdict: str | None
+    clickup_sync_status: str
+    clickup_desired_status: str | None = None
+    clickup_task_id: str | None = None
+    clickup_sync_reason: str | None = None
 
     def to_json(self) -> str:
         """Serialize result to canonical JSON."""
@@ -52,6 +61,10 @@ class CloseoutResult:
                 "next_action": self.next_action,
                 "next_task_id": self.next_task_id,
                 "qa_verdict": self.qa_verdict,
+                "clickup_sync_status": self.clickup_sync_status,
+                "clickup_desired_status": self.clickup_desired_status,
+                "clickup_task_id": self.clickup_task_id,
+                "clickup_sync_reason": self.clickup_sync_reason,
             },
             sort_keys=True,
         )
@@ -220,6 +233,52 @@ def _read_qa_verdict(result_path: Path | None) -> tuple[str | None, list[str]]:
         return None, [f"Invalid QA result file: {result_path}"]
 
 
+def _default_manifest_path(repo_root: Path) -> Path:
+    """Return the default ClickUp manifest path for the repository root."""
+    return repo_root / ".speckit" / "clickup-manifest.json"
+
+
+def _resolve_mapped_clickup_task_id(
+    *,
+    manifest_path: Path,
+    feature_id: str,
+    task_id: str,
+) -> tuple[str | None, str | None]:
+    """Resolve the mapped ClickUp subtask id for one repo task."""
+    from src.mcp_clickup.manifest import load_manifest, task_projection_manifest_key
+
+    if not manifest_path.exists():
+        return None, "clickup_manifest_missing"
+    try:
+        manifest = load_manifest(manifest_path)
+    except Exception as exc:  # pragma: no cover - defensive guard for malformed manifests
+        return None, f"clickup_manifest_unreadable:{exc}"
+    payload = manifest.task_projection_meta.get(task_projection_manifest_key(feature_id, task_id))
+    if not isinstance(payload, Mapping):
+        return None, "clickup_task_mapping_missing"
+    subtask_id = str(payload.get("subtask_id", "")).strip()
+    if not subtask_id:
+        return None, "clickup_task_mapping_missing_subtask_id"
+    return subtask_id, None
+
+
+def _plan_clickup_closeout_reflection(
+    *,
+    manifest_path: Path,
+    feature_id: str,
+    task_id: str,
+) -> tuple[str, str | None, str | None, str | None]:
+    """Plan the agent-owned ClickUp done update for one successfully closed repo task."""
+    clickup_task_id, resolution_reason = _resolve_mapped_clickup_task_id(
+        manifest_path=manifest_path,
+        feature_id=feature_id,
+        task_id=task_id,
+    )
+    if not clickup_task_id:
+        return "skipped", None, None, resolution_reason
+    return "pending_agent_update", clickup_task_id, CLICKUP_DONE_STATUS, None
+
+
 def _closeout(
     *,
     feature_id: str,
@@ -230,6 +289,7 @@ def _closeout(
     qa_run_id: str,
     qa_result_path: Path | None,
     actor: str,
+    manifest_path: Path,
 ) -> CloseoutResult:
     repo_root = Path(__file__).resolve().parent.parent
     lines = _task_lines(tasks_file)
@@ -283,6 +343,7 @@ def _closeout(
             next_action="fix_required",
             next_task_id=None,
             qa_verdict=qa_verdict,
+            clickup_sync_status="not_attempted",
         )
 
     # QA passed — proceed with canonical closeout
@@ -314,6 +375,12 @@ def _closeout(
     updated[task_idx] = _rewrite_task_line(updated[task_idx], task_id)
     tasks_file.write_text("\n".join(updated) + "\n", encoding="utf-8")
 
+    clickup_sync_status, clickup_task_id, clickup_desired_status, clickup_sync_reason = _plan_clickup_closeout_reflection(
+        manifest_path=manifest_path,
+        feature_id=feature_id,
+        task_id=task_id,
+    )
+
     return CloseoutResult(
         ok=True,
         feature_id=feature_id,
@@ -323,6 +390,10 @@ def _closeout(
         next_action=next_action,
         next_task_id=next_task_id,
         qa_verdict=qa_verdict,
+        clickup_sync_status=clickup_sync_status,
+        clickup_desired_status=clickup_desired_status,
+        clickup_task_id=clickup_task_id,
+        clickup_sync_reason=clickup_sync_reason,
     )
 
 
@@ -336,6 +407,7 @@ def closeout_task(
     qa_run_id: str,
     qa_result_path: Path | None,
     actor: str,
+    manifest_path: Path | None = None,
 ) -> CloseoutResult:
     """Run canonical task closeout and return the structured result."""
     return _closeout(
@@ -347,6 +419,7 @@ def closeout_task(
         qa_run_id=qa_run_id,
         qa_result_path=qa_result_path,
         actor=actor,
+        manifest_path=manifest_path or _default_manifest_path(REPO_ROOT),
     )
 
 
@@ -360,6 +433,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--commit-sha")
     parser.add_argument("--qa-run-id", required=True)
     parser.add_argument("--qa-result-file", help="Path to offline QA result JSON.")
+    parser.add_argument("--clickup-manifest-path", help="Path to the ClickUp sync manifest for mapped task reflection.")
     parser.add_argument("--actor", default="codex")
     parser.add_argument("--json", action="store_true", help="Emit JSON only.")
     return parser
@@ -378,6 +452,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         qa_run_id=args.qa_run_id,
         qa_result_path=qa_result_path,
         actor=args.actor,
+        manifest_path=Path(args.clickup_manifest_path) if args.clickup_manifest_path else None,
     )
     print(result.to_json() if args.json else result.to_json())
     return 0 if result.ok else 1

@@ -175,6 +175,7 @@ class ComposioClickUpAdapter:
         payload = await self._call_tool("CLICKUP_UPDATE_TASK", arguments)
         return self._extract_object(payload, tool_name="CLICKUP_UPDATE_TASK")
 
+
     async def list_custom_fields(self, list_id: str) -> list[dict[str, Any]]:
         """List custom fields visible on a list."""
         payload = await self._call_tool("CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS", {"list_id": list_id})

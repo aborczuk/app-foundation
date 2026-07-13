@@ -47,6 +47,7 @@ Key hard-gate facts:
 - `analysis_completed` must occur before `/speckit.e2e`.
 - `implementation_completed` may follow `analysis_completed` directly; `e2e_generated` is no longer a prerequisite for implementation completion.
 - `offline_qa_passed` is required before task close. The QA agent (`scripts/speckit_behavioral_qa.py`) verifies acceptance criteria, runs tests, and checks for implementation drift. Tasks with `FIX_REQUIRED` cannot close, and offline QA runs against branch/worktree state without requiring a pre-QA commit.
+- For ClickUp-integrated features, agent-owned Composio follow-through happens after canonical repo closeout. The closeout payload provides the mapped ClickUp task id and desired status; the command agent performs the external update and repo closure remains authoritative if that external step fails.
 - `/speckit.implement` is a generative command-agent-owned orchestration step. It is not a deterministic step-script runner and it must not delegate task execution to a Codex subrunner.
 
 For exact matrix and event semantics, use `constitution.md`.

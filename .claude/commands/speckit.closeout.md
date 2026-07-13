@@ -36,10 +36,12 @@ Close the current task through one append-first path that records the task evide
 4. Parse the JSON payload:
    - `next_action=continue`: report the compact status line and stop.
    - `next_task_id=None`: report the compact status line and stop because the story has no more open tasks.
+   - if `clickup_sync_status=pending_agent_update`, carry `clickup_task_id` and `clickup_desired_status` forward to the agent-owned post-closeout ClickUp update step.
 5. Do not emit a prose summary. Return only the compact status line plus the closeout payload fields.
 
 ## Contract
 
 - Closeout must remain ledger-first.
 - The command must not manually rewrite task state outside the canonical closeout script.
+- Agent-owned external updates must happen after closeout, not inside the canonical closeout script.
 - The command must preserve the silent-continuation behavior between tasks and the hard stop at story boundaries without handing off to another command.

@@ -98,8 +98,15 @@ Before task execution or handoff:
   4. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
   5. if QA returns `FIX_REQUIRED`, apply those findings in the root agent and retry the same task
   6. once QA returns a pass-worthy offline-QA result, run `scripts/speckit_closeout_task.py` and include commit metadata only if a real task commit exists
+  7. if closeout returns `clickup_sync_status=pending_agent_update`, the root agent must use the connected Composio ClickUp tools to set that mapped task to the exact `clickup_desired_status` value after repo closeout succeeds
+  8. if the Composio ClickUp update fails, keep repo closeout authoritative, report the failure as retry-needed, and continue without rolling back task closure
 - The orchestrator may verify task identity, required artifacts, and evidence completeness before the QA handoff, but must not perform an additional correctness review or substitute its own QA judgment for the QA subagent verdict.
 - A root-agent implementation result is not commit authorization. QA must run against the active branch/worktree state and must not depend on a pre-QA commit.
+- Agent-owned ClickUp completion flow after closeout:
+  - read `clickup_task_id`, `clickup_desired_status`, and `clickup_sync_status` from the closeout payload
+  - when `clickup_sync_status=pending_agent_update`, use the connected ClickUp Composio toolkit after closeout, not before
+  - validate or re-derive the exact allowed done label if the update rejects the requested status
+  - never reopen or roll back the repo task when the external ClickUp update fails
 - Guard JSON payload/result handling actively:
   - extract a compact decision summary once rather than repeatedly rereading full payload/result JSON artifacts
   - QA payload minimum fields: `feature_id`, `task_id`, `changed_files`, `acceptance_criteria`, `test_runs`

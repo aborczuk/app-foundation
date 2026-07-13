@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import importlib.util
 import json
 import subprocess
 import sys
@@ -11,6 +12,21 @@ import sys
 
 SCRIPT = Path("scripts/speckit_closeout_task.py")
 LEDGER = Path("scripts/task_ledger.py")
+
+
+def _load_closeout_module():
+    """Load the closeout script as an importable test module."""
+    scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
+    script_path = scripts_dir / "speckit_closeout_task.py"
+    scripts_dir_str = str(scripts_dir)
+    if scripts_dir_str not in sys.path:
+        sys.path.insert(0, scripts_dir_str)
+    spec = importlib.util.spec_from_file_location("speckit_closeout_task", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _append_ledger_event(
@@ -187,6 +203,111 @@ def test_closeout_script_passes_without_commit_sha(tmp_path: Path) -> None:
     assert "offline_qa_started" in task_events
     assert "offline_qa_passed" in task_events
     assert "commit_created" not in task_events
+
+
+def test_closeout_reflects_mapped_clickup_task_done(tmp_path: Path) -> None:
+    closeout_module = _load_closeout_module()
+    tasks_file = tmp_path / "tasks.md"
+    ledger_file = tmp_path / "ledger.jsonl"
+    manifest_path = tmp_path / "clickup-manifest.json"
+    qa_result_file = tmp_path / "qa-result.json"
+    _write_tasks_file(tasks_file, phase_two_task_open=True)
+    qa_result_file.write_text(json.dumps({"verdict": "PASS", "findings": []}), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": "1",
+                "workspace_id": "workspace-1",
+                "space_id": "space-1",
+                "folders": {},
+                "lists": {},
+                "tasks": {},
+                "subtasks": {},
+                "feature_projection_meta": {},
+                "task_projection_meta": {
+                    "000:T001": {
+                        "task_id": "T001",
+                        "subtask_id": "clickup-subtask-1",
+                    }
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _append_ledger_event(ledger_file, feature_id="000", task_id="T001", event="task_started")
+    _append_ledger_event(ledger_file, feature_id="000", task_id="T001", event="discovery_completed")
+    result = closeout_module.closeout_task(
+        feature_id="000",
+        task_id="T001",
+        tasks_file=tasks_file,
+        ledger_file=ledger_file,
+        commit_sha="abc1234",
+        qa_run_id="qa-done",
+        qa_result_path=qa_result_file,
+        actor="codex",
+        manifest_path=manifest_path,
+    )
+    payload = json.loads(result.to_json())
+
+    assert payload["ok"] is True
+    assert payload["clickup_sync_status"] == "pending_agent_update"
+    assert payload["clickup_desired_status"] == "done"
+    assert payload["clickup_task_id"] == "clickup-subtask-1"
+    assert payload["clickup_sync_reason"] is None
+
+
+def test_closeout_skips_clickup_agent_followthrough_when_manifest_mapping_is_missing(tmp_path: Path) -> None:
+    closeout_module = _load_closeout_module()
+    tasks_file = tmp_path / "tasks.md"
+    ledger_file = tmp_path / "ledger.jsonl"
+    manifest_path = tmp_path / "clickup-manifest.json"
+    qa_result_file = tmp_path / "qa-result.json"
+    _write_tasks_file(tasks_file, phase_two_task_open=True)
+    qa_result_file.write_text(json.dumps({"verdict": "PASS", "findings": []}), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": "1",
+                "workspace_id": "workspace-1",
+                "space_id": "space-1",
+                "folders": {},
+                "lists": {},
+                "tasks": {},
+                "subtasks": {},
+                "feature_projection_meta": {},
+                "task_projection_meta": {},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _append_ledger_event(ledger_file, feature_id="000", task_id="T001", event="task_started")
+    _append_ledger_event(ledger_file, feature_id="000", task_id="T001", event="discovery_completed")
+
+    class _FailingReporter:
+        async def mark_task_done(self, task_id: str) -> dict[str, object]:
+            raise RuntimeError(f"temporary failure for {task_id}")
+
+    result = closeout_module.closeout_task(
+        feature_id="000",
+        task_id="T001",
+        tasks_file=tasks_file,
+        ledger_file=ledger_file,
+        commit_sha="abc1234",
+        qa_run_id="qa-done",
+        qa_result_path=qa_result_file,
+        actor="codex",
+        manifest_path=manifest_path,
+    )
+    payload = json.loads(result.to_json())
+
+    assert payload["ok"] is True
+    assert payload["clickup_sync_status"] == "skipped"
+    assert payload["clickup_task_id"] is None
+    assert payload["clickup_desired_status"] is None
+    assert "clickup_task_mapping_missing" in str(payload["clickup_sync_reason"])
+    assert "- [X] T001 First task" in tasks_file.read_text(encoding="utf-8")
 
 
 def test_closeout_docs_point_to_canonical_script() -> None:
