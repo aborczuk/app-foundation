@@ -20,6 +20,7 @@ This document maps how work moves through the repository workflow, independent o
 | Deterministic phase orchestration | `scripts/pipeline_driver.py`, `scripts/pipeline_driver_state.py`, `scripts/pipeline_driver_contracts.py` |
 | Edit/validation/handoff loop | `scripts/edit_code.py` |
 | Deterministic guards | `scripts/pytest_guard.py`, `scripts/ruff_guard.py`, `scripts/pyright_guard.py`, `scripts/git_diff_guard.py` |
+| Agent-owned ClickUp follow-through | `scripts/speckit_closeout_task.py`, `scripts/speckit_clickup_trigger.py`, connected Composio ClickUp tools |
 
 ## Workflow Layers
 
@@ -60,6 +61,7 @@ Validation is not ad hoc. The canonical loop runs through guarded scripts and `s
 - Feature state and task state are separate concerns.
 - Guards and validation scripts are part of the workflow contract, not optional helper scripts.
 - `specs/` artifacts describe features; they do not replace repo-wide workflow documentation.
+- External ClickUp mutations are agent-owned side effects; repo state does not depend on a direct ClickUp runtime.
 
 ## Related Deep-Dive Docs
 
@@ -75,4 +77,3 @@ Validation is not ad hoc. The canonical loop runs through guarded scripts and `s
 3. `docs/architecture/workflow-overview.md`
 4. `docs/governance/speckit-end-to-end.md`
 5. `docs/governance/pipeline-driver-readme.md`
-

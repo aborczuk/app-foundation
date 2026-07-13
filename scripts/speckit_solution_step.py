@@ -288,7 +288,7 @@ def _clickup_sync_enabled() -> bool:
 
 
 def _run_clickup_sync(*, repo_root: Path) -> dict[str, Any]:
-    """Run ClickUp publication after stabilization when the repo hook is enabled."""
+    """Report the retired repo-owned ClickUp publication path after stabilization."""
     if not _clickup_sync_enabled():
         return {
             "ok": True,
@@ -296,22 +296,17 @@ def _run_clickup_sync(*, repo_root: Path) -> dict[str, Any]:
             "reason": "clickup_sync_disabled",
             "runtime_entrypoint": str(DEFAULT_CLICKUP_RUNTIME),
         }
-
-    command = [
-        sys.executable,
-        str(DEFAULT_CLICKUP_RUNTIME),
-        "--json",
-    ]
-    completed = _run_command(command, cwd=repo_root)
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "clickup_sync_failed"
-        raise RuntimeError(detail)
-    parsed = json.loads(completed.stdout or "{}")
-    if not isinstance(parsed, dict):
-        raise RuntimeError("clickup sync must return JSON")
-    if not bool(parsed.get("ok", False)):
-        raise RuntimeError(str(parsed.get("message") or parsed.get("error_code") or "clickup_sync_failed"))
-    return parsed
+    del repo_root
+    return {
+        "ok": True,
+        "skipped": True,
+        "reason": "clickup_sync_agent_owned",
+        "runtime_entrypoint": str(DEFAULT_CLICKUP_RUNTIME),
+        "next_step": (
+            "Use the connected Composio ClickUp tools from the agent workflow after stabilization; "
+            "the repo no longer runs direct ClickUp publication."
+        ),
+    }
 
 
 def _ledger_feature_id(feature_dir: Path) -> str:

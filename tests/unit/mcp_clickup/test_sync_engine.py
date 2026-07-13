@@ -527,3 +527,41 @@ async def test_status_drift_reports_missing_manifest_subtasks() -> None:
     list_status = summary.by_list["015"]
     assert list_status.done == 1
     assert list_status.drift == ["015:T999"]
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_prunes_stale_manifest_mappings_for_removed_repo_tasks() -> None:
+    """Bootstrap should retire stale manifest mappings when repo tasks disappear from the artifact graph."""
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
+
+    artifacts_v1 = [
+        _artifact("014", parent_num=None, has_tasks=False),
+        _artifact("015", parent_num="014", has_tasks=True, groups=[_group("015", "US1", ["T001", "T002"])]),
+    ]
+    manifest = SyncManifest(version="1", workspace_id="", space_id="")
+    report_v1 = await engine.bootstrap_from_artifacts(
+        artifacts=artifacts_v1,
+        space_id="space-1",
+        manifest=manifest,
+    )
+
+    assert report_v1.created > 0
+    assert "015:T002" in manifest.subtasks
+    assert "015:T002" in manifest.task_projection_meta
+
+    artifacts_v2 = [
+        _artifact("014", parent_num=None, has_tasks=False),
+        _artifact("015", parent_num="014", has_tasks=True, groups=[_group("015", "US1", ["T001"])]),
+    ]
+    report_v2 = await engine.bootstrap_from_artifacts(
+        artifacts=artifacts_v2,
+        space_id="space-1",
+        manifest=manifest,
+    )
+
+    assert "015:T002" not in manifest.subtasks
+    assert "015:T002" not in manifest.task_projection_meta
+    assert report_v2.updated >= 1
+    assert "subtask:015:T002" in report_v2.drift_items
+    assert "task_projection:015:T002" in report_v2.drift_items

@@ -10,12 +10,14 @@ import pytest
 
 from scripts import speckit_clickup_trigger as trigger_module
 from scripts.speckit_clickup_trigger import (
+    DONE_STATUS,
     READY_FOR_IMPLEMENT_STATUS,
     ClickUpTriggerRequest,
     main,
     parse_request,
     render_response,
     resolve_request_mapping,
+    status_is_done_signal,
     status_is_start_request,
     write_rejection_feedback,
 )
@@ -87,6 +89,13 @@ def test_status_is_start_request_only_accepts_ready_for_implement() -> None:
     assert status_is_start_request("in progress") is False
 
 
+def test_status_is_done_signal_only_accepts_done() -> None:
+    """Only the exact done signal should be treated as an external closeout claim."""
+    assert status_is_done_signal("done") is True
+    assert status_is_done_signal("DONE") is True
+    assert status_is_done_signal("ready-for-implement") is False
+
+
 def test_render_response_reports_scaffold_mode() -> None:
     """The scaffold response should advertise the deferred execution path."""
     payload = render_response(
@@ -130,7 +139,9 @@ def test_render_response_reports_eligible_gate_summary() -> None:
     assert payload["mode"] == "trigger_gate"
     assert payload["decision"] == "eligible"
     assert payload["ledger_mutation"] is False
-    assert payload["gate"]["task_id"] == "T014"
+    gate = payload["gate"]
+    assert isinstance(gate, dict)
+    assert gate["task_id"] == "T014"
 
 
 def test_render_response_reports_blocked_gate_summary() -> None:
@@ -158,9 +169,71 @@ def test_render_response_reports_blocked_gate_summary() -> None:
     assert payload["decision"] == "blocked"
     assert payload["reason_code"] == "task_not_startable"
     assert payload["ledger_mutation"] is False
-    assert payload["gate"]["blocking_reason"] == (
+    gate = payload["gate"]
+    assert isinstance(gate, dict)
+    assert gate["blocking_reason"] == (
         "Cannot start T015; prior task T014 is not closed in the ledger"
     )
+
+
+def test_render_response_reports_done_drift_when_repo_task_is_open() -> None:
+    """A ClickUp done status must not override an open repo task."""
+    payload = render_response(
+        ClickUpTriggerRequest(
+            feature_id="048",
+            task_id="T015",
+            clickup_task_id="CU-15",
+            actor="clickup",
+            dry_run=True,
+            status=DONE_STATUS,
+        ),
+        gate_summary={
+            "feature_id": "048",
+            "task_id": "T015",
+            "parallel": False,
+            "task_started": True,
+            "task_closed": False,
+            "blocking_reason": None,
+        },
+    )
+
+    assert payload["ok"] is False
+    assert payload["decision"] == "drift"
+    assert payload["reason_code"] == "external_done_repo_open"
+    assert payload["ledger_mutation"] is False
+    gate = payload["gate"]
+    assert isinstance(gate, dict)
+    assert gate["task_closed"] is False
+
+
+def test_render_response_reports_ready_drift_when_repo_task_is_closed() -> None:
+    """A ClickUp ready status must not reopen a repo task that is already closed."""
+    payload = render_response(
+        ClickUpTriggerRequest(
+            feature_id="048",
+            task_id="T015",
+            clickup_task_id="CU-15",
+            actor="clickup",
+            dry_run=True,
+            status=READY_FOR_IMPLEMENT_STATUS,
+        ),
+        gate_summary={
+            "feature_id": "048",
+            "task_id": "T015",
+            "parallel": False,
+            "task_started": True,
+            "task_closed": True,
+            "blocking_reason": None,
+        },
+    )
+
+    assert payload["ok"] is False
+    assert payload["decision"] == "drift"
+    assert payload["reason_code"] == "external_ready_repo_closed"
+    assert payload["ledger_mutation"] is False
+    gate = payload["gate"]
+    assert isinstance(gate, dict)
+    assert gate["task_closed"] is True
 
 
 def test_render_response_rejects_ambiguous_mapping() -> None:
@@ -369,7 +442,7 @@ def test_main_dry_run_reports_gate_summary(monkeypatch, capsys: pytest.CaptureFi
 
 
 def test_render_response_ignores_non_ready_status() -> None:
-    """Non-ready status updates should be ignored before any repo gate evaluation."""
+    """Non-actionable status updates should be ignored before any repo gate evaluation."""
     payload = render_response(
         ClickUpTriggerRequest(
             clickup_task_id="CU-16",
@@ -383,8 +456,44 @@ def test_render_response_ignores_non_ready_status() -> None:
 
     assert payload["ok"] is True
     assert payload["decision"] == "ignored"
-    assert payload["reason_code"] == "non_start_status"
+    assert payload["reason_code"] == "non_actionable_status"
     assert payload["ledger_mutation"] is False
+
+
+def test_main_done_status_reports_gate_drift(monkeypatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Done-status requests should stay non-mutating and surface repo-vs-ClickUp drift."""
+    monkeypatch.setattr(
+        trigger_module,
+        "_resolve_gate_summary",
+        lambda *, repo_root, request: {
+            "feature_id": request.feature_id,
+            "task_id": request.task_id,
+            "parallel": False,
+            "task_started": True,
+            "task_closed": False,
+            "blocking_reason": None,
+        },
+    )
+
+    exit_code = main(
+        [
+            "--feature-id",
+            "048",
+            "--task-id",
+            "T015",
+            "--clickup-task-id",
+            "CU-15",
+            "--status",
+            DONE_STATUS,
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["mode"] == "trigger_gate"
+    assert payload["decision"] == "drift"
+    assert payload["reason_code"] == "external_done_repo_open"
 
 
 def test_resolve_request_mapping_uses_manifest_subtask_id() -> None:

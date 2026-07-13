@@ -14,6 +14,7 @@ from src.mcp_clickup.composio_adapter import ComposioClickUpAdapter
 from src.mcp_clickup.manifest import ClickUpTaskMappingError, load_manifest, resolve_task_projection_mapping
 
 READY_FOR_IMPLEMENT_STATUS = "ready-for-implement"
+DONE_STATUS = "done"
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class TriggerRejectionReporter(Protocol):
         status: str | None = None,
     ) -> dict[str, Any]:
         """Update one ClickUp task with rejection feedback."""
+        ...
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,6 +72,16 @@ def build_parser() -> argparse.ArgumentParser:
 def status_is_start_request(status: str) -> bool:
     """Return whether the external status transition should count as a start request."""
     return str(status).strip().lower() == READY_FOR_IMPLEMENT_STATUS
+
+
+def status_is_done_signal(status: str) -> bool:
+    """Return whether the external status transition claims the repo task is done."""
+    return str(status).strip().lower() == DONE_STATUS
+
+
+def _status_needs_repo_gate(status: str) -> bool:
+    """Return whether the external status must be checked against repo state."""
+    return status_is_start_request(status) or status_is_done_signal(status)
 
 
 def _resolve_manifest_path(manifest_path: str) -> Path:
@@ -133,15 +145,15 @@ def render_response(
     gate_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Render a deterministic trigger response for scaffold and gate-only flows."""
-    if not status_is_start_request(request.status):
+    if not _status_needs_repo_gate(request.status):
         return {
             "ok": True,
             "mode": "trigger_gate",
             "decision": "ignored",
-            "reason_code": "non_start_status",
+            "reason_code": "non_actionable_status",
             "ledger_mutation": False,
             "request": asdict(request),
-            "next_step": "Ignore ClickUp status transitions unless they enter ready-for-implement.",
+            "next_step": "Ignore ClickUp status transitions unless they enter ready-for-implement or done.",
         }
 
     if mapping_count != 1:
@@ -176,6 +188,39 @@ def render_response(
         "task_closed": bool(gate_summary.get("task_closed", False)),
         "blocking_reason": blocking_reason,
     }
+    if status_is_done_signal(request.status):
+        if gate_payload["task_closed"]:
+            return {
+                "ok": True,
+                "mode": "trigger_gate",
+                "decision": "already_closed",
+                "reason_code": "repo_already_closed",
+                "ledger_mutation": False,
+                "request": asdict(request),
+                "gate": gate_payload,
+                "next_step": "Treat the ClickUp done signal as aligned; the repo ledger remains authoritative.",
+            }
+        return {
+            "ok": False,
+            "mode": "trigger_gate",
+            "decision": "drift",
+            "reason_code": "external_done_repo_open",
+            "ledger_mutation": False,
+            "request": asdict(request),
+            "gate": gate_payload,
+            "next_step": "Keep the repo task open and correct ClickUp because the repo ledger is authoritative.",
+        }
+    if gate_payload["task_closed"]:
+        return {
+            "ok": False,
+            "mode": "trigger_gate",
+            "decision": "drift",
+            "reason_code": "external_ready_repo_closed",
+            "ledger_mutation": False,
+            "request": asdict(request),
+            "gate": gate_payload,
+            "next_step": "Keep the repo task closed and correct ClickUp because the repo ledger is authoritative.",
+        }
     if blocking_reason is not None:
         return {
             "ok": False,
@@ -288,7 +333,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the scaffold trigger CLI."""
     request, as_json, repo_root, manifest_path = parse_request(argv if argv is not None else sys.argv[1:])
     resolved_request = request
-    if status_is_start_request(request.status) and (not request.feature_id or not request.task_id):
+    if _status_needs_repo_gate(request.status) and (not request.feature_id or not request.task_id):
         if not manifest_path.exists():
             payload = {
                 "ok": False,
@@ -319,8 +364,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload["clickup_task_id"] = clickup_task_id
                 payload["manifest_path"] = str(manifest_path)
     else:
-        if status_is_start_request(resolved_request.status) and resolved_request.feature_id and resolved_request.task_id:
-            if resolved_request.dry_run:
+        if _status_needs_repo_gate(resolved_request.status) and resolved_request.feature_id and resolved_request.task_id:
+            if resolved_request.dry_run or status_is_done_signal(resolved_request.status):
                 payload = render_response(
                     resolved_request,
                     gate_summary=_resolve_gate_summary(repo_root=repo_root, request=resolved_request),

@@ -144,12 +144,22 @@ class SyncEngine:
         if not resolved.space_id:
             resolved.space_id = space_id
 
+        reconciliation_drift = self._prune_stale_manifest_mappings(
+            manifest=resolved,
+            artifacts=artifacts,
+        )
+        if reconciliation_drift:
+            flush(resolved)
+
         report = await self._create_missing_items(
             manifest=resolved,
             artifacts=artifacts,
             field_ids_by_list={},
             flush_manifest=flush,
         )
+        if reconciliation_drift:
+            report.drift_items.extend(reconciliation_drift)
+            report.updated += 1
         flush(resolved)
         return report
 
@@ -551,6 +561,52 @@ class SyncEngine:
         if changed:
             manifest.task_projection_meta[key] = payload
         return changed
+
+    def _prune_stale_manifest_mappings(
+        self,
+        *,
+        manifest: SyncManifest,
+        artifacts: list[SpecArtifact],
+    ) -> list[str]:
+        """Drop stale manifest mappings for repo tasks that no longer exist in artifacts."""
+        top_level = [artifact for artifact in artifacts if not artifact.is_phase_spec]
+        phase_artifacts = self._phase_artifacts(artifacts)
+
+        valid_folder_keys = {artifact.feature_num for artifact in top_level}
+        valid_list_keys = {phase.feature_num for phase in phase_artifacts}
+        valid_feature_projection_keys = valid_list_keys
+        valid_task_keys = {
+            task_manifest_key(phase.feature_num, group.title)
+            for phase in phase_artifacts
+            for group in phase.task_groups
+        }
+        valid_subtask_keys = {
+            subtask_manifest_key(phase.feature_num, task.id)
+            for phase in phase_artifacts
+            for group in phase.task_groups
+            for task in group.tasks
+        }
+        valid_task_projection_keys = {
+            task_projection_manifest_key(phase.feature_num, task.id)
+            for phase in phase_artifacts
+            for group in phase.task_groups
+            for task in group.tasks
+        }
+
+        drift_items: list[str] = []
+        for label, mapping, valid_keys in (
+            ("folder", manifest.folders, valid_folder_keys),
+            ("list", manifest.lists, valid_list_keys),
+            ("task", manifest.tasks, valid_task_keys),
+            ("subtask", manifest.subtasks, valid_subtask_keys),
+            ("feature_projection", manifest.feature_projection_meta, valid_feature_projection_keys),
+            ("task_projection", manifest.task_projection_meta, valid_task_projection_keys),
+        ):
+            stale_keys = [key for key in sorted(mapping.keys()) if key not in valid_keys]
+            for key in stale_keys:
+                mapping.pop(key, None)
+                drift_items.append(f"{label}:{key}")
+        return drift_items
 
     async def _ensure_subtask(
         self,

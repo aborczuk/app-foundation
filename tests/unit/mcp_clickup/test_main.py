@@ -61,3 +61,23 @@ def test_main_emits_status_json_result(monkeypatch, capsys) -> None:
         "error_code": "manifest_missing",
         "message": "Manifest file does not exist",
     }
+
+
+def test_bootstrap_async_result_reports_agent_owned_runtime() -> None:
+    """Direct bootstrap runtime should stay disabled in favor of agent-owned Composio execution."""
+    payload = clickup_main.run_bootstrap_result()
+
+    assert payload["mode"] == "bootstrap"
+    assert payload["ok"] is False
+    assert payload["exit_code"] == 1
+    assert payload["error_code"] == "agent_owned_runtime"
+
+
+def test_status_async_result_reports_agent_owned_runtime() -> None:
+    """Direct status runtime should stay disabled in favor of agent-owned Composio execution."""
+    payload = clickup_main.run_status_result()
+
+    assert payload["mode"] == "status"
+    assert payload["ok"] is False
+    assert payload["exit_code"] == 1
+    assert payload["error_code"] == "agent_owned_runtime"

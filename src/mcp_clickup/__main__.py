@@ -1,4 +1,4 @@
-"""CLI entrypoint and async lifecycle guards for mcp_clickup."""
+"""Retired direct-runtime CLI entrypoint for mcp_clickup."""
 
 from __future__ import annotations
 
@@ -70,15 +70,29 @@ def _result_payload(
 
 
 def build_direct_clickup_transport(api_token: str) -> ClickUpClient:
-    """Build the current direct ClickUp transport implementation."""
+    """Build the legacy direct ClickUp transport implementation."""
     return ClickUpClient(api_token=api_token)
 
 
 @asynccontextmanager
 async def build_transport(api_token: str) -> AsyncIterator[ClickUpTransportProtocol]:
-    """Build the runtime transport context consumed by sync orchestration."""
+    """Build the legacy runtime transport context consumed by sync orchestration."""
     async with build_direct_clickup_transport(api_token) as transport:
         yield transport
+
+
+def _agent_owned_runtime_result(mode: str) -> dict[str, Any]:
+    """Return the structured result used after retiring direct ClickUp runtime calls."""
+    return _result_payload(
+        mode=mode,
+        ok=False,
+        exit_code=1,
+        error_code="agent_owned_runtime",
+        message=(
+            "Direct ClickUp runtime is retired. Use the connected Composio ClickUp tools "
+            "from the agent workflow instead."
+        ),
+    )
 
 
 def _runtime_paths() -> tuple[Path, Path]:
@@ -126,6 +140,8 @@ async def bootstrap_async() -> int:
 
 async def bootstrap_async_result() -> dict[str, Any]:
     """Run bootstrap flow and return a structured result payload."""
+    return _agent_owned_runtime_result("bootstrap")
+
     env = _load_runtime_env()
     if env is None:
         return _result_payload(
@@ -239,6 +255,8 @@ async def status_async() -> int:
 
 async def status_async_result() -> dict[str, Any]:
     """Run read-only status flow and return a structured result payload."""
+    return _agent_owned_runtime_result("status")
+
     env = _load_runtime_env()
     if env is None:
         return _result_payload(

@@ -60,6 +60,42 @@
 <!-- speckit_implement_docs:entry_id=T016:runbook -->
 - T016 finalized the trigger rejection path with explicit ambiguous-mapping feedback coverage and a loader fix so the trigger can exercise the implement-step seam reliably in script and test contexts.
 
+
+<!-- speckit_implement_docs:entry_id=T017:runbook -->
+- T017 added regression coverage for agent-owned closeout reflection and non-rollback behavior across the closeout and implement-step seams.
+
+
+<!-- speckit_implement_docs:entry_id=T018:runbook -->
+- T018 moved successful closeout reflection to an agent-owned follow-through plan by returning the mapped ClickUp task id and desired done status from closeout instead of mutating ClickUp inside the repo runtime.
+
+
+<!-- speckit_implement_docs:entry_id=T019:runbook -->
+- T019 made post-closeout ClickUp reflection retryable by surfacing pending or skipped follow-through states without rolling back repo completion.
+
+
+<!-- speckit_implement_docs:entry_id=T020:runbook -->
+- T020 added drift and reconciliation regression coverage for the trigger gate, sync-engine mapping retirement, and retired runtime surface.
+
+
+<!-- speckit_implement_docs:entry_id=T021:runbook -->
+- T021 taught the trigger path to surface ready-versus-closed and done-versus-open drift explicitly so ClickUp state cannot override the repo ledger.
+
+
+<!-- speckit_implement_docs:entry_id=T022:runbook -->
+- T022 pruned stale manifest folder, list, task, subtask, and projection mappings when the stabilized repo task graph no longer includes them.
+
+
+<!-- speckit_implement_docs:entry_id=T023:runbook -->
+- T023 retired the direct token-based ClickUp runtime path and replaced it with structured agent-owned runtime results plus updated operator guidance.
+
+
+<!-- speckit_implement_docs:entry_id=T024:runbook -->
+- T024 reran the focused artifact parser, manifest, sync-engine, trigger, closeout, implement-step, lint, and type-check validations over the final feature seam.
+
+
+<!-- speckit_implement_docs:entry_id=T025:runbook -->
+- T025 updated the ClickUp architecture and workflow docs to describe the agent-owned closeout and drift model without stale direct-runtime guidance.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -103,3 +139,30 @@
 
 <!-- speckit_implement_docs:entry_id=T016:decision_log -->
 - Kept T016 intentionally tiny because the substantive rejection-reporting seam already landed under T015; this follow-through only pinned the remaining ambiguous feedback path and import reliability.
+
+<!-- speckit_implement_docs:entry_id=T017:decision_log -->
+- T017: kept repo closeout authoritative by testing the reflection behavior at the seam where offline QA, closeout planning, and implement orchestration meet, instead of reintroducing a repo-owned ClickUp completion path.
+
+<!-- speckit_implement_docs:entry_id=T018:decision_log -->
+- T018: kept repo closure and external ClickUp completion separate so the ledger closes first and the agent performs the managed ClickUp update afterward.
+
+<!-- speckit_implement_docs:entry_id=T019:decision_log -->
+- T019: preserved repo authority by treating external ClickUp completion as a follow-through side effect instead of a transaction that can reopen a closed repo task.
+
+<!-- speckit_implement_docs:entry_id=T020:decision_log -->
+- T020: pinned the repo-authoritative drift behavior in tests before closing the remaining trigger and sync seams.
+
+<!-- speckit_implement_docs:entry_id=T021:decision_log -->
+- T021: reused the existing explicit task gate as the repo truth source instead of inventing a second trigger-specific authority model.
+
+<!-- speckit_implement_docs:entry_id=T022:decision_log -->
+- T022: reconciled removed repo tasks by retiring stale manifest ownership locally rather than trying to make ClickUp the authoritative source.
+
+<!-- speckit_implement_docs:entry_id=T023:decision_log -->
+- T023: disabled the repo-owned ClickUp runtime in place so future automation must go through the managed agent-owned path instead of the legacy direct transport.
+
+<!-- speckit_implement_docs:entry_id=T024:decision_log -->
+- T024: used the repo validation wrappers for the final regression pass so the shipped evidence matches the guarded workflow contract.
+
+<!-- speckit_implement_docs:entry_id=T025:decision_log -->
+- T025: documented the live boundary as repo-owned ledger plus agent-owned external mutation so operators do not infer a direct runtime dependency that no longer exists.

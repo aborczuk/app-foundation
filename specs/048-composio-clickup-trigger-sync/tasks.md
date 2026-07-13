@@ -119,12 +119,12 @@ description: "Task list for Composio ClickUp trigger sync"
 
 ### Tests for User Story 3
 
-- [ ] T017 [P] [US3] Add closeout reflection coverage for success and retryable transport failure in tests/unit/test_speckit_closeout_task.py and tests/unit/test_speckit_implement_step.py
+- [X] T017 [P] [US3] Add closeout reflection coverage for success and retryable transport failure in tests/unit/test_speckit_closeout_task.py and tests/unit/test_speckit_implement_step.py
 
 ### Implementation for User Story 3
 
-- [ ] T018 [US3] Update closeout to mark mapped ClickUp tasks done through Composio in scripts/speckit_closeout_task.py and src/mcp_clickup/composio_adapter.py
-- [ ] T019 [US3] Surface post-closeout sync failures without rolling back repo completion in scripts/speckit_implement_step.py and scripts/speckit_closeout_task.py
+- [X] T018 [US3] Update closeout to mark mapped ClickUp tasks done through Composio in scripts/speckit_closeout_task.py and src/mcp_clickup/composio_adapter.py
+- [X] T019 [US3] Surface post-closeout sync failures without rolling back repo completion in scripts/speckit_implement_step.py and scripts/speckit_closeout_task.py
 
 **Checkpoint**: Repo closeout remains authoritative and ClickUp completion becomes a reliable post-closeout side effect.
 
@@ -143,13 +143,13 @@ description: "Task list for Composio ClickUp trigger sync"
 
 ### Tests for User Story 4
 
-- [ ] T020 [P] [US4] Add drift and reconciliation regression coverage for sync and trigger paths in tests/unit/mcp_clickup/test_sync_engine.py and tests/unit/test_speckit_clickup_trigger.py
+- [X] T020 [P] [US4] Add drift and reconciliation regression coverage for sync and trigger paths in tests/unit/mcp_clickup/test_sync_engine.py and tests/unit/test_speckit_clickup_trigger.py
 
 ### Implementation for User Story 4
 
-- [ ] T021 [US4] Detect and report mapping drift when ClickUp state disagrees with repo state in src/mcp_clickup/sync_engine.py and scripts/speckit_clickup_trigger.py
-- [ ] T022 [US4] Reconcile removed or changed repo tasks without creating a second authority in src/mcp_clickup/manifest.py and src/mcp_clickup/sync_engine.py
-- [ ] T023 [US4] Retire direct ClickUp transport runtime paths and update the operator doc in src/mcp_clickup/clickup_client.py, src/mcp_clickup/__main__.py, and docs/architecture/mcp-clickup.md
+- [X] T021 [US4] Detect and report mapping drift when ClickUp state disagrees with repo state in src/mcp_clickup/sync_engine.py and scripts/speckit_clickup_trigger.py
+- [X] T022 [US4] Reconcile removed or changed repo tasks without creating a second authority in src/mcp_clickup/manifest.py and src/mcp_clickup/sync_engine.py
+- [X] T023 [US4] Retire direct ClickUp transport runtime paths and update the operator doc in src/mcp_clickup/clickup_client.py, src/mcp_clickup/__main__.py, and docs/architecture/mcp-clickup.md
 
 **Checkpoint**: Drift is surfaced deterministically and the repo remains authoritative when ClickUp state diverges.
 
@@ -161,8 +161,8 @@ description: "Task list for Composio ClickUp trigger sync"
 
 **Independent Test**: Run the focused regression suite and confirm the operator docs describe the shipped Composio sync, trigger, and closeout flow without stale direct-transport guidance.
 
-- [ ] T024 [P] Run focused sync, trigger, and closeout validation in tests/unit/mcp_clickup/test_artifact_parser.py, tests/unit/mcp_clickup/test_manifest.py, tests/unit/mcp_clickup/test_sync_engine.py, tests/unit/test_speckit_clickup_trigger.py, and tests/unit/test_speckit_closeout_task.py
-- [ ] T025 Update operator/runtime documentation for Composio-owned ClickUp sync, trigger, and closeout behavior in docs/architecture/mcp-clickup.md and docs/architecture/workflow-overview.md
+- [X] T024 [P] Run focused sync, trigger, and closeout validation in tests/unit/mcp_clickup/test_artifact_parser.py, tests/unit/mcp_clickup/test_manifest.py, tests/unit/mcp_clickup/test_sync_engine.py, tests/unit/test_speckit_clickup_trigger.py, and tests/unit/test_speckit_closeout_task.py
+- [X] T025 Update operator/runtime documentation for Composio-owned ClickUp sync, trigger, and closeout behavior in docs/architecture/mcp-clickup.md and docs/architecture/workflow-overview.md
 
 ---
 

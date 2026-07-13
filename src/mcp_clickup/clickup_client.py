@@ -1,4 +1,4 @@
-"""Async ClickUp REST client foundation with typed error mapping."""
+"""Legacy async ClickUp REST client kept only for compatibility during runtime retirement."""
 
 from __future__ import annotations
 
