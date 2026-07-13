@@ -40,6 +40,10 @@
 <!-- speckit_implement_docs:entry_id=T011:runbook -->
 - T011 replaced the Composio ClickUp scaffold with a working transport adapter that maps the managed ClickUp tool slugs into the sync-engine protocol, unwraps live Composio response shapes, and preserves the old sync-engine dictionary contracts.
 
+
+<!-- speckit_implement_docs:entry_id=T012:runbook -->
+- Solution finalize now appends a deterministic ClickUp sync stage and the ClickUp runtime emits structured JSON bootstrap/status payloads for post-stabilization automation.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -68,3 +72,6 @@
 
 <!-- speckit_implement_docs:entry_id=T011:decision_log -->
 - T011: implemented the adapter against the real Composio ClickUp tool slugs and normalized both wrapped and direct payload shapes so the sync engine can switch transports without rewriting its reconciliation logic.
+
+<!-- speckit_implement_docs:entry_id=T012:decision_log -->
+- Wired solution finalization to invoke the ClickUp runtime through a controlled --json interface with explicit disabled/error states so downstream synchronization can run deterministically after task stabilization.
