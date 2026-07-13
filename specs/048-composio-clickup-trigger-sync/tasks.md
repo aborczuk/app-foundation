@@ -66,7 +66,7 @@ description: "Task list for Composio ClickUp trigger sync"
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Add projection parsing regression coverage in tests/unit/mcp_clickup/test_artifact_parser.py and tests/unit/mcp_clickup/test_manifest.py
+- [X] T007 [P] [US1] Add projection parsing regression coverage in tests/unit/mcp_clickup/test_artifact_parser.py and tests/unit/mcp_clickup/test_manifest.py
 - [ ] T008 [P] [US1] Add idempotent sync orchestration coverage in tests/unit/mcp_clickup/test_sync_engine.py and tests/unit/mcp_clickup/test_composio_adapter.py
 
 ### Implementation for User Story 1
