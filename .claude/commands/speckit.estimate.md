@@ -89,21 +89,6 @@ Execution steps:
    - Any local DB mutation task missing transaction-integrity coverage should be flagged with a warning even if point score is low.
    - Tasks marked [P] (parallel) should generally score lower than sequential tasks in the same phase, since they are scoped to be independent.
 
-5c. **Implementation-ticket completeness gate**:
-
-Before finalizing estimates, validate every non-`[H]` HUD.
-
-A HUD is incomplete if:
-- `Current Repo Behavior` is generic, missing, or not repo-grounded
-- `Target Behavior` only restates the task title
-- `Required Edits` lacks concrete function, branch, schema, output, manifest, document, or side-effect changes
-- tests do not identify file, scenario, and assertion shape
-- done criteria do not include deterministic commands or expected artifact/event state
-- touched symbols are missing or not repo-grounded
-- unresolved template markers remain (`[FILL:`, `[EXAMPLE:`, or `[EXAMPLE INVALID:`)
-
-If any HUD is incomplete, estimation must report the incomplete task IDs and instruct rerun of `/speckit.tasking`. Do not use estimation to invent or silently patch missing task/HUD design.
-
 6. **Generate estimates.md** in FEATURE_DIR by pre-scaffolding from template:
 
     1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.estimate --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
@@ -117,13 +102,12 @@ If any HUD is incomplete, estimation must report the incomplete task IDs and ins
       - Phase Totals table (Phase | Points | Task Count | Parallel Tasks)
       - Warnings section (8/13-point flags, no-parallel phases, high-uncertainty tasks)
 
-7. **Validate task implementation detail, do not author missing design**: For each task, read `tasks.md` and any bounded repo context needed to confirm the task is implementation-ready. Estimate may update estimate metadata or note estimate changes, but it must not replace missing implementation directives with newly invented solution detail.
+7. **Validate task clarity, do not author missing design**: For each task, read `tasks.md` and any bounded repo context needed to confirm the task is concrete enough to estimate. Estimate may update estimate metadata or note estimate changes, but it must not replace missing implementation design with newly invented detail.
 
-   - If a non-`[H]` task lacks concrete required edits, touched symbols, tests, constraints, dependencies, or done criteria, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
-   - If a non-`[H]` task is still generic, placeholder-like, or under-specified, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
-   - For `[H]` tasks, validate that the task entry includes system, exact steps, verification command, functional goal, blocks/dependencies, and checklist expectations.
+   - If a non-`[H]` task is generic, placeholder-like, missing an exact file path, or its story phase lacks `Goal`, `Independent Test`, or `Acceptance Criteria`, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
+   - For `[H]` tasks, validate that the task entry includes the external system, the required human action, and the dependency/order context.
 
-   Tasking must pre-compute the implementation packet inside `tasks.md` — `speckit.implement` should not need a per-task HUD file.
+   Tasking should provide a clear story-level contract in `tasks.md`; implement can discover exact seams at execution time.
 
 8. **Auto-breakdown loop** (mandatory — do not skip):
    - If **any** task scored 8 or 13: immediately invoke `/speckit.breakdown` to split those tasks.
