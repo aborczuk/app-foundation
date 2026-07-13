@@ -56,6 +56,10 @@
 <!-- speckit_implement_docs:entry_id=T015:runbook -->
 - T015 routed explicit ClickUp trigger requests through the same ledger-owned start-or-resume seam used by implement selection, with dry-run gate summaries and execute-mode task start behavior on the trigger path.
 
+
+<!-- speckit_implement_docs:entry_id=T016:runbook -->
+- T016 finalized the trigger rejection path with explicit ambiguous-mapping feedback coverage and a loader fix so the trigger can exercise the implement-step seam reliably in script and test contexts.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -96,3 +100,6 @@
 
 <!-- speckit_implement_docs:entry_id=T015:decision_log -->
 - Implemented the full explicit start seam once across task_ledger, implement_step, trigger, and the Composio adapter so follow-on trigger rejection work can stay minimal instead of reopening the same path.
+
+<!-- speckit_implement_docs:entry_id=T016:decision_log -->
+- Kept T016 intentionally tiny because the substantive rejection-reporting seam already landed under T015; this follow-through only pinned the remaining ambiguous feedback path and import reliability.

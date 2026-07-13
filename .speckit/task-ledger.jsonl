@@ -1670,3 +1670,9 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "048", "task_id": "T015", "timestamp_utc": "2026-07-13T15:57:16.077555Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t015-20260713T155626Z", "task_id": "T015", "timestamp_utc": "2026-07-13T15:57:16.121105Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T015", "timestamp_utc": "2026-07-13T15:57:16.164535Z"}
+{"actor": "codex", "attempt": 1, "details": "Recording minimal follow-through evidence for the already-landed trigger rejection reporting seam.", "event": "task_started", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T15:58:04.610134Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.259986Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "4f05b64", "event": "commit_created", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.310055Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.358038Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t016-20260713T155953Z", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.403549Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.448348Z"}
