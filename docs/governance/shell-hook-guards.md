@@ -264,6 +264,11 @@ Current local registration shape:
 - `PreToolUse` with matcher `Bash` routes to `scripts/hook_pretool_dispatch.py`
 - `PostToolUse` with matcher `Edit|Write` routes to `scripts/hook_posttool_edit_validation.py`
 
+Current Git hook shape:
+
+- `.githooks/pre-commit` runs `scripts/git_pre_commit_lint.py`, which lints staged Python files through `scripts/ruff_guard.py`
+- `.githooks/post-commit` runs `scripts/git_post_commit_refresh.py` to refresh scoped repo-local indexes after each commit
+
 ## Practical Reading Order
 
 If you need to trace shell-command policy, read these files in order:
