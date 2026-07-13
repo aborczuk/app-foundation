@@ -21,9 +21,19 @@ def task_manifest_key(feature_num: str, group_title: str) -> str:
     return f"{feature_num}:{group_title}"
 
 
+def feature_projection_manifest_key(feature_num: str) -> str:
+    """Build canonical manifest key for one feature-level projection record."""
+    return feature_num
+
+
 def subtask_manifest_key(feature_num: str, task_id: str) -> str:
     """Build canonical manifest key for a ClickUp subtask."""
     return f"{feature_num}:{task_id}"
+
+
+def task_projection_manifest_key(feature_num: str, task_id: str) -> str:
+    """Build canonical manifest key for one executable task projection record."""
+    return subtask_manifest_key(feature_num, task_id)
 
 
 def load_manifest(path: Path) -> SyncManifest:

@@ -117,15 +117,19 @@ def _artifact(
     parent_num: str | None,
     has_tasks: bool,
     groups: list[TaskGroup] | None = None,
+    title: str | None = None,
+    short_name: str | None = None,
+    artifact_links: dict[str, str] | None = None,
 ) -> SpecArtifact:
     return SpecArtifact(
         feature_num=feature_num,
-        short_name=f"spec-{feature_num}",
-        title=f"Spec {feature_num}",
+        short_name=short_name or f"spec-{feature_num}",
+        title=title or f"Spec {feature_num}",
         spec_dir=__import__("pathlib").Path(f"/tmp/spec-{feature_num}"),
         is_phase_spec=parent_num is not None,
         parent_num=parent_num,
         has_tasks=has_tasks,
+        artifact_links=artifact_links or {},
         task_groups=groups or [],
     )
 
@@ -252,6 +256,8 @@ async def test_idempotent_rerun_and_append_only_new_subtask() -> None:
                 lists=dict(manifest.lists),
                 tasks=dict(manifest.tasks),
                 subtasks=dict(manifest.subtasks),
+                feature_projection_meta=dict(manifest.feature_projection_meta),
+                task_projection_meta=dict(manifest.task_projection_meta),
             )
         )
 
@@ -299,6 +305,104 @@ async def test_idempotent_rerun_and_append_only_new_subtask() -> None:
     assert len(transport.lists) == 1
     assert len(transport.tasks) == 1
     assert len(transport.subtasks) == 2
+
+
+@pytest.mark.asyncio
+async def test_rerun_updates_projection_metadata_without_duplicate_subtasks() -> None:
+    """Metadata changes should update the mapped subtask in place and persist the new projection."""
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
+
+    flushes: list[SyncManifest] = []
+
+    def _flush(manifest: SyncManifest) -> None:
+        flushes.append(
+            SyncManifest(
+                version=manifest.version,
+                workspace_id=manifest.workspace_id,
+                space_id=manifest.space_id,
+                folders=dict(manifest.folders),
+                lists=dict(manifest.lists),
+                tasks=dict(manifest.tasks),
+                subtasks=dict(manifest.subtasks),
+                feature_projection_meta=dict(manifest.feature_projection_meta),
+                task_projection_meta=dict(manifest.task_projection_meta),
+            )
+        )
+
+    task_v1 = Task(
+        id="T001",
+        title="Task T001",
+        acceptance_criteria="Old acceptance",
+        story_label="US1",
+        estimate_points=3,
+        context_ref="specs/015/tasks.md",
+        artifact_links={"tasks": "specs/015/tasks.md"},
+    )
+    artifacts_v1 = [
+        _artifact("014", parent_num=None, has_tasks=False),
+        _artifact(
+            "015",
+            parent_num="014",
+            has_tasks=True,
+            title="Dispatch v1",
+            artifact_links={"spec": "specs/015/spec.md", "tasks": "specs/015/tasks.md"},
+            groups=[TaskGroup(feature_num="015", title="US1", tasks=[task_v1])],
+        ),
+    ]
+
+    report1 = await engine.bootstrap_from_artifacts(
+        artifacts=artifacts_v1,
+        space_id="space-1",
+        manifest=None,
+        flush_manifest=_flush,
+    )
+    manifest_after_v1 = flushes[-1]
+    original_subtask_id = manifest_after_v1.subtasks["015:T001"]
+
+    task_v2 = Task(
+        id="T001",
+        title="Task T001 Updated",
+        acceptance_criteria="New acceptance",
+        story_label="US1",
+        parallel=True,
+        estimate_points=5,
+        context_ref="specs/015/tasks.md",
+        artifact_links={"spec": "specs/015/spec.md", "tasks": "specs/015/tasks.md"},
+    )
+    artifacts_v2 = [
+        _artifact("014", parent_num=None, has_tasks=False),
+        _artifact(
+            "015",
+            parent_num="014",
+            has_tasks=True,
+            title="Dispatch v2",
+            artifact_links={"spec": "specs/015/spec.md", "tasks": "specs/015/tasks.md"},
+            groups=[TaskGroup(feature_num="015", title="US1", tasks=[task_v2])],
+        ),
+    ]
+
+    report2 = await engine.bootstrap_from_artifacts(
+        artifacts=artifacts_v2,
+        space_id="space-1",
+        manifest=manifest_after_v1,
+        flush_manifest=_flush,
+    )
+
+    assert report1.created > 0
+    assert report2.created == 0
+    assert report2.updated >= 1
+    assert len(transport.subtasks) == 1
+    assert manifest_after_v1.subtasks["015:T001"] == original_subtask_id
+
+    latest_manifest = flushes[-1]
+    assert latest_manifest.subtasks["015:T001"] == original_subtask_id
+    assert transport.subtasks[original_subtask_id]["name"] == "015:T001 - Task T001 Updated"
+    assert latest_manifest.feature_projection_meta["015"]["title"] == "Dispatch v2"
+    assert latest_manifest.task_projection_meta["015:T001"]["title"] == "Task T001 Updated"
+    assert latest_manifest.task_projection_meta["015:T001"]["acceptance_criteria"] == "New acceptance"
+    assert latest_manifest.task_projection_meta["015:T001"]["parallel"] is True
+    assert latest_manifest.task_projection_meta["015:T001"]["estimate_points"] == 5
 
 
 @pytest.mark.asyncio

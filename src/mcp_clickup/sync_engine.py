@@ -15,7 +15,12 @@ from src.mcp_clickup import (
     Task,
     TaskGroup,
 )
-from src.mcp_clickup.manifest import subtask_manifest_key, task_manifest_key
+from src.mcp_clickup.manifest import (
+    feature_projection_manifest_key,
+    subtask_manifest_key,
+    task_manifest_key,
+    task_projection_manifest_key,
+)
 
 _REQUIRED_ROUTING_FIELDS = ("workflow_type", "context_ref", "execution_policy")
 
@@ -310,6 +315,7 @@ class SyncEngine:
 
             list_id = manifest.lists.get(phase.feature_num)
             list_name = self._list_name(phase)
+            list_status = "unchanged"
             if not list_id:
                 lists = await self._transport.list_lists(folder_id)
                 by_name = {str(item.get("name", "")): dict(item) for item in lists}
@@ -317,15 +323,28 @@ class SyncEngine:
                 if existing_list:
                     list_id = str(existing_list.get("id", ""))
                     manifest.lists[phase.feature_num] = list_id
+                    list_status = "unchanged"
                     report.skipped += 1
                 else:
                     created_list = await self._transport.create_list(folder_id, list_name)
                     list_id = str(created_list.get("id", ""))
                     manifest.lists[phase.feature_num] = list_id
+                    list_status = "created"
                     flush_manifest(manifest)
                     report.created += 1
             else:
                 report.skipped += 1
+
+            feature_projection_changed = self._sync_feature_projection_meta(
+                manifest=manifest,
+                phase=phase,
+                list_id=list_id,
+                list_name=list_name,
+            )
+            if feature_projection_changed:
+                flush_manifest(manifest)
+                if list_status != "created":
+                    report.updated += 1
 
             if not phase.has_tasks or not phase.task_groups:
                 report.skipped += 1
@@ -356,10 +375,23 @@ class SyncEngine:
                         list_id=list_id,
                         task=task,
                     )
+                    task_projection_changed = self._sync_task_projection_meta(
+                        manifest=manifest,
+                        phase=phase,
+                        group=group,
+                        task=task,
+                        parent_task_id=parent_task_id,
+                        list_id=list_id,
+                        subtask_id=subtask_id,
+                    )
                     if subtask_status == "created":
                         flush_manifest(manifest)
                         report.created += 1
                     elif subtask_status == "updated":
+                        flush_manifest(manifest)
+                        report.updated += 1
+                    elif task_projection_changed:
+                        flush_manifest(manifest)
                         report.updated += 1
                     else:
                         report.skipped += 1
@@ -425,6 +457,101 @@ class SyncEngine:
         manifest.tasks[key] = task_id
         return task_id, "created"
 
+    @staticmethod
+    def _feature_projection_payload(
+        phase: SpecArtifact,
+        *,
+        list_id: str,
+        list_name: str,
+    ) -> dict[str, object]:
+        """Build the canonical manifest metadata payload for one feature list mapping."""
+        return {
+            "feature_num": phase.feature_num,
+            "feature_key": phase.feature_num,
+            "title": phase.title,
+            "short_name": phase.short_name,
+            "parent_num": phase.parent_num,
+            "list_id": list_id,
+            "list_name": list_name,
+            "artifact_links": dict(phase.artifact_links),
+        }
+
+    @staticmethod
+    def _task_projection_payload(
+        phase: SpecArtifact,
+        group: TaskGroup,
+        task: Task,
+        *,
+        parent_task_id: str,
+        list_id: str,
+        subtask_id: str,
+    ) -> dict[str, object]:
+        """Build the canonical manifest metadata payload for one executable task mapping."""
+        return {
+            "feature_num": phase.feature_num,
+            "feature_title": phase.title,
+            "feature_short_name": phase.short_name,
+            "parent_num": phase.parent_num,
+            "group_title": group.title,
+            "parent_task_key": task_manifest_key(phase.feature_num, group.title),
+            "parent_task_id": parent_task_id,
+            "list_id": list_id,
+            "subtask_id": subtask_id,
+            "task_id": task.id,
+            "task_key": task_projection_manifest_key(phase.feature_num, task.id),
+            "title": task.title,
+            "acceptance_criteria": task.acceptance_criteria,
+            "story_label": task.story_label,
+            "parallel": task.parallel,
+            "estimate_points": task.estimate_points,
+            "context_ref": task.context_ref,
+            "workflow_type": task.workflow_type,
+            "execution_policy": task.execution_policy,
+            "artifact_links": dict(task.artifact_links),
+        }
+
+    def _sync_feature_projection_meta(
+        self,
+        *,
+        manifest: SyncManifest,
+        phase: SpecArtifact,
+        list_id: str,
+        list_name: str,
+    ) -> bool:
+        """Store feature projection metadata and report whether it changed."""
+        key = feature_projection_manifest_key(phase.feature_num)
+        payload = self._feature_projection_payload(phase, list_id=list_id, list_name=list_name)
+        changed = manifest.feature_projection_meta.get(key) != payload
+        if changed:
+            manifest.feature_projection_meta[key] = payload
+        return changed
+
+    def _sync_task_projection_meta(
+        self,
+        *,
+        manifest: SyncManifest,
+        phase: SpecArtifact,
+        group: TaskGroup,
+        task: Task,
+        parent_task_id: str,
+        list_id: str,
+        subtask_id: str,
+    ) -> bool:
+        """Store task projection metadata and report whether it changed."""
+        key = task_projection_manifest_key(phase.feature_num, task.id)
+        payload = self._task_projection_payload(
+            phase,
+            group,
+            task,
+            parent_task_id=parent_task_id,
+            list_id=list_id,
+            subtask_id=subtask_id,
+        )
+        changed = manifest.task_projection_meta.get(key) != payload
+        if changed:
+            manifest.task_projection_meta[key] = payload
+        return changed
+
     async def _ensure_subtask(
         self,
         *,
@@ -439,6 +566,18 @@ class SyncEngine:
 
         subtask_id = manifest.subtasks.get(key)
         if subtask_id:
+            existing = next(
+                (
+                    subtask
+                    for subtask in await self._transport.list_subtasks(parent_task_id)
+                    if str(subtask.get("id", "")) == subtask_id
+                ),
+                None,
+            )
+            current_name = str(existing.get("name", "")) if existing else ""
+            if current_name and current_name != desired_name:
+                await self._transport.update_task(subtask_id, name=desired_name)
+                return subtask_id, "updated"
             return subtask_id, "unchanged"
 
         subtasks = await self._transport.list_subtasks(parent_task_id)
