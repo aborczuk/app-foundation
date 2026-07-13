@@ -412,6 +412,36 @@ def _select_next_registered_task(
     }
 
 
+def _resolve_explicit_task_start_gate(
+    *,
+    repo_root: Path,
+    feature_dir: Path,
+    feature_id: str,
+    task_id: str,
+    actor: str,
+) -> dict[str, Any]:
+    """Return a repo-aware non-mutating start-gate summary for one explicit task."""
+    ledger_path = _task_ledger_path(repo_root)
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        raise ValueError("missing_tasks_md")
+
+    summary = task_ledger.explicit_task_start_gate(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor,
+    )
+    summary.update(
+        {
+            "ledger_path": str(ledger_path),
+            "tasks_file": str(tasks_file),
+        }
+    )
+    return summary
+
+
 def _ensure_implement_branch(repo_root: Path, feature_dir: Path, *, timeout_seconds: int) -> dict[str, Any]:
     """Create or activate the implementation branch for the feature."""
     branch_name = feature_dir.name

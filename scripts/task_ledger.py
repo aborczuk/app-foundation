@@ -869,6 +869,30 @@ def assert_can_start_task(
     actor: str | None = None,
     ) -> dict[str, Any]:
     """Validate dependency and actor gates before starting a task."""
+    summary = explicit_task_start_gate(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor,
+    )
+    blocking_reason = summary.get("blocking_reason")
+    if blocking_reason:
+        if "not found in ordered task list" in str(blocking_reason):
+            fail(f"{blocking_reason} from {tasks_file}")
+        fail(str(blocking_reason))
+    return summary
+
+
+def explicit_task_start_gate(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """Return a non-mutating explicit task start-gate summary for one task."""
     ensure_feature_id(feature_id)
     ensure_task_id(task_id)
 
@@ -890,12 +914,21 @@ def assert_can_start_task(
         task_id=task_id,
         actor=actor_name,
     )
-    if blocking_reason:
-        if "not found in ordered task list" in blocking_reason:
-            fail(f"{blocking_reason} from {tasks_file}")
-        fail(blocking_reason)
-    assert summary is not None
-    return summary
+    task_state = feature_state.tasks.get(task_id)
+    result: dict[str, Any] = {
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "actor": actor_name,
+        "parallel": bool(summary["parallel"]) if summary is not None else False,
+        "blocking_prior_tasks": list(summary["blocking_prior_tasks"]) if summary is not None else [],
+        "blocking_reason": blocking_reason,
+        "task_registered": bool(task_state.registered) if task_state is not None else False,
+        "task_started": bool(task_state.started) if task_state is not None else False,
+        "task_closed": bool(task_state.closed) if task_state is not None else False,
+        "task_owner_actor": (task_state.owner_actor or actor_name) if task_state is not None else actor_name,
+        "task_attempt": latest_attempt(events, feature_id, task_id),
+    }
+    return result
 
 
 def append_task_started_event(

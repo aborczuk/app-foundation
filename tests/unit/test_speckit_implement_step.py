@@ -162,6 +162,51 @@ def test_select_next_registered_task_skips_other_actor_for_parallel_work(tmp_pat
     assert summary["task_owner_actor"] == "agent-b"
 
 
+def test_resolve_explicit_task_start_gate_reports_eligibility_without_mutation(tmp_path: Path) -> None:
+    """Explicit task gate helper should expose startability without starting the task."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "023-deterministic-phase-orchestration"
+    feature_dir.mkdir(parents=True)
+    _write_tasks_file(
+        feature_dir / "tasks.md",
+        task_lines=[
+            "## Implement",
+            "- [ ] T001 Setup — ./README.md",
+            "- [ ] T002 [P] Parallel one — ./README.md",
+        ],
+    )
+    ledger_path = repo_root / ".speckit" / "task-ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(
+        "\n".join(
+            json.dumps(event, sort_keys=True)
+            for event in [
+                _task_event("task_registered", task_id="T001"),
+                _task_event("task_registered", task_id="T002"),
+                _task_event("task_started", task_id="T001"),
+                _task_event("human_action_verified", task_id="T001", verification_method="manual-review"),
+                _task_event("task_closed", task_id="T001"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = speckit_implement_step._resolve_explicit_task_start_gate(
+        repo_root=repo_root,
+        feature_dir=feature_dir,
+        feature_id="023",
+        task_id="T002",
+        actor="agent-b",
+    )
+
+    assert summary["task_id"] == "T002"
+    assert summary["blocking_reason"] is None
+    assert summary["task_started"] is False
+    assert summary["parallel"] is True
+    assert Path(summary["ledger_path"]) == ledger_path
+
+
 def test_main_blocks_when_feature_not_found(tmp_path: Path, monkeypatch, capsys) -> None:
     """Missing feature directories should fail before any task work begins."""
     bootstrap_calls: list[Path] = []
