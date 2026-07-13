@@ -28,7 +28,7 @@ description: "Task list for Composio ClickUp trigger sync"
 
 **Independent Test**: Import the scaffold modules, run the trigger CLI in scaffold mode, and verify the current ClickUp runtime path remains unchanged.
 
-- [ ] T001 Create the Composio transport and trigger scaffolds in src/mcp_clickup/composio_adapter.py and scripts/speckit_clickup_trigger.py
+- [X] T001 Create the Composio transport and trigger scaffolds in src/mcp_clickup/composio_adapter.py and scripts/speckit_clickup_trigger.py
 - [ ] T002 [P] Create the initial unit-test scaffolds in tests/unit/mcp_clickup/test_composio_adapter.py and tests/unit/test_speckit_clickup_trigger.py
 
 **Checkpoint**: The new adapter and trigger modules exist and the test layout is ready for implementation.
