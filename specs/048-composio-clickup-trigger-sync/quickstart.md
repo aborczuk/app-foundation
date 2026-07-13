@@ -52,6 +52,10 @@
 <!-- speckit_implement_docs:entry_id=T014:runbook -->
 - T014 added manifest-backed ClickUp subtask resolution plus dedicated ready-for-implement status handling so trigger requests can resolve to one repo feature/task pair before later ledger gating.
 
+
+<!-- speckit_implement_docs:entry_id=T015:runbook -->
+- T015 routed explicit ClickUp trigger requests through the same ledger-owned start-or-resume seam used by implement selection, with dry-run gate summaries and execute-mode task start behavior on the trigger path.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -89,3 +93,6 @@
 
 <!-- speckit_implement_docs:entry_id=T014:decision_log -->
 - Kept trigger start authority inside the repo by resolving ClickUp task ids through manifest projection metadata and ignoring non-ready statuses before any ledger-aware execution step runs.
+
+<!-- speckit_implement_docs:entry_id=T015:decision_log -->
+- Implemented the full explicit start seam once across task_ledger, implement_step, trigger, and the Composio adapter so follow-on trigger rejection work can stay minimal instead of reopening the same path.
