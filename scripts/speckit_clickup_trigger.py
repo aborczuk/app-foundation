@@ -5,19 +5,26 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Sequence
+
+from src.mcp_clickup import SyncManifest
+from src.mcp_clickup.manifest import ClickUpTaskMappingError, load_manifest, resolve_task_projection_mapping
+
+READY_FOR_IMPLEMENT_STATUS = "ready-for-implement"
 
 
 @dataclass(frozen=True)
 class ClickUpTriggerRequest:
     """Normalized request envelope for future ClickUp-triggered implement work."""
 
-    feature_id: str
-    task_id: str
     clickup_task_id: str
-    actor: str
-    dry_run: bool
+    feature_id: str = ""
+    task_id: str = ""
+    actor: str = "clickup"
+    dry_run: bool = True
+    status: str = READY_FOR_IMPLEMENT_STATUS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,10 +32,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prepare a ClickUp-triggered speckit implement request scaffold."
     )
-    parser.add_argument("--feature-id", required=True)
-    parser.add_argument("--task-id", required=True)
     parser.add_argument("--clickup-task-id", required=True)
+    parser.add_argument("--feature-id")
+    parser.add_argument("--task-id")
     parser.add_argument("--actor", default="clickup")
+    parser.add_argument("--status", default=READY_FOR_IMPLEMENT_STATUS)
+    parser.add_argument(
+        "--manifest-path",
+        default=".speckit/clickup-manifest.json",
+        help="Manifest path used when feature/task ids must be resolved from the ClickUp task id.",
+    )
     parser.add_argument("--json", action="store_true")
     parser.add_argument(
         "--execute",
@@ -38,17 +51,47 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool]:
+def status_is_start_request(status: str) -> bool:
+    """Return whether the external status transition should count as a start request."""
+    return str(status).strip().lower() == READY_FOR_IMPLEMENT_STATUS
+
+
+def _resolve_manifest_path(manifest_path: str) -> Path:
+    """Normalize the manifest path used for ClickUp-task mapping lookups."""
+    return Path(manifest_path).expanduser().resolve()
+
+
+def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool, Path]:
     """Parse argv into a normalized scaffold request."""
     args = build_parser().parse_args(list(argv))
+    feature_id = str(args.feature_id or "").strip()
+    task_id = str(args.task_id or "").strip()
+    if bool(feature_id) != bool(task_id):
+        raise SystemExit("feature_id_and_task_id_must_be_provided_together")
     request = ClickUpTriggerRequest(
-        feature_id=args.feature_id,
-        task_id=args.task_id,
         clickup_task_id=args.clickup_task_id,
+        feature_id=feature_id,
+        task_id=task_id,
         actor=args.actor,
         dry_run=not args.execute,
+        status=str(args.status).strip(),
     )
-    return request, bool(args.json)
+    return request, bool(args.json), _resolve_manifest_path(str(args.manifest_path))
+
+
+def resolve_request_mapping(
+    request: ClickUpTriggerRequest,
+    manifest: SyncManifest,
+) -> ClickUpTriggerRequest:
+    """Fill missing repo identifiers from manifest task projection metadata."""
+    if request.feature_id and request.task_id:
+        return request
+    mapping = resolve_task_projection_mapping(manifest, request.clickup_task_id)
+    return replace(
+        request,
+        feature_id=str(mapping.get("feature_num", "")).strip(),
+        task_id=str(mapping.get("task_id", "")).strip(),
+    )
 
 
 def render_response(
@@ -58,6 +101,17 @@ def render_response(
     gate_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Render a deterministic trigger response for scaffold and gate-only flows."""
+    if not status_is_start_request(request.status):
+        return {
+            "ok": True,
+            "mode": "trigger_gate",
+            "decision": "ignored",
+            "reason_code": "non_start_status",
+            "ledger_mutation": False,
+            "request": asdict(request),
+            "next_step": "Ignore ClickUp status transitions unless they enter ready-for-implement.",
+        }
+
     if mapping_count != 1:
         return {
             "ok": False,
@@ -114,14 +168,38 @@ def render_response(
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the scaffold trigger CLI."""
-    request, as_json = parse_request(argv if argv is not None else sys.argv[1:])
-    payload = render_response(request)
+    request, as_json, manifest_path = parse_request(argv if argv is not None else sys.argv[1:])
+    resolved_request = request
+    if status_is_start_request(request.status) and (not request.feature_id or not request.task_id):
+        if not manifest_path.exists():
+            payload = {
+                "ok": False,
+                "mode": "trigger_gate",
+                "decision": "rejected",
+                "reason_code": "manifest_missing",
+                "ledger_mutation": False,
+                "request": asdict(request),
+                "manifest_path": str(manifest_path),
+            }
+        else:
+            try:
+                resolved_request = resolve_request_mapping(request, load_manifest(manifest_path))
+                payload = render_response(resolved_request)
+            except ClickUpTaskMappingError as exc:
+                reason_code, _, clickup_task_id = str(exc).partition(":")
+                mapping_count = 2 if reason_code == "ambiguous_mapping" else 0
+                payload = render_response(request, mapping_count=mapping_count)
+                payload["clickup_task_id"] = clickup_task_id
+                payload["manifest_path"] = str(manifest_path)
+    else:
+        payload = render_response(resolved_request)
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(
-            f"Scaffolded ClickUp trigger request for {request.feature_id}/{request.task_id} "
-            f"(dry_run={request.dry_run})"
+            f"Scaffolded ClickUp trigger request for "
+            f"{resolved_request.feature_id or '?'}:{resolved_request.task_id or '?'} "
+            f"(dry_run={resolved_request.dry_run}, status={resolved_request.status})"
         )
     return 0
 
