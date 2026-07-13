@@ -44,7 +44,7 @@ description: "Task list for Composio ClickUp trigger sync"
 **Independent Test**: Parse stabilized feature artifacts into the shared model, persist mapping state, and confirm sync and implement orchestration can consume the new seams without the direct-transport dependency.
 
 - [X] T003 Extend the ClickUp projection data model in src/mcp_clickup/__init__.py and src/mcp_clickup/artifact_parser.py to carry acceptance criteria, story labels, parallel markers, estimates, and artifact links
-- [ ] T004 Persist stable repo-to-ClickUp mapping state in src/mcp_clickup/manifest.py and tests/unit/mcp_clickup/test_manifest.py for richer feature/task projections
+- [X] T004 Persist stable repo-to-ClickUp mapping state in src/mcp_clickup/manifest.py and tests/unit/mcp_clickup/test_manifest.py for richer feature/task projections
 - [ ] T005 Refactor sync orchestration to depend on a transport adapter instead of the direct ClickUp client in src/mcp_clickup/sync_engine.py and src/mcp_clickup/__main__.py
 - [ ] T006 Expose explicit mapped-task start eligibility helpers in scripts/speckit_implement_step.py and scripts/task_ledger.py for ClickUp-triggered work
 
