@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from src.mcp_clickup import SpecArtifact, Task, TaskGroup
+from src.mcp_clickup import FeatureProjection, SpecArtifact, Task, TaskGroup, TaskProjection
 
 _SPEC_DIR_RE = re.compile(r"^(?P<num>\d{3})-(?P<name>.+)$")
 _PARENT_RE = re.compile(r"\*\*Parent Spec\*\*:\s*(\d{3})")
@@ -52,6 +52,16 @@ def _build_artifact_links(spec_dir: Path, repo_root: Path) -> dict[str, str]:
         if path.exists():
             links[key] = _repo_relative(path, repo_root)
     return links
+
+
+def _feature_projection_key(artifact: SpecArtifact) -> str:
+    """Return the canonical repo-owned key for one feature projection."""
+    return artifact.feature_num
+
+
+def _task_projection_key(feature_num: str, task_id: str) -> str:
+    """Return the canonical repo-owned key for one executable task projection."""
+    return f"{feature_num}:{task_id}"
 
 
 def _parse_task_estimates(estimates_md_path: Path) -> dict[str, int]:
@@ -252,3 +262,41 @@ def discover_spec_artifacts(specs_root: Path) -> list[SpecArtifact]:
         )
 
     return artifacts
+
+
+def build_feature_projection(artifact: SpecArtifact) -> FeatureProjection:
+    """Project one parsed feature artifact into canonical feature/task sync records."""
+    task_projections = [
+        TaskProjection(
+            feature_num=artifact.feature_num,
+            feature_title=artifact.title,
+            feature_short_name=artifact.short_name,
+            parent_num=artifact.parent_num,
+            task_id=task.id,
+            task_key=_task_projection_key(artifact.feature_num, task.id),
+            group_title=group.title,
+            title=task.title,
+            acceptance_criteria=task.acceptance_criteria,
+            story_label=task.story_label,
+            parallel=task.parallel,
+            estimate_points=task.estimate_points,
+            context_ref=task.context_ref,
+            artifact_links=dict(task.artifact_links or artifact.artifact_links),
+        )
+        for group in artifact.task_groups
+        for task in group.tasks
+    ]
+    return FeatureProjection(
+        feature_num=artifact.feature_num,
+        feature_key=_feature_projection_key(artifact),
+        short_name=artifact.short_name,
+        title=artifact.title,
+        parent_num=artifact.parent_num,
+        artifact_links=dict(artifact.artifact_links),
+        task_projections=task_projections,
+    )
+
+
+def discover_feature_projections(specs_root: Path) -> list[FeatureProjection]:
+    """Discover canonical feature projections from repo speckit artifacts."""
+    return [build_feature_projection(artifact) for artifact in discover_spec_artifacts(specs_root)]

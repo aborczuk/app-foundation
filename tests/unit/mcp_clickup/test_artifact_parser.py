@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.mcp_clickup.artifact_parser import discover_spec_artifacts
+from src.mcp_clickup.artifact_parser import discover_feature_projections, discover_spec_artifacts
 
 
 def _write(path: Path, content: str) -> None:
@@ -123,6 +123,26 @@ def test_discover_specs_enriches_task_projection_metadata(tmp_path: Path) -> Non
     assert task_2.story_label == "US1"
     assert task_2.parallel is True
     assert task_2.estimate_points == 5
+
+    projections = discover_feature_projections(specs_root)
+    feature_projection = projections[0]
+    assert feature_projection.feature_key == "048"
+    assert feature_projection.title == "048 Sync ClickUp"
+    assert feature_projection.artifact_links == phase_spec.artifact_links
+
+    task_projection_1, task_projection_2 = feature_projection.task_projections
+    assert task_projection_1.task_key == "048:T009"
+    assert task_projection_1.group_title == "Phase 3: User Story 1 - Sync stabilized feature work to ClickUp"
+    assert task_projection_1.title == "Implement canonical feature/task projection extraction"
+    assert task_projection_1.acceptance_criteria == task_1.acceptance_criteria
+    assert task_projection_1.story_label == "US1"
+    assert task_projection_1.parallel is False
+    assert task_projection_1.estimate_points == 3
+    assert task_projection_1.context_ref == "specs/048-composio-clickup-trigger-sync/tasks.md"
+    assert task_projection_1.artifact_links == phase_spec.artifact_links
+
+    assert task_projection_2.task_key == "048:T010"
+    assert task_projection_2.parallel is True
 
 
 def test_discover_specs_falls_back_to_independent_test_acceptance(tmp_path: Path) -> None:
