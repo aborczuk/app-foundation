@@ -270,6 +270,13 @@ async def test_idempotent_rerun_and_append_only_new_subtask() -> None:
         flush_manifest=_flush,
     )
 
+    assert report2.created == 0
+    assert report2.updated == 0
+    assert len(transport.folders) == 1
+    assert len(transport.lists) == 1
+    assert len(transport.tasks) == 1
+    assert len(transport.subtasks) == 1
+
     artifacts_v2 = [
         _artifact("014", parent_num=None, has_tasks=False),
         _artifact("015", parent_num="014", has_tasks=True, groups=[_group("015", "US1", ["T001", "T002"])]),
@@ -282,8 +289,15 @@ async def test_idempotent_rerun_and_append_only_new_subtask() -> None:
     )
 
     assert report1.created > 0
-    assert report2.created == 0
+    assert len(transport.folders) == 1
+    assert len(transport.lists) == 1
+    assert len(transport.tasks) == 1
+    assert report1.updated == 0
     assert report3.created == 1
+    assert report3.updated == 0
+    assert len(transport.folders) == 1
+    assert len(transport.lists) == 1
+    assert len(transport.tasks) == 1
     assert len(transport.subtasks) == 2
 
 
