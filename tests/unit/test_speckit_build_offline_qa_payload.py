@@ -27,11 +27,12 @@ speckit_build_offline_qa_payload = _load_script_module(
 )
 
 
-def test_default_hud_path_is_feature_local() -> None:
-    feature_dir = Path("/tmp/specs/023-deterministic-phase-orchestration")
-    expected = feature_dir / "huds" / "T004.md"
-    actual = speckit_build_offline_qa_payload._default_hud_path(feature_dir, "T004")
-    assert actual == expected
+def test_default_quality_guards_are_stable() -> None:
+    assert speckit_build_offline_qa_payload.DEFAULT_QUALITY_GUARDS == [
+        "Domain 13",
+        "Domain 14",
+        "Domain 17",
+    ]
 
 
 def test_changed_files_from_head_prefers_workspace_changes(tmp_path: Path) -> None:

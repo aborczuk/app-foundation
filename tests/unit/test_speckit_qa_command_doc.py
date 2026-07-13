@@ -11,7 +11,7 @@ def test_speckit_qa_doc_describes_subagent_role_without_closeout_ownership() -> 
     doc_text = doc_path.read_text(encoding="utf-8")
 
     assert "persistent implement-session QA subagent" in doc_text
-    assert "PASS/FIX_REQUIRED verdict for the orchestrator" in doc_text
+    assert "structured PASS/FIX_REQUIRED result for the orchestrator" in doc_text
     assert "scripts/speckit_offline_qa_handoff.py" in doc_text
     assert "scripts/speckit_closeout_task.py" in doc_text
     assert "Do not append ledger events, close tasks, or emit phase-completion events." in doc_text

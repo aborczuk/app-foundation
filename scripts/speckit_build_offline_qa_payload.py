@@ -45,11 +45,6 @@ def _find_feature_dir(repo_root: Path, feature_id: str) -> Path:
     return matches[0]
 
 
-def _default_hud_path(feature_dir: Path, task_id: str) -> Path:
-    """Return the default HUD location for a task within a feature directory."""
-    return feature_dir / "huds" / f"{task_id}.md"
-
-
 def _task_context(tasks_file: Path, task_id: str) -> tuple[str, list[str]]:
     """Extract the task description and acceptance text from tasks.md."""
     lines = tasks_file.read_text(encoding="utf-8").splitlines()
@@ -92,46 +87,7 @@ def _task_context(tasks_file: Path, task_id: str) -> tuple[str, list[str]]:
     return task_desc, acceptance
 
 
-def _extract_quality_guards(hud_path: Path) -> list[str]:
-    """Extract HUD quality guards or fall back to the default guard set."""
-    if not hud_path.exists():
-        return ["Domain 13", "Domain 14", "Domain 17"]
-
-    lines = hud_path.read_text(encoding="utf-8").splitlines()
-    in_section = False
-    guards: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            in_section = stripped == "## Quality Guards"
-            continue
-        if not in_section:
-            continue
-        if not stripped:
-            continue
-        candidate = stripped
-        if candidate.startswith("- "):
-            candidate = candidate[2:].strip()
-        candidate = candidate.strip("`")
-        if candidate:
-            guards.append(candidate)
-    if not guards:
-        return ["Domain 13", "Domain 14", "Domain 17"]
-    return guards
-
-
-def _extract_primary_file_from_hud(hud_path: Path) -> str | None:
-    """Extract the primary file path from a HUD file if one is declared."""
-    if not hud_path.exists():
-        return None
-    for line in hud_path.read_text(encoding="utf-8").splitlines():
-        if "**File:Symbol**:" not in line:
-            continue
-        match = re.search(r"`([^`]+)`", line)
-        raw = match.group(1) if match else line.split("**File:Symbol**:", 1)[1].strip()
-        file_path = raw.split(":", 1)[0].strip()
-        return file_path or None
-    return None
+DEFAULT_QUALITY_GUARDS = ["Domain 13", "Domain 14", "Domain 17"]
 
 
 def _changed_files_from_head(repo_root: Path) -> list[str]:
@@ -271,13 +227,8 @@ def main(argv: list[str] | None = None) -> int:
         if not tasks_file.exists():
             raise ValueError(f"tasks.md missing for feature {args.feature_id}")
 
-        hud_path = _default_hud_path(feature_dir, args.task_id)
         task_desc, acceptance = _task_context(tasks_file, args.task_id)
-        quality_guards = _extract_quality_guards(hud_path)
         changed_files = _changed_files_from_head(repo_root)
-        hud_primary_file = _extract_primary_file_from_hud(hud_path)
-        if not changed_files and hud_primary_file:
-            changed_files = [hud_primary_file]
         if not changed_files:
             changed_files = [str(tasks_file.relative_to(repo_root))]
 
@@ -287,10 +238,9 @@ def main(argv: list[str] | None = None) -> int:
             "attempt": args.attempt,
             "payload_generated_at": utc_now_iso(),
             "payload_run_id": build_payload_run_id(args.task_id, args.attempt),
-            "hud_path": str(hud_path.relative_to(repo_root)),
             "diff": _diff_summary(repo_root),
             "acceptance_criteria": acceptance,
-            "quality_guards": quality_guards,
+            "quality_guards": list(DEFAULT_QUALITY_GUARDS),
             "changed_files": changed_files,
             "test_runs": _build_test_runs(repo_root, args.feature_id, args.task_id),
             "known_risks": [

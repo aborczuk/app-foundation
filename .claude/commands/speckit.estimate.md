@@ -62,18 +62,18 @@ Execution steps:
    - Are there dependencies on libraries with limited documentation or unfamiliar APIs?
    - Does the task involve error handling for poorly documented external behavior?
 
-5. **Validate implementation-ticket detail for each task**: For each task, evaluate the corresponding HUD while the codebase context is loaded. Do not invent missing implementation design during estimation. Record per task:
-    - Whether the HUD has verified current behavior, target behavior, concrete required edits, touched symbols, tests, constraints, dependencies, and done criteria
-    - Which existing symbols will be modified and how (name + intended change), as already stated in the HUD
-    - Which new symbols will be created, in which files, with what signatures, as already stated in the HUD
-    - How the pieces compose to satisfy the task's goal, as already stated in the HUD
-    - What the failing unit test assertion looks like (describe the assertion, not full code), as already stated in the HUD
+5. **Validate implementation-ticket detail for each task**: For each task, evaluate the executable task entry in `tasks.md` while the codebase context is loaded. Do not invent missing implementation design during estimation. Record per task:
+    - Whether the task entry has verified current behavior, target behavior, concrete required edits, touched symbols, tests, constraints, dependencies, and done criteria
+    - Which existing symbols will be modified and how (name + intended change), as already stated in `tasks.md`
+    - Which new symbols will be created, in which files, with what signatures, as already stated in `tasks.md`
+    - How the pieces compose to satisfy the task's goal, as already stated in `tasks.md`
+    - What the failing unit test assertion looks like (describe the assertion, not full code), as already stated in `tasks.md`
     - Which coding convention rules from `.claude/domains/` apply (identify touched domains only)
     - Whether the routing contract says this task should reuse an existing estimate or refresh it after tasking
 
-   For 1–2 point tasks: the HUD may mark implementation as trivial only if it still includes current behavior, target behavior, concrete required edits, test assertions, and done criteria.
+   For 1–2 point tasks: the task entry may mark implementation as trivial only if it still includes current behavior, target behavior, concrete required edits, test assertions, and done criteria.
 
-   If any HUD is missing or incomplete, flag the task with `HUD incomplete — rerun /speckit.tasking` and do not fill in the missing solution detail inside estimates.md.
+   If any executable task entry is missing or incomplete, flag the task with `Task contract incomplete — rerun /speckit.tasking` and do not fill in the missing solution detail inside estimates.md.
 5b. **Assign fibonacci points** per task using this calibration:
 
    | Points | Meaning | Examples |
@@ -119,14 +119,13 @@ If any HUD is incomplete, estimation must report the incomplete task IDs and ins
       - Phase Totals table (Phase | Points | Task Count | Parallel Tasks)
       - Warnings section (8/13-point flags, no-parallel phases, high-uncertainty tasks)
 
-7. **Validate HUD files, do not author missing design**: For each task, read `${FEATURE_DIR}/huds/T0XX.md` if present. Estimate may update estimate metadata or note estimate changes, but it must not replace missing HUD implementation directives with newly invented solution detail.
+7. **Validate task implementation detail, do not author missing design**: For each task, read `tasks.md` and any bounded repo context needed to confirm the task is implementation-ready. Estimate may update estimate metadata or note estimate changes, but it must not replace missing implementation directives with newly invented solution detail.
 
-   - If a HUD is missing for a non-`[H]` task, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
-   - If a HUD contains unresolved `[FILL: ...]`, `[EXAMPLE: ...]`, or `[EXAMPLE INVALID: ...]` text, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
-   - If a HUD lacks concrete required edits, touched symbols, tests, constraints, dependencies, or done criteria, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
-   - For `[H]` tasks, validate that the runbook HUD includes system, exact steps, verification command, functional goal, blocks/dependencies, and checklist.
+   - If a non-`[H]` task lacks concrete required edits, touched symbols, tests, constraints, dependencies, or done criteria, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
+   - If a non-`[H]` task is still generic, placeholder-like, or under-specified, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
+   - For `[H]` tasks, validate that the task entry includes system, exact steps, verification command, functional goal, blocks/dependencies, and checklist expectations.
 
-   HUDs are pre-computed by tasking — `speckit.implement` reads one small file per task, no large artifact re-reads.
+   Tasking must pre-compute the implementation packet inside `tasks.md` — `speckit.implement` should not need a per-task HUD file.
 
 8. **Auto-breakdown loop** (mandatory — do not skip):
    - If **any** task scored 8 or 13: immediately invoke `/speckit.breakdown` to split those tasks.

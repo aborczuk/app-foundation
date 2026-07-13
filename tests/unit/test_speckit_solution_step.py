@@ -184,11 +184,6 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
     )
     monkeypatch.setattr(
         speckit_solution_step,
-        "_validate_huds",
-        lambda **kwargs: {"ok": True, "error_count": 0, "errors": []},
-    )
-    monkeypatch.setattr(
-        speckit_solution_step,
         "_generate_acceptance_tests",
         lambda **kwargs: {"stdout": "acceptance", "stderr": ""},
     )
@@ -227,7 +222,6 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
     assert [stage["stage"] for stage in result["stages"]] == [
         "tasking_chain_validate",
         "tasks_gate",
-        "huds_validate",
         "task_registration",
         "acceptance",
     ]

@@ -34,28 +34,11 @@ uv run python scripts/speckit_solution_step.py prepare-tasking --feature-id "$FE
 3. Fill `tasks.md` directly.
    - For each design slice, write the actual proposed solution first, then split that solution into the required tasks.
    - Anchor every non-human task to a concrete file or symbol seam from the plan.
-   - Carry the solved slice, concrete symbols, and relevant constitution domains forward into the corresponding HUDs.
+   - Carry the solved slice, concrete symbols, and relevant constitution domains forward into the corresponding task entries.
    - Preserve slice ordering and dependencies from `plan.md`.
    - Produce the actual number of tasks required by the plan; do not leave template placeholder content behind.
 
-4. Scaffold HUDs deterministically, then complete them generatively:
-
-```bash
-uv run python scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing
-```
-
-5. Fill every non-`[H]` `huds/TXXX.md` directly.
-   - Load `spec.json` first; it contains the machine-readable key details of the approved plan/spec contract.
-   - Treat the scaffold as deterministic seed data only.
-   - For each task, write the slice-local proposed solution that this task will implement.
-   - Attach each matched design slice to the task by translating the slice directive into task-specific obligations.
-   - Name the exact file:symbol seams, touched symbols, relevant domains, constraints, and tests needed for that solution.
-   - Write explicit task-local acceptance criteria into the HUD.
-   - Replace every `[FILL: ...]` marker with repo-grounded, seam-specific implementation detail.
-   - The final HUD must be concrete enough that a smaller implement model can execute the task without re-inventing design.
-   - Assume `/speckit.implement` will read only this HUD for the task. If information is missing from the HUD, it does not exist for implement.
-
-6. Run the estimate/breakdown loop through spawned subagents until the existing stabilization script reports the task graph is settled.
+4. Run the estimate/breakdown loop through spawned subagents until the existing stabilization script reports the task graph is settled.
    - Spawn an `estimate` subagent on `gpt-5.4-mini`.
    - Use `spawn_agent`.
    - Do not use `fork_context: true`.
@@ -103,7 +86,7 @@ It also expects `spec.json` from `/speckit.plan` to be present as the stable mac
 - Solve each slice before turning it into tasks. A task list without the solved implementation approach is incomplete.
 - Write tasks from the solved slice, not from a restated headline.
 - Anchor every non-human task to a concrete file/symbol seam from the design slice.
-- Keep solutioning local to the slice: proposed behavior, symbols, branches, and checks must land in the tasks/HUDs that implement that slice.
+- Keep solutioning local to the slice: proposed behavior, symbols, branches, and checks must land in the `tasks.md` entries that implement that slice.
 - Preserve slice ordering and dependencies from the plan.
 
 ### 4. Estimate / Breakdown Loop
@@ -125,39 +108,18 @@ To do that:
 - Keep looping until `scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json` reports `"ok": true`.
 - Treat that script as the settled-state validator for the existing estimate/breakdown workflow.
 
-### 5. HUD Scaffold + Generative Fill
-
-- Now that the task list is settled, you must solve each task with a complete, ticket-like guidance that has 
-for Every non-`[H]` HUD:
-
-- Treat each HUD as the only implementation ticket the per-task implement subagent will read.
-
-- Run `scripts/speckit_remake_huds.py prepare --feature-dir "$FEATURE_DIR" --rewrite-existing` after `tasks.md` is complete and estimate/breakdown is settled to create the scaffold templates.
-- You must then fill every non-`[H]` HUD concretely using read-code.py plus `spec.json`, `plan.md`, `spec.md`, and `tasks.md`.
-- Apply scaffold-preserving HUD edits with `scripts/speckit_fill_huds.py`; do not replace whole HUD files after scaffold generation.
-- One by one, make the solution for each task with the parameters:
-  - the proposed solution for the task
-  - the matched slice directives attached and specialized into task-specific required edits
-  - the exact symbols and seams the task will change
-  - the relevant constitution domains that materially apply to the task
-  - explicit task-local acceptance criteria
-  - the concrete tests and invariants that make the solution safe to implement
-  - and whatever the template asks for
-- Do not leave scaffold placeholders in any final HUD.
-
-### 6. Deterministic Finalize
+### 5. Deterministic Finalize
 
 `finalize` owns the deterministic post-generation chain:
 
 - validation that estimate/breakdown stabilization already settled
 - tasks format gate
-- HUD validation
 - task registration
 - acceptance-test scaffolding
 
 `finalize` must be the only place where the command produces the pipeline event request envelope.
 
-### 7. Produce `solution_approved`
+### 6. Produce `solution_approved`
 
 The command ends by running `finalize`. The final response from this command must be the exact JSON emitted by `finalize`, with no extra prose around it. That payload is what the pipeline driver uses to append `solution_approved`.
 
@@ -165,17 +127,17 @@ The command ends by running `finalize`. The final response from this command mus
 {"event":"solution_approved","feature_id":"NNN","phase":"solution","task_count":N,"story_count":N,"estimate_points":N,"actor":"<agent-id>","timestamp_utc":"..."}
 ```
 
-### 8. Report
+### 7. Report
 
 - "Solution phase complete."
-- List generated artifacts: `tasks.md`, `estimates.md`, HUDs, acceptance tests.
+- List generated artifacts: `tasks.md`, `estimates.md`, acceptance tests.
 - Suggested next: `/speckit.implement`.
 
 ## Behavior rules
 
 - Do not re-decide architecture already settled in `plan.md`.
-- Do not treat `scripts/speckit_remake_huds.py` output as the final HUD content for code tasks.
+- Do not leave executable tasks under-specified; `/speckit.implement` must be able to execute from `tasks.md`, `plan.md`, and `spec.json` without a per-task HUD file.
 - Do not call `/speckit.tasking`.
-- Do not treat `spec.json` as optional inspiration; it is the machine-readable summary of the approved plan/spec details that must feed task and HUD generation.
+- Do not treat `spec.json` as optional inspiration; it is the machine-readable summary of the approved plan/spec details that must feed task generation.
 - Do not hand-roll `estimates.md`; use the `speckit.estimate` artifact contract declared in `command-manifest.yaml`.
 - Do not emit `solution_approved` before `finalize` completes.

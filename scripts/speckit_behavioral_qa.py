@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Behavioral QA agent for verifying implementation against acceptance criteria.
 
-Reads HUD acceptance criteria, runs actual tests for changed files,
-and checks for implementation drift against the task contract.
+Reads task-contract acceptance criteria from tasks.md, runs actual tests for
+changed files, and checks for implementation drift against the task contract.
 
 Emits a structured verdict: PASS or FIX_REQUIRED with specific findings.
 """
@@ -39,72 +39,6 @@ def _run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str, str]:
 
 def _json_print(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
-
-
-def _extract_section_body(content: str, heading: str) -> str:
-    """Return the raw body for a markdown heading if present."""
-    match = re.search(
-        rf"^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)",
-        content,
-        re.MULTILINE | re.DOTALL,
-    )
-    if not match:
-        return ""
-    return match.group(1).strip()
-
-
-def _extract_bullets(section_body: str) -> list[str]:
-    """Extract non-empty markdown bullet text from a section body."""
-    bullets: list[str] = []
-    for line in section_body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            item = stripped[2:].strip()
-            if item:
-                bullets.append(item)
-    return bullets
-
-
-def _read_hud(hud_path: Path) -> dict[str, Any]:
-    """Parse HUD markdown and extract key sections."""
-    if not hud_path.exists():
-        return {"error": f"HUD not found: {hud_path}"}
-
-    content = hud_path.read_text(encoding="utf-8")
-    hud: dict[str, Any] = {
-        "acceptance_criteria": "",
-        "file_symbol": "",
-        "quality_guards": [],
-        "touched_symbols": [],
-    }
-
-    # Extract acceptance criteria from the current HUD section shape first.
-    acceptance_section = _extract_section_body(content, "Acceptance Criteria")
-    acceptance_bullets = _extract_bullets(acceptance_section)
-    if acceptance_bullets:
-        hud["acceptance_criteria"] = "\n".join(acceptance_bullets)
-
-    # Fall back to the legacy Functional Goal section shape.
-    ac_match = re.search(
-        r"##\s+Functional Goal\s+.*?\*\*Acceptance Criteria\*\*:\s*(.*?)(?=\n##|\Z)",
-        content,
-        re.DOTALL,
-    )
-    if ac_match and not hud["acceptance_criteria"]:
-        hud["acceptance_criteria"] = ac_match.group(1).strip()
-
-    # Extract File:Symbol
-    fs_match = re.search(r"\*\*File:Symbol\*\*:\s*`?([^`\n]+)`?", content)
-    if fs_match:
-        hud["file_symbol"] = fs_match.group(1).strip()
-
-    # Extract quality guards from either the legacy or current section naming.
-    quality_guards = _extract_bullets(_extract_section_body(content, "Quality Guards"))
-    if not quality_guards:
-        quality_guards = _extract_bullets(_extract_section_body(content, "Relevant Domains"))
-    hud["quality_guards"].extend(quality_guards)
-
-    return hud
 
 
 def _read_tasks_acceptance(tasks_file: Path, task_id: str) -> str:
@@ -245,9 +179,9 @@ def _payload_test_runs(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def _check_file_symbol_changed(
     repo_root: Path, changed_files: list[str], file_symbol: str
 ) -> tuple[bool, str]:
-    """Check if the HUD's File:Symbol was actually modified."""
+    """Check whether the task contract's primary edit seam was modified."""
     if not file_symbol:
-        return True, "No file_symbol in HUD"
+        return True, "No primary edit seam declared in task contract"
 
     file_part = file_symbol.split(":")[0].strip()
     if file_part in changed_files:
@@ -353,18 +287,12 @@ def main(argv: list[str] | None = None) -> int:
 
     feature_dir = feature_dirs[0]
     tasks_file = feature_dir / "tasks.md"
-    hud_path = feature_dir / "huds" / f"{task_id}.md"
 
-    # Read HUD or tasks.md for acceptance criteria
-    hud = _read_hud(hud_path)
-    acceptance = hud.get("acceptance_criteria", "")
-    file_symbol = hud.get("file_symbol", "")
+    acceptance = _read_tasks_acceptance(tasks_file, task_id)
+    file_symbol = str(payload.get("file_symbol", "")).strip()
 
     if not acceptance:
-        acceptance = _read_tasks_acceptance(tasks_file, task_id)
-
-    if not acceptance:
-        findings.append("MISSING_ACCEPTANCE_CRITERIA: No acceptance criteria found in HUD or tasks.md")
+        findings.append("MISSING_ACCEPTANCE_CRITERIA: No acceptance criteria found in tasks.md")
 
     # Check changed files
     changed_files = payload.get("changed_files", [])
@@ -377,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         if not symbol_ok:
             findings.append(f"IMPLEMENTATION_DRIFT: {symbol_msg}")
         else:
-            warnings.append(f"file_symbol_check: {symbol_msg}")
+            warnings.append(f"primary_edit_seam_check: {symbol_msg}")
 
     # Check acceptance criteria against diff
     if acceptance and changed_files:

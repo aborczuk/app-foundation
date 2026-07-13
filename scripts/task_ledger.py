@@ -39,7 +39,7 @@ VALID_EVENTS = {
     "task_registered",
     "task_started",
     "discovery_completed",
-    "lld_recorded",            # 3+ point task: HUD read + sketch validated, ready to implement
+    "lld_recorded",            # 3+ point task: task contract reviewed and validated, ready to implement
     "quality_guards_passed",
     "functional_goal_achieved",
     "tests_failed",
