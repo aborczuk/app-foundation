@@ -36,6 +36,10 @@
 <!-- speckit_implement_docs:entry_id=T010:runbook -->
 - T010 now keeps feature-list and executable-task projection metadata in the manifest during sync, and re-sync updates an already-mapped subtask in place when the repo task projection changes instead of duplicating it.
 
+
+<!-- speckit_implement_docs:entry_id=T011:runbook -->
+- T011 replaced the Composio ClickUp scaffold with a working transport adapter that maps the managed ClickUp tool slugs into the sync-engine protocol, unwraps live Composio response shapes, and preserves the old sync-engine dictionary contracts.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -61,3 +65,6 @@
 
 <!-- speckit_implement_docs:entry_id=T010:decision_log -->
 - T010: treated the manifest as the durable projection memory by adding explicit feature/task projection metadata updates inside sync_engine and using that stable mapping path to rename an already-mapped subtask when the canonical repo task projection changes.
+
+<!-- speckit_implement_docs:entry_id=T011:decision_log -->
+- T011: implemented the adapter against the real Composio ClickUp tool slugs and normalized both wrapped and direct payload shapes so the sync engine can switch transports without rewriting its reconciliation logic.

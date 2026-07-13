@@ -73,7 +73,7 @@ description: "Task list for Composio ClickUp trigger sync"
 
 - [X] T009 [US1] Implement canonical feature/task projection extraction in src/mcp_clickup/artifact_parser.py and src/mcp_clickup/__init__.py from stabilized spec, plan, tasks, and mapping artifacts
 - [X] T010 [US1] Implement stable mapping updates for feature lists and mapped tasks in src/mcp_clickup/manifest.py and src/mcp_clickup/sync_engine.py
-- [ ] T011 [US1] Implement the Composio-backed create/update/read transport in src/mcp_clickup/composio_adapter.py and src/mcp_clickup/sync_engine.py
+- [X] T011 [US1] Implement the Composio-backed create/update/read transport in src/mcp_clickup/composio_adapter.py and src/mcp_clickup/sync_engine.py
 - [ ] T012 [US1] Wire post-stabilization ClickUp sync into the solution/tasking finalize path in scripts/speckit_solution_step.py and src/mcp_clickup/__main__.py
 
 **Checkpoint**: Stabilized feature work is visible in ClickUp through the new Composio sync path without duplicate mappings.
