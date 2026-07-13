@@ -44,6 +44,10 @@
 <!-- speckit_implement_docs:entry_id=T012:runbook -->
 - Solution finalize now appends a deterministic ClickUp sync stage and the ClickUp runtime emits structured JSON bootstrap/status payloads for post-stabilization automation.
 
+
+<!-- speckit_implement_docs:entry_id=T013:runbook -->
+- T013 pinned the ClickUp start gate contract with passing tests for eligible, blocked, and ambiguous trigger outcomes plus explicit non-mutating task-gate coverage in implement-step.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -75,3 +79,6 @@
 
 <!-- speckit_implement_docs:entry_id=T012:decision_log -->
 - Wired solution finalization to invoke the ClickUp runtime through a controlled --json interface with explicit disabled/error states so downstream synchronization can run deterministically after task stabilization.
+
+<!-- speckit_implement_docs:entry_id=T013:decision_log -->
+- Kept the real trigger integration deferred while extending the scaffold response helper just enough to express eligible, blocked, and ambiguous outcomes deterministically for the task's regression suite.

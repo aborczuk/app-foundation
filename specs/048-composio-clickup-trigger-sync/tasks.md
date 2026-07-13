@@ -94,7 +94,7 @@ description: "Task list for Composio ClickUp trigger sync"
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Add trigger eligibility coverage for eligible, blocked, and ambiguous mappings in tests/unit/test_speckit_implement_step.py and tests/unit/test_speckit_clickup_trigger.py
+- [X] T013 [P] [US2] Add trigger eligibility coverage for eligible, blocked, and ambiguous mappings in tests/unit/test_speckit_implement_step.py and tests/unit/test_speckit_clickup_trigger.py
 
 ### Implementation for User Story 2
 
