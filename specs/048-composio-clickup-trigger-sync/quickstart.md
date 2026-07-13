@@ -16,6 +16,10 @@
 <!-- speckit_implement_docs:entry_id=T005:runbook -->
 - T005 inverted the active mcp_clickup runtime path to a transport seam by wiring SyncEngine and the CLI entrypoints through build_transport instead of inline direct-client construction.
 
+
+<!-- speckit_implement_docs:entry_id=T006:runbook -->
+- T006 exposed non-mutating explicit task-start eligibility helpers in the task ledger and implement-step layers so future ClickUp-triggered requests can query repo startability without mutating ledger state.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -26,3 +30,6 @@
 
 <!-- speckit_implement_docs:entry_id=T005:decision_log -->
 - T005: kept the current direct ClickUp transport as the default implementation behind build_transport, but renamed the engine seam and runtime construction path to transport-oriented abstractions so later Composio transport work can swap in without a sync-engine rewrite.
+
+<!-- speckit_implement_docs:entry_id=T006:decision_log -->
+- T006: separated explicit task gate evaluation from task start mutation by adding pure helper surfaces in task_ledger.py and speckit_implement_step.py, so later trigger work can reuse the existing ledger rules without cloning or bypassing them.
