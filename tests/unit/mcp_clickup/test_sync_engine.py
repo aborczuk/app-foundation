@@ -21,7 +21,7 @@ class _CreatedItem:
     name: str
 
 
-class _FakeClickUpClient:
+class _FakeClickUpTransport:
     def __init__(self) -> None:
         self.space_id = "space-1"
         self.team_id = "team-1"
@@ -139,8 +139,8 @@ def _group(feature_num: str, title: str, task_ids: list[str]) -> TaskGroup:
 
 
 class _TrackingSyncEngine(SyncEngine):
-    def __init__(self, client: _FakeClickUpClient) -> None:
-        super().__init__(client)
+    def __init__(self, transport: _FakeClickUpTransport) -> None:
+        super().__init__(transport)
         self.call_order: list[str] = []
 
     def reconcile_manifest(
@@ -171,8 +171,8 @@ class _TrackingSyncEngine(SyncEngine):
 @pytest.mark.asyncio
 async def test_reconcile_happens_before_create_decisions() -> None:
     """Bootstrap must reconcile manifest before any create decisions."""
-    client = _FakeClickUpClient()
-    engine = _TrackingSyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = _TrackingSyncEngine(transport)
     manifest = SyncManifest(version="1", workspace_id="w1", space_id="s1")
 
     await engine.bootstrap_from_artifacts(
@@ -187,8 +187,8 @@ async def test_reconcile_happens_before_create_decisions() -> None:
 @pytest.mark.asyncio
 async def test_manifest_rebuild_ambiguous_fails_closed() -> None:
     """Ambiguous manifest rebuild candidates should abort before create."""
-    client = _FakeClickUpClient()
-    engine = _TrackingSyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = _TrackingSyncEngine(transport)
 
     with pytest.raises(ManifestRebuildAmbiguousError):
         await engine.bootstrap_from_artifacts(
@@ -206,8 +206,8 @@ async def test_manifest_rebuild_ambiguous_fails_closed() -> None:
 @pytest.mark.asyncio
 async def test_hierarchy_mapping_and_skip_when_tasks_missing() -> None:
     """Engine creates Folder/List/Task/Subtask hierarchy and skips taskless spec."""
-    client = _FakeClickUpClient()
-    engine = SyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
 
     artifacts = [
         _artifact("014", parent_num=None, has_tasks=False),
@@ -222,18 +222,18 @@ async def test_hierarchy_mapping_and_skip_when_tasks_missing() -> None:
     )
 
     assert report.aborted is False
-    assert len(client.folders) == 1
-    assert len(client.lists) == 2
-    assert len(client.tasks) == 1
-    assert len(client.subtasks) == 2
+    assert len(transport.folders) == 1
+    assert len(transport.lists) == 2
+    assert len(transport.tasks) == 1
+    assert len(transport.subtasks) == 2
     assert report.skipped >= 1
 
 
 @pytest.mark.asyncio
 async def test_idempotent_rerun_and_append_only_new_subtask() -> None:
     """Second run should be unchanged; adding one task should append one subtask."""
-    client = _FakeClickUpClient()
-    engine = SyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
 
     artifacts_v1 = [
         _artifact("014", parent_num=None, has_tasks=False),
@@ -284,24 +284,24 @@ async def test_idempotent_rerun_and_append_only_new_subtask() -> None:
     assert report1.created > 0
     assert report2.created == 0
     assert report3.created == 1
-    assert len(client.subtasks) == 2
+    assert len(transport.subtasks) == 2
 
 
 @pytest.mark.asyncio
 async def test_missing_manifest_rebuild_deterministic_success() -> None:
     """Existing hierarchy should rebuild manifest deterministically when unambiguous."""
-    client = _FakeClickUpClient()
-    engine = SyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
 
-    folder = await client.create_folder("space-1", "014-spec-014")
-    list_ = await client.create_list(folder["id"], "015-spec-015")
-    client.custom_fields_by_list[list_["id"]] = {
+    folder = await transport.create_folder("space-1", "014-spec-014")
+    list_ = await transport.create_list(folder["id"], "015-spec-015")
+    transport.custom_fields_by_list[list_["id"]] = {
         "workflow_type": "f-workflow",
         "context_ref": "f-context",
         "execution_policy": "f-policy",
     }
-    task = await client.create_task(list_["id"], "015:US1")
-    await client.create_task(list_["id"], "015:T001 - Task T001", parent=task["id"])
+    task = await transport.create_task(list_["id"], "015:US1")
+    await transport.create_task(list_["id"], "015:T001 - Task T001", parent=task["id"])
 
     artifacts = [
         _artifact("014", parent_num=None, has_tasks=False),
@@ -321,9 +321,9 @@ async def test_missing_manifest_rebuild_deterministic_success() -> None:
 @pytest.mark.asyncio
 async def test_missing_custom_field_gate_blocks_subtask_writes() -> None:
     """Missing required fields should fail before any subtask creation."""
-    client = _FakeClickUpClient()
-    client.use_default_fields = False
-    engine = SyncEngine(client)
+    transport = _FakeClickUpTransport()
+    transport.use_default_fields = False
+    engine = SyncEngine(transport)
 
     artifacts = [
         _artifact("014", parent_num=None, has_tasks=False),
@@ -337,27 +337,27 @@ async def test_missing_custom_field_gate_blocks_subtask_writes() -> None:
             manifest=None,
         )
 
-    assert len(client.subtasks) == 0
-    assert client.field_sets == []
+    assert len(transport.subtasks) == 0
+    assert transport.field_sets == []
 
 
 @pytest.mark.asyncio
 async def test_status_aggregation_counts_by_list() -> None:
     """Status mode should aggregate done/in-progress/blocked/not-started by list."""
-    client = _FakeClickUpClient()
-    engine = SyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
 
-    folder = await client.create_folder("space-1", "014-spec-014")
-    list_ = await client.create_list(folder["id"], "015-spec-015")
-    parent = await client.create_task(list_["id"], "015:US1")
-    st1 = await client.create_task(list_["id"], "015:T001 - Task T001", parent=parent["id"])
-    st2 = await client.create_task(list_["id"], "015:T002 - Task T002", parent=parent["id"])
-    st3 = await client.create_task(list_["id"], "015:T003 - Task T003", parent=parent["id"])
-    st4 = await client.create_task(list_["id"], "015:T004 - Task T004", parent=parent["id"])
-    client.subtasks[st1["id"]]["status"] = {"status": "done"}
-    client.subtasks[st2["id"]]["status"] = {"status": "in progress"}
-    client.subtasks[st3["id"]]["status"] = {"status": "blocked"}
-    client.subtasks[st4["id"]]["status"] = {"status": "open"}
+    folder = await transport.create_folder("space-1", "014-spec-014")
+    list_ = await transport.create_list(folder["id"], "015-spec-015")
+    parent = await transport.create_task(list_["id"], "015:US1")
+    st1 = await transport.create_task(list_["id"], "015:T001 - Task T001", parent=parent["id"])
+    st2 = await transport.create_task(list_["id"], "015:T002 - Task T002", parent=parent["id"])
+    st3 = await transport.create_task(list_["id"], "015:T003 - Task T003", parent=parent["id"])
+    st4 = await transport.create_task(list_["id"], "015:T004 - Task T004", parent=parent["id"])
+    transport.subtasks[st1["id"]]["status"] = {"status": "done"}
+    transport.subtasks[st2["id"]]["status"] = {"status": "in progress"}
+    transport.subtasks[st3["id"]]["status"] = {"status": "blocked"}
+    transport.subtasks[st4["id"]]["status"] = {"status": "open"}
 
     manifest = SyncManifest(
         version="1",
@@ -385,14 +385,14 @@ async def test_status_aggregation_counts_by_list() -> None:
 @pytest.mark.asyncio
 async def test_status_drift_reports_missing_manifest_subtasks() -> None:
     """Status mode should report drift when manifest subtask IDs are missing in ClickUp."""
-    client = _FakeClickUpClient()
-    engine = SyncEngine(client)
+    transport = _FakeClickUpTransport()
+    engine = SyncEngine(transport)
 
-    folder = await client.create_folder("space-1", "014-spec-014")
-    list_ = await client.create_list(folder["id"], "015-spec-015")
-    parent = await client.create_task(list_["id"], "015:US1")
-    st1 = await client.create_task(list_["id"], "015:T001 - Task T001", parent=parent["id"])
-    client.subtasks[st1["id"]]["status"] = {"status": "done"}
+    folder = await transport.create_folder("space-1", "014-spec-014")
+    list_ = await transport.create_list(folder["id"], "015-spec-015")
+    parent = await transport.create_task(list_["id"], "015:US1")
+    st1 = await transport.create_task(list_["id"], "015:T001 - Task T001", parent=parent["id"])
+    transport.subtasks[st1["id"]]["status"] = {"status": "done"}
 
     manifest = SyncManifest(
         version="1",

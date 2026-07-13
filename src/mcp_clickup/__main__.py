@@ -7,7 +7,8 @@ import asyncio
 import os
 import re
 import sys
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from src.mcp_clickup.clickup_client import (
 )
 from src.mcp_clickup.manifest import ManifestVersionError, load_manifest, save_manifest
 from src.mcp_clickup.sync_engine import (
+    ClickUpTransportProtocol,
     ManifestRebuildAmbiguousError,
     MissingCustomFieldsError,
     SyncEngine,
@@ -46,9 +48,16 @@ def _print_error(code: str, message: str, hint: str) -> None:
     print(f"  -> {hint}", file=sys.stderr)
 
 
-def build_client(api_token: str) -> ClickUpClient:
-    """Build the runtime ClickUp client instance."""
+def build_direct_clickup_transport(api_token: str) -> ClickUpClient:
+    """Build the current direct ClickUp transport implementation."""
     return ClickUpClient(api_token=api_token)
+
+
+@asynccontextmanager
+async def build_transport(api_token: str) -> AsyncIterator[ClickUpTransportProtocol]:
+    """Build the runtime transport context consumed by sync orchestration."""
+    async with build_direct_clickup_transport(api_token) as transport:
+        yield transport
 
 
 def _runtime_paths() -> tuple[Path, Path]:
@@ -107,8 +116,8 @@ async def bootstrap_async() -> int:
             _print_error("manifest_version", str(exc), "Regenerate or migrate the manifest schema")
             return 1
 
-    async with build_client(token) as client:
-        engine = SyncEngine(client)
+    async with build_transport(token) as transport:
+        engine = SyncEngine(transport)
         try:
             await engine.bootstrap_from_artifacts(
                 artifacts=artifacts,
@@ -164,8 +173,8 @@ async def status_async() -> int:
         _print_error("manifest_version", str(exc), "Regenerate or migrate the manifest schema")
         return 1
 
-    async with build_client(token) as client:
-        engine = SyncEngine(client)
+    async with build_transport(token) as transport:
+        engine = SyncEngine(transport)
         try:
             summary = await engine.status_from_manifest(manifest)
         except ClickUpNotFoundError as exc:
