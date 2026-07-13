@@ -9,7 +9,6 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, Sequence
 
-from scripts import speckit_implement_step
 from src.mcp_clickup import SyncManifest
 from src.mcp_clickup.composio_adapter import ComposioClickUpAdapter
 from src.mcp_clickup.manifest import ClickUpTaskMappingError, load_manifest, resolve_task_projection_mapping
@@ -76,6 +75,17 @@ def status_is_start_request(status: str) -> bool:
 def _resolve_manifest_path(manifest_path: str) -> Path:
     """Normalize the manifest path used for ClickUp-task mapping lookups."""
     return Path(manifest_path).expanduser().resolve()
+
+
+def _load_implement_step_module() -> Any:
+    """Load the implement-step script module with the scripts directory on sys.path."""
+    scripts_dir = Path(__file__).resolve().parent
+    scripts_dir_str = str(scripts_dir)
+    if scripts_dir_str not in sys.path:
+        sys.path.insert(0, scripts_dir_str)
+    import speckit_implement_step
+
+    return speckit_implement_step
 
 
 def parse_request(argv: Sequence[str]) -> tuple[ClickUpTriggerRequest, bool, Path, Path]:
@@ -245,6 +255,7 @@ def _resolve_gate_summary(
     request: ClickUpTriggerRequest,
 ) -> dict[str, Any]:
     """Resolve the explicit task gate summary for one request."""
+    speckit_implement_step = _load_implement_step_module()
     feature_dir = speckit_implement_step._resolve_feature_dir(repo_root, request.feature_id)
     return speckit_implement_step._resolve_explicit_task_start_gate(
         repo_root=repo_root,
@@ -261,6 +272,7 @@ def _start_request(
     request: ClickUpTriggerRequest,
 ) -> dict[str, Any]:
     """Start or resume one explicit request through the normal ledger-owned seam."""
+    speckit_implement_step = _load_implement_step_module()
     feature_dir = speckit_implement_step._resolve_feature_dir(repo_root, request.feature_id)
     return speckit_implement_step._start_explicit_task_request(
         repo_root=repo_root,

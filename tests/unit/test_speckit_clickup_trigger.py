@@ -257,6 +257,49 @@ def test_write_rejection_feedback_updates_clickup_task_description() -> None:
     ]
 
 
+def test_write_rejection_feedback_handles_ambiguous_mapping_rejection() -> None:
+    """Ambiguous mapping rejections should still write a clear operator-visible feedback update."""
+    reporter = _RecordingReporter()
+    payload = render_response(
+        ClickUpTriggerRequest(
+            feature_id="048",
+            task_id="T016",
+            clickup_task_id="CU-16",
+            actor="clickup",
+            dry_run=False,
+            status=READY_FOR_IMPLEMENT_STATUS,
+        ),
+        mapping_count=2,
+    )
+
+    result = asyncio.run(
+        write_rejection_feedback(
+            reporter,
+            ClickUpTriggerRequest(
+                feature_id="048",
+                task_id="T016",
+                clickup_task_id="CU-16",
+                actor="clickup",
+                dry_run=False,
+                status=READY_FOR_IMPLEMENT_STATUS,
+            ),
+            payload,
+        )
+    )
+
+    assert result["feedback_written"] is True
+    assert reporter.calls == [
+        (
+            "CU-16",
+            {
+                "name": None,
+                "description": "ambiguous_mapping: trigger request was rejected by repo-side gating",
+                "status": None,
+            },
+        )
+    ]
+
+
 def test_main_execute_starts_explicit_task(monkeypatch, capsys: pytest.CaptureFixture[str]) -> None:
     """Execute mode should route an explicit request through the mutating start seam."""
     monkeypatch.setattr(
