@@ -1658,3 +1658,9 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "048", "task_id": "T013", "timestamp_utc": "2026-07-13T15:27:59.850033Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t013-20260713T152711Z", "task_id": "T013", "timestamp_utc": "2026-07-13T15:27:59.919117Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T013", "timestamp_utc": "2026-07-13T15:27:59.963456Z"}
+{"actor": "codex", "attempt": 1, "details": "Implementing mapped-task resolution and ready-for-implement handling for ClickUp trigger requests.", "event": "task_started", "feature_id": "048", "task_id": "T014", "timestamp_utc": "2026-07-13T15:28:41.385407Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "048", "task_id": "T014", "timestamp_utc": "2026-07-13T15:33:21.960132Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "24a3e9e", "event": "commit_created", "feature_id": "048", "task_id": "T014", "timestamp_utc": "2026-07-13T15:33:22.008381Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "048", "task_id": "T014", "timestamp_utc": "2026-07-13T15:33:22.057105Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t014-20260713T153236Z", "task_id": "T014", "timestamp_utc": "2026-07-13T15:33:22.102968Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T014", "timestamp_utc": "2026-07-13T15:33:22.143112Z"}

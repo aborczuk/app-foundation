@@ -98,7 +98,7 @@ description: "Task list for Composio ClickUp trigger sync"
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Implement mapped-task resolution and ready-for-implement status handling in scripts/speckit_clickup_trigger.py and src/mcp_clickup/manifest.py
+- [X] T014 [US2] Implement mapped-task resolution and ready-for-implement status handling in scripts/speckit_clickup_trigger.py and src/mcp_clickup/manifest.py
 - [ ] T015 [US2] Reuse ledger-gated task-start selection for explicit feature/task requests in scripts/speckit_implement_step.py and scripts/task_ledger.py
 - [ ] T016 [US2] Write blocked or ambiguous start-request rejection reasons back through Composio in scripts/speckit_clickup_trigger.py and src/mcp_clickup/composio_adapter.py
 

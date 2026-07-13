@@ -48,6 +48,10 @@
 <!-- speckit_implement_docs:entry_id=T013:runbook -->
 - T013 pinned the ClickUp start gate contract with passing tests for eligible, blocked, and ambiguous trigger outcomes plus explicit non-mutating task-gate coverage in implement-step.
 
+
+<!-- speckit_implement_docs:entry_id=T014:runbook -->
+- T014 added manifest-backed ClickUp subtask resolution plus dedicated ready-for-implement status handling so trigger requests can resolve to one repo feature/task pair before later ledger gating.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -82,3 +86,6 @@
 
 <!-- speckit_implement_docs:entry_id=T013:decision_log -->
 - Kept the real trigger integration deferred while extending the scaffold response helper just enough to express eligible, blocked, and ambiguous outcomes deterministically for the task's regression suite.
+
+<!-- speckit_implement_docs:entry_id=T014:decision_log -->
+- Kept trigger start authority inside the repo by resolving ClickUp task ids through manifest projection metadata and ignoring non-ready statuses before any ledger-aware execution step runs.
