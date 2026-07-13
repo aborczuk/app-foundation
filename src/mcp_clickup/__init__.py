@@ -15,6 +15,11 @@ class Task:
     workflow_type: str = "build_spec"
     context_ref: str = ""
     execution_policy: str = "manual-test"
+    acceptance_criteria: str = ""
+    story_label: str = ""
+    parallel: bool = False
+    estimate_points: int | None = None
+    artifact_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -37,6 +42,7 @@ class SpecArtifact:
     is_phase_spec: bool
     parent_num: str | None
     has_tasks: bool
+    artifact_links: dict[str, str] = field(default_factory=dict)
     task_groups: list[TaskGroup] = field(default_factory=list)
 
 
