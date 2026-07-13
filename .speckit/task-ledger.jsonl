@@ -1635,3 +1635,8 @@
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t009-20260713T144739Z", "task_id": "T009", "timestamp_utc": "2026-07-13T14:48:46.319174Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T009", "timestamp_utc": "2026-07-13T14:48:46.360986Z"}
 {"actor": "codex", "attempt": 1, "details": "Implement started by /speckit.implement root agent", "event": "task_started", "feature_id": "048", "task_id": "T010", "timestamp_utc": "2026-07-13T14:50:14.556904Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "048", "task_id": "T010", "timestamp_utc": "2026-07-13T14:55:34.084958Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "0e40f550f50baa3ba48dc1a94620e8a4ecd2339a", "event": "commit_created", "feature_id": "048", "task_id": "T010", "timestamp_utc": "2026-07-13T14:55:34.134374Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "048", "task_id": "T010", "timestamp_utc": "2026-07-13T14:55:34.184124Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t010-20260713T145425Z", "task_id": "T010", "timestamp_utc": "2026-07-13T14:55:34.258201Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T010", "timestamp_utc": "2026-07-13T14:55:34.300770Z"}

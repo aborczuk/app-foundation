@@ -32,6 +32,10 @@
 <!-- speckit_implement_docs:entry_id=T009:runbook -->
 - T009 introduced canonical FeatureProjection and TaskProjection models plus projection builders so stabilized repo artifacts now emit one repo-owned feature projection and task set before mapping or transport work begins.
 
+
+<!-- speckit_implement_docs:entry_id=T010:runbook -->
+- T010 now keeps feature-list and executable-task projection metadata in the manifest during sync, and re-sync updates an already-mapped subtask in place when the repo task projection changes instead of duplicating it.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -54,3 +58,6 @@
 
 <!-- speckit_implement_docs:entry_id=T009:decision_log -->
 - T009: split raw artifact parsing from canonical projection extraction by adding explicit projection dataclasses and builders, so later mapping and Composio transport tasks can consume a stable repo-owned contract instead of re-deriving metadata ad hoc.
+
+<!-- speckit_implement_docs:entry_id=T010:decision_log -->
+- T010: treated the manifest as the durable projection memory by adding explicit feature/task projection metadata updates inside sync_engine and using that stable mapping path to rename an already-mapped subtask when the canonical repo task projection changes.
