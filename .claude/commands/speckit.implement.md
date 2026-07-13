@@ -76,7 +76,7 @@ Before task execution or handoff:
   - check the next eligible task/start gate
   - implement the next task from `tasks.md`
   - send the completed task result to QA
-  - when QA returns a pass-worthy offline-QA result, create the implementation commit and run closeout
+  - when QA returns a pass-worthy offline-QA result, record any real task commit metadata and run closeout
   - advance to the next task
 - Preserve task-ledger and dependency gates exactly. Do not begin another task until the current task has passed QA and closeout is complete.
 - In the normal case, the root agent should implement directly from the selected task entry and feature context rather than creating an extra builder delegation layer.
@@ -97,9 +97,9 @@ Before task execution or handoff:
   3. send the task result, task id, changed files, and test evidence to the QA subagent
   4. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
   5. if QA returns `FIX_REQUIRED`, apply those findings in the root agent and retry the same task
-  6. once QA returns a pass-worthy offline-QA result, create the implementation commit and run `scripts/speckit_closeout_task.py`
+  6. once QA returns a pass-worthy offline-QA result, run `scripts/speckit_closeout_task.py` and include commit metadata only if a real task commit exists
 - The orchestrator may verify task identity, required artifacts, and evidence completeness before the QA handoff, but must not perform an additional correctness review or substitute its own QA judgment for the QA subagent verdict.
-- A root-agent implementation result is not commit authorization. Implementation commits must wait until the QA subagent returns a pass-worthy offline-QA result for the active task.
+- A root-agent implementation result is not commit authorization. QA must run against the active branch/worktree state and must not depend on a pre-QA commit.
 - Guard JSON payload/result handling actively:
   - extract a compact decision summary once rather than repeatedly rereading full payload/result JSON artifacts
   - QA payload minimum fields: `feature_id`, `task_id`, `changed_files`, `acceptance_criteria`, `test_runs`

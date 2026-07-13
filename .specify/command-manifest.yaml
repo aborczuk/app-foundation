@@ -1,8 +1,8 @@
-version: 1.1.8
-last_updated: '2026-05-06T00:00:00Z'
+version: 1.1.9
+last_updated: '2026-07-13T00:00:00Z'
 manifest:
-  version: 1.1.9
-  updated_utc: '2026-05-06T00:00:00Z'
+  version: 1.1.10
+  updated_utc: '2026-07-13T00:00:00Z'
   ledger_sync_policy:
     - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
       emitted event contract changes, update this manifest in the same PR.

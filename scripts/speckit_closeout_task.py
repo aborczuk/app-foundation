@@ -34,7 +34,7 @@ class CloseoutResult:
     ok: bool
     feature_id: str
     task_id: str
-    commit_sha: str
+    commit_sha: str | None
     qa_run_id: str
     next_action: str
     next_task_id: str | None
@@ -226,7 +226,7 @@ def _closeout(
     task_id: str,
     tasks_file: Path,
     ledger_file: Path,
-    commit_sha: str,
+    commit_sha: str | None,
     qa_run_id: str,
     qa_result_path: Path | None,
     actor: str,
@@ -288,11 +288,12 @@ def _closeout(
     # QA passed — proceed with canonical closeout
     canonical_events: list[tuple[str, dict[str, str | None]]] = [
         ("tests_passed", {"details": "closeout path recorded task test evidence"}),
-        ("commit_created", {"commit_sha": commit_sha}),
         ("offline_qa_started", {}),
         ("offline_qa_passed", {"qa_run_id": qa_run_id, "details": "closeout path recorded offline QA pass"}),
         ("task_closed", {"details": "canonical closeout path completed"}),
     ]
+    if commit_sha:
+        canonical_events.insert(3, ("commit_created", {"commit_sha": commit_sha}))
     for event_name, extra in canonical_events:
         if event_name in existing_event_set:
             continue
@@ -331,7 +332,7 @@ def closeout_task(
     task_id: str,
     tasks_file: Path,
     ledger_file: Path,
-    commit_sha: str,
+    commit_sha: str | None,
     qa_run_id: str,
     qa_result_path: Path | None,
     actor: str,
@@ -356,7 +357,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-id", required=True)
     parser.add_argument("--tasks-file", required=True)
     parser.add_argument("--ledger-file", required=True)
-    parser.add_argument("--commit-sha", required=True)
+    parser.add_argument("--commit-sha")
     parser.add_argument("--qa-run-id", required=True)
     parser.add_argument("--qa-result-file", help="Path to offline QA result JSON.")
     parser.add_argument("--actor", default="codex")
@@ -373,7 +374,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         task_id=args.task_id,
         tasks_file=Path(args.tasks_file),
         ledger_file=Path(args.ledger_file),
-        commit_sha=args.commit_sha,
+        commit_sha=str(args.commit_sha).strip() or None if args.commit_sha is not None else None,
         qa_run_id=args.qa_run_id,
         qa_result_path=qa_result_path,
         actor=args.actor,

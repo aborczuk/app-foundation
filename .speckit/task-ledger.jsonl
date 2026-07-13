@@ -1676,3 +1676,4 @@
 {"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.358038Z"}
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "048", "qa_run_id": "offline-qa-t016-20260713T155953Z", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.403549Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "048", "task_id": "T016", "timestamp_utc": "2026-07-13T16:00:35.448348Z"}
+{"actor": "codex", "attempt": 1, "details": "Adding closeout reflection regression coverage for success and retryable transport failure.", "event": "task_started", "feature_id": "048", "task_id": "T017", "timestamp_utc": "2026-07-13T16:01:19.205401Z"}

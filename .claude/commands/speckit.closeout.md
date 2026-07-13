@@ -18,7 +18,7 @@ Close the current task through one append-first path that records the task evide
 
 1. Run `.specify/scripts/python/check_prerequisites.py --json --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
-2. Require `--commit-sha` and `--qa-run-id` in the user input or reject the request.
+2. Require `--qa-run-id` in the user input or reject the request. Accept `--commit-sha` when a task commit was actually created, but do not require it to run offline QA or closeout.
 3. Invoke:
 
    ```bash
@@ -27,10 +27,11 @@ Close the current task through one append-first path that records the task evide
      --task-id "T0XX" \
      --tasks-file "$FEATURE_DIR/tasks.md" \
      --ledger-file ".speckit/task-ledger.jsonl" \
-     --commit-sha "<commit_sha>" \
      --qa-run-id "<qa_run_id>" \
      --json
    ```
+
+   Include `--commit-sha "<commit_sha>"` only when the implementation actually produced a task commit that should be recorded in the ledger.
 
 4. Parse the JSON payload:
    - `next_action=continue`: report the compact status line and stop.
