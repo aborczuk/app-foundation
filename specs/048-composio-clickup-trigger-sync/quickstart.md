@@ -28,6 +28,10 @@
 <!-- speckit_implement_docs:entry_id=T008:runbook -->
 - T008 tightened sync-engine idempotence coverage and broadened Composio adapter scaffold coverage so reruns stay non-duplicating and transport contract failures remain explicit per operation.
 
+
+<!-- speckit_implement_docs:entry_id=T009:runbook -->
+- T009 introduced canonical FeatureProjection and TaskProjection models plus projection builders so stabilized repo artifacts now emit one repo-owned feature projection and task set before mapping or transport work begins.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -47,3 +51,6 @@
 
 <!-- speckit_implement_docs:entry_id=T008:decision_log -->
 - T008: pinned the current transport seam with strict non-duplication assertions in sync_engine and operation-specific scaffold errors in the Composio adapter tests before later runtime wiring tasks land.
+
+<!-- speckit_implement_docs:entry_id=T009:decision_log -->
+- T009: split raw artifact parsing from canonical projection extraction by adding explicit projection dataclasses and builders, so later mapping and Composio transport tasks can consume a stable repo-owned contract instead of re-deriving metadata ad hoc.
