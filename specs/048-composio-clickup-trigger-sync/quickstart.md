@@ -24,6 +24,10 @@
 <!-- speckit_implement_docs:entry_id=T007:runbook -->
 - T007 added regression coverage for parser acceptance fallback and manifest round-trip/default handling so the enriched projection metadata stays stable across both discovery and persistence paths.
 
+
+<!-- speckit_implement_docs:entry_id=T008:runbook -->
+- T008 tightened sync-engine idempotence coverage and broadened Composio adapter scaffold coverage so reruns stay non-duplicating and transport contract failures remain explicit per operation.
+
 ## Decision Log
 
 <!-- speckit_implement_docs:entry_id=T003:decision_log -->
@@ -40,3 +44,6 @@
 
 <!-- speckit_implement_docs:entry_id=T007:decision_log -->
 - T007: covered the remaining projection-regression gaps by testing the parser's Independent Test fallback branch and the manifest's additive metadata preservation/defaulting behavior instead of broadening runtime logic.
+
+<!-- speckit_implement_docs:entry_id=T008:decision_log -->
+- T008: pinned the current transport seam with strict non-duplication assertions in sync_engine and operation-specific scaffold errors in the Composio adapter tests before later runtime wiring tasks land.
