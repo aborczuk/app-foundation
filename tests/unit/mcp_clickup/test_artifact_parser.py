@@ -123,3 +123,36 @@ def test_discover_specs_enriches_task_projection_metadata(tmp_path: Path) -> Non
     assert task_2.story_label == "US1"
     assert task_2.parallel is True
     assert task_2.estimate_points == 5
+
+
+def test_discover_specs_falls_back_to_independent_test_acceptance(tmp_path: Path) -> None:
+    """Spec discovery should fall back to Independent Test text when acceptance criteria are absent."""
+    specs_root = tmp_path / "specs"
+    feature_dir = specs_root / "049-trigger-sync"
+
+    _write(
+        feature_dir / "spec.md",
+        "# Feature Specification: 049 Trigger Sync\n",
+    )
+    _write(
+        feature_dir / "tasks.md",
+        """
+## User Story 2 - Trigger implementation from stabilized ClickUp tasks
+
+**Independent Test**: Trigger selection stays repo-owned and stable.
+
+### Implementation for User Story 2
+
+- [ ] T013 [P] [US2] Implement trigger selection
+""".strip(),
+    )
+
+    artifacts = discover_spec_artifacts(specs_root)
+
+    task = artifacts[0].task_groups[0].tasks[0]
+    assert task.id == "T013"
+    assert task.title == "Implement trigger selection"
+    assert task.story_label == "US2"
+    assert task.parallel is True
+    assert task.estimate_points is None
+    assert task.acceptance_criteria == "Trigger selection stays repo-owned and stable."

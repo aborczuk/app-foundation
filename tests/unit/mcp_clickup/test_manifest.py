@@ -80,4 +80,36 @@ def test_save_manifest_writes_via_atomic_replace(tmp_path: Path, monkeypatch: py
     loaded = load_manifest(manifest_path)
     assert loaded.subtasks["015:T001"] == "st1"
     assert loaded.feature_projection_meta["015"]["title"] == "015 Dispatch"
+    assert loaded.feature_projection_meta["015"]["artifact_links"] == {
+        "spec": "specs/015-control-plane-dispatch/spec.md"
+    }
+    assert loaded.task_projection_meta["015:T001"]["acceptance_criteria"] == (
+        "Routes dispatch deterministically."
+    )
+    assert loaded.task_projection_meta["015:T001"]["story_label"] == "US1"
+    assert loaded.task_projection_meta["015:T001"]["parallel"] is False
     assert loaded.task_projection_meta["015:T001"]["estimate_points"] == 3
+
+
+def test_load_manifest_defaults_projection_metadata_to_empty_dicts(tmp_path: Path) -> None:
+    """Legacy manifests should default new projection metadata fields cleanly."""
+    manifest_path = tmp_path / "clickup-manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": "1",
+                "workspace_id": "w1",
+                "space_id": "s1",
+                "folders": {"014": "f1"},
+                "lists": {"015": "l1"},
+                "tasks": {"015:US1": "t1"},
+                "subtasks": {"015:T001": "st1"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_manifest(manifest_path)
+
+    assert loaded.feature_projection_meta == {}
+    assert loaded.task_projection_meta == {}
