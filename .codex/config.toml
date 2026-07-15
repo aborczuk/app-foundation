@@ -1,3 +1,24 @@
+model_auto_compact_token_limit = 60000
+tool_output_token_limit = 4000
+compact_prompt = """
+You are a context compaction engine for Codex. Your job is to condense the conversation history without losing execution state.
+Do NOT write a narrative story. Output a strict markdown state block using this format:
+
+## CRITICAL EXECUTION STATE
+* **SpecKit Step:** [What speckit step you are on, if relevant. if none say none]
+* **Task Goal:** [The absolute objective of the user]
+* **Files Read/Touched:** [Exact file paths interacted with]
+* **Current Patch Point:** [Specific functions or lines currently being modified]
+* **Concrete Next Step:** [The single atomic action required next]
+
+## NEGATIVE KNOWLEDGE (What to avoid)
+* **Disproven Hypotheses:** [What paths or code variations failed and why]
+* **Ruled-Out Files:** [Files checked and confirmed irrelevant]
+
+## ARCHITECTURAL CONSTRAINTS
+* [List active language versions, design boundaries, or testing frameworks in use. Write none if irrelevent.]
+"""
+
 [features]
 goals = true
 
