@@ -86,20 +86,30 @@ Before task execution or handoff:
   - QA findings that need clarification before retry
   - offline QA / closeout contradictions
 - The root agent should not be the source of routine delay. When the task packet is already clear enough, implement it directly instead of expanding the context unnecessarily.
+- For code-bearing tasks, the root agent must run a tight red-green loop before QA:
+  - derive the behavior from the task acceptance criteria
+  - write one focused regression test that should fail against the current code
+  - run that test and confirm the failure
+  - implement the smallest fix that makes the regression pass
+  - rerun the targeted test and any directly relevant checks until they are green
+- For docs-only, manifest-only, or operator-guidance tasks, skip the failing-test phase and use the narrowest deterministic validation available instead.
 - The QA subagent may use `.claude/commands/speckit.qa.md` as its standing review contract because it is a task reviewer rather than the implementation worker.
 - The orchestrator's QA handoff template must explicitly instruct:
   - run `scripts/speckit_offline_qa_handoff.py` first for the active task
   - then apply the `/speckit.qa` behavioral review rules to interpret that canonical result
   - only do deeper manual inspection when the offline-QA result fails, is invalid, or needs explanation for a root-agent retry
 - Per task, the root agent must:
-  1. implement the selected task from the resolved feature context
-  2. collect changed files and test evidence
-  3. send the task result, task id, changed files, and test evidence to the QA subagent
-  4. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
-  5. if QA returns `FIX_REQUIRED`, apply those findings in the root agent and retry the same task
-  6. once QA returns a pass-worthy offline-QA result, run `scripts/speckit_closeout_task.py` and include commit metadata only if a real task commit exists
-  7. if closeout returns `clickup_sync_status=pending_agent_update`, the root agent must use the connected Composio ClickUp tools to set that mapped task to the exact `clickup_desired_status` value after repo closeout succeeds
-  8. if the Composio ClickUp update fails, keep repo closeout authoritative, report the failure as retry-needed, and continue without rolling back task closure
+  1. identify the behavior from the selected task and acceptance criteria
+  2. write and run the focused red test for code-bearing work, or the narrow deterministic validation for non-code work
+  3. implement the selected task from the resolved feature context
+  4. rerun the targeted test or directly relevant checks until the task is green
+  5. collect changed files and test evidence
+  6. send the task result, task id, changed files, and test evidence to the QA subagent
+  7. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
+  8. if QA returns `FIX_REQUIRED`, apply those findings in the root agent and retry the same task
+  9. once QA returns a pass-worthy offline-QA result, run `scripts/speckit_closeout_task.py` and include commit metadata only if a real task commit exists
+  10. if closeout returns `clickup_sync_status=pending_agent_update`, the root agent must use the connected Composio ClickUp tools to set that mapped task to the exact `clickup_desired_status` value after repo closeout succeeds
+  11. if the Composio ClickUp update fails, keep repo closeout authoritative, report the failure as retry-needed, and continue without rolling back task closure
 - The orchestrator may verify task identity, required artifacts, and evidence completeness before the QA handoff, but must not perform an additional correctness review or substitute its own QA judgment for the QA subagent verdict.
 - A root-agent implementation result is not commit authorization. QA must run against the active branch/worktree state and must not depend on a pre-QA commit.
 - Agent-owned ClickUp completion flow after closeout:
