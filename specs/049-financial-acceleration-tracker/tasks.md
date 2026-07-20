@@ -34,11 +34,14 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 **Purpose**: Implement design slice PL-01, Financial Foundation and Provenance. No user-story task can start before these seams are stable.
 
-- [ ] T003 Create typed domain entities, migrations, and uniqueness constraints for issuers, filings, fiscal periods, facts, provenance, analysis runs, and work items in `src/financial_tracker/domain/models.py`
-- [ ] T004 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
-- [ ] T005 Implement exact-decimal fixture ingestion with transactional idempotency and structured audit events in `src/financial_tracker/ingestion/fixtures.py`
-- [ ] T006 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`
-- [ ] T007 Add real-PostgreSQL foundation tests for identity, provenance, idempotent ingestion, and work transitions in `tests/integration/financial_tracker/test_foundation.py`
+- [ ] T003 Define typed domain entities and persistence mappings for users, portfolios, issuers, filings, fiscal periods, facts, and provenance in `src/financial_tracker/domain/models.py`
+- [ ] T004 Add migrations and uniqueness, supersession, analysis-run, and work-item constraints in `src/financial_tracker/domain/models.py`
+- [ ] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
+- [ ] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`
+- [ ] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
+- [ ] T008 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`
+- [ ] T009 Add real-PostgreSQL identity and provenance tests in `tests/integration/financial_tracker/test_foundation.py`
+- [ ] T010 Add real-PostgreSQL idempotent-ingestion and work-transition tests in `tests/integration/financial_tracker/test_foundation.py`
 
 **Checkpoint**: PL-01 is independently verifiable with fixture input, immutable provenance, authorization scope, and durable retry-safe work state.
 
@@ -59,16 +62,17 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Write red fixture tests for fiscal-period derivation, selectors, and amended filing behavior in `tests/financial_tracker/calculation/test_periods.py`
-- [ ] T009 [P] [US1] Write red fixture tests for exact-decimal margin, streak, acceleration, and finite quality states in `tests/financial_tracker/calculation/test_acceleration.py`
+- [ ] T011 [P] [US1] Write red fixture tests for fiscal-period derivation, selectors, and amended filing behavior in `tests/financial_tracker/calculation/test_periods.py`
+- [ ] T012 [P] [US1] Write red fixture tests for exact-decimal margin, streak, acceleration, and finite quality states in `tests/financial_tracker/calculation/test_acceleration.py`
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Implement approved fact selectors and fiscal-period classification/derivation in `src/financial_tracker/selectors/periods.py`
-- [ ] T011 [US1] Implement built-in revenue, operating income, margin, streak, and acceleration calculations with finite quality states in `src/financial_tracker/calculation/acceleration.py`
-- [ ] T012 [US1] Persist immutable metric observations with source snapshot, calculation version, and complete provenance in `src/financial_tracker/calculation/observations.py`
-- [ ] T013 [US1] Implement the authorized filing-analysis read model and response contract in `src/financial_tracker/query/analysis.py`
-- [ ] T014 [US1] Add the filing-backed analysis integration test against real PostgreSQL fixtures in `tests/integration/financial_tracker/test_analysis.py`
+- [ ] T013 [US1] Implement approved fact selectors and fiscal-period classification/derivation in `src/financial_tracker/selectors/periods.py`
+- [ ] T014 [US1] Implement built-in exact-decimal revenue, operating income, and margin calculations in `src/financial_tracker/calculation/acceleration.py`
+- [ ] T015 [US1] Implement streak, acceleration classification, and finite quality-state calculations in `src/financial_tracker/calculation/acceleration.py`
+- [ ] T016 [US1] Persist immutable metric observations with source snapshot, calculation version, and complete provenance in `src/financial_tracker/calculation/observations.py`
+- [ ] T017 [US1] Implement the authorized filing-analysis read model and response contract in `src/financial_tracker/query/analysis.py`
+- [ ] T018 [US1] Add the filing-backed analysis integration test against real PostgreSQL fixtures in `tests/integration/financial_tracker/test_analysis.py`
 
 **Checkpoint**: US1 is independently demonstrable from fixture ingestion through a provenance-complete acceleration result.
 
@@ -89,16 +93,18 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 2
 
-- [ ] T015 [P] [US2] Write red tests for expression parsing, unit checks, unsafe operations, and dependency cycles in `tests/financial_tracker/metrics/test_expression.py`
-- [ ] T016 [P] [US2] Write red tests for version activation, retirement, authorization, and historical observation selection in `tests/financial_tracker/metrics/test_registry.py`
+- [ ] T019 [P] [US2] Write red tests for expression parsing, unit checks, unsafe operations, and dependency cycles in `tests/financial_tracker/metrics/test_expression.py`
+- [ ] T020 [P] [US2] Write red tests for version activation, retirement, authorization, and historical observation selection in `tests/financial_tracker/metrics/test_registry.py`
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Implement the restricted typed metric expression parser and validator in `src/financial_tracker/metrics/expression.py`
-- [ ] T018 [US2] Implement immutable metric definition/version persistence and scope authorization in `src/financial_tracker/metrics/registry.py`
-- [ ] T019 [US2] Implement dry-run, activation, retirement, and validation-report orchestration in `src/financial_tracker/metrics/service.py`
-- [ ] T020 [US2] Implement dependency-aware targeted recalculation enqueueing and versioned history selection in `src/financial_tracker/recalculation/metric_runs.py`
-- [ ] T021 [US2] Add metric-definition API contract tests for validation, authorization, dry run, and version history in `tests/financial_tracker/metrics/test_api.py`
+- [ ] T021 [US2] Implement the restricted typed metric expression parser and validator in `src/financial_tracker/metrics/expression.py`
+- [ ] T022 [US2] Implement immutable metric definition/version persistence and scope authorization in `src/financial_tracker/metrics/registry.py`
+- [ ] T023 [US2] Implement metric dry-run validation and bounded validation-report orchestration in `src/financial_tracker/metrics/service.py`
+- [ ] T024 [US2] Implement metric activation and retirement lifecycle orchestration in `src/financial_tracker/metrics/service.py`
+- [ ] T025 [US2] Implement dependency-aware targeted recalculation enqueueing in `src/financial_tracker/recalculation/metric_runs.py`
+- [ ] T026 [US2] Implement versioned historical observation selection in `src/financial_tracker/recalculation/metric_runs.py`
+- [ ] T027 [US2] Add metric-definition API contract tests for validation, authorization, dry run, and version history in `tests/financial_tracker/metrics/test_api.py`
 
 **Checkpoint**: US2 is independently demonstrable with a user-authored metric definition that can evolve without rewriting history.
 
@@ -119,15 +125,17 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 3
 
-- [ ] T022 [P] [US3] Write red refresh tests for new filings, amendments, restatements, duplicate delivery, and targeted recalculation in `tests/integration/financial_tracker/test_refresh.py`
+- [ ] T028 [P] [US3] Write red refresh tests for new filings, amendments, restatements, duplicate delivery, and targeted recalculation in `tests/integration/financial_tracker/test_refresh.py`
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Implement the SEC filing discovery adapter with User-Agent, timeout, retry, rate-budget, and circuit policy in `src/financial_tracker/sec/adapter.py`
-- [ ] T024 [US3] Implement amendment detection and targeted refresh orchestration in `src/financial_tracker/sec/refresh.py`
-- [ ] T025 [US3] Implement worker leasing, retry-wait, dead-letter, and recovery behavior in `src/financial_tracker/work/coordinator.py`
-- [ ] T026 [US3] Add refresh metrics, structured failure artifacts, and operator continuity guidance in `docs/financial-tracker-operations.md`
-- [ ] T027 [US3] Add the bounded live-SEC compatibility and outage-path integration tests in `tests/integration/financial_tracker/test_live_sec.py`
+- [ ] T029 [US3] Implement the SEC filing discovery adapter with User-Agent, timeout, and rate-budget policy in `src/financial_tracker/sec/adapter.py`
+- [ ] T030 [US3] Add classified retry and circuit-open behavior to the SEC adapter in `src/financial_tracker/sec/adapter.py`
+- [ ] T031 [US3] Implement amendment detection and targeted refresh orchestration in `src/financial_tracker/sec/refresh.py`
+- [ ] T032 [US3] Implement worker leasing and coordinator-owned running state in `src/financial_tracker/work/coordinator.py`
+- [ ] T033 [US3] Implement retry-wait, dead-letter, and expired-lease recovery in `src/financial_tracker/work/coordinator.py`
+- [ ] T034 [US3] Add refresh metrics, structured failure artifacts, and operator continuity guidance in `docs/financial-tracker-operations.md`
+- [ ] T035 [US3] Add the bounded live-SEC compatibility and outage-path integration tests in `tests/integration/financial_tracker/test_live_sec.py`
 
 **Checkpoint**: US3 is independently demonstrable with safe refresh, amendment history, retry recovery, and operator-visible degradation.
 
@@ -148,13 +156,14 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 4
 
-- [ ] T028 [P] [US4] Write red API/export parity and authorization tests in `tests/financial_tracker/api/test_exports.py`
+- [ ] T036 [P] [US4] Write red API/export parity and authorization tests in `tests/financial_tracker/api/test_exports.py`
 
 ### Implementation for User Story 4
 
-- [ ] T029 [US4] Implement authenticated company, watchlist, portfolio, and metric-history query endpoints in `src/financial_tracker/api/queries.py`
-- [ ] T030 [US4] Implement deterministic XLSX generation and immutable export manifests in `src/financial_tracker/exports/xlsx.py`
-- [ ] T031 [US4] Implement the separately authorized Google Sheets delivery adapter in `src/financial_tracker/exports/google_sheets.py`
+- [ ] T037 [US4] Implement authenticated company, watchlist, and portfolio query endpoints in `src/financial_tracker/api/queries.py`
+- [ ] T038 [US4] Implement authenticated metric-history query endpoints and version filters in `src/financial_tracker/api/queries.py`
+- [ ] T039 [US4] Implement deterministic XLSX generation and immutable export manifests in `src/financial_tracker/exports/xlsx.py`
+- [ ] T040 [US4] Implement the separately authorized Google Sheets delivery adapter in `src/financial_tracker/exports/google_sheets.py`
 
 **Checkpoint**: US4 is independently demonstrable with parity across dashboard/API/export read contracts and authorization boundaries.
 
@@ -174,12 +183,12 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 5
 
-- [ ] T032 [P] [US5] Write red company-history tests for gaps, outliers, amendments, and provenance labels in `tests/financial_tracker/web/test_company_history.py`
+- [ ] T041 [P] [US5] Write red company-history tests for gaps, outliers, amendments, and provenance labels in `tests/financial_tracker/web/test_company_history.py`
 
 ### Implementation for User Story 5
 
-- [ ] T033 [US5] Implement the company history query with freshness and provenance state in `src/financial_tracker/query/company_history.py`
-- [ ] T034 [US5] Implement the server-rendered company detail and trend visualization preserving gaps and outliers in `src/financial_tracker/web/company_history.py`
+- [ ] T042 [US5] Implement the company history query with freshness and provenance state in `src/financial_tracker/query/company_history.py`
+- [ ] T043 [US5] Implement the server-rendered company detail and trend visualization preserving gaps and outliers in `src/financial_tracker/web/company_history.py`
 
 **Checkpoint**: US5 is independently demonstrable from historical query through trustworthy company detail rendering.
 
@@ -189,8 +198,11 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 **Purpose**: Verify the complete slice-to-task contract without introducing a second implementation seam.
 
-- [ ] T035 Run the real-PostgreSQL, live-SEC, API-parity, and metric-version acceptance suites in `tests/financial_tracker/test_feature_acceptance.py`
-- [ ] T036 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
+- [ ] T044 Run real-PostgreSQL foundation and analysis acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T045 Run live-SEC refresh, outage, and recovery acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T046 Run API, XLSX, and Google Sheets parity acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T047 Run metric-definition and version-history acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T048 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
 
 **Checkpoint**: All required red/green acceptance evidence is recorded, operational docs are usable, and no task remains a placeholder.
 
@@ -209,17 +221,18 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Parallel Opportunities
 
-- T008 and T009 can run in parallel before the US1 implementation seams.
-- T015 and T016 can run in parallel before the US2 implementation seams.
-- T028 and T032 can run in parallel after the shared read model is available.
+- T011 and T012 can run in parallel before the US1 implementation seams.
+- T019 and T020 can run in parallel before the US2 implementation seams.
+- T036 and T041 can run in parallel after the shared read model is available.
 
 ## Plan Design Slice Index
 
 | Plan slice | Task range | Closed seams |
 |---|---|---|
-| PL-01 Financial Foundation and Provenance | T001-T007 | Package, domain persistence, identity, fixture ingestion, authorization, work state, and PostgreSQL evidence |
-| PL-02 Calculation and Built-In Metric Observations | T008-T014 | Selectors, fiscal periods, calculations, quality states, immutable observations, and analysis read model |
-| PL-03 Versioned User-Defined Metric Registry | T015-T021 | Restricted parser, validation, version persistence, authorization, dry run, lifecycle, recalculation, and API contract |
-| PL-05 SEC Refresh, Operations, and Continuity | T022-T027 | SEC adapter, amendment refresh, worker recovery, observability, runbook, and bounded live compatibility |
-| PL-04 Authorized Dashboard, API, and Deterministic Exports | T028-T031 | Authorized query contract, XLSX manifest, Google Sheets adapter, and parity tests |
-| Company-level history contract | T032-T034 | Historical query and visualization for gaps, outliers, amendments, and provenance |
+| PL-01 Financial Foundation and Provenance | T001-T010 | Package, domain persistence, identity, fixture ingestion, authorization, work state, and PostgreSQL evidence |
+| PL-02 Calculation and Built-In Metric Observations | T011-T018 | Selectors, fiscal periods, calculations, quality states, immutable observations, and analysis read model |
+| PL-03 Versioned User-Defined Metric Registry | T019-T027 | Restricted parser, validation, version persistence, authorization, dry run, lifecycle, recalculation, and API contract |
+| PL-05 SEC Refresh, Operations, and Continuity | T028-T035 | SEC adapter, amendment refresh, worker recovery, observability, runbook, and bounded live compatibility |
+| PL-04 Authorized Dashboard, API, and Deterministic Exports | T036-T040 | Authorized query contract, XLSX manifest, Google Sheets adapter, and parity tests |
+| Company-level history contract | T041-T043 | Historical query and visualization for gaps, outliers, amendments, and provenance |
+| Cross-cutting acceptance and rollout | T044-T048 | Real-backend acceptance evidence and operational readiness documentation |

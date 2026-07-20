@@ -407,9 +407,19 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
 
     stages: list[dict[str, Any]] = []
 
-    tasking_chain = _run_tasking_stabilization(repo_root=repo_root, feature_dir=feature_dir)
-    stages.append({"stage": "tasking_chain_validate", "result": tasking_chain})
-    if not bool(tasking_chain.get("ok", False)):
+    if phase == "tasking":
+        tasking_stabilization = {
+            "ok": True,
+            "mode": "generative_direct",
+            "validated_by": "speckit.estimate",
+        }
+    else:
+        tasking_stabilization = _run_tasking_stabilization(
+            repo_root=repo_root,
+            feature_dir=feature_dir,
+        )
+    stages.append({"stage": "tasking_stabilization", "result": tasking_stabilization})
+    if not bool(tasking_stabilization.get("ok", False)):
         raise RuntimeError("tasking_stabilization_incomplete")
 
     tasks_gate = _run_tasks_gate(repo_root=repo_root, feature_dir=feature_dir)

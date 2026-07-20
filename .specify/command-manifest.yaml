@@ -222,6 +222,9 @@ commands:
     - output_path: ${FEATURE_DIR}/estimates.md
       template: estimates-template.md
     emits:
+    - event: estimation_completed
+      required_fields: []
+      compatibility_only: true
     - event: tasking_completed
       required_fields:
       - task_count
