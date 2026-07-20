@@ -1,5 +1,5 @@
 ---
-description: Break down tasks flagged with 8 or 13-point warnings in estimates.md into smaller pieces (≤5 points each), updating tasks.md in place.
+description: Break down multi-seam tasks flagged with 8 or 13-point warnings into cohesive seam tasks (≤5 points each), updating tasks.md in place.
 handoffs:
   - label: Re-Estimate
     agent: speckit.estimate
@@ -17,10 +17,10 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-Goal: For every task in estimates.md flagged with an 8 or 13-point warning, split it into 2–3 smaller tasks (each expected to score ≤5 points), update tasks.md in place, and re-sequence task IDs. This step runs AFTER `/speckit.estimate` and BEFORE `/speckit.implement`.
+Goal: For every task in estimates.md flagged with an 8 or 13-point warning, split its multiple implementation seams into 2–3 smaller tasks (each expected to score ≤5 points), update tasks.md in place, and preserve the slice-to-task contract without renumbering unrelated tasks. This is the breakdown half of the `/speckit.tasking` estimate/breakdown loop, before `/speckit.analyze` and `/speckit.implement`.
 
 **Prerequisites**:
-- `tasks.md` must exist (run `/speckit.solution` first if missing)
+- `tasks.md` must exist (run `/speckit.tasking` first if missing)
 - `estimates.md` must exist (run `/speckit.estimate` first if missing)
 
 ---
@@ -47,12 +47,13 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
 
    **Split rules**:
    - Each original task becomes exactly 2 or 3 sub-tasks — no more.
-   - Each sub-task must be independently completable (different files, or distinct phases of work on the same file: e.g., "write the data structure" then "write the business logic").
+   - Each sub-task must close one coherent implementation seam and be independently completable (different files, or distinct seam boundaries on the same file).
+   - A score of `5` is the target for one cohesive seam; do not split a single cohesive seam merely to create smaller administrative tasks.
    - A valid split follows one of these natural seams:
      - **Data vs. Logic**: schema/model definition → business logic/methods
      - **Happy path vs. Error handling**: core implementation → error handling, retries, validation
      - **Layer split**: internal implementation → integration wiring (connecting to other modules)
-     - **Test vs. Implementation**: if the original task bundled both (unusual — tasks.md should already separate them)
+     - **Test vs. Implementation**: only when the original task bundled distinct seam work (tasks.md should normally keep acceptance at story level)
    - Do NOT invent new scope. Sub-tasks must cover exactly the same scope as the original.
    - Preserve the `[P]`, `[USn]` labels from the original task on each sub-task if applicable.
    - Re-evaluate parallelism: sub-tasks within a split are usually sequential (sub-task B depends on sub-task A). Remove `[P]` from sub-task B if it depends on sub-task A.
@@ -86,7 +87,7 @@ Goal: For every task in estimates.md flagged with an 8 or 13-point warning, spli
 ## Behavior rules
 
 - **Scope discipline**: Sub-tasks must cover exactly the original task's scope — no added features, no dropped scope.
-- **Two or three, not one**: A split into a single task is not a split. Minimum 2 sub-tasks.
+- **Two or three, not one**: A multi-seam 8/13 task must become at least 2 sub-tasks; a cohesive seam must not be split just to satisfy a count.
 - **No ID gaps**: Use `a/b/c` suffix notation, not new sequential IDs, to avoid renumbering cascades.
 - **Idempotent**: Running this command twice on a task that was already split should detect there are no remaining 8/13-point warnings and exit cleanly.
 - **tasks.md is the source of truth**: estimates.md is read-only in this step. The updated tasks.md will be re-estimated by `/speckit.estimate` in the next step.

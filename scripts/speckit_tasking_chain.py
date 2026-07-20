@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic estimate/breakdown chain for tasking stabilization."""
+"""Deterministic seam-estimate/breakdown chain for tasking stabilization."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _run_command(command: str, *, cwd: Path) -> CommandResult:
 
 
 def _extract_high_point_tasks(estimates_text: str) -> list[str]:
-    """Return 8/13-point task IDs from current estimate-table rows only."""
+    """Return multi-seam 8/13-point task IDs from current estimate rows only."""
     high_point_tasks: list[str] = []
     for line in estimates_text.splitlines():
         match = HIGH_POINT_ESTIMATE_ROW_RE.match(line)

@@ -63,3 +63,4 @@ uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATU
 - Phase 2: Foundational blockers
 - Phase 3+: User stories in priority order, independently testable
 - Final phase: Polish and cross-cutting validation
+> **Legacy compatibility:** `/speckit.tasking` is the canonical plan-slice-to-task interface. Use this command only for older upstream-compatible task workflows.

@@ -2530,8 +2530,10 @@ def test_resolve_step_mapping_uses_real_manifest() -> None:
     assert routes["speckit.run"]["mode"] == "deterministic"
     assert routes["speckit.run"]["script_path"]
     assert routes["speckit.tasking"]["mode"] != "legacy"
-    assert routes["speckit.implement"]["mode"] == "generative"
-    assert routes["speckit.implement"]["execution_owner"] == "command_agent"
+    assert routes["speckit.implement"]["mode"] == "deterministic"
+    assert routes["speckit.implement"]["script_path"] == str(
+        (manifest_path.parent / "scripts" / "speckit_implement_step.py").resolve()
+    )
     assert routes["speckit.solution"]["mode"] == "generative"
     assert routes["speckit.solution"]["script_path"] == str(
         (manifest_path.parent / "scripts" / "speckit_solution_step.py").resolve()

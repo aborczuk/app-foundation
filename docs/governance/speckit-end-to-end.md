@@ -38,12 +38,12 @@ End-to-end information already existed, but it was split:
 
 Canonical flow (high level):
 
-`specify -> clarify -> research -> plan -> planreview -> feasibilityspike -> solution(sketch -> solutionreview -> estimate -> tasking) -> analyze -> implement (+ optional e2e generation before close) -> checkpoint/e2e-run -> offline_qa -> close`
+`specify -> clarify -> research -> plan -> planreview -> feasibilityspike -> tasking(plan slices -> seam tasks -> estimate <-> breakdown -> task guard) -> analyze -> implement (+ optional e2e generation before close) -> checkpoint/e2e-run -> offline_qa -> close`
 
 Key hard-gate facts:
 
 - `research.md` must exist before `/speckit.plan`.
-- `plan_approved` must occur before solution steps.
+- `plan_approved` must occur before tasking.
 - `analysis_completed` must occur before `/speckit.e2e`.
 - `implementation_completed` may follow `analysis_completed` directly; `e2e_generated` is no longer a prerequisite for implementation completion.
 - `offline_qa_passed` is required before task close. The QA agent (`scripts/speckit_behavioral_qa.py`) verifies acceptance criteria, runs tests, and checks for implementation drift. Tasks with `FIX_REQUIRED` cannot close, and offline QA runs against branch/worktree state without requiring a pre-QA commit.

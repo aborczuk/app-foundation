@@ -150,14 +150,17 @@ def _build_prompt(
         base.extend(
             [
                 "Read the task graph and update estimates.md with stable fibonacci estimates.",
-                "Keep the estimates grounded in concrete task scope and preserve task ordering.",
+                "Treat 5 points as one cohesive implementation seam that can share one closeout.",
+                "Treat 8 points as multi-seam work and 13 points as epic-scale multi-seam work; both must be flagged for breakdown.",
+                "Name the seam boundary and integration surface in each rationale, and preserve task ordering.",
                 "Do not edit tasks.md in estimate mode.",
             ]
         )
     else:
         base.extend(
             [
-                "Read the current task graph and split any 8/13-point tasks into smaller tasks.",
+                "Read the current task graph and split every 8/13-point multi-seam task into 2-3 cohesive seam tasks expected to score <=5.",
+                "Do not split a single cohesive seam into routing, validation, and reporting fragments unless those are independent closeout units.",
                 "Update tasks.md only; do not edit estimates.md in breakdown mode.",
                 "Preserve ordering, dependencies, and task identifiers where possible.",
             ]

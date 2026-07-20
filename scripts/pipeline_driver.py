@@ -21,7 +21,15 @@ from pipeline_driver_contracts import parse_step_result, render_status_lines
 from pipeline_driver_state import advance_phase, resolve_phase_state
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VALID_PIPELINE_PHASE_SEQUENCE = ("specify", "research", "plan", "solution", "implement", "closed")
+VALID_PIPELINE_PHASE_SEQUENCE = (
+    "specify",
+    "research",
+    "plan",
+    "tasking",
+    "solution",
+    "implement",
+    "closed",
+)
 VALID_PIPELINE_PHASES = set(VALID_PIPELINE_PHASE_SEQUENCE)
 PHASE_INDEX = {phase: index for index, phase in enumerate(VALID_PIPELINE_PHASE_SEQUENCE)}
 
@@ -2098,7 +2106,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "ok": True,
                         "artifact_path": str(artifact_path),
                     }
-                elif mapping.get("command_id") in {"speckit.plan", "speckit.solution"}:
+                elif mapping.get("command_id") in {"speckit.plan", "speckit.tasking", "speckit.solution"}:
                     missing_request_code = f"{effective_phase}_event_request_missing"
                     step_result = {
                         "schema_version": "1.0.0",

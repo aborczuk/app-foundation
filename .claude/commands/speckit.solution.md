@@ -8,6 +8,8 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+> **Legacy compatibility:** `/speckit.tasking` is now the canonical interface between plan design slices and implementation tasks. Use this command only to replay or support older solution-phase histories; it is not part of the canonical pathway.
+
 ## Contract
 
 Use [`scripts/speckit_solution_step.py`](/Users/andreborczuk/app-foundation/scripts/speckit_solution_step.py) only as a local scaffold and validation helper.
@@ -21,6 +23,7 @@ uv run python scripts/speckit_solution_step.py prepare-tasking --feature-id "$FE
 2. Open `tasks.md`.
    - Treat `plan.md` and its `## Design Slices` section as the authoritative source of solutioning.
    - Solve each design slice before writing tasks. Do not only restate the slice title or directive.
+   - Write `tasks.md` entries that implement that slice.
    - Decompose the plan slices directly into the upstream Spec Kit `tasks.md` structure.
 
 3. Fill `tasks.md` directly.

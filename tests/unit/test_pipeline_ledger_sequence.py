@@ -51,6 +51,11 @@ def _new_solution_chain() -> list[dict[str, Any]]:
     ]
 
 
+def _canonical_tasking_chain() -> list[dict[str, Any]]:
+    """Return the canonical plan-to-tasking completion sequence."""
+    return [_event("tasking_completed", task_count=12, story_count=3)]
+
+
 def assert_transition_result(
     events: list[dict[str, Any]],
     *expected_error_fragments: str,
@@ -72,6 +77,18 @@ def test_new_solution_sequence_passes() -> None:
         _event("feature_closed"),
     ]
     errors, _ = assert_transition_result(events)
+
+
+def test_canonical_tasking_sequence_passes_without_solution_event() -> None:
+    """Tasking completion must feed analysis directly in the canonical path."""
+    events = _base_prefix() + _canonical_tasking_chain() + [
+        _event("analysis_completed", critical_count=0),
+        _event("implementation_completed"),
+        _event("feature_closed"),
+    ]
+    errors, state = assert_transition_result(events)
+    assert errors == []
+    assert state["019"].last_event == "feature_closed"
 
 
 def test_implementation_completed_can_follow_analysis_without_e2e() -> None:

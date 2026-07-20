@@ -85,6 +85,7 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
             "feasibility_spike_failed": {"failed_fq"},
             "plan_approved": {"feasibility_required"},
             "estimation_completed": {"estimate_points"},
+            "tasking_completed": {"task_count", "story_count"},
             "solution_approved": {"task_count", "story_count", "estimate_points"},
             "analysis_completed": {"critical_count"},
             "e2e_generated": {"e2e_artifact"},
@@ -154,8 +155,8 @@ def _load_manifest_events() -> tuple[set[str], dict[str, set[str]]]:
 VALID_PIPELINE_EVENTS, REQUIRED_BY_PIPELINE_EVENT = _load_manifest_events()
 
 # Ordered pipeline phases — each event is a valid "next" from one or more predecessors.
-# Solution-phase sequence is tasking -> solution_approved, with estimate/breakdown
-# stabilized inside tasking rather than as a separate phase gate.
+# Tasking is the canonical interface between plan design slices and seam-sized tasks.
+# Estimate/breakdown stabilization and the task guard complete before tasking_completed.
 ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     "backlog_registered": {None},
     "duplicate_marked": {"backlog_registered", "spec_clarified"},
@@ -174,7 +175,12 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
     },
     "sketch_completed": {"plan_approved", "sketch_completed", "solutionreview_completed"},
     "solutionreview_completed": {"sketch_completed", "solutionreview_completed"},
-    "estimation_completed": {"solutionreview_completed", "estimation_completed", "tasking_completed"},
+    "estimation_completed": {
+        "plan_approved",
+        "solutionreview_completed",
+        "estimation_completed",
+        "tasking_completed",
+    },
     "tasking_completed": {
         "plan_approved",
         "sketch_completed",
@@ -182,7 +188,7 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
         "tasking_completed",
     },
     "solution_approved": {"plan_approved", "tasking_completed"},
-    "analysis_completed": {"solution_approved"},
+    "analysis_completed": {"solution_approved", "tasking_completed"},
     "e2e_generated": {"analysis_completed"},
     "implementation_completed": {"analysis_completed", "e2e_generated"},
     "feature_closed": {"e2e_generated", "implementation_completed"},

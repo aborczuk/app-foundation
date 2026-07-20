@@ -1,21 +1,21 @@
 # Command-Script Coverage Matrix
 
-## Canonical Solution Sequence
+## Canonical Tasking Sequence
 
-`plan_approved -> sketch_completed -> solutionreview_completed -> estimation_completed -> tasking_completed -> solution_approved -> analysis_completed`
+`plan_approved -> tasking (estimate <-> breakdown loop) -> task guard -> tasking_completed -> analysis_completed`
 
 ## Responsibility Matrix
 
 | Responsibility | Single Owner | Deterministic Enforcer |
 |---|---|---|
-| Orchestrate sketch-first solution flow | `speckit.solution` | `.claude/commands/speckit.solution.md` |
-| Generate design blueprint | `speckit.sketch` | `pipeline-scaffold.py speckit.sketch` + `sketch-template.md` |
-| Review blueprint quality and domain fit | `speckit.solutionreview` | `.claude/commands/speckit.solutionreview.md` |
-| Score tasks and write `estimates.md` | `speckit.estimate` | `pipeline-scaffold.py speckit.estimate` |
-| Decompose approved sketch into tasks | `speckit.tasking` | `pipeline-scaffold.py speckit.tasking` |
+| Orchestrate plan-slice tasking flow | `speckit.tasking` | `.claude/commands/speckit.tasking.md` + `scripts/speckit_tasking_step.py` |
+| Design tasks around implementation seams | `speckit.tasking` | `.claude/commands/speckit.tasking.md` |
+| Score seam-sized tasks and write `estimates.md` | `speckit.tasking` via `speckit.estimate` | `scripts/speckit_tasking_chain.py` |
+| Break down multi-seam 8/13-point tasks | `speckit.tasking` via `speckit.breakdown` | `scripts/speckit_tasking_chain.py` |
 | Enforce deterministic tasks format gate | `speckit.tasking` | `scripts/speckit_tasks_gate.py validate-format` |
 | Generate story acceptance tests | `speckit.tasking` | `.claude/commands/speckit.tasking.md` contract |
-| Post-solution drift gate (`spec -> plan -> sketch -> tasks`) | `speckit.analyze` | `.claude/commands/speckit.analyze.md` + `analysis_completed` event |
+| Post-tasking drift gate (`spec -> plan -> tasks`) | `speckit.analyze` | `.claude/commands/speckit.analyze.md` + `analysis_completed` event |
+| Legacy solution command | `speckit.solution` | Compatibility only; not canonical |
 | Legacy tasks command | `speckit.tasks` | Deprecated, no artifact generation |
 
 ## Command-to-Scaffold Coverage Matrix
@@ -60,7 +60,7 @@ Incremental command migration from legacy to driver-managed modes requires deter
 
 **Validation Points:**
 - During `speckit.tasking`: Gate check via `scripts/speckit_gate_status.py:validate_command_coverage()`
-- During `speckit.solution`: Gate check enforces coverage before solution approval
+- During `speckit.tasking`: Gate check enforces coverage before tasking completion
 - During manifest validation: `scripts/pipeline_ledger.py validate-manifest` enforces version/timestamp coupling
 
 ### Migration Workflow

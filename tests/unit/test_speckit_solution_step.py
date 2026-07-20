@@ -24,6 +24,28 @@ def _load_script_module(module_name: str, script_name: str):
 
 
 speckit_solution_step = _load_script_module("speckit_solution_step", "speckit_solution_step.py")
+speckit_tasking_step = _load_script_module("speckit_tasking_step", "speckit_tasking_step.py")
+
+
+def test_tasking_step_defaults_to_tasking_phase(monkeypatch) -> None:
+    """The canonical wrapper must request tasking completion, not solution approval."""
+    seen: dict[str, object] = {}
+
+    def fake_legacy_main(args: list[str]) -> int:
+        seen["args"] = args
+        return 0
+
+    monkeypatch.setattr(speckit_tasking_step, "_legacy_main", fake_legacy_main)
+
+    assert speckit_tasking_step.main(["--feature-id", "023", "--correlation-id", "run"]) == 0
+    assert seen["args"] == [
+        "--feature-id",
+        "023",
+        "--correlation-id",
+        "run",
+        "--phase",
+        "tasking",
+    ]
 
 
 def test_resolve_feature_dir_accepts_numeric_id(tmp_path: Path) -> None:

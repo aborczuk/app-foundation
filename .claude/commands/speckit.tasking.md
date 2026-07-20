@@ -8,13 +8,14 @@ $ARGUMENTS
 
 ## Contract
 
-Generate `tasks.md` from an approved `plan.md` / `spec.json` summary, then stabilize the downstream task graph with deterministic checks.
+Act as the canonical interface between approved plan design slices and implementation tasks. Generate `tasks.md` from the approved `plan.md` / `spec.json` summary, explicitly design each task around a coherent implementation seam, then stabilize the downstream task graph with deterministic checks.
 
-1. Decompose `plan.md` design slices into `tasks.md`.
+1. Decompose each `plan.md` design slice into one or more seam-sized tasks in `tasks.md`.
 2. Use the upstream Spec Kit `tasks.md` structure and add explicit acceptance criteria per user story.
-3. Run deterministic estimate/breakdown stabilization through `scripts/speckit_tasking_chain.py`.
+3. Run the estimate/breakdown loop through `scripts/speckit_tasking_chain.py`; estimates must classify seam size and breakdown must split multi-seam work.
 4. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
 5. Register tasks and generate acceptance tests from the settled task graph.
+6. Return a `tasking_completed` event request only after the task guard passes.
 
 ## Guidance
 
@@ -37,6 +38,20 @@ Required:
 - `spec.md`
 - `tasks.md` after initial generation
 
+The canonical helper is `scripts/speckit_tasking_step.py`:
+
+```bash
+uv run python scripts/speckit_tasking_step.py prepare-tasking --feature-id "$FEATURE_ID"
+```
+
+After the generative seam design and estimate/breakdown loop settle, finalize through:
+
+```bash
+uv run python scripts/speckit_tasking_step.py finalize --feature-id "$FEATURE_ID" --phase tasking --correlation-id "$CORRELATION_ID" --json
+```
+
+The finalizer runs the existing task guard, registration, and acceptance scaffolding, then returns the `tasking_completed` event request for the pipeline driver.
+
 ### 3. Task derivation rules (required)
 
 - Read `spec.json` first; it holds the machine-readable key details of the approved plan/spec contract.
@@ -49,6 +64,7 @@ Required:
 - Treat each design slice's `Implementation Directive` as required source material for task generation.
 - Solve each design slice before decomposing it into tasks; do not only restate the directive.
 - Turn the solved slice-local implementation approach into story-grouped tasks, not a HUD replacement.
+- Treat tasking as the interface between a plan slice and its implementation tasks: every task must name the coherent implementation seam it closes.
 - Group tasks by coherent implementation seam, not by counting separate requirements on the same request path or file seam.
 - If one seam carries multiple closely related requirements, prefer one task with richer story-level acceptance criteria over multiple tiny tasks that would force repeated ledger/QA/closeout overhead on the same seam.
 - Do not split a single execution seam into separate tasks for routing, validation, and reporting unless they are truly independent closeout units with different files or dependency boundaries.
@@ -82,7 +98,10 @@ Do not require per-task sections for seams, touched symbols, current behavior, t
 ### 4. Estimate/breakdown stabilization (required)
 
 - Run the estimate/breakdown loop until `scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json` returns `"ok": true`.
-- If any task remains at `8` or `13`, keep breaking it down and re-estimating.
+- Estimate `5` as one cohesive implementation seam that can be closed out together.
+- Estimate `8` as multi-seam work that is too large for one closeout unit; break it down into smaller seam tasks and re-estimate.
+- Treat `13` as multi-seam epic-scale work; break it down into smaller seam tasks and re-estimate.
+- If any task remains at `8` or `13`, keep breaking it down and re-estimating before running the guard.
 
 ### 5. Deterministic tasks format gate (required)
 
@@ -106,6 +125,7 @@ Do not require per-task sections for seams, touched symbols, current behavior, t
 
 - Do not invent architecture that is absent from `plan.md`.
 - Do not skip the estimate/breakdown stabilization loop.
+- Do not estimate task size without recording the seam boundary and integration surface that justify the score.
 - Do not bypass deterministic task-format validation.
 - Do not skip task registration before reporting success.
 - Do not emit tasks that rely on a separate per-task HUD or hidden execution packet.
