@@ -1781,3 +1781,4 @@
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "019f80fc-f521-7590-9fee-e4c45cf44b9d", "task_id": "T001", "timestamp_utc": "2026-07-20T19:34:52.556149Z"}
 {"actor": "codex", "attempt": 1, "commit_sha": "5dbd832", "event": "commit_created", "feature_id": "049", "task_id": "T001", "timestamp_utc": "2026-07-20T19:34:52.610793Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T001", "timestamp_utc": "2026-07-20T19:34:52.657247Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "049", "task_id": "T002", "timestamp_utc": "2026-07-20T19:36:25.352843Z"}

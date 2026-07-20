@@ -33,6 +33,13 @@ uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker
 
 Live SEC and Google Sheets verification must be explicit test selections and must not run as an implicit default. The live path must prove User-Agent, timeout, rate budget, bounded retry, outage degradation, duplicate delivery, lease recovery, and credential scoping.
 
+To run the PostgreSQL harness smoke test against a disposable real instance:
+
+```bash
+FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://user:password@localhost:5432/financial_tracker \
+  uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_harness.py
+```
+
 ## Rollout Flags
 
 Keep `SEC_SCHEDULE_ENABLED=false` and `GOOGLE_SHEETS_DELIVERY_ENABLED=false` until migrations, real-backend tests, authorization tests, parity tests, observability, and rollback instructions are verified. A failed readiness check leaves the feature in fixture/manual-refresh mode and does not expose partial external delivery.
