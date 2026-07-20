@@ -1,8 +1,8 @@
 version: 1.1.10
-last_updated: '2026-07-20T00:00:00Z'
+last_updated: '2026-07-20T16:32:15Z'
 manifest:
   version: 1.1.11
-  updated_utc: '2026-07-20T00:00:00Z'
+  updated_utc: '2026-07-20T16:32:15Z'
   ledger_sync_policy:
     - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
       emitted event contract changes, update this manifest in the same PR.
@@ -177,8 +177,6 @@ commands:
       - .specify/scripts/python/check_prerequisites.py
       - .specify/scripts/pipeline-scaffold.py
       - scripts/speckit_tasking_step.py
-      - scripts/speckit_tasking_chain.py
-      - scripts/speckit_tasking_codex_runner.py
       - .specify/scripts/acceptance-test-scaffold.py
       - scripts/speckit_tasks_gate.py
       - scripts/pipeline_ledger.py
@@ -189,11 +187,7 @@ commands:
       - speckit.estimate
       - speckit.breakdown
       - speckit.implement
-    emits:
-    - event: tasking_completed
-      required_fields:
-      - task_count
-      - story_count
+    emits: []
   speckit.sketch:
     description: Legacy sketch command retained for compatibility; design slices now live in plan.md
     mode: legacy
@@ -210,22 +204,30 @@ commands:
     - event: sketch_completed
       required_fields: []
   speckit.estimate:
-    description: Estimate seam-sized tasks by evaluating codebase; 5 is one cohesive seam and 8 or 13 is multi-seam work that must be broken down
-    mode: legacy
+    description: Generatively estimate and break down seam-sized tasks until no task scores 8 or 13, then finalize tasking
+    driver:
+      mode: generative
+      execution_owner: command_agent
+      timeout_seconds: 900
+      canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
+    - scripts/speckit_tasking_step.py
+    - .specify/scripts/acceptance-test-scaffold.py
+    - scripts/speckit_tasks_gate.py
+    - scripts/task_ledger.py
     - scripts/pipeline_ledger.py
     artifacts:
     - output_path: ${FEATURE_DIR}/estimates.md
       template: estimates-template.md
     emits:
-    - event: estimation_completed
+    - event: tasking_completed
       required_fields:
-      - estimate_points
+      - task_count
+      - story_count
   speckit.breakdown:
-    description: "Break down 8 or 13-point multi-seam tasks in estimates.md into cohesive seam tasks\
-      \ (\u22645 points each)"
+    description: Compatibility substep; use speckit.estimate for the complete generative estimate/breakdown loop
     mode: legacy
     scripts:
     - .specify/scripts/python/check_prerequisites.py

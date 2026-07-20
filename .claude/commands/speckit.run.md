@@ -17,7 +17,7 @@ Examples:
 1. Resolve feature scope and the current allowed phase from ledger-authoritative state.
 2. Evaluate deterministic gates for the requested phase before any mutation.
 3. Execute phase routing through the pipeline driver contract only.
-4. For generative routes, require runner-adapter execution and return a structured step result.
+4. For runner-owned generative routes, require runner-adapter execution; for command-agent-owned routes, return the direct command handoff and let that command execute its generative work.
 5. Validate artifacts and contracts before any completion event append.
 6. Emit success event and next-step handoff only after validation succeeds.
 

@@ -8,14 +8,14 @@ $ARGUMENTS
 
 ## Contract
 
-Act as the canonical interface between approved plan design slices and implementation tasks. Generate `tasks.md` from the approved `plan.md` / `spec.json` summary, explicitly design each task around a coherent implementation seam, then stabilize the downstream task graph with deterministic checks.
+Act as the canonical interface between approved plan design slices and implementation tasks. Generate `tasks.md` from the approved `plan.md` / `spec.json` summary, explicitly design each task around a coherent implementation seam, then hand the draft to the generative estimate/breakdown step for stabilization.
 
 1. Decompose each `plan.md` design slice into one or more seam-sized tasks in `tasks.md`.
 2. Use the upstream Spec Kit `tasks.md` structure and add explicit acceptance criteria per user story.
-3. Run the estimate/breakdown loop through `scripts/speckit_tasking_chain.py`; estimates must classify seam size and breakdown must split multi-seam work.
-4. Enforce tasks format via `scripts/speckit_tasks_gate.py`.
-5. Register tasks and generate acceptance tests from the settled task graph.
-6. Return a `tasking_completed` event request only after the task guard passes.
+3. Hand off to `/speckit.estimate`; it owns the estimate, breakdown, re-estimate loop, and finalization.
+4. Require the generative step to enforce tasks format via `scripts/speckit_tasks_gate.py`.
+5. Do not invoke the deterministic tasking chain or Codex runner from tasking.
+6. Return only after `/speckit.estimate` reports the finalized task graph and event request.
 
 ## Guidance
 
@@ -44,13 +44,7 @@ The canonical helper is `scripts/speckit_tasking_step.py`:
 uv run python scripts/speckit_tasking_step.py prepare-tasking --feature-id "$FEATURE_ID"
 ```
 
-After the generative seam design and estimate/breakdown loop settle, finalize through:
-
-```bash
-uv run python scripts/speckit_tasking_step.py finalize --feature-id "$FEATURE_ID" --phase tasking --correlation-id "$CORRELATION_ID" --json
-```
-
-The finalizer runs the existing task guard, registration, and acceptance scaffolding, then returns the `tasking_completed` event request for the pipeline driver.
+After the generative seam design is complete, hand off to `/speckit.estimate`. That single generative skill owns the estimate/breakdown loop and runs the finalizer after the loop settles.
 
 ### 3. Task derivation rules (required)
 
@@ -95,31 +89,29 @@ Acceptance criteria belong at the story phase level by default. Add task-local a
 
 Do not require per-task sections for seams, touched symbols, current behavior, target behavior, required edits, or similar execution-packet detail.
 
-### 4. Estimate/breakdown stabilization (required)
+### 4. Estimate/breakdown handoff (required)
 
-- Run the estimate/breakdown loop until `scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json` returns `"ok": true`.
-- Estimate `5` as one cohesive implementation seam that can be closed out together.
-- Estimate `8` as multi-seam work that is too large for one closeout unit; break it down into smaller seam tasks and re-estimate.
-- Treat `13` as multi-seam epic-scale work; break it down into smaller seam tasks and re-estimate.
-- If any task remains at `8` or `13`, keep breaking it down and re-estimating before running the guard.
+- Invoke `/speckit.estimate` after `tasks.md` is authored.
+- `/speckit.estimate` estimates `5` as one cohesive implementation seam.
+- `/speckit.estimate` breaks down every `8` or `13` task and re-estimates until the current estimate has no 8/13 rows.
+- Do not invoke the deterministic tasking chain from the tasking authoring step.
 
-### 5. Deterministic tasks format gate (required)
+### 5. Tasks format gate (required)
 
-- Run `scripts/speckit_tasks_gate.py` on the finalized `tasks.md`.
-- Fix every reported task-format issue before continuing.
+- `/speckit.estimate` runs `scripts/speckit_tasks_gate.py` on the settled `tasks.md`.
+- Any reported task-format issue must be fixed before finalization.
 
-### 6. Task ledger registration (required)
+### 6. Task ledger registration (estimate-owned)
 
-- Register tasks only after the task graph is settled and format-valid.
+- `/speckit.estimate` registers tasks only after the task graph is settled and format-valid.
 
-### 7. Acceptance generation (post-stabilization only)
+### 7. Acceptance generation (estimate-owned)
 
-- Acceptance-test scaffolding happens only after the stabilized, format-valid task graph exists.
+- `/speckit.estimate` scaffolds acceptance tests only after the stabilized, format-valid task graph exists.
 
 ### 8. Event + reporting
 
-- Report `tasks.md` path, task count, story count, acceptance-criteria coverage, and estimate status.
-- Route next to `/speckit.implement` after stabilization succeeds.
+- Report `tasks.md` path and hand off to `/speckit.estimate` for task count, story count, acceptance scaffolding, finalization, and the `tasking_completed` event.
 
 ## Behavior rules
 

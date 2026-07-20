@@ -1,13 +1,9 @@
 ---
-description: Estimate seam-sized tasks by evaluating the codebase, and produce a feature-level effort summary.
+description: Estimate and break down seam-sized tasks in one generative stabilization step, then finalize tasking.
 handoffs:
-  - label: Break Down Large Tasks
-    agent: speckit.breakdown
-    prompt: Break down tasks flagged with 8 or 13-point warnings into smaller pieces
-    send: true
   - label: Analyze For Consistency
     agent: speckit.analyze
-    prompt: Run a cross-artifact consistency analysis before implementation
+    prompt: Run cross-artifact consistency analysis after tasking finalization
     send: true
 ---
 
@@ -17,122 +13,57 @@ handoffs:
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
+You **MUST** consider the user input before proceeding if it is not empty.
 
-## Outline
+## Contract
 
-Goal: Assign fibonacci story points (1, 2, 3, 5, 8, 13) to each task in tasks.md by evaluating the task against the actual codebase, then produce a feature-level effort summary. This is the detailed estimation step — distinct from the epic-level t-shirt sizing done in `/speckit.specify`.
+This is the single generative estimate/breakdown skill after `/speckit.tasking` has authored `tasks.md`. It owns the complete stabilization boundary:
 
-Note: This step is a stabilization substep of `/speckit.tasking`, running after draft tasks exist and looping with `/speckit.breakdown` before `/speckit.analyze` and `/speckit.implement`. If tasks.md does not exist, instruct the user to run `/speckit.tasking` first.
+`estimate -> breakdown when required -> re-estimate -> repeat -> finalize`
 
-Execution steps:
+Do not invoke `scripts/speckit_tasking_chain.py` or `scripts/speckit_tasking_codex_runner.py` from this skill. Those are deterministic/compatibility helpers, not the canonical execution path.
 
-1. Run `.specify/scripts/python/check_prerequisites.py --json --require-tasks --include-tasks` from repo root **once**. Parse FEATURE_DIR and AVAILABLE_DOCS. Derive TASKS path.
-   - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
-   - If tasks.md missing, abort and instruct user to run `/speckit.solution`.
-   - Use shell quoting per CLAUDE.md "Shell Script Compatibility".
+### Required Context
 
-2. Load context:
-    - **Required**: tasks.md, plan.md (for project structure and tech context)
-    - **Load if present**: spec.md routing contract, data-model.md, contracts/*, research.md
-    - **Load if present**: FEATURE_DIR/estimates.md (previous estimation run for this feature, if re-running)
+Load `tasks.md`, `plan.md`, `spec.json`, `spec.md`, and any existing `estimates.md` from the feature directory. If `tasks.md` is missing, stop and direct the user to `/speckit.tasking`.
 
-3. Parse all tasks from tasks.md. For each task, extract:
-   - Task ID, description, file path(s), phase, story label, parallel marker
+### Generative Execution
 
-4. **Evaluate each task against the codebase**. For each task, assess these dimensions:
+1. Read the task graph and the approved plan slices. Do not invent architecture absent from `plan.md`.
+2. Write or replace `estimates.md` with a per-task Fibonacci estimate, seam boundary, integration surface, phase totals, and warnings.
+3. Apply the current breakdown rules directly when any task scores 8 or 13:
+   - 5 means one cohesive implementation seam and one closeout unit.
+   - 8 means multi-seam work that must be split into smaller cohesive tasks.
+   - 13 means epic-scale multi-seam work that must be split before implementation.
+   - Preserve the slice-to-task contract and do not split routing, validation, and reporting when they share one closeout seam.
+4. Re-estimate the updated task graph after every breakdown pass. Repeat until no current estimate row scores 8 or 13.
+5. If estimation or breakdown cannot complete, stop with the failure and do not fabricate `estimates.md`, bypass the loop, or continue to finalization.
+6. Run the deterministic task format gate:
 
-   **Code complexity** (primary driver):
-   - Does the target file already exist? If so, how large/complex is it?
-   - How many other files does this task need to interact with?
-   - Are there existing patterns in the codebase to follow, or is this greenfield?
-   - Does the task involve algorithmic complexity (parsing, state machines, graph traversal) or straightforward CRUD?
-
-   **Integration surface**:
-   - How many external interfaces does this task touch (APIs, databases, file system)?
-   - Does the task cross module boundaries defined in the Architecture Flow?
-   - Are there concurrency or async coordination concerns?
-   - For async integration tasks, is lifecycle guard coverage explicit (running-loop regression, timeout/cancel, shutdown, no-orphan validation)?
-   - For live-vs-local state integrations, is state-safety coverage explicit (source-of-truth ownership, reconcile checkpoints, stale/orphan drift regression)?
-   - For local DB mutation tasks, is transaction-integrity coverage explicit (transaction boundaries, rollback/no-partial-write regression, idempotent retry expectations)?
-
-   **Uncertainty**:
-   - Is the implementation approach well-defined in the plan, or does it require design decisions?
-   - Are there dependencies on libraries with limited documentation or unfamiliar APIs?
-   - Does the task involve error handling for poorly documented external behavior?
-
-5. **Validate the lightweight task contract for each task**: For each task, evaluate `tasks.md` while the codebase context is loaded. Do not invent missing implementation design during estimation. Record per task:
-    - Whether the task line is concrete, names an exact file path, and avoids placeholder language
-    - Whether the surrounding story phase has `Goal`, `Independent Test`, and `Acceptance Criteria`
-    - Whether dependency/order cues are clear enough to estimate responsibly
-    - Which coding convention rules from `.claude/domains/` apply (identify touched domains only)
-    - Whether the routing contract says this task should reuse an existing estimate or refresh it after tasking
-
-   For 1–2 point tasks: concise wording is acceptable if the action, file path, and story-level acceptance are still clear.
-
-   If any executable task entry is vague, placeholder-like, or its story phase lacks acceptance criteria, flag the task with `Task contract incomplete — rerun /speckit.tasking` and do not fill in missing design detail inside estimates.md.
-5b. **Assign fibonacci points** per task using this calibration:
-
-   | Points | Meaning | Examples |
-   |--------|---------|---------|
-   | 1 | Trivial — single file, clear pattern, no integration | Create `__init__.py`, add a constant, write a simple data class |
-   | 2 | Small — single file, some logic, follows existing pattern | Implement a parser for a known format, add a straightforward test |
-   | 3 | Medium — 1-2 files, moderate logic, may cross one boundary | Implement a service method with validation, write integration test with mock |
-   | 5 | One cohesive implementation seam — may span its seam's files and tests but can be closed out together | Implement one service seam with its focused validation and integration coverage |
-   | 8 | Multi-seam work — too large for one closeout unit and must be broken down | Wire multiple independent boundaries or lifecycle stages together (flag as warning) |
-   | 13 | Epic-scale multi-seam work — must be broken down | Full feature implementation or several 8-point seams in one task (flag as warning) |
-
-   - Any task scoring 8 or 13 should be flagged with a warning: "Multi-seam task — must break this task into smaller seam-sized pieces."
-   - Every rationale must name the seam boundary, integration surface, and why the work can or cannot close out as one seam.
-   - Any async integration task missing lifecycle guard coverage should be flagged with a warning even if point score is low.
-   - Any stateful integration task missing state-safety coverage should be flagged with a warning even if point score is low.
-   - Any local DB mutation task missing transaction-integrity coverage should be flagged with a warning even if point score is low.
-   - Tasks marked [P] (parallel) should generally score lower than sequential tasks in the same phase, since they are scoped to be independent.
-
-6. **Generate estimates.md** in FEATURE_DIR by pre-scaffolding from template:
-
-    1. Run: `uv run python .specify/scripts/pipeline-scaffold.py speckit.estimate --feature-dir $FEATURE_DIR FEATURE_NAME="[Feature Name]"`
-      - Reads `.specify/command-manifest.yaml` to resolve which artifacts speckit.estimate owns
-      - Copies `.specify/templates/estimates-template.md` to `$FEATURE_DIR/estimates.md`
-      - Pre-structures the file with table headers and sections ready to fill
-
-   2. The estimates.md is now scaffolded with:
-      - Per-Task Estimates table (Task ID | Points | Description | Rationale)
-      - Per-task Solution Sketch sections for 3+ point tasks (Modify/Create/Composition/Test/Domains)
-      - Phase Totals table (Phase | Points | Task Count | Parallel Tasks)
-      - Warnings section (8/13-point flags, no-parallel phases, high-uncertainty tasks)
-
-7. **Validate task clarity, do not author missing design**: For each task, read `tasks.md` and any bounded repo context needed to confirm the task is concrete enough to estimate. Estimate may update estimate metadata or note estimate changes, but it must not replace missing implementation design with newly invented detail.
-
-   - If a non-`[H]` task is generic, placeholder-like, missing an exact file path, or its story phase lacks `Goal`, `Independent Test`, or `Acceptance Criteria`, mark estimation incomplete and instruct rerun of `/speckit.tasking`.
-   - For `[H]` tasks, validate that the task entry includes the external system, the required human action, and the dependency/order context.
-
-   Tasking should provide a clear story-level contract in `tasks.md`; implement can discover exact seams at execution time.
-
-8. **Auto-breakdown loop** (mandatory — do not skip):
-   - If **any** task scored 8 or 13: immediately invoke `/speckit.breakdown` to split those multi-seam tasks into cohesive seam tasks.
-   - After breakdown completes, re-run `/speckit.estimate` on the updated tasks.md.
-   - Repeat until no task scores 8 or 13.
-   - Only proceed to step 9 when the Warnings section is clear of 8/13-point flags.
-
-9. **Emit pipeline event**:
-   
-   Emit `estimation_completed` to `.speckit/pipeline-ledger.jsonl`:
-   ```json
-   {"event": "estimation_completed", "feature_id": "NNN", "phase": "tasking", "estimate_points": N, "actor": "<agent-id>", "timestamp_utc": "..."}
+   ```bash
+   uv run python scripts/speckit_tasks_gate.py validate-format --tasks-file "$FEATURE_DIR/tasks.md" --json
    ```
 
-10. **Report completion**:
-   - Path to estimates.md
-   - Total story points and phase breakdown
-   - Confirmation that no tasks score 8 or 13 (or list of remaining warnings if non-point warnings exist)
-   - Risk-adjusted range
-   - Suggested next command: `/speckit.implement`
+7. Only after the estimate/breakdown loop and task gate pass, run the tasking finalizer:
+
+   ```bash
+   uv run python scripts/speckit_tasking_step.py finalize \
+     --feature-id "$FEATURE_ID" \
+     --phase tasking \
+     --correlation-id "$CORRELATION_ID" \
+     --json
+   ```
+
+8. The finalizer owns task registration, acceptance scaffolding, and the `tasking_completed` event request. Do not append that event before finalization succeeds.
+
+## Guidance
+
+### Completion Report
+
+Report the paths to `tasks.md` and `estimates.md`, task and story counts, total points, confirmation that no task scores 8 or 13, finalizer status, and the next command `/speckit.analyze` or `/speckit.implement` as returned by the pipeline.
 
 ## Behavior rules
 
-- If re-running on a feature with existing estimates.md, read the previous estimates and note any changes (tasks added/removed/rescored) in a **Changes from Previous Estimate** section
-- Do NOT modify tasks.md — this step is read-only on the task list
-- The fibonacci scale is relative within a feature, not absolute across features — a "3" in one feature may differ from a "3" in another
-- If no tasks exist or tasks.md is malformed, abort with a clear error
-- Rationale column must be specific to the codebase, not generic (e.g., "follows pattern in existing trello_client.py" not "straightforward implementation")
+- Do not invoke the deterministic tasking chain or Codex runner.
+- Do not fabricate estimates, bypass the breakdown loop, or finalize after a failed gate.
+- Keep each estimate tied to a coherent implementation seam and its integration surface.

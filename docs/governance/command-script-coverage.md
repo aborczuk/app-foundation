@@ -2,7 +2,7 @@
 
 ## Canonical Tasking Sequence
 
-`plan_approved -> tasking (estimate <-> breakdown loop) -> task guard -> tasking_completed -> analysis_completed`
+`plan_approved -> tasking draft -> estimate/breakdown generative loop -> finalize -> tasking_completed -> analysis_completed`
 
 ## Responsibility Matrix
 
@@ -10,10 +10,9 @@
 |---|---|---|
 | Orchestrate plan-slice tasking flow | `speckit.tasking` | `.claude/commands/speckit.tasking.md` + `scripts/speckit_tasking_step.py` |
 | Design tasks around implementation seams | `speckit.tasking` | `.claude/commands/speckit.tasking.md` |
-| Score seam-sized tasks and write `estimates.md` | `speckit.tasking` via `speckit.estimate` | `scripts/speckit_tasking_chain.py` |
-| Break down multi-seam 8/13-point tasks | `speckit.tasking` via `speckit.breakdown` | `scripts/speckit_tasking_chain.py` |
-| Enforce deterministic tasks format gate | `speckit.tasking` | `scripts/speckit_tasks_gate.py validate-format` |
-| Generate story acceptance tests | `speckit.tasking` | `.claude/commands/speckit.tasking.md` contract |
+| Estimate, break down, and re-estimate tasks | `speckit.estimate` | `.claude/commands/speckit.estimate.md` generative contract |
+| Enforce deterministic tasks format gate | `speckit.estimate` | `scripts/speckit_tasks_gate.py validate-format` |
+| Finalize task registration and acceptance artifacts | `speckit.estimate` | `scripts/speckit_tasking_step.py finalize` |
 | Post-tasking drift gate (`spec -> plan -> tasks`) | `speckit.analyze` | `.claude/commands/speckit.analyze.md` + `analysis_completed` event |
 | Legacy solution command | `speckit.solution` | Compatibility only; not canonical |
 | Legacy tasks command | `speckit.tasks` | Deprecated, no artifact generation |

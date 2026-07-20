@@ -22,15 +22,15 @@ The core behavior now exists for:
 
 ## Current Runtime State (Important)
 
-The command system is **not fully switched over** to deterministic execution yet.
+The command system is mixed-mode: deterministic orchestration and validation remain driver-managed, while generative phases are either runner-owned or explicitly owned by the command agent.
 
 - `.specify/command-manifest.yaml` currently has:
-  - `deterministic`: none
-  - `generative`: `speckit.specify`, `speckit.research`, `speckit.plan`, `speckit.planreview`, `speckit.sketch`
-  - `legacy`: all others (including `speckit.implement`)
-- `.claude/commands/speckit.implement.md` still runs the legacy task-ledger orchestration flow.
+  - `deterministic`: `speckit.implement`, `speckit.run`, `speckit.specify`
+  - `generative`: `speckit.estimate`, `speckit.plan`, `speckit.planreview`, `speckit.solution`, `speckit.tasking`
+  - `legacy`: remaining commands without a migrated route
+- `speckit.estimate` is `execution_owner: command_agent`; the driver returns `/speckit.estimate` instead of invoking a handoff runner.
 
-So this work delivered the engine + contracts + tests, but not the final command cutover.
+The command cutover is therefore intentionally mixed: deterministic gates still run through the driver, while command-agent-owned generative work executes in its command skill.
 
 ## Mode Semantics
 
