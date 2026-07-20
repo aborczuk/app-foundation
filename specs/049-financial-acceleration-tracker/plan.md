@@ -68,6 +68,47 @@ _Artifact: `plan.md`_
 }
 ```
 
+## Plan Routing
+
+| Downstream Phase | Decision | Reason |
+|---|---|---|
+| Research | `Required` | SEC, EdgarTools, spreadsheet, and licensing assumptions affect the architecture. |
+| Plan | `Full` | The feature is net-new, XL, high risk, and introduces durable financial data and external integrations. |
+| Sketch | `Expanded` | The task seams need explicit contracts for ingress, state ownership, provenance, and delivery boundaries. |
+| Tasking | `Required` | Five implementation slices and cross-cutting acceptance work must be assigned to seam-sized tasks. |
+| Estimate | `Required after tasking` | Every task must be estimated after the remediation seams are settled and broken down if needed. |
+
+## Routing Contract
+
+```json
+{
+  "routing": {
+    "research_route": "required",
+    "plan_profile": "full",
+    "sketch_profile": "expanded",
+    "tasking_route": "required",
+    "estimate_route": "required_after_tasking",
+    "routing_reason": "Net-new filing analytics with SEC and spreadsheet integrations, tenant authorization, durable work, and versioned financial history requires full planning and expanded downstream contracts.",
+    "conditional_sketch_sections": [
+      "Repo Grounding",
+      "Contract / Artifact / Event Impact",
+      "Runtime / State / Failure Notes",
+      "Human / Operator Boundaries",
+      "Design Gaps and Repo Contradictions",
+      "Decomposition-Ready Design Slices"
+    ]
+  },
+  "risk": {
+    "requirement_clarity": "medium",
+    "repo_uncertainty": "high",
+    "external_dependency_uncertainty": "high",
+    "state_data_migration_risk": "high",
+    "runtime_side_effect_risk": "high",
+    "human_operator_dependency": "medium"
+  }
+}
+```
+
 ## Internal Discovery
 
 ### Term: specification
@@ -311,6 +352,10 @@ The supplied [spec.md](spec.md) establishes the product boundary and acceptance 
 
 The existing Speckit workflow remains the delivery mechanism: each implementation slice must be independently taskable, red-green verified, and recorded in the task ledger. No existing runtime service should be modified to host financial data or scheduled ingestion.
 
+## Existing Coverage and Reuse
+
+The repository provides governance, task-format, plan, estimate, ledger, and bounded-read tooling that this feature reuses. It does not provide a financial data model, SEC runtime, dashboard, worker, portfolio authorization, or export implementation. The implementation therefore creates an isolated `src/financial_tracker/` package while using the existing deterministic gates and real-backend verification conventions rather than modifying unrelated runtime services.
+
 ## External Research
 
 External dependencies are decisions with explicit controls, checked on 2026-07-19:
@@ -353,6 +398,26 @@ The initial dashboard is server-rendered from Python endpoints with progressive 
 Every SEC request has a connection/read timeout, classified retry policy with jitter, global rate budget below SEC limits, and a circuit-open/degraded state. Every background item has a stable idempotency key, lease, attempt count, bounded retry schedule, terminal reason, and correlation ID. Recovery can resume leased/expired work without rerunning completed observation writes.
 
 Emit structured events and metrics for filing discovery lag, SEC rate-limit/error rate, normalized-fact quality, queue age, calculation latency, cache freshness, definition validation failures, recalculation backlog, export outcomes, and authorization denials. Alerts must be actionable and include feature/run/correlation identifiers. The operational runbook must define source outage, malformed filing, queue saturation, failed export, and definition rollout recovery procedures before scheduled production refresh is enabled.
+
+## External Ingress and Runtime Readiness
+
+| Ingress | Status | Readiness Contract |
+|---|---|---|
+| Browser and authenticated API requests | Conditional | Server-side authentication, authorization, structured errors, request validation, and real API authorization tests must pass before dashboard/API exposure. |
+| Google Sheets delivery | Conditional | Destination and credential scope must be explicit, OAuth/service credentials must remain server-side, and parity plus authorization tests must pass before enablement. |
+| Scheduled SEC discovery | Conditional | Scheduler registration, rate budget, User-Agent, retry/circuit policy, lease recovery, and live compatibility/outage tests must pass before production scheduling. |
+| Runtime readiness | Conditional | PostgreSQL migrations, worker readiness, feature flags, health checks, correlation IDs, and operator recovery procedures must be verified in the rollout order below. |
+
+### Readiness Blocking Summary
+
+| Blocker | Status | Required Evidence |
+|---|---|---|
+| New external source dependency | Conditional | Bounded live SEC compatibility and outage-path tests. |
+| New durable storage and migrations | Conditional | Real-PostgreSQL migration, uniqueness, rollback, and idempotency evidence. |
+| External delivery credentials | Conditional | Server-side credential scoping and API/XLSX/Sheets parity and authorization evidence. |
+| Production scheduled refresh | Conditional | Runbook, alert coverage, feature-flag rollback, and recovery evidence from PL-05. |
+
+Production scheduled refresh and spreadsheet delivery remain disabled until all preceding slice checkpoints and the listed readiness evidence pass.
 
 ## Architecture Diagram
 
@@ -442,6 +507,33 @@ Roll out in this order: internal fixture data; built-in metrics; user-defined me
 - Why this slice exists: Safely move from controlled fixtures to repeatable live filing refreshes and recoverable production operations.
 - File/Symbol Seams: `src/financial_tracker/sec/`, `src/financial_tracker/work/`, `src/financial_tracker/observability/`, `docs/financial-tracker-operations.md`, `tests/integration/financial_tracker/`
 - Implementation Directive: Implement the direct SEC adapter and reviewed EdgarTools adapter, rate budget, User-Agent, timeout/retry/circuit policy, scheduled discovery, amendment detection, worker lease recovery, metrics/logs/alerts, and operator runbook. Add a bounded live-SEC compatibility test plus failure-path tests for 429, source outage, malformed filings, duplicate delivery, queue recovery, and export retry.
+
+## Handoff Contract to Sketch
+
+### Settled by Plan
+
+- Financial facts and observations are immutable and linked to filing provenance, analysis runs, and metric-definition versions.
+- PostgreSQL is authoritative; cache and export artifacts are derived and tenant-scoped.
+- SEC access is isolated behind one adapter with bounded retry, rate budget, User-Agent, circuit, and live compatibility evidence.
+- Browser/API, Google Sheets, and scheduled SEC ingress remain conditional until their readiness rows pass.
+- User-defined metrics use a restricted typed declarative language and never execute user code, SQL, or `eval`.
+
+### Sketch Must Preserve
+
+| Constraint | Why |
+|---|---|
+| One authorized read model for dashboard, API, XLSX, and Sheets | Prevents parity and authorization drift. |
+| Coordinator-owned work transitions and transactional handoff | Prevents duplicate facts, observations, and retry corruption. |
+| Explicit quality, stale, and recalculation-pending states | Prevents silent nulls and misleading current values. |
+| Feature-flagged live SEC scheduling and spreadsheet delivery | Makes rollout and rollback reversible. |
+
+### Sketch May Refine
+
+- Concrete Python module boundaries, SQL migration layout, scheduler trigger mechanism, and chart library selection may be refined without changing the contracts above.
+
+### Sketch Must Not Re-Decide
+
+- Whether financial history is immutable, whether metric definitions are versioned, whether external boundaries are authorized server-side, or whether production refresh is gated by the readiness contract.
 
 ## Plan Completion Summary
 

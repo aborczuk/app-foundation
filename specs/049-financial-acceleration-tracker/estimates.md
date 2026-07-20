@@ -1,6 +1,6 @@
 # Effort Estimate: Financial Acceleration Tracker
 
-**Date**: 2026-07-20 | **Total Points**: 227 | **T-shirt Size**: XL (high risk)
+**Date**: 2026-07-20 | **Total Points**: 252 | **T-shirt Size**: XL (high risk)
 **Estimated by**: AI (speckit.estimate) - calibrated from the approved plan slices and current task seams
 
 ## Estimate Contract
@@ -54,11 +54,16 @@ Each row closes one implementation seam. A score of 5 is one cohesive seam that 
 | T041 | 5 | Write red company-history tests | One UI/query contract seam covering gaps, outliers, amendments, and provenance labels. |
 | T042 | 5 | Implement company history query with freshness and provenance | One historical read-model seam preserving explicit calculation state. |
 | T043 | 5 | Implement server-rendered company detail and trend visualization | One presentation seam consuming the history contract without smoothing gaps or outliers. |
-| T044 | 5 | Run PostgreSQL foundation and analysis acceptance coverage | One acceptance seam validating the authoritative database path and first user story. |
-| T045 | 5 | Run live-SEC refresh, outage, and recovery acceptance coverage | One acceptance seam validating external source continuity and worker recovery. |
-| T046 | 5 | Run API, XLSX, and Google Sheets parity acceptance coverage | One delivery acceptance seam validating shared values, status, provenance, and authorization. |
-| T047 | 5 | Run metric-definition and version-history acceptance coverage | One metric lifecycle acceptance seam validating reproducibility and historical identity. |
-| T048 | 5 | Document migration, rollback, rollout, freshness, and recovery checks | One operational-readiness seam covering release and incident procedures. |
+| T044 | 5 | Implement authorized metric-definition API boundary | One API implementation seam covering validation, dry run, lifecycle, authorization, and version selection. |
+| T045 | 5 | Implement scheduled discovery registration and feature flags | One scheduler seam covering cadence, trigger ownership, enablement, and safe disablement. |
+| T046 | 5 | Implement refresh and delivery observability runtime | One observability seam covering structured events, metrics, correlation, and alert policy. |
+| T047 | 5 | Implement authorized watchlist and portfolio lifecycle operations | One universe-management seam covering ownership, membership validation, and mutation authorization. |
+| T048 | 5 | Implement dashboard collection read model and rendering states | One dashboard seam covering filters, sorting, pagination, and explicit runtime states. |
+| T049 | 5 | Run PostgreSQL foundation and analysis acceptance coverage | One acceptance seam validating the authoritative database path and first user story. |
+| T050 | 5 | Run live-SEC refresh, outage, and recovery acceptance coverage | One acceptance seam validating external source continuity and worker recovery. |
+| T051 | 5 | Run API, XLSX, and Google Sheets parity acceptance coverage | One delivery acceptance seam validating shared values, status, provenance, and authorization. |
+| T052 | 5 | Run metric-definition and version-history acceptance coverage | One metric lifecycle acceptance seam validating reproducibility and historical identity. |
+| T053 | 5 | Document migration, rollback, rollout, freshness, and recovery checks | One operational-readiness seam covering release and incident procedures. |
 
 ## Phase Totals
 
@@ -71,8 +76,8 @@ Each row closes one implementation seam. A score of 5 is one cohesive seam that 
 | Phase 5: User Story 3 | 40 | 8 | 1 |
 | Phase 6: User Story 4 | 25 | 5 | 1 |
 | Phase 7: User Story 5 | 15 | 3 | 1 |
-| Phase 8: Polish and Cross-Cutting Validation | 25 | 5 | 0 |
-| **Total** | **227** | **48** | **7** |
+| Phase 8: Polish and Cross-Cutting Validation | 50 | 10 | 2 |
+| **Total** | **252** | **53** | **9** |
 
 ## Warnings
 

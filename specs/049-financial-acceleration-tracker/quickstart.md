@@ -1,0 +1,42 @@
+# Financial Acceleration Tracker Quickstart
+
+## Local Preconditions
+
+- Python dependencies are installed through the repository's `uv` workflow.
+- A disposable PostgreSQL instance is available for integration verification.
+- SEC live tests are opt-in and use an environment-backed User-Agent and rate budget.
+- Google Sheets tests use a separately scoped test credential or remain disabled.
+
+## Development Sequence
+
+1. Create the isolated `src/financial_tracker/` package and migrations.
+2. Run fixture and real-PostgreSQL foundation tests before calculation work.
+3. Run calculation fixtures, then metric-definition dry-run and version-history tests.
+4. Run SEC adapter compatibility and outage tests with live scheduling disabled.
+5. Run dashboard/API/XLSX/Sheets parity and authorization tests.
+6. Enable scheduled discovery only after the PL-05 readiness checks and operator runbook review pass.
+
+## Verification Commands
+
+Use the repository guards rather than raw test or lint commands:
+
+```bash
+uv run --no-sync python scripts/speckit_tasks_gate.py validate-format \
+  --tasks-file specs/049-financial-acceleration-tracker/tasks.md --json
+uv run --no-sync python scripts/speckit_plan_gate.py plan-sections \
+  --plan-file specs/049-financial-acceleration-tracker/plan.md \
+  --spec-file specs/049-financial-acceleration-tracker/spec.md --json
+uv run --no-sync python scripts/speckit_plan_gate.py design-artifacts \
+  --feature-dir specs/049-financial-acceleration-tracker --require-contracts --json
+uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker
+```
+
+Live SEC and Google Sheets verification must be explicit test selections and must not run as an implicit default. The live path must prove User-Agent, timeout, rate budget, bounded retry, outage degradation, duplicate delivery, lease recovery, and credential scoping.
+
+## Rollout Flags
+
+Keep `SEC_SCHEDULE_ENABLED=false` and `GOOGLE_SHEETS_DELIVERY_ENABLED=false` until migrations, real-backend tests, authorization tests, parity tests, observability, and rollback instructions are verified. A failed readiness check leaves the feature in fixture/manual-refresh mode and does not expose partial external delivery.
+
+## Operator Checks
+
+Before enabling scheduled refresh, confirm PostgreSQL migration status, worker readiness, queue age, SEC rate/error metrics, alert routing, and correlation IDs. During an outage, preserve the last successful observation with freshness and quality state, stop unbounded retries, and resume only from recoverable work items.

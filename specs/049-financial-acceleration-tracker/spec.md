@@ -195,7 +195,7 @@ flowchart TD
 - **FR-010**: System MUST calculate improvement streaks from quarter-aligned metric histories.
 - **FR-011**: System MUST calculate acceleration using first and second differences with materiality thresholds to avoid flagging immaterial changes.
 - **FR-012**: System MUST mark unavailable, ambiguous, invalid, missing, amended, restated, and retrieval-failed states with bounded plain-language data-quality categories.
-- **FR-013**: System MUST refresh affected watchlist and portfolio results after newly observed filings, amendments, or restatements.
+- **FR-013**: System MUST trigger targeted refresh of affected watchlist and portfolio results after newly observed filings, amendments, or restatements.
 - **FR-014**: System MUST preserve prior filing-derived observations when a newer accepted filing changes the current value.
 - **FR-015**: System MUST provide sortable and filterable dashboard views for company, watchlist, portfolio, metric, acceleration, streak, fiscal period, and data-quality status.
 - **FR-016**: System MUST provide company-level metric history with sparklines or charts that preserve gaps, outliers, amendments, restatements, and source provenance.

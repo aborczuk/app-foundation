@@ -34,8 +34,8 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 **Purpose**: Implement design slice PL-01, Financial Foundation and Provenance. No user-story task can start before these seams are stable.
 
-- [ ] T003 Define typed domain entities and persistence mappings for users, portfolios, issuers, filings, fiscal periods, facts, and provenance in `src/financial_tracker/domain/models.py`
-- [ ] T004 Add migrations and uniqueness, supersession, analysis-run, and work-item constraints in `src/financial_tracker/domain/models.py`
+- [ ] T003 Define typed domain entities for users, portfolios, issuers, filings, fiscal periods, facts, and provenance with mappings owned by `src/financial_tracker/persistence/models.py`
+- [ ] T004 Add migrations and uniqueness, supersession, analysis-run, and work-item constraints in `src/financial_tracker/persistence/migrations/`
 - [ ] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
 - [ ] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`
 - [ ] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
@@ -196,13 +196,23 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ## Phase 8: Polish and Cross-Cutting Validation
 
-**Purpose**: Verify the complete slice-to-task contract without introducing a second implementation seam.
+**Purpose**: Close the remaining cross-cutting implementation seams, then verify the complete slice-to-task contract.
 
-- [ ] T044 Run real-PostgreSQL foundation and analysis acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
-- [ ] T045 Run live-SEC refresh, outage, and recovery acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
-- [ ] T046 Run API, XLSX, and Google Sheets parity acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
-- [ ] T047 Run metric-definition and version-history acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
-- [ ] T048 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
+### Remediation Seams
+
+- [ ] T044 [US2] Implement the authorized metric-definition API boundary for validation, dry run, lifecycle, and version selection in `src/financial_tracker/api/metric_definitions.py`
+- [ ] T045 [US3] Implement scheduled discovery registration, cadence, and feature-flag enforcement in `src/financial_tracker/work/scheduler.py`
+- [ ] T046 [US3] Implement refresh and delivery observability events, metrics, correlation fields, and alert policy in `src/financial_tracker/observability/runtime.py`
+- [ ] T047 [US4] Implement authorized watchlist and portfolio lifecycle operations with membership validation in `src/financial_tracker/api/universes.py`
+- [ ] T048 [US4] Implement the sortable and filterable dashboard collection read model and server-rendered states in `src/financial_tracker/web/dashboard.py`
+
+### Acceptance and Rollout
+
+- [ ] T049 Run real-PostgreSQL foundation and analysis acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T050 Run live-SEC refresh, outage, and recovery acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T051 Run API, XLSX, and Google Sheets parity acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T052 Run metric-definition and version-history acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [ ] T053 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
 
 **Checkpoint**: All required red/green acceptance evidence is recorded, operational docs are usable, and no task remains a placeholder.
 
@@ -217,13 +227,14 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 5. Phase 5 implements PL-05 refresh behavior and depends on PL-01, PL-02, and PL-03 version selection.
 6. Phase 6 implements PL-04 delivery and depends on the authorized read model from Phases 3-5.
 7. Phase 7 consumes the same read model and may proceed after Phase 3, with metric-version and refresh states from Phases 4-5.
-8. Phase 8 runs after the task graph is complete.
+8. Phase 8 first closes the five remediation seams, then runs cross-cutting acceptance and rollout checks.
 
 ### Parallel Opportunities
 
 - T011 and T012 can run in parallel before the US1 implementation seams.
 - T019 and T020 can run in parallel before the US2 implementation seams.
 - T036 and T041 can run in parallel after the shared read model is available.
+- T047 and T048 can run in parallel after the authorized read model and identity boundaries are stable.
 
 ## Plan Design Slice Index
 
@@ -231,8 +242,8 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 |---|---|---|
 | PL-01 Financial Foundation and Provenance | T001-T010 | Package, domain persistence, identity, fixture ingestion, authorization, work state, and PostgreSQL evidence |
 | PL-02 Calculation and Built-In Metric Observations | T011-T018 | Selectors, fiscal periods, calculations, quality states, immutable observations, and analysis read model |
-| PL-03 Versioned User-Defined Metric Registry | T019-T027 | Restricted parser, validation, version persistence, authorization, dry run, lifecycle, recalculation, and API contract |
-| PL-05 SEC Refresh, Operations, and Continuity | T028-T035 | SEC adapter, amendment refresh, worker recovery, observability, runbook, and bounded live compatibility |
-| PL-04 Authorized Dashboard, API, and Deterministic Exports | T036-T040 | Authorized query contract, XLSX manifest, Google Sheets adapter, and parity tests |
+| PL-03 Versioned User-Defined Metric Registry | T019-T027, T044 | Restricted parser, validation, version persistence, authorization, dry run, lifecycle, recalculation, and API boundary |
+| PL-05 SEC Refresh, Operations, and Continuity | T028-T035, T045-T046 | SEC adapter, scheduled discovery, amendment refresh, worker recovery, observability, runbook, and bounded live compatibility |
+| PL-04 Authorized Dashboard, API, and Deterministic Exports | T036-T040, T047-T048 | Universe lifecycle, authorized query contract, dashboard collection, XLSX manifest, Google Sheets adapter, and parity tests |
 | Company-level history contract | T041-T043 | Historical query and visualization for gaps, outliers, amendments, and provenance |
-| Cross-cutting acceptance and rollout | T044-T048 | Real-backend acceptance evidence and operational readiness documentation |
+| Cross-cutting acceptance and rollout | T049-T053 | Real-backend acceptance evidence and operational readiness documentation |
