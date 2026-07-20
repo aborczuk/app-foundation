@@ -22,7 +22,8 @@ If this compatibility command is invoked directly:
 2. Identify every current task row scored 8 or 13.
 3. Split each multi-seam task into cohesive seam tasks of 5 points or fewer.
 4. Preserve the slice-to-task contract and do not split one closeout seam into routing, validation, and reporting fragments.
-5. Return control to `/speckit.estimate` for re-estimation and finalization.
+5. Assign fresh sequential numeric `TNNN` IDs to replacement tasks. Do not use alphabetic or dotted child IDs such as `T003a` or `T003.1`; the task guard requires canonical numeric IDs.
+6. Return control to `/speckit.estimate` for re-estimation and finalization.
 
 This command does not emit a pipeline event or run finalization by itself.
 

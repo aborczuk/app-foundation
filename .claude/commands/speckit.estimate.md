@@ -36,6 +36,7 @@ Load `tasks.md`, `plan.md`, `spec.json`, `spec.md`, and any existing `estimates.
    - 8 means multi-seam work that must be split into smaller cohesive tasks.
    - 13 means epic-scale multi-seam work that must be split before implementation.
    - Preserve the slice-to-task contract and do not split routing, validation, and reporting when they share one closeout seam.
+   - Assign fresh sequential numeric `TNNN` IDs to replacement tasks. Do not use alphabetic or dotted child IDs such as `T003a` or `T003.1`; the task guard requires canonical numeric IDs.
 4. Re-estimate the updated task graph after every breakdown pass. Repeat until no current estimate row scores 8 or 13.
 5. If estimation or breakdown cannot complete, stop with the failure and do not fabricate `estimates.md`, bypass the loop, or continue to finalization.
 6. Run the deterministic task format gate:
