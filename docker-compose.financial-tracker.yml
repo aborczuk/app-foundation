@@ -1,0 +1,22 @@
+services:
+  financial-tracker-postgres:
+    image: postgres:16-alpine
+    container_name: financial-tracker-postgres
+    ports:
+      - "55432:5432"
+    environment:
+      POSTGRES_DB: ${FINANCIAL_TRACKER_POSTGRES_DB:-financial_tracker}
+      POSTGRES_USER: ${FINANCIAL_TRACKER_POSTGRES_USER:-financial_tracker}
+      POSTGRES_PASSWORD: ${FINANCIAL_TRACKER_POSTGRES_PASSWORD:-financial_tracker_dev}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - financial_tracker_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  financial_tracker_postgres_data:

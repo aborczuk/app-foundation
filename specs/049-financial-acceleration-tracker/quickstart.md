@@ -31,14 +31,16 @@ uv run --no-sync python scripts/speckit_plan_gate.py design-artifacts \
 uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker
 ```
 
-Live SEC and Google Sheets verification must be explicit test selections and must not run as an implicit default. The live path must prove User-Agent, timeout, rate budget, bounded retry, outage degradation, duplicate delivery, lease recovery, and credential scoping.
-
-To run the PostgreSQL harness smoke test against a disposable real instance:
+Start the disposable PostgreSQL backend before running the live harness:
 
 ```bash
-FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://user:password@localhost:5432/financial_tracker \
-  uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_harness.py
+docker compose -f docker-compose.financial-tracker.yml up -d --wait
+export FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://financial_tracker:financial_tracker_dev@localhost:55432/financial_tracker
+uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_harness.py
+docker compose -f docker-compose.financial-tracker.yml down -v
 ```
+
+Live SEC and Google Sheets verification must be explicit test selections and must not run as an implicit default. The live path must prove User-Agent, timeout, rate budget, bounded retry, outage degradation, duplicate delivery, lease recovery, and credential scoping.
 
 ## Rollout Flags
 
