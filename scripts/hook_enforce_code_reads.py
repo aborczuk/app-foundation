@@ -51,7 +51,7 @@ TEXT_EXTENSIONS = {
     ".env",
 }
 
-MAX_HELPER_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "80") or "80")
+MAX_HELPER_LINES = int(os.environ.get("SPECKIT_READ_CODE_MAX_LINES", "40") or "40")
 
 
 def _emit_deny(reason: str) -> None:
@@ -288,7 +288,7 @@ def main() -> int:
         if broad_root and code_doc_target:
             _emit_deny(
                 "Broad root-level file scans are denied (for example `find . -name '*.py'`). "
-                "Use Semble first (`uv run --no-sync semble search <query> . -k 5 --max-snippet-lines 0`) "
+                "Use Semble first (`uv run --no-sync semble search <query> . -k 5 --max-snippet-lines 10`) "
                 "for file/line anchors, "
                 "`uv run python scripts/read_markdown.py --headings <file>` for markdown reads, "
                 "or scope inventory to explicit directories (for example `find src tests -name '*.py'`)."
@@ -326,8 +326,8 @@ def main() -> int:
         if _is_repo_code_doc_file(candidate):
             _emit_deny(
                 "Code/doc-file reads must use:\n"
-                "  uv run --no-sync semble search <query> . -k 5 --max-snippet-lines 0\n"
-                "  uv run --no-sync semble find-related <file> <line> . -k 5 --max-snippet-lines 0\n"
+                "  uv run --no-sync semble search <query> . -k 5 --max-snippet-lines 10\n"
+                "  uv run --no-sync semble find-related <file> <line> . -k 5 --max-snippet-lines 10\n"
                 "  uv run python scripts/read_code.py context <query>\n"
                 "  uv run python scripts/read_code.py window <file> <start_line> <end_line>\n"
                 "  uv run python scripts/read_markdown.py --headings <file>\n"
