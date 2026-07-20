@@ -8,14 +8,14 @@ $ARGUMENTS
 
 ## Contract
 
-Execute implementation through script-owned preflight, task start, persistent builder/QA subagent orchestration, script-owned QA handoff, and documentation updates. `/speckit.implement` itself is the orchestrator. It owns the helper sequence, mediates all builder↔QA handoff directly, and keeps the Codex session warm across queued tasks until the task gate says implementation is complete.
+Execute implementation through script-owned preflight, task start, root-owned task implementation, persistent QA subagent review, script-owned QA handoff, and documentation updates. `/speckit.implement` itself owns the helper sequence, implements one task at a time, hands completed work to QA, and keeps the Codex session warm across queued tasks until the task gate says implementation is complete.
 
 1. Resolve feature context and run task pre-implementation gate checks.
 2. Consume the next registered task from `.speckit/task-ledger.jsonl` and the matching `tasks.md` contract.
-3. Spawn and reuse two persistent `spawn_agent` subagents on `gpt-5.4-mini`: one builder and one QA reviewer.
-4. Mediate builder→QA handoff for one task at a time; route QA failures back to the same builder before closeout.
-5. Run script-owned offline QA handoff and canonical ledger closeout only after the orchestrator has a QA-pass-worthy task result.
-6. If the task gate reports more open tasks, continue the same warm Codex session and reuse the same builder/QA subagents on the next registered task.
+3. Spawn and reuse one persistent `spawn_agent` QA subagent on `gpt-5.4-mini`.
+4. Implement one task at a time in the root agent, then hand the completed task to QA; route QA failures back into the same root-agent task loop before closeout.
+5. Run script-owned offline QA handoff and canonical ledger closeout only after the root agent has a QA-pass-worthy task result.
+6. If the task gate reports more open tasks, continue the same warm Codex session and reuse the same QA subagent on the next registered task.
 6. Update quickstart runbook + decision log via `scripts/speckit_implement_docs.py`.
 7. Preserve GitHub sync handoff via `/speckit.checkpoint Phase [N]` compact status line; do not emit a prose summary.
 
@@ -50,6 +50,12 @@ Run setup verification:
 
 Treat non-zero as hard-block.
 
+Context loading rule:
+- Do not reread `spec.md` as routine per-task grounding during implement.
+- Read only the current task line from `tasks.md`, the relevant `plan.md` slice for that task's seam, and the exact code/doc seam to be changed.
+- Carry forward the active task's local context across adjacent work on the same seam.
+- Reread broader feature context only when the next task changes seam materially or when tests/QA contradict the current task-local model.
+
 Before task execution or handoff:
 - Ensure the implementation branch named after `FEATURE_DIR` is checked out or created from `main`.
 - Keep `specify` on `main`; branch creation belongs to the implement path, not the spec path.
@@ -61,46 +67,56 @@ Before task execution or handoff:
 - Select the next registered task in `tasks.md` order.
 - Append `task_started` only when the selected task is not already active.
 - Execute only the next eligible task from `tasks.md` and the resolved feature context.
-- `/speckit.implement` itself must use `spawn_agent` directly.
-- Do not use `fork_context: true` because the builder and QA subagents must run on `gpt-5.4-mini`.
-- Spawn exactly two persistent subagents and reuse them for the full implement session:
-  - builder subagent
+- `/speckit.implement` itself must use `spawn_agent` directly for QA.
+- Do not use `fork_context: true` because the QA subagent must run on `gpt-5.4-mini`.
+- Spawn exactly one persistent subagent and reuse it for the full implement session:
   - QA subagent
-- The orchestrator agent is the mediator. Do not let the subagents coordinate closeout directly.
-- The orchestrator default is intentionally minimal:
+- The root agent is both implementer and orchestrator. Do not let the QA subagent coordinate closeout directly.
+- The root-agent default is intentionally simple:
   - check the next eligible task/start gate
-  - send the next task packet from `tasks.md` to the builder
-  - forward the builder result to QA
-  - when QA returns a pass-worthy offline-QA result, create the implementation commit and run closeout
+  - implement the next task from `tasks.md`
+  - send the completed task result to QA
+  - when QA returns a pass-worthy offline-QA result, record any real task commit metadata and run closeout
   - advance to the next task
-- When the builder finishes a task and that task moves into QA/offline-QA, do not idle the builder if another task is already ledger-eligible.
-- If `assert-can-start` allows a parallel or otherwise dependency-safe next task, send that next task packet to the builder while QA/offline-QA continues on the previous task.
-- Preserve task-ledger and dependency gates exactly; parallel continuation is allowed only when the ledger says the next task can start.
-- In the normal case, the orchestrator role is managerial rather than implementation-focused. Do not add extra repo exploration, seam rereads, or independent code analysis before every task handoff.
-- Additional orchestrator investigation is only justified on concrete signals such as:
-  - invalid or empty builder/QA completion
+- Preserve task-ledger and dependency gates exactly. Do not begin another task until the current task has passed QA and closeout is complete.
+- In the normal case, the root agent should implement directly from the selected task entry and feature context rather than creating an extra builder delegation layer.
+- Do not broad-reground in the full feature spec between tasks when the active seam has not changed.
+- Additional root-agent investigation is only justified on concrete signals such as:
+  - invalid or empty QA completion
   - QA findings that need clarification before retry
   - offline QA / closeout contradictions
-  - a builder request for more bounded context
-- The orchestrator should not be the source of routine delay. When the task packet is already clear enough, pass it through immediately instead of expanding the context on the orchestrator side.
-- Do not send the full implement command doc as the builder subagent prompt.
-- The builder subagent should receive the selected task entry plus feature context as the default implementation packet.
-- Only add extra context when the builder explicitly asks for it or a concrete failure requires it.
-- Any extra context must stay narrow and task-local.
+- The root agent should not be the source of routine delay. When the task packet is already clear enough, implement it directly instead of expanding the context unnecessarily.
+- For code-bearing tasks, the root agent must run a tight red-green loop before QA:
+  - derive the behavior from the task acceptance criteria
+  - write one focused regression test that should fail against the current code
+  - run that test and confirm the failure
+  - implement the smallest fix that makes the regression pass
+  - rerun the targeted test and any directly relevant checks until they are green
+- For docs-only, manifest-only, or operator-guidance tasks, skip the failing-test phase and use the narrowest deterministic validation available instead.
 - The QA subagent may use `.claude/commands/speckit.qa.md` as its standing review contract because it is a task reviewer rather than the implementation worker.
 - The orchestrator's QA handoff template must explicitly instruct:
   - run `scripts/speckit_offline_qa_handoff.py` first for the active task
   - then apply the `/speckit.qa` behavioral review rules to interpret that canonical result
-  - only do deeper manual inspection when the offline-QA result fails, is invalid, or needs explanation for a builder retry
-- Per task, the orchestrator must:
-  1. send the selected task and feature context to the builder
-  2. collect the builder result
-  3. send the builder result, task id, changed files, and test evidence to the QA subagent
-  4. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
-  5. if QA returns `FIX_REQUIRED`, send those findings back to the same builder and retry the same task
-  6. once QA returns a pass-worthy offline-QA result, stop the subagent loop for that task, create the implementation commit, and run `scripts/speckit_closeout_task.py`
+  - only do deeper manual inspection when the offline-QA result fails, is invalid, or needs explanation for a root-agent retry
+- Per task, the root agent must:
+  1. identify the behavior from the selected task and acceptance criteria
+  2. write and run the focused red test for code-bearing work, or the narrow deterministic validation for non-code work
+  3. implement the selected task from the resolved feature context
+  4. rerun the targeted test or directly relevant checks until the task is green
+  5. collect changed files and test evidence
+  6. send the task result, task id, changed files, and test evidence to the QA subagent
+  7. the QA subagent owns the canonical offline-QA stage for that task by preparing the payload as needed and running `scripts/speckit_offline_qa_handoff.py`
+  8. if QA returns `FIX_REQUIRED`, apply those findings in the root agent and retry the same task
+  9. once QA returns a pass-worthy offline-QA result, run `scripts/speckit_closeout_task.py` and include commit metadata only if a real task commit exists
+  10. if closeout returns `clickup_sync_status=pending_agent_update`, the root agent must use the connected Composio ClickUp tools to set that mapped task to the exact `clickup_desired_status` value after repo closeout succeeds
+  11. if the Composio ClickUp update fails, keep repo closeout authoritative, report the failure as retry-needed, and continue without rolling back task closure
 - The orchestrator may verify task identity, required artifacts, and evidence completeness before the QA handoff, but must not perform an additional correctness review or substitute its own QA judgment for the QA subagent verdict.
-- A builder result is not commit authorization. Implementation commits must wait until the QA subagent returns a pass-worthy offline-QA result for the active task.
+- A root-agent implementation result is not commit authorization. QA must run against the active branch/worktree state and must not depend on a pre-QA commit.
+- Agent-owned ClickUp completion flow after closeout:
+  - read `clickup_task_id`, `clickup_desired_status`, and `clickup_sync_status` from the closeout payload
+  - when `clickup_sync_status=pending_agent_update`, use the connected ClickUp Composio toolkit after closeout, not before
+  - validate or re-derive the exact allowed done label if the update rejects the requested status
+  - never reopen or roll back the repo task when the external ClickUp update fails
 - Guard JSON payload/result handling actively:
   - extract a compact decision summary once rather than repeatedly rereading full payload/result JSON artifacts
   - QA payload minimum fields: `feature_id`, `task_id`, `changed_files`, `acceptance_criteria`, `test_runs`
@@ -161,8 +177,8 @@ The task gate uses the task ledger as the source of truth for whether work is st
 - Do not mark task completion before tests/QA requirements pass.
 - Do not perform manual quickstart/decision-log appends when `speckit_implement_docs.py` is available.
 - Do not emit completion events from LLM content.
-- Do not let the builder or QA subagents invoke closeout, task-gate, or pipeline phase completion.
+- Do not let the QA subagent invoke closeout, task-gate, or pipeline phase completion.
 - Do not use a Codex subrunner for implement task execution.
 - Do not treat quiet subagents as stalled until the defined wait budget is exhausted.
 - Do not trust stale or mis-scoped QA JSON artifacts; reject them if `task_id`, `qa_run_id`, or required fields do not match the active task.
-- Do not treat an empty/null subagent completion as a valid builder result or QA verdict.
+- Do not treat an empty/null subagent completion as a valid QA verdict.

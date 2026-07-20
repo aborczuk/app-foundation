@@ -15,6 +15,11 @@ class Task:
     workflow_type: str = "build_spec"
     context_ref: str = ""
     execution_policy: str = "manual-test"
+    acceptance_criteria: str = ""
+    story_label: str = ""
+    parallel: bool = False
+    estimate_points: int | None = None
+    artifact_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -37,7 +42,41 @@ class SpecArtifact:
     is_phase_spec: bool
     parent_num: str | None
     has_tasks: bool
+    artifact_links: dict[str, str] = field(default_factory=dict)
     task_groups: list[TaskGroup] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class TaskProjection:
+    """Canonical repo-owned projection for one executable task."""
+
+    feature_num: str
+    feature_title: str
+    feature_short_name: str
+    parent_num: str | None
+    task_id: str
+    task_key: str
+    group_title: str
+    title: str
+    acceptance_criteria: str = ""
+    story_label: str = ""
+    parallel: bool = False
+    estimate_points: int | None = None
+    context_ref: str = ""
+    artifact_links: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class FeatureProjection:
+    """Canonical repo-owned projection for one feature and its executable tasks."""
+
+    feature_num: str
+    feature_key: str
+    short_name: str
+    title: str
+    parent_num: str | None
+    artifact_links: dict[str, str] = field(default_factory=dict)
+    task_projections: list[TaskProjection] = field(default_factory=list)
 
 
 @dataclass
@@ -51,6 +90,8 @@ class SyncManifest:
     lists: dict[str, str] = field(default_factory=dict)
     tasks: dict[str, str] = field(default_factory=dict)
     subtasks: dict[str, str] = field(default_factory=dict)
+    feature_projection_meta: dict[str, dict[str, object]] = field(default_factory=dict)
+    task_projection_meta: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass

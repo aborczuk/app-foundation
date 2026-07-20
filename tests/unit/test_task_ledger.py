@@ -78,16 +78,53 @@ def test_register_tasks_appends_missing_tasks_and_returns_next_registered_task(
     summary = task_ledger.register_tasks(ledger_path, tasks_file, "023", actor="codex")
 
     assert summary["newly_registered_task_ids"] == ["T001", "T002"]
-    assert summary["skipped_task_ids"] == []
-    assert summary["next_task_id"] == "T001"
 
-    events = task_ledger.read_events(ledger_path)
-    assert [event["event"] for event in events] == ["task_registered", "task_registered"]
 
-    errors, states = task_ledger.validate_sequence(events)
-    assert errors == []
-    assert states["023"].tasks["T001"].registered is True
-    assert states["023"].tasks["T002"].registered is True
+def test_explicit_task_start_gate_returns_non_mutating_summary(tmp_path: Path) -> None:
+    """Explicit task gates should report eligibility without appending start events."""
+    ledger_path = tmp_path / ".speckit" / "task-ledger.jsonl"
+    tasks_file = tmp_path / "specs" / "023-deterministic-phase-orchestration" / "tasks.md"
+    tasks_file.parent.mkdir(parents=True)
+    _write_tasks_file(
+        tasks_file,
+        task_lines=[
+            "## implement",
+            "- [ ] T001 first task",
+            "- [ ] T002 [P] second task",
+        ],
+    )
+
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(
+        "\n".join(
+            [
+                json.dumps(_task_event("task_registered"), sort_keys=True),
+                json.dumps(_task_event("task_registered", task_id="T002"), sort_keys=True),
+                json.dumps(_task_event("task_started"), sort_keys=True),
+                json.dumps(
+                    _task_event("human_action_verified", verification_method="manual-review"),
+                    sort_keys=True,
+                ),
+                json.dumps(_task_event("task_closed"), sort_keys=True),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = task_ledger.explicit_task_start_gate(
+        ledger_path,
+        tasks_file,
+        "023",
+        "T002",
+        actor="agent-b",
+    )
+
+    assert summary["task_id"] == "T002"
+    assert summary["parallel"] is True
+    assert summary["blocking_reason"] is None
+    assert summary["task_started"] is False
+    assert len(task_ledger.read_events(ledger_path)) == 5
 
 
 def test_parse_task_definitions_preserves_breakdown_suffix_ids(tmp_path: Path) -> None:

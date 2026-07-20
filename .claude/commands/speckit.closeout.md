@@ -18,7 +18,7 @@ Close the current task through one append-first path that records the task evide
 
 1. Run `.specify/scripts/python/check_prerequisites.py --json --include-tasks` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
    - Feature purpose: carry the one-line feature purpose from `spec.md` through this step.
-2. Require `--commit-sha` and `--qa-run-id` in the user input or reject the request.
+2. Require `--qa-run-id` in the user input or reject the request. Accept `--commit-sha` when a task commit was actually created, but do not require it to run offline QA or closeout.
 3. Invoke:
 
    ```bash
@@ -27,18 +27,21 @@ Close the current task through one append-first path that records the task evide
      --task-id "T0XX" \
      --tasks-file "$FEATURE_DIR/tasks.md" \
      --ledger-file ".speckit/task-ledger.jsonl" \
-     --commit-sha "<commit_sha>" \
      --qa-run-id "<qa_run_id>" \
      --json
    ```
 
+   Include `--commit-sha "<commit_sha>"` only when the implementation actually produced a task commit that should be recorded in the ledger.
+
 4. Parse the JSON payload:
    - `next_action=continue`: report the compact status line and stop.
    - `next_task_id=None`: report the compact status line and stop because the story has no more open tasks.
+   - if `clickup_sync_status=pending_agent_update`, carry `clickup_task_id` and `clickup_desired_status` forward to the agent-owned post-closeout ClickUp update step.
 5. Do not emit a prose summary. Return only the compact status line plus the closeout payload fields.
 
 ## Contract
 
 - Closeout must remain ledger-first.
 - The command must not manually rewrite task state outside the canonical closeout script.
+- Agent-owned external updates must happen after closeout, not inside the canonical closeout script.
 - The command must preserve the silent-continuation behavior between tasks and the hard stop at story boundaries without handing off to another command.

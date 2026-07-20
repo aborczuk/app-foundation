@@ -98,10 +98,10 @@ ALLOWED_TRANSITIONS = {
     "human_action_verified": {"human_action_started"},
     "checkpoint_passed": {"tests_passed", "offline_qa_passed"},
     "e2e_passed": {"tests_passed", "offline_qa_passed"},
-    "offline_qa_started": {"commit_created"},
+    "offline_qa_started": {"tests_passed", "fix_completed", "commit_created"},
     "offline_qa_passed": {"offline_qa_started"},
     "offline_qa_failed": {"offline_qa_started"},
-    "commit_created": {"tests_passed", "offline_qa_passed", "fix_completed"},
+    "commit_created": {"tests_passed", "offline_qa_started", "offline_qa_passed", "fix_completed"},
     "pr_opened": {"commit_created", "pr_opened"},
     "ci_completed": {"commit_created", "pr_opened"},
     "qa_verdict": {"ci_completed"},
@@ -869,6 +869,30 @@ def assert_can_start_task(
     actor: str | None = None,
     ) -> dict[str, Any]:
     """Validate dependency and actor gates before starting a task."""
+    summary = explicit_task_start_gate(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor,
+    )
+    blocking_reason = summary.get("blocking_reason")
+    if blocking_reason:
+        if "not found in ordered task list" in str(blocking_reason):
+            fail(f"{blocking_reason} from {tasks_file}")
+        fail(str(blocking_reason))
+    return summary
+
+
+def explicit_task_start_gate(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """Return a non-mutating explicit task start-gate summary for one task."""
     ensure_feature_id(feature_id)
     ensure_task_id(task_id)
 
@@ -890,12 +914,104 @@ def assert_can_start_task(
         task_id=task_id,
         actor=actor_name,
     )
-    if blocking_reason:
-        if "not found in ordered task list" in blocking_reason:
-            fail(f"{blocking_reason} from {tasks_file}")
-        fail(blocking_reason)
-    assert summary is not None
-    return summary
+    task_state = feature_state.tasks.get(task_id)
+    result: dict[str, Any] = {
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "actor": actor_name,
+        "parallel": bool(summary["parallel"]) if summary is not None else False,
+        "blocking_prior_tasks": list(summary["blocking_prior_tasks"]) if summary is not None else [],
+        "blocking_reason": blocking_reason,
+        "task_registered": bool(task_state.registered) if task_state is not None else False,
+        "task_started": bool(task_state.started) if task_state is not None else False,
+        "task_closed": bool(task_state.closed) if task_state is not None else False,
+        "task_owner_actor": (task_state.owner_actor or actor_name) if task_state is not None else actor_name,
+        "task_attempt": latest_attempt(events, feature_id, task_id),
+    }
+    return result
+
+
+def explicit_task_start_or_resume(
+    ledger_path: Path,
+    tasks_file: Path,
+    feature_id: str,
+    task_id: str,
+    *,
+    actor: str | None = None,
+    details: str | None = None,
+) -> dict[str, Any]:
+    """Start or resume one explicit task while preserving the normal ledger gates."""
+    ensure_feature_id(feature_id)
+    ensure_task_id(task_id)
+
+    events = read_events(ledger_path)
+    errors, feature_states = validate_sequence(events)
+    if errors:
+        print("ERROR: ledger is invalid; cannot continue:", file=sys.stderr)
+        for err in errors:
+            print(f"- {err}", file=sys.stderr)
+        raise SystemExit(1)
+
+    actor_name = resolve_actor(actor)
+    feature_state = feature_states.get(feature_id, FeatureState())
+    task_state = feature_state.tasks.get(task_id)
+    if task_state is None or not task_state.registered:
+        fail(f"Cannot start {task_id}; it is not registered in the ledger")
+
+    if task_state.started and not task_state.closed:
+        owner = task_state.owner_actor or "unknown"
+        if owner != actor_name:
+            fail(f"Cannot start {task_id}; it is already started by actor {owner!r} and not yet closed")
+        return {
+            "feature_id": feature_id,
+            "task_id": task_id,
+            "actor": actor_name,
+            "task_action": "resumed",
+            "task_registered": True,
+            "task_started": True,
+            "task_closed": False,
+            "task_owner_actor": owner,
+            "task_attempt": latest_attempt(events, feature_id, task_id),
+            "parallel": explicit_task_start_gate(
+                ledger_path,
+                tasks_file,
+                feature_id,
+                task_id,
+                actor=actor_name,
+            )["parallel"],
+        }
+
+    summary = assert_can_start_task(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor_name,
+    )
+    append_task_started_event(
+        ledger_path,
+        feature_id,
+        task_id,
+        actor=actor_name,
+        details=details,
+    )
+    events = read_events(ledger_path)
+    feature_state = feature_state_for(ledger_path, feature_id)
+    task_state = feature_state.tasks.get(task_id)
+    if task_state is None:
+        fail(f"Cannot start {task_id}; ledger state missing after start")
+    return {
+        "feature_id": feature_id,
+        "task_id": task_id,
+        "actor": actor_name,
+        "task_action": "started",
+        "task_registered": True,
+        "task_started": True,
+        "task_closed": bool(task_state.closed),
+        "task_owner_actor": task_state.owner_actor or actor_name,
+        "task_attempt": latest_attempt(events, feature_id, task_id),
+        "parallel": bool(summary["parallel"]),
+    }
 
 
 def append_task_started_event(

@@ -23,6 +23,7 @@ DEFAULT_ACCEPTANCE = (
     Path(__file__).resolve().parent.parent / ".specify" / "scripts" / "acceptance-test-scaffold.py"
 )
 DEFAULT_TASKS_TEMPLATE = Path(__file__).resolve().parent.parent / ".specify" / "templates" / "tasks-template.md"
+DEFAULT_CLICKUP_RUNTIME = Path(__file__).resolve().parent.parent / "src" / "mcp_clickup" / "__main__.py"
 DEFAULT_SPEC_ARTIFACT = "spec.json"
 LEGACY_ROUTING_ARTIFACT = "routing.json"
 
@@ -276,6 +277,38 @@ def _register_tasks(*, repo_root: Path, feature_dir: Path, feature_id: str) -> d
     return parsed
 
 
+def _clickup_sync_enabled() -> bool:
+    """Return whether post-stabilization ClickUp publication is enabled."""
+    return os.environ.get("SPECKIT_CLICKUP_SYNC_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _run_clickup_sync(*, repo_root: Path) -> dict[str, Any]:
+    """Report the retired repo-owned ClickUp publication path after stabilization."""
+    if not _clickup_sync_enabled():
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "clickup_sync_disabled",
+            "runtime_entrypoint": str(DEFAULT_CLICKUP_RUNTIME),
+        }
+    del repo_root
+    return {
+        "ok": True,
+        "skipped": True,
+        "reason": "clickup_sync_agent_owned",
+        "runtime_entrypoint": str(DEFAULT_CLICKUP_RUNTIME),
+        "next_step": (
+            "Use the connected Composio ClickUp tools from the agent workflow after stabilization; "
+            "the repo no longer runs direct ClickUp publication."
+        ),
+    }
+
+
 def _ledger_feature_id(feature_dir: Path) -> str:
     """Return the numeric feature id required by the task-ledger interface."""
     match = re.match(r"^(?P<feature_id>\d{3})(?:[-_]|$)", feature_dir.name)
@@ -391,6 +424,9 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
 
     acceptance = _generate_acceptance_tests(repo_root=repo_root, feature_dir=feature_dir)
     stages.append({"stage": "acceptance", "result": acceptance})
+
+    clickup_sync = _run_clickup_sync(repo_root=repo_root)
+    stages.append({"stage": "clickup_sync", "result": clickup_sync})
 
     task_count = len(parse_task_definitions(tasks_path))
     story_count = _count_stories(tasks_path)

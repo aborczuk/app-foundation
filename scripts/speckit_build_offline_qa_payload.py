@@ -17,8 +17,9 @@ from speckit_implement_contract import (
     utc_now_iso,
 )
 
-TASK_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(?P<task_id>T\d{3})\b(?P<rest>.*)$")
+TASK_LINE_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+(?P<task_id>T\d{3}(?:[a-c])?)\b(?P<rest>.*)$")
 PHASE_HEADER_RE = re.compile(r"^\s*##\s+(?P<title>.+?)\s*$")
+ACCEPTANCE_HEADER_RE = re.compile(r"^\s*###\s+Acceptance Criteria\b")
 
 
 def _run(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
@@ -74,8 +75,21 @@ def _task_context(tasks_file: Path, task_id: str) -> tuple[str, list[str]]:
             phase_end = idx
             break
 
-    acceptance = []
+    acceptance: list[str] = []
+    in_acceptance = False
     for line in lines[phase_start:phase_end]:
+        if ACCEPTANCE_HEADER_RE.match(line):
+            in_acceptance = True
+            continue
+        if in_acceptance:
+            if line.startswith("### ") or line.startswith("## ") or line.startswith("**Checkpoint**"):
+                break
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                value = stripped[2:].strip()
+                if value:
+                    acceptance.append(value)
+            continue
         marker = "**Independent Test**:"
         if marker in line:
             value = line.split(marker, 1)[1].strip()

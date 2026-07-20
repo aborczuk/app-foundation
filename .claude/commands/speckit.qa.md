@@ -36,7 +36,13 @@ Resolve:
 
 ### 2. Acceptance criteria extraction
 
-Primary source: the executable task entry in `tasks.md`. At minimum, the task contract must expose acceptance via the task's `Independent Test` in the task phase.
+Primary source: the task's story phase in `tasks.md`.
+
+Preferred order:
+
+1. `### Acceptance Criteria`
+2. `**Independent Test**`
+3. fallback synthetic criterion only if neither exists
 
 If no acceptance criteria can be extracted from tasks.md → `FIX_REQUIRED: MISSING_ACCEPTANCE_CRITERIA`
 
@@ -64,7 +70,7 @@ Do not run tests manually unless the provided logs are ambiguous or missing. Do 
 ### 5. Drift detection
 
 Check that the builder implementation addresses the acceptance criteria:
-- **Primary seam check**: If the task contract or payload names a primary edit seam, was it actually modified?
+- **Path check**: Were the concrete file paths named in the task description actually modified?
 - **Keyword match**: Do changed files contain keywords from acceptance criteria?
 - **Test coverage**: Do tests verify the acceptance criteria?
 

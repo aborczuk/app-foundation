@@ -1,0 +1,111 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/048-composio-clickup-trigger-sync/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Refactor the reusable parts of `src/mcp_clickup/{__init__.py,artifact_parser.py,manifest.py}` into a canonical projection/mapping seam that can read stabilized repo artifacts and produce feature/task projections containing title, acceptance criteria, story relationship, parallel capability, estimate, artifact links, and stable repo-to-ClickUp identifiers without depending on the old direct ClickUp transport.",
+      "slice_id": "PL-01",
+      "title": "Extract a transport-neutral ClickUp projection model",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Introduce a Composio-backed ClickUp adapter and rewire the sync orchestration to create or update feature lists and mapped tasks from the canonical projection after stabilization, preserving idempotent mapping updates, retry-safe failure reporting, and explicit drift handling while removing the old direct transport from the active runtime path.",
+      "slice_id": "PL-02",
+      "title": "Replace direct ClickUp sync transport with Composio",
+      "why": ""
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Add a repo-side trigger path for the dedicated `ready-for-implement` status that resolves the mapped ClickUp task back to feature/task identifiers, evaluates eligibility through the existing task-ledger and implement-selection logic, starts the normal implement flow only for eligible tasks, and writes explicit rejection reasons back to ClickUp for ineligible or ambiguous requests.",
+      "slice_id": "PL-03",
+      "title": "Gate ClickUp start requests through the existing implement authority",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "After successful implement closeout, update the mapped ClickUp task to done through Composio, add deterministic retry/reporting for post-closeout transport failures, and remove direct ClickUp transport code, docs, and tests that are no longer used once the new path has parity coverage.",
+      "slice_id": "PL-04",
+      "title": "Reflect closeout and retire dead direct-transport code",
+      "why": ""
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "api integration": "The active ClickUp transport path is changing from repo-local direct API usage to Composio-managed operations.",
+      "code patterns": "The plan should salvage transport-neutral parsing/mapping logic and avoid reimplementing proven repo-side rules.",
+      "data modeling": "The ClickUp projection must carry acceptance criteria, story relationship, parallel capability, estimate, and stable repo-to-ClickUp mappings.",
+      "ops governance": "The implementation must keep `tasks.md` and the ledgers as source of truth while removing dead direct-transport code after migration.",
+      "resilience": "Sync failures, trigger failures, and drift must preserve repo authority and remain retryable instead of corrupting task execution state.",
+      "security": "External ClickUp triggers must not bypass ledger gating or allow accidental status edits to start unauthorized work.",
+      "testing": "The migration needs deterministic coverage for sync, trigger gating, closeout reflection, and legacy-path removal."
+    },
+    "relevant": [
+      "api integration",
+      "data modeling",
+      "resilience",
+      "testing",
+      "security",
+      "ops governance",
+      "code patterns"
+    ]
+  },
+  "feature_id": "048",
+  "risk": {
+    "external_dependency_uncertainty": "medium",
+    "human_operator_dependency": "medium",
+    "overall": "medium",
+    "repo_uncertainty": "medium",
+    "requirement_clarity": "low",
+    "runtime_side_effect_risk": "medium",
+    "state_data_migration_risk": "medium"
+  },
+  "routing": {
+    "architecture_diagram": false,
+    "external_research": false,
+    "plan_level": "comprehensive",
+    "relevant_domains": [
+      "api integration",
+      "data modeling",
+      "resilience",
+      "testing",
+      "security",
+      "ops governance",
+      "code patterns"
+    ],
+    "routing_reason": "Use repo-local evidence to salvage parser/mapping logic, replace the old direct ClickUp transport with Composio, keep ledger-owned execution unchanged, and remove dead transport code after migration.",
+    "sketch_level": "expanded"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": false,
+    "architecture_strategy": true,
+    "expanded_design_notes": true,
+    "external_research": false,
+    "net_new_surface": false,
+    "strategy_reason": "Use repo-local evidence to salvage parser/mapping logic, replace the old direct ClickUp transport with Composio, keep ledger-owned execution unchanged, and remove dead transport code after migration."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [],
+    "duplicate_reason": "",
+    "risk_level": "medium",
+    "tshirt_size": "l"
+  }
+}

@@ -189,6 +189,11 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
     )
     monkeypatch.setattr(
         speckit_solution_step,
+        "_run_clickup_sync",
+        lambda **kwargs: {"ok": True, "skipped": False, "mode": "bootstrap"},
+    )
+    monkeypatch.setattr(
+        speckit_solution_step,
         "parse_task_definitions",
         lambda path: [{"id": "T001"}, {"id": "T002"}],
     )
@@ -224,6 +229,7 @@ def test_finalize_solution_runs_stabilization_and_emits_event_request(
         "tasks_gate",
         "task_registration",
         "acceptance",
+        "clickup_sync",
     ]
 
 

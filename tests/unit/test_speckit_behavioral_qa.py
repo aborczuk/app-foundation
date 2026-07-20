@@ -57,6 +57,51 @@ def test_read_tasks_acceptance_uses_independent_test_from_task_phase(tmp_path: P
     )
 
 
+def test_read_tasks_acceptance_prefers_acceptance_criteria_section(tmp_path: Path) -> None:
+    """Behavioral QA should prefer explicit acceptance criteria over phase test text."""
+    tasks_file = tmp_path / "tasks.md"
+    tasks_file.write_text(
+        "\n".join(
+            [
+                "## Story 1",
+                "",
+                "**Independent Test**: Older fallback text.",
+                "",
+                "### Acceptance Criteria",
+                "",
+                "- The adapter scaffold exists.",
+                "- The trigger scaffold exists.",
+                "",
+                "- [ ] T001 Add scaffold seams",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    acceptance = speckit_behavioral_qa._read_tasks_acceptance(tasks_file, "T001")
+
+    assert acceptance == "The adapter scaffold exists. The trigger scaffold exists."
+
+
+def test_read_tasks_acceptance_falls_back_to_task_description(tmp_path: Path) -> None:
+    """Behavioral QA should synthesize a minimal acceptance string when phase criteria are absent."""
+    tasks_file = tmp_path / "tasks.md"
+    tasks_file.write_text(
+        "\n".join(
+            [
+                "## Phase 1",
+                "",
+                "- [ ] T001 Create the Composio transport scaffold",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    acceptance = speckit_behavioral_qa._read_tasks_acceptance(tasks_file, "T001")
+
+    assert acceptance == "Complete T001 Create the Composio transport scaffold"
+
+
 def test_payload_test_runs_accepts_explicit_evidence() -> None:
     """Behavioral QA should accept valid payload-provided test evidence."""
     payload = {

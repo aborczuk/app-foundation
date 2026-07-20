@@ -15,7 +15,12 @@ from src.mcp_clickup import (
     Task,
     TaskGroup,
 )
-from src.mcp_clickup.manifest import subtask_manifest_key, task_manifest_key
+from src.mcp_clickup.manifest import (
+    feature_projection_manifest_key,
+    subtask_manifest_key,
+    task_manifest_key,
+    task_projection_manifest_key,
+)
 
 _REQUIRED_ROUTING_FIELDS = ("workflow_type", "context_ref", "execution_policy")
 
@@ -35,8 +40,8 @@ class MissingCustomFieldsError(ValueError):
         super().__init__(f"List '{list_name}' is missing required custom fields: {joined}")
 
 
-class ClickUpClientProtocol(Protocol):
-    """Required client operations for sync orchestration."""
+class ClickUpTransportProtocol(Protocol):
+    """Required transport operations for sync orchestration."""
 
     async def get_space(self, space_id: str) -> dict[str, Any]:
         """Fetch a ClickUp Space by id."""
@@ -84,9 +89,9 @@ class ClickUpClientProtocol(Protocol):
 class SyncEngine:
     """Coordinate reconciliation and idempotent ClickUp bootstrap orchestration."""
 
-    def __init__(self, client: ClickUpClientProtocol) -> None:
-        """Initialize."""
-        self._client = client
+    def __init__(self, transport: ClickUpTransportProtocol) -> None:
+        """Initialize with a transport-shaped ClickUp adapter."""
+        self._transport = transport
 
     def reconcile_manifest(
         self,
@@ -120,7 +125,7 @@ class SyncEngine:
     ) -> SyncReport:
         """Bootstrap ClickUp hierarchy from parsed spec artifacts."""
         flush = flush_manifest or (lambda _: None)
-        space = await self._client.get_space(space_id)
+        space = await self._transport.get_space(space_id)
 
         discovered = SyncManifest(version="1", workspace_id="", space_id=space_id)
         candidates = rebuild_candidates
@@ -139,12 +144,22 @@ class SyncEngine:
         if not resolved.space_id:
             resolved.space_id = space_id
 
+        reconciliation_drift = self._prune_stale_manifest_mappings(
+            manifest=resolved,
+            artifacts=artifacts,
+        )
+        if reconciliation_drift:
+            flush(resolved)
+
         report = await self._create_missing_items(
             manifest=resolved,
             artifacts=artifacts,
             field_ids_by_list={},
             flush_manifest=flush,
         )
+        if reconciliation_drift:
+            report.drift_items.extend(reconciliation_drift)
+            report.updated += 1
         flush(resolved)
         return report
 
@@ -153,17 +168,17 @@ class SyncEngine:
         summary = StatusSummary()
 
         for feature_num, list_id in sorted(manifest.lists.items()):
-            list_payload = await self._client.get_list(list_id)
+            list_payload = await self._transport.get_list(list_id)
             list_name = str(list_payload.get("name", list_id))
             list_status = ListStatus(feature_num=feature_num, list_name=list_name)
 
-            parent_tasks = await self._client.list_tasks(list_id)
+            parent_tasks = await self._transport.list_tasks(list_id)
             live_subtasks: dict[str, dict[str, Any]] = {}
             for parent_task in parent_tasks:
                 parent_id = str(parent_task.get("id", ""))
                 if not parent_id:
                     continue
-                for subtask in await self._client.list_subtasks(parent_id):
+                for subtask in await self._transport.list_subtasks(parent_id):
                     subtask_id = str(subtask.get("id", ""))
                     if subtask_id:
                         live_subtasks[subtask_id] = subtask
@@ -204,7 +219,7 @@ class SyncEngine:
         top_level = [artifact for artifact in artifacts if not artifact.is_phase_spec]
         phase_artifacts = self._phase_artifacts(artifacts)
 
-        folders = await self._client.list_folders(space_id)
+        folders = await self._transport.list_folders(space_id)
         folder_by_name = {str(folder.get("name", "")): str(folder.get("id", "")) for folder in folders}
 
         for artifact in top_level:
@@ -219,7 +234,7 @@ class SyncEngine:
             if not folder_id:
                 continue
 
-            lists = await self._client.list_lists(folder_id)
+            lists = await self._transport.list_lists(folder_id)
             list_by_name = {str(list_.get("name", "")): str(list_.get("id", "")) for list_ in lists}
             list_name = self._list_name(phase)
             list_id = list_by_name.get(list_name)
@@ -230,7 +245,7 @@ class SyncEngine:
             if not phase.has_tasks:
                 continue
 
-            tasks = await self._client.list_tasks(list_id)
+            tasks = await self._transport.list_tasks(list_id)
             tasks_by_name: dict[str, list[str]] = {}
             for task in tasks:
                 tasks_by_name.setdefault(str(task.get("name", "")), []).append(str(task.get("id", "")))
@@ -247,7 +262,7 @@ class SyncEngine:
                 else:
                     continue
 
-                subtasks = await self._client.list_subtasks(parent_task_id)
+                subtasks = await self._transport.list_subtasks(parent_task_id)
                 subtasks_by_key: dict[str, list[str]] = {}
                 for subtask in subtasks:
                     subtask_name = str(subtask.get("name", ""))
@@ -280,7 +295,7 @@ class SyncEngine:
         top_level = [artifact for artifact in artifacts if not artifact.is_phase_spec]
         phase_artifacts = self._phase_artifacts(artifacts)
 
-        folders = await self._client.list_folders(manifest.space_id)
+        folders = await self._transport.list_folders(manifest.space_id)
         folders_by_name = {str(folder.get("name", "")): dict(folder) for folder in folders}
 
         for artifact in top_level:
@@ -297,7 +312,7 @@ class SyncEngine:
                 report.skipped += 1
                 continue
 
-            created = await self._client.create_folder(manifest.space_id, folder_name)
+            created = await self._transport.create_folder(manifest.space_id, folder_name)
             manifest.folders[feature_num] = str(created.get("id", ""))
             flush_manifest(manifest)
             report.created += 1
@@ -310,22 +325,36 @@ class SyncEngine:
 
             list_id = manifest.lists.get(phase.feature_num)
             list_name = self._list_name(phase)
+            list_status = "unchanged"
             if not list_id:
-                lists = await self._client.list_lists(folder_id)
+                lists = await self._transport.list_lists(folder_id)
                 by_name = {str(item.get("name", "")): dict(item) for item in lists}
                 existing_list = by_name.get(list_name)
                 if existing_list:
                     list_id = str(existing_list.get("id", ""))
                     manifest.lists[phase.feature_num] = list_id
+                    list_status = "unchanged"
                     report.skipped += 1
                 else:
-                    created_list = await self._client.create_list(folder_id, list_name)
+                    created_list = await self._transport.create_list(folder_id, list_name)
                     list_id = str(created_list.get("id", ""))
                     manifest.lists[phase.feature_num] = list_id
+                    list_status = "created"
                     flush_manifest(manifest)
                     report.created += 1
             else:
                 report.skipped += 1
+
+            feature_projection_changed = self._sync_feature_projection_meta(
+                manifest=manifest,
+                phase=phase,
+                list_id=list_id,
+                list_name=list_name,
+            )
+            if feature_projection_changed:
+                flush_manifest(manifest)
+                if list_status != "created":
+                    report.updated += 1
 
             if not phase.has_tasks or not phase.task_groups:
                 report.skipped += 1
@@ -356,25 +385,38 @@ class SyncEngine:
                         list_id=list_id,
                         task=task,
                     )
+                    task_projection_changed = self._sync_task_projection_meta(
+                        manifest=manifest,
+                        phase=phase,
+                        group=group,
+                        task=task,
+                        parent_task_id=parent_task_id,
+                        list_id=list_id,
+                        subtask_id=subtask_id,
+                    )
                     if subtask_status == "created":
                         flush_manifest(manifest)
                         report.created += 1
                     elif subtask_status == "updated":
+                        flush_manifest(manifest)
+                        report.updated += 1
+                    elif task_projection_changed:
+                        flush_manifest(manifest)
                         report.updated += 1
                     else:
                         report.skipped += 1
 
-                    await self._client.set_custom_field(
+                    await self._transport.set_custom_field(
                         subtask_id,
                         field_ids["workflow_type"],
                         task.workflow_type,
                     )
-                    await self._client.set_custom_field(
+                    await self._transport.set_custom_field(
                         subtask_id,
                         field_ids["context_ref"],
                         task.context_ref,
                     )
-                    await self._client.set_custom_field(
+                    await self._transport.set_custom_field(
                         subtask_id,
                         field_ids["execution_policy"],
                         task.execution_policy,
@@ -383,7 +425,7 @@ class SyncEngine:
         return report
 
     async def _required_field_ids(self, list_id: str, list_name: str) -> dict[str, str]:
-        fields = await self._client.list_custom_fields(list_id)
+        fields = await self._transport.list_custom_fields(list_id)
         by_name = {str(field.get("name", "")): str(field.get("id", "")) for field in fields}
 
         missing = [name for name in _REQUIRED_ROUTING_FIELDS if not by_name.get(name)]
@@ -411,7 +453,7 @@ class SyncEngine:
         if task_id:
             return task_id, "unchanged"
 
-        tasks = await self._client.list_tasks(list_id)
+        tasks = await self._transport.list_tasks(list_id)
         matches = [task for task in tasks if str(task.get("name", "")) == desired_name]
         if len(matches) > 1:
             raise ManifestRebuildAmbiguousError(f"Ambiguous parent task match for key '{key}'")
@@ -420,10 +462,151 @@ class SyncEngine:
             manifest.tasks[key] = task_id
             return task_id, "unchanged"
 
-        created = await self._client.create_task(list_id, desired_name)
+        created = await self._transport.create_task(list_id, desired_name)
         task_id = str(created.get("id", ""))
         manifest.tasks[key] = task_id
         return task_id, "created"
+
+    @staticmethod
+    def _feature_projection_payload(
+        phase: SpecArtifact,
+        *,
+        list_id: str,
+        list_name: str,
+    ) -> dict[str, object]:
+        """Build the canonical manifest metadata payload for one feature list mapping."""
+        return {
+            "feature_num": phase.feature_num,
+            "feature_key": phase.feature_num,
+            "title": phase.title,
+            "short_name": phase.short_name,
+            "parent_num": phase.parent_num,
+            "list_id": list_id,
+            "list_name": list_name,
+            "artifact_links": dict(phase.artifact_links),
+        }
+
+    @staticmethod
+    def _task_projection_payload(
+        phase: SpecArtifact,
+        group: TaskGroup,
+        task: Task,
+        *,
+        parent_task_id: str,
+        list_id: str,
+        subtask_id: str,
+    ) -> dict[str, object]:
+        """Build the canonical manifest metadata payload for one executable task mapping."""
+        return {
+            "feature_num": phase.feature_num,
+            "feature_title": phase.title,
+            "feature_short_name": phase.short_name,
+            "parent_num": phase.parent_num,
+            "group_title": group.title,
+            "parent_task_key": task_manifest_key(phase.feature_num, group.title),
+            "parent_task_id": parent_task_id,
+            "list_id": list_id,
+            "subtask_id": subtask_id,
+            "task_id": task.id,
+            "task_key": task_projection_manifest_key(phase.feature_num, task.id),
+            "title": task.title,
+            "acceptance_criteria": task.acceptance_criteria,
+            "story_label": task.story_label,
+            "parallel": task.parallel,
+            "estimate_points": task.estimate_points,
+            "context_ref": task.context_ref,
+            "workflow_type": task.workflow_type,
+            "execution_policy": task.execution_policy,
+            "artifact_links": dict(task.artifact_links),
+        }
+
+    def _sync_feature_projection_meta(
+        self,
+        *,
+        manifest: SyncManifest,
+        phase: SpecArtifact,
+        list_id: str,
+        list_name: str,
+    ) -> bool:
+        """Store feature projection metadata and report whether it changed."""
+        key = feature_projection_manifest_key(phase.feature_num)
+        payload = self._feature_projection_payload(phase, list_id=list_id, list_name=list_name)
+        changed = manifest.feature_projection_meta.get(key) != payload
+        if changed:
+            manifest.feature_projection_meta[key] = payload
+        return changed
+
+    def _sync_task_projection_meta(
+        self,
+        *,
+        manifest: SyncManifest,
+        phase: SpecArtifact,
+        group: TaskGroup,
+        task: Task,
+        parent_task_id: str,
+        list_id: str,
+        subtask_id: str,
+    ) -> bool:
+        """Store task projection metadata and report whether it changed."""
+        key = task_projection_manifest_key(phase.feature_num, task.id)
+        payload = self._task_projection_payload(
+            phase,
+            group,
+            task,
+            parent_task_id=parent_task_id,
+            list_id=list_id,
+            subtask_id=subtask_id,
+        )
+        changed = manifest.task_projection_meta.get(key) != payload
+        if changed:
+            manifest.task_projection_meta[key] = payload
+        return changed
+
+    def _prune_stale_manifest_mappings(
+        self,
+        *,
+        manifest: SyncManifest,
+        artifacts: list[SpecArtifact],
+    ) -> list[str]:
+        """Drop stale manifest mappings for repo tasks that no longer exist in artifacts."""
+        top_level = [artifact for artifact in artifacts if not artifact.is_phase_spec]
+        phase_artifacts = self._phase_artifacts(artifacts)
+
+        valid_folder_keys = {artifact.feature_num for artifact in top_level}
+        valid_list_keys = {phase.feature_num for phase in phase_artifacts}
+        valid_feature_projection_keys = valid_list_keys
+        valid_task_keys = {
+            task_manifest_key(phase.feature_num, group.title)
+            for phase in phase_artifacts
+            for group in phase.task_groups
+        }
+        valid_subtask_keys = {
+            subtask_manifest_key(phase.feature_num, task.id)
+            for phase in phase_artifacts
+            for group in phase.task_groups
+            for task in group.tasks
+        }
+        valid_task_projection_keys = {
+            task_projection_manifest_key(phase.feature_num, task.id)
+            for phase in phase_artifacts
+            for group in phase.task_groups
+            for task in group.tasks
+        }
+
+        drift_items: list[str] = []
+        for label, mapping, valid_keys in (
+            ("folder", manifest.folders, valid_folder_keys),
+            ("list", manifest.lists, valid_list_keys),
+            ("task", manifest.tasks, valid_task_keys),
+            ("subtask", manifest.subtasks, valid_subtask_keys),
+            ("feature_projection", manifest.feature_projection_meta, valid_feature_projection_keys),
+            ("task_projection", manifest.task_projection_meta, valid_task_projection_keys),
+        ):
+            stale_keys = [key for key in sorted(mapping.keys()) if key not in valid_keys]
+            for key in stale_keys:
+                mapping.pop(key, None)
+                drift_items.append(f"{label}:{key}")
+        return drift_items
 
     async def _ensure_subtask(
         self,
@@ -439,9 +622,21 @@ class SyncEngine:
 
         subtask_id = manifest.subtasks.get(key)
         if subtask_id:
+            existing = next(
+                (
+                    subtask
+                    for subtask in await self._transport.list_subtasks(parent_task_id)
+                    if str(subtask.get("id", "")) == subtask_id
+                ),
+                None,
+            )
+            current_name = str(existing.get("name", "")) if existing else ""
+            if current_name and current_name != desired_name:
+                await self._transport.update_task(subtask_id, name=desired_name)
+                return subtask_id, "updated"
             return subtask_id, "unchanged"
 
-        subtasks = await self._client.list_subtasks(parent_task_id)
+        subtasks = await self._transport.list_subtasks(parent_task_id)
         candidates = [
             subtask
             for subtask in subtasks
@@ -457,11 +652,11 @@ class SyncEngine:
             current_name = str(existing.get("name", ""))
             manifest.subtasks[key] = subtask_id
             if current_name != desired_name:
-                await self._client.update_task(subtask_id, name=desired_name)
+                await self._transport.update_task(subtask_id, name=desired_name)
                 return subtask_id, "updated"
             return subtask_id, "unchanged"
 
-        created = await self._client.create_task(list_id, desired_name, parent=parent_task_id)
+        created = await self._transport.create_task(list_id, desired_name, parent=parent_task_id)
         subtask_id = str(created.get("id", ""))
         manifest.subtasks[key] = subtask_id
         return subtask_id, "created"

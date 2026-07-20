@@ -160,23 +160,13 @@ def _resolve_commit_sha(
     *,
     timeout_seconds: int,
     handoff_payload: dict[str, Any] | None = None,
-) -> tuple[str, str]:
-    """Resolve the commit SHA for closeout, preferring handoff output when available."""
+) -> tuple[str | None, str]:
+    """Resolve closeout commit metadata only when the implementation explicitly provided it."""
     if handoff_payload is not None:
         candidate = str(handoff_payload.get("commit_sha") or "").strip()
         if candidate:
             return candidate, "handoff_payload"
-
-    commit_run = _run_command(["git", "rev-parse", "HEAD"], cwd=repo_root, timeout_seconds=timeout_seconds)
-    if commit_run.timed_out:
-        raise ValueError("commit_sha_resolution_timeout")
-    if commit_run.exit_code != 0:
-        raise ValueError("commit_sha_unavailable")
-
-    commit_sha = commit_run.stdout.strip()
-    if not commit_sha:
-        raise ValueError("commit_sha_unavailable")
-    return commit_sha, "git_head"
+    return None, "not_provided"
 
 
 def _run_offline_qa_handoff(
@@ -271,7 +261,7 @@ def _closeout_task(
     task_id: str,
     tasks_file: Path,
     ledger_path: Path,
-    commit_sha: str,
+    commit_sha: str | None,
     qa_run_id: str,
     qa_result_path: Path,
     actor: str,
@@ -294,7 +284,7 @@ def _update_implementation_docs(
     feature_dir: Path,
     correlation_id: str,
     task_context: dict[str, Any],
-    commit_sha: str,
+    commit_sha: str | None,
     qa_run_id: str,
     closeout_result: dict[str, Any],
 ) -> dict[str, Any]:
@@ -307,7 +297,11 @@ def _update_implementation_docs(
         feature_dir=feature_dir,
         entry_id=entry_id,
         runbook_notes=(
-            f"Closed out task {task_id} ({task_action}, attempt {task_attempt}) at commit {commit_sha}.",
+            (
+                f"Closed out task {task_id} ({task_action}, attempt {task_attempt}) at commit {commit_sha}."
+                if commit_sha
+                else f"Closed out task {task_id} ({task_action}, attempt {task_attempt}) without a recorded task commit."
+            ),
         ),
         decision_log_entries=(
             f"Task {task_id} reached closeout after offline QA run {qa_run_id}.",
@@ -410,6 +404,67 @@ def _select_next_registered_task(
         "task_owner_actor": task_state.owner_actor or actor,
         "task_parallel": task_parallel,
     }
+
+
+def _resolve_explicit_task_start_gate(
+    *,
+    repo_root: Path,
+    feature_dir: Path,
+    feature_id: str,
+    task_id: str,
+    actor: str,
+) -> dict[str, Any]:
+    """Return a repo-aware non-mutating start-gate summary for one explicit task."""
+    ledger_path = _task_ledger_path(repo_root)
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        raise ValueError("missing_tasks_md")
+
+    summary = task_ledger.explicit_task_start_gate(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor,
+    )
+    summary.update(
+        {
+            "ledger_path": str(ledger_path),
+            "tasks_file": str(tasks_file),
+        }
+    )
+    return summary
+
+
+def _start_explicit_task_request(
+    *,
+    repo_root: Path,
+    feature_dir: Path,
+    feature_id: str,
+    task_id: str,
+    actor: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Start or resume one explicit task using the same ledger rules as normal implement flow."""
+    ledger_path = _task_ledger_path(repo_root)
+    tasks_file = feature_dir / "tasks.md"
+    if not tasks_file.exists():
+        raise ValueError("missing_tasks_md")
+    summary = task_ledger.explicit_task_start_or_resume(
+        ledger_path,
+        tasks_file,
+        feature_id,
+        task_id,
+        actor=actor,
+        details=f"queued by {correlation_id}",
+    )
+    summary.update(
+        {
+            "ledger_path": str(ledger_path),
+            "tasks_file": str(tasks_file),
+        }
+    )
+    return summary
 
 
 def _ensure_implement_branch(repo_root: Path, feature_dir: Path, *, timeout_seconds: int) -> dict[str, Any]:
@@ -904,45 +959,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _finish_stage(handoff_stage, status="pass", details={**handoff_details, "payload": handoff_payload})
                     session_warm = True
 
-                commit_stage = _start_stage(
-                    f"commit_resolution_round_{retry_index + 1}",
-                    details={
-                        "task_id": task_context["next_task_id"],
-                        "task_attempt": task_context["task_attempt"],
-                        "retry_index": retry_index,
-                    },
-                )
-                stages.append(commit_stage)
-                try:
-                    commit_sha, commit_source = _resolve_commit_sha(
-                        repo_root,
-                        timeout_seconds=timeout_seconds,
-                        handoff_payload=handoff_payload,
-                    )
-                except ValueError as exc:
-                    reason = str(exc) or "commit_sha_unavailable"
-                    _finish_stage(commit_stage, status="blocked", details={"reason": reason})
-                    debug_path = _write_debug_payload(
-                        repo_root=repo_root,
-                        correlation_id=correlation_id,
-                        payload={**debug_stub, "result": {"blocked_stage": "commit_resolution", "reason": reason}},
-                    )
-                    envelope = _build_envelope(
-                        correlation_id=correlation_id,
-                        exit_code=1,
-                        gate=IMPLEMENT_GATE,
-                        reasons=[reason],
-                        next_phase=None,
-                        debug_path=debug_path,
-                    )
-                    print(json.dumps(envelope, sort_keys=True))
-                    return 1
-                _finish_stage(
-                    commit_stage,
-                    status="pass",
-                    details={"commit_sha": commit_sha, "source": commit_source},
-                )
-    
                 task_id = str(task_context["next_task_id"])
                 task_attempt = int(task_context["task_attempt"])
     
@@ -1086,7 +1102,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 qa_feedback = qa_payload
                 retry_index += 1
                 continue
-    
+
+            commit_stage = _start_stage(
+                f"commit_resolution_round_{retry_index + 1}",
+                details={
+                    "task_id": task_id,
+                    "task_attempt": task_attempt,
+                    "retry_index": retry_index,
+                },
+            )
+            stages.append(commit_stage)
+            commit_sha, commit_source = _resolve_commit_sha(
+                repo_root,
+                timeout_seconds=timeout_seconds,
+                handoff_payload=handoff_payload,
+            )
+            _finish_stage(
+                commit_stage,
+                status="pass",
+                details={"commit_sha": commit_sha, "source": commit_source},
+            )
+
             closeout_stage = _start_stage(
                 "closeout",
                 details={
