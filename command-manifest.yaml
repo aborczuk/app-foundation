@@ -170,6 +170,7 @@ commands:
     description: Act as the canonical interface between approved plan.md design slices and seam-sized tasks.md, then stabilize the task graph and acceptance artifacts
     driver:
       mode: generative
+      execution_owner: command_agent
       script_path: scripts/speckit_tasking_step.py
       timeout_seconds: 300
       canonical_trigger: speckit.run
