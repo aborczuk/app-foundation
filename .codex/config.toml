@@ -37,6 +37,12 @@ approval_mode = "auto"
 [mcp_servers.composio]
 url = "https://connect.composio.dev/mcp"
 
+[mcp_servers.composio.tools.COMPOSIO_MULTI_EXECUTE_TOOL]
+approval_mode = "auto"
+
+[mcp_servers.composio.tools.COMPOSIO_REMOTE_WORKBENCH]
+approval_mode = "auto"
+
 [mcp_servers.semble]
 command = "uv"
 args = ["run", "semble", "--content", "all"]
@@ -44,7 +50,7 @@ cwd = "/Users/andreborczuk/app-foundation"
 env = { SEMBLE_CACHE_LOCATION = "/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache" }
 
 [mcp_servers.semble.tools.search]
-approval_mode = "approve"
+approval_mode = "auto"
 
 [mcp_servers.semble.tools.find_related]
-approval_mode = "approve"
+approval_mode = "auto"
