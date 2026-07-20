@@ -40,3 +40,19 @@ Keep `SEC_SCHEDULE_ENABLED=false` and `GOOGLE_SHEETS_DELIVERY_ENABLED=false` unt
 ## Operator Checks
 
 Before enabling scheduled refresh, confirm PostgreSQL migration status, worker readiness, queue age, SEC rate/error metrics, alert routing, and correlation IDs. During an outage, preserve the last successful observation with freshness and quality state, stop unbounded retries, and resume only from recoverable work items.
+
+## Deterministic Operator Runbook Notes
+
+### Recovery Delta Validation Notes
+
+
+
+
+<!-- speckit_implement_docs:entry_id=T001-5dbd832:runbook -->
+- Closed T001: scaffolded the financial_tracker package boundary, exported package metadata, and registered the package for wheel builds; import and Ruff checks passed.
+
+## Decision Log
+
+
+<!-- speckit_implement_docs:entry_id=T001-5dbd832:decision_log -->
+- T001 package boundary is intentionally metadata-only; domain behavior begins in later foundational tasks.
