@@ -30,7 +30,23 @@ An analyst reviews a watchlist or portfolio universe and sees quarter-aligned re
 
 ---
 
-### User Story 2 - Refresh Watchlists and Portfolios from New Filings (Priority: P2)
+### User Story 2 - Define Trackable Metrics (Priority: P2)
+
+An authorized analyst defines an additional filing-backed metric from approved sourced facts and existing metrics, then tracks its quarter-aligned history beside the built-in metrics.
+
+**Why this priority**: Analysts need to adapt the product as their research process evolves without waiting for a code release or breaking historical provenance.
+
+**Independent Test**: Can be tested by defining a metric from a fixed filing fixture, evaluating it across comparable quarters, updating the definition, and confirming that prior observations remain attached to the original definition version.
+
+**Acceptance Scenarios**:
+
+1. **AS2.1 Given** an authorized analyst selects approved inputs and a supported declarative calculation, **When** they save a metric definition, **Then** the system validates it, versions it, and makes it available for authorized analysis, dashboards, APIs, and exports.
+2. **AS2.2 Given** a metric definition changes after observations exist, **When** the new version is activated, **Then** historical observations retain their original definition version and provenance while new or explicitly recomputed observations identify the active definition version.
+3. **AS2.3 Given** an unauthorized caller or a definition using unsupported inputs or operations, **When** they attempt to save or run it, **Then** the system rejects the action with a bounded validation or authorization failure and performs no analysis side effect.
+
+---
+
+### User Story 3 - Refresh Watchlists and Portfolios from New Filings (Priority: P2)
 
 An analyst relies on saved watchlists and portfolios to update automatically when new filings, amendments, or restatements affect tracked companies.
 
@@ -40,12 +56,12 @@ An analyst relies on saved watchlists and portfolios to update automatically whe
 
 **Acceptance Scenarios**:
 
-1. **AS2.1 Given** a saved watchlist or portfolio contains a company with a newly accepted filing or amendment, **When** the filing detector observes the filing, **Then** the affected metrics refresh and the result records whether the value is new, amended, restated, or unchanged.
-2. **AS2.2 Given** a tracked company has missing, ambiguous, invalid, or zero-denominator data, **When** the analyst views results, **Then** the dashboard and API display gaps and bounded data-quality categories instead of interpolated values or raw technical errors.
+1. **AS3.1 Given** a saved watchlist or portfolio contains a company with a newly accepted filing or amendment, **When** the filing detector observes the filing, **Then** the affected metrics refresh and the result records whether the value is new, amended, restated, or unchanged.
+2. **AS3.2 Given** a tracked company has missing, ambiguous, invalid, or zero-denominator data, **When** the analyst views results, **Then** the dashboard and API display gaps and bounded data-quality categories instead of interpolated values or raw technical errors.
 
 ---
 
-### User Story 3 - Export and Integrate Results (Priority: P3)
+### User Story 4 - Export and Integrate Results (Priority: P3)
 
 An analyst sends filtered acceleration results to Excel, Google Sheets, or an API client without losing calculation status, provenance, or chart context.
 
@@ -55,13 +71,13 @@ An analyst sends filtered acceleration results to Excel, Google Sheets, or an AP
 
 **Acceptance Scenarios**:
 
-1. **AS3.1 Given** an analyst has filtered a dashboard view, **When** they export to Excel, **Then** the workbook contains the same companies, metrics, filters, data-quality statuses, source accessions, formatting, and sparklines expected for the visible result set.
-2. **AS3.2 Given** an analyst has authorized a Google Sheets destination, **When** they sync a result set, **Then** the sheet receives the same rows, values, status labels, and provenance as the dashboard.
-3. **AS3.3 Given** an API client requests a company, watchlist, portfolio, or metric history result, **When** the request is valid for the caller, **Then** the API returns the same scored metrics, histories, data-quality categories, and provenance available in the browser.
+1. **AS4.1 Given** an analyst has filtered a dashboard view, **When** they export to Excel, **Then** the workbook contains the same companies, metrics, filters, data-quality statuses, source accessions, formatting, and sparklines expected for the visible result set.
+2. **AS4.2 Given** an analyst has authorized a Google Sheets destination, **When** they sync a result set, **Then** the sheet receives the same rows, values, status labels, and provenance as the dashboard.
+3. **AS4.3 Given** an API client requests a company, watchlist, portfolio, or metric history result, **When** the request is valid for the caller, **Then** the API returns the same scored metrics, histories, data-quality categories, and provenance available in the browser.
 
 ---
 
-### User Story 4 - Inspect Company-Level Trend History (Priority: P4)
+### User Story 5 - Inspect Company-Level Trend History (Priority: P4)
 
 An analyst opens a company detail view to understand why an acceleration score changed and whether visual history is trustworthy.
 
@@ -71,8 +87,8 @@ An analyst opens a company detail view to understand why an acceleration score c
 
 **Acceptance Scenarios**:
 
-1. **AS4.1 Given** an analyst selects a company, **When** the company detail view loads, **Then** it shows quarter-aligned metric history, filing accessions, amendment or restatement status, and calculation status for each displayed quarter.
-2. **AS4.2 Given** a company has a missing quarter, invalid quarter, or outlier quarter, **When** the sparkline or metric history renders, **Then** the visualization preserves the gap or outlier marker and does not smooth, interpolate, or hide the data-quality state.
+1. **AS5.1 Given** an analyst selects a company, **When** the company detail view loads, **Then** it shows quarter-aligned metric history, filing accessions, amendment or restatement status, and calculation status for each displayed quarter.
+2. **AS5.2 Given** a company has a missing quarter, invalid quarter, or outlier quarter, **When** the sparkline or metric history renders, **Then** the visualization preserves the gap or outlier marker and does not smooth, interpolate, or hide the data-quality state.
 
 ### Edge Cases
 
@@ -82,6 +98,7 @@ An analyst opens a company detail view to understand why an acceleration score c
 - Multiple filings, amendments, or restatements exist for the same company and fiscal period.
 - A company changes ticker, fiscal year-end, reporting currency, or segment emphasis across the analyzed history.
 - A metric has multiple plausible GAAP concepts or standardized statement lines, and the selector cannot choose one confidently.
+- A user-defined metric references a fact unavailable for one comparable quarter; the result remains a gap with a bounded quality state and no interpolation.
 - SEC retrieval, XBRL parsing, validation, or rate-limit failures prevent a filing from being processed.
 - A watchlist or portfolio contains duplicate companies, stale tickers, inactive companies, or holdings with no available SEC filing history.
 - A chart has a single extreme outlier that would visually flatten otherwise meaningful quarter-to-quarter movement.
@@ -92,14 +109,16 @@ An analyst opens a company detail view to understand why an acceleration score c
 flowchart TD
     Start["Analysis request received"] --> Source{"Requested surface"}
     Source -->|"AS1.1 watchlist"| Universe["Load tracked companies"]
-    Source -->|"AS2.1 portfolio or watchlist refresh"| Refresh["Load affected saved universe"]
-    Source -->|"AS3.3 API client"| ApiRequest["Prepare caller-defined API response"]
+    Source -->|"AS2.1 metric definition"| Define["Validate and version approved metric definition"]
+    Source -->|"AS3.1 portfolio or watchlist refresh"| Refresh["Load affected saved universe"]
+    Source -->|"AS4.3 API client"| ApiRequest["Prepare caller-defined API response"]
+    Define --> DefinitionResult["Return activated definition or bounded failure"]
     Universe --> FilingState{"Accepted filings available"}
     Refresh --> FilingEvent{"New filing or amendment observed"}
-    FilingEvent -->|"AS2.1 changed"| FilingState
-    FilingEvent -->|"AS2.1 unchanged"| Preserve["Preserve prior auditable result"]
+    FilingEvent -->|"AS3.1 changed"| FilingState
+    FilingEvent -->|"AS3.1 unchanged"| Preserve["Preserve prior auditable result"]
     FilingState -->|"AS1.1 yes"| QuarterType{"Quarter values directly comparable"}
-    FilingState -->|"AS2.2 no or invalid"| QualityGap["Emit bounded data-quality category"]
+    FilingState -->|"AS3.2 no or invalid"| QualityGap["Emit bounded data-quality category"]
     QuarterType -->|"AS1.2 standalone"| Calculate["Calculate margin, streak, and acceleration"]
     QuarterType -->|"AS1.2 cumulative or annual"| Derive{"Standalone quarter derivable"}
     Derive -->|"AS1.2 yes"| Calculate
@@ -109,11 +128,11 @@ flowchart TD
     Preserve --> Result
     ApiRequest --> Result
     Result --> ViewChoice{"Requested output"}
-    ViewChoice -->|"AS4.1 company detail"| Detail["Show quarter history, accessions, and status"]
-    Detail -->|"AS4.2 gap or outlier"| HonestChart["Render gaps and outlier markers"]
-    ViewChoice -->|"AS3.1 Excel"| Excel["Create filtered Excel workbook"]
-    ViewChoice -->|"AS3.2 Google Sheets"| Sheets["Sync authorized sheet"]
-    ViewChoice -->|"AS3.3 API"| ApiResponse["Return caller-defined payload"]
+    ViewChoice -->|"AS5.1 company detail"| Detail["Show quarter history, accessions, and status"]
+    Detail -->|"AS5.2 gap or outlier"| HonestChart["Render gaps and outlier markers"]
+    ViewChoice -->|"AS4.1 Excel"| Excel["Create filtered Excel workbook"]
+    ViewChoice -->|"AS4.2 Google Sheets"| Sheets["Sync authorized sheet"]
+    ViewChoice -->|"AS4.3 API"| ApiResponse["Return caller-defined payload"]
 ```
 
 ## Data & State Preconditions *(mandatory)*
@@ -122,7 +141,7 @@ flowchart TD
 - Each analyzed public company can be resolved to a company identity suitable for SEC filing lookup.
 - Accepted filings are distinguishable by company, accession, acceptance timestamp, fiscal period, form type, and amendment status.
 - Financial facts and statement lines have enough fiscal-period context to identify whether values are standalone quarterly, cumulative interim, or annual.
-- Metric definitions exist for revenue, operating income, operating margin, improvement streak, and acceleration.
+- Built-in metric definitions and authorized user-defined metric versions exist for requested calculations.
 - A bounded data-quality category exists for every unavailable, ambiguous, invalid, or failed analysis outcome.
 - Google Sheets export is available only for callers with a valid authorization state.
 
@@ -141,6 +160,7 @@ flowchart TD
 - Must NOT incorporate GPL or AGPL code into the product unless the owner explicitly accepts the license obligations.
 - Must NOT treat an amended or restated filing as a destructive overwrite of prior provenance.
 - Must NOT expose raw parser traces, stack traces, or unbounded provider errors to analysts or API clients.
+- Must NOT execute user-provided code or SQL, or accept unbounded XBRL concept mapping, when evaluating user-defined metrics.
 
 **Adopted dependencies** *(include if feature uses external tools/packages to deliver capability)*:
 - `dgunning/edgartools` for SEC company lookup, filing discovery, filing metadata, XBRL facts, standardized statements, fiscal-period context, and tabular extraction.
@@ -152,7 +172,7 @@ flowchart TD
 
 **Out of scope** *(things this feature genuinely does not do, even via external tools)*:
 - Universal XBRL concept mapping across every company and taxonomy.
-- Generic metric dependency engine or manual mapping console before repeated unmapped metrics prove the need.
+- Arbitrary user-authored code, SQL, unbounded custom XBRL concept mapping, or an unrestricted formula language; definitions are limited to an approved source registry and declarative grammar.
 - Separate lineage platform, generic data-quality framework, or workflow orchestrator beyond the existing job infrastructure.
 - Arelle-first processing for every filing when standardized SEC extraction succeeds.
 - Cross-company accounting-policy normalization beyond transparent data-quality labeling.
@@ -167,7 +187,7 @@ flowchart TD
 - **FR-002**: System MUST resolve tracked companies to identities usable for SEC filing discovery and filing provenance.
 - **FR-003**: System MUST detect relevant new filings, amendments, and restatements for tracked companies.
 - **FR-004**: System MUST retain immutable filing provenance, including accession, form type, acceptance timestamp, fiscal period, and amendment status for every displayed or exported metric.
-- **FR-005**: System MUST extract the financial facts and statement lines required for the supported metric registry.
+- **FR-005**: System MUST extract the financial facts and statement lines required for the approved base-fact and metric-definition registry.
 - **FR-006**: System MUST distinguish standalone quarterly, cumulative interim, and annual values before any quarter-to-quarter comparison.
 - **FR-007**: System MUST derive standalone quarterly values from cumulative or annual filings only when the required fiscal-period evidence is present.
 - **FR-008**: System MUST select revenue and operating income using a documented priority order and mark the metric unavailable when the selector cannot choose a reliable value.
@@ -184,6 +204,9 @@ flowchart TD
 - **FR-019**: System MUST sync filtered result sets to Google Sheets for callers with valid authorization while preserving visible rows, metric values, statuses, and source accessions.
 - **FR-020**: System MUST prevent users from seeing or mutating watchlists, portfolios, exports, or API results outside their authorization scope.
 - **FR-021**: System MUST expose a bounded operational failure state when SEC retrieval, filing parsing, validation, export, or Google authorization fails.
+- **FR-022**: System MUST let authorized users define additional tracked metrics through a safe declarative rule composed only from approved filing-backed facts and existing supported metrics; user-provided code, SQL, and unbounded concept mapping are prohibited.
+- **FR-023**: System MUST validate, version, and authorize each metric definition, including its inputs, formula or aggregation rule, fiscal-period compatibility, materiality threshold, and display metadata, before it is active.
+- **FR-024**: System MUST pin every calculated or unavailable metric observation to its metric-definition version and preserve historical observations when a definition changes; recomputation creates a new identified observation rather than mutating history.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -191,8 +214,8 @@ flowchart TD
 - **Filing**: Accepted SEC filing or amendment; carries accession, form type, acceptance timestamp, fiscal period, and provenance used by every metric observation.
 - **Financial Fact**: Filing-derived numeric value with concept, fiscal period, unit, source filing, and data-quality status.
 - **Fiscal Period**: Comparable quarterly period used to align standalone, cumulative, and annual filing facts.
-- **Metric Definition**: Supported metric rule, selector priority, materiality threshold, and display metadata.
-- **Metric Observation**: Calculated or unavailable metric result for a company and fiscal period, including source provenance and quality status.
+- **Metric Definition**: Versioned authorized declarative rule with approved inputs, formula or selector, fiscal-period compatibility, materiality threshold, display metadata, and activation state.
+- **Metric Observation**: Calculated or unavailable metric result for a company and fiscal period, including source provenance, quality status, and pinned metric-definition version.
 - **Watchlist**: User-maintained company collection used for analysis, filtering, monitoring, and export.
 - **Portfolio**: User-maintained company collection that may include holdings metadata while remaining scoped to filing-backed analytics.
 - **Analysis Run**: Refresh or request execution that records which companies, filings, metrics, and statuses were evaluated.
@@ -202,16 +225,17 @@ flowchart TD
 
 ### Measurable Outcomes
 
-- **SC-001**: In a fixture corpus covering standalone quarters, cumulative interim facts, Q4 derivation, amendments, restatements, missing facts, and zero-denominator cases, 100% of revenue, operating income, operating margin, streak, and acceleration outputs match documented expected results.
+- **SC-001**: In a fixture corpus covering standalone quarters, cumulative interim facts, Q4 derivation, amendments, restatements, missing facts, zero-denominator cases, and representative user-defined metrics, 100% of revenue, operating income, operating margin, streak, acceleration, and approved defined-metric outputs match documented expected results.
 - **SC-002**: 100% of displayed, exported, and API-returned metric observations include source filing provenance or a bounded data-quality category explaining why the metric is unavailable.
 - **SC-003**: For a saved universe of 500 tracked companies with warm analyzed data, at least 95% of dashboard first-page requests return in under two seconds.
 - **SC-004**: For a filtered result set of 5,000 rows or fewer, Excel and Google Sheets exports reproduce 100% of visible rows, metric values, status labels, and source accessions from the dashboard.
 - **SC-005**: After the filing detector observes a new filing or amendment for a tracked company, affected watchlist and portfolio analysis results become visibly refreshed or explicitly failed within the next scheduled processing cycle.
+- **SC-006**: 100% of evaluated metric observations identify their metric-definition version, and validation fixtures reject every unsupported definition input or operation without persisting a new active definition.
 
 ## Definition of Done *(mandatory)*
 
-This feature is shipped when production users can run filing-backed analysis for saved watchlists and portfolios, view and export quarter-aligned metrics with accession provenance and data-quality gaps, and meet 100% fixture-correctness plus 95% warm-dashboard responses under two seconds.
+This feature is shipped when production users can run filing-backed analysis for saved watchlists and portfolios, define and track authorized versioned metrics, view and export quarter-aligned metrics with accession provenance and data-quality gaps, and meet 100% fixture-correctness plus 95% warm-dashboard responses under two seconds.
 
 ## Open Questions *(include if any unresolved decisions exist)*
 
-No material open questions block this scoped spec; price feeds, options data, real-time portfolio P&L, and brokerage integrations are explicitly outside this feature until a licensed provider and expanded acceptance criteria are selected.
+No material open questions block this scoped spec. Planning must select an approved declarative grammar and initial allowed inputs for user-defined metrics; unrestricted user code, SQL, and generic XBRL mapping remain out of scope. Price feeds, options data, real-time portfolio P&L, and brokerage integrations are explicitly outside this feature until a licensed provider and expanded acceptance criteria are selected.
