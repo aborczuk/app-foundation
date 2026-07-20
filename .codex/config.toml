@@ -1,8 +1,11 @@
-model_auto_compact_token_limit = 60000
-tool_output_token_limit = 4000
+model_auto_compact_token_limit = 180000
+tool_output_token_limit = 10000
 compact_prompt = """
 You are a context compaction engine for Codex. Your job is to condense the conversation history without losing execution state.
 Do NOT write a narrative story. Output a strict markdown state block using this format:
+
+## SUMMARY OF THREAD
+* Short summary of prior turns no longer than 5 bullets
 
 ## CRITICAL EXECUTION STATE
 * **SpecKit Step:** [What speckit step you are on, if relevant. if none say none]
