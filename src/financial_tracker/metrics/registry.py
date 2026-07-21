@@ -60,6 +60,25 @@ class MetricRegistry:
             return
         self._versions[key] = definition
 
+    def add_and_activate(
+        self,
+        definition: MetricDefinitionVersion,
+        *,
+        scope: AuthorizationScope,
+    ) -> MetricDefinitionVersion:
+        """Persist and activate one definition atomically in the in-memory boundary."""
+        key = (definition.tenant_id, definition.metric_id, definition.version)
+        previous = self._versions.get(key)
+        try:
+            self.add_version(definition, scope=scope)
+            return self.activate(definition.metric_id, version=definition.version, scope=scope)
+        except Exception:
+            if previous is None:
+                self._versions.pop(key, None)
+            else:
+                self._versions[key] = previous
+            raise
+
     def get_version(
         self,
         metric_id: str,
@@ -203,6 +222,64 @@ class PostgresMetricRegistry:
         except Exception:
             self._connection.rollback()
             raise
+
+    def add_and_activate(
+        self,
+        definition: MetricDefinitionVersion,
+        *,
+        scope: AuthorizationScope,
+    ) -> MetricDefinitionVersion:
+        """Persist and activate one definition in a single PostgreSQL transaction."""
+        MetricRegistry._authorize(definition, scope, require_owner=True)
+        if definition.state != "draft":
+            raise ValueError("new metric definition versions must start in draft state")
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO financial_tracker.metric_definition_versions
+                        (tenant_id, metric_id, version, expression, content_hash, output_unit,
+                         state, created_by, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s)
+                    ON CONFLICT (tenant_id, metric_id, version) DO NOTHING
+                    """,
+                    (
+                        definition.tenant_id,
+                        definition.metric_id,
+                        definition.version,
+                        definition.expression,
+                        definition.content_hash,
+                        definition.output_unit,
+                        definition.created_by,
+                        definition.created_at,
+                    ),
+                )
+                cursor.execute(
+                    """
+                    SELECT tenant_id, metric_id, version, expression, content_hash, output_unit,
+                           state, created_by, created_at
+                    FROM financial_tracker.metric_definition_versions
+                    WHERE tenant_id = %s AND metric_id = %s AND version = %s
+                    FOR UPDATE
+                    """,
+                    (definition.tenant_id, definition.metric_id, definition.version),
+                )
+                persisted = self._from_row(cursor.fetchone())
+                if persisted != definition:
+                    raise ValueError("metric definition version is immutable")
+                cursor.execute(
+                    """
+                    UPDATE financial_tracker.metric_definition_versions
+                    SET state = 'active'
+                    WHERE tenant_id = %s AND metric_id = %s AND version = %s AND state = 'draft'
+                    """,
+                    (definition.tenant_id, definition.metric_id, definition.version),
+                )
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
+        return replace(definition, state="active")
 
     def get_version(
         self,

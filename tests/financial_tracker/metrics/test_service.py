@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from financial_tracker.identity.resolver import AuthorizationScope
 from financial_tracker.metrics.registry import MetricDefinitionVersion, MetricRegistry
-from financial_tracker.metrics.service import dry_run_metric
+from financial_tracker.metrics.service import activate_metric, dry_run_metric, retire_metric
 
 
 def _scope(user_id) -> AuthorizationScope:
@@ -118,6 +118,99 @@ def test_dry_run_evaluates_all_dependencies_beyond_report_cap() -> None:
     assert report.result == Decimal("65")
     assert len(report.dependencies) == 64
     assert len(report.resolved_inputs) == 64
+
+
+def test_activation_persists_exact_dry_run_version_and_retirement_preserves_history() -> None:
+    """Lifecycle orchestration activates the proposed content and retires it without deletion."""
+    owner_id = uuid4()
+    scope = _scope(owner_id)
+    registry = MetricRegistry()
+    report = dry_run_metric(
+        registry,
+        metric_id="custom_margin",
+        expression="revenue / operating_income",
+        approved_inputs={"revenue": "USD", "operating_income": "USD"},
+        input_values={"revenue": Decimal("100"), "operating_income": Decimal("40")},
+        output_unit="ratio",
+        scope=scope,
+    )
+
+    activated = activate_metric(
+        registry,
+        report,
+        scope=scope,
+        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+    )
+    assert activated.version == report.proposed_version
+    assert activated.content_hash == report.content_hash
+    assert activated.expression == report.canonical_expression
+
+    retire_metric(registry, "custom_margin", scope=scope)
+    assert registry.active_version("custom_margin", scope=scope) is None
+    assert registry.get_version("custom_margin", version=1, scope=scope).state == "retired"
+
+
+def test_activation_rejects_invalid_or_stale_dry_runs() -> None:
+    """Lifecycle orchestration cannot persist invalid or superseded dry-run reports."""
+    owner_id = uuid4()
+    scope = _scope(owner_id)
+    registry = MetricRegistry()
+    invalid = dry_run_metric(
+        registry,
+        metric_id="invalid_metric",
+        expression="revenue / 0",
+        approved_inputs={"revenue": "USD"},
+        input_values={"revenue": Decimal("100")},
+        output_unit="USD",
+        scope=scope,
+    )
+
+    try:
+        activate_metric(
+            registry,
+            invalid,
+            scope=scope,
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+    except ValueError as exc:
+        assert "invalid" in str(exc)
+    else:
+        raise AssertionError("invalid dry run activated")
+
+    valid = dry_run_metric(
+        registry,
+        metric_id="custom_margin",
+        expression="revenue / operating_income",
+        approved_inputs={"revenue": "USD", "operating_income": "USD"},
+        input_values={"revenue": Decimal("100"), "operating_income": Decimal("40")},
+        output_unit="ratio",
+        scope=scope,
+    )
+    registry.add_version(
+        MetricDefinitionVersion(
+            metric_id="custom_margin",
+            tenant_id="tenant-a",
+            version=1,
+            expression="revenue / operating_income",
+            content_hash="already-persisted",
+            output_unit="ratio",
+            state="draft",
+            created_by=owner_id,
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        ),
+        scope=scope,
+    )
+    try:
+        activate_metric(
+            registry,
+            valid,
+            scope=scope,
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+    except ValueError as exc:
+        assert "stale" in str(exc)
+    else:
+        raise AssertionError("stale dry run activated")
 
 
 def test_dry_run_bounds_dependency_graph_projection() -> None:

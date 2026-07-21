@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from itertools import islice
 from typing import Protocol
@@ -26,6 +27,37 @@ class DefinitionVersionSource(Protocol):
         ...
 
 
+class MetricLifecycleRegistry(DefinitionVersionSource, Protocol):
+    """Registry write contract required by activation and retirement orchestration."""
+
+    def add_version(self, definition: MetricDefinitionVersion, *, scope: AuthorizationScope) -> None:
+        """Persist one owner-authorized draft definition."""
+        ...
+
+    def add_and_activate(
+        self,
+        definition: MetricDefinitionVersion,
+        *,
+        scope: AuthorizationScope,
+    ) -> MetricDefinitionVersion:
+        """Persist and activate one definition in one transaction."""
+        ...
+
+    def activate(
+        self,
+        metric_id: str,
+        *,
+        version: int,
+        scope: AuthorizationScope,
+    ) -> MetricDefinitionVersion:
+        """Activate one owner-authorized draft version."""
+        ...
+
+    def retire(self, metric_id: str, *, scope: AuthorizationScope) -> None:
+        """Retire all lifecycle-eligible versions for one metric."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class MetricDryRunReport:
     """Bounded, non-persisting result of one metric definition dry run."""
@@ -34,6 +66,7 @@ class MetricDryRunReport:
     metric_id: str
     proposed_version: int
     canonical_expression: str
+    output_unit: str
     content_hash: str
     dependencies: tuple[str, ...]
     resolved_inputs: tuple[tuple[str, Decimal], ...]
@@ -105,6 +138,7 @@ def dry_run_metric(
         metric_id=metric_id,
         proposed_version=proposed_version,
         canonical_expression=validation.canonical_expression,
+        output_unit=output_unit,
         content_hash=content_hash,
         dependencies=dependencies,
         resolved_inputs=tuple(resolved_inputs),
@@ -112,6 +146,39 @@ def dry_run_metric(
         result=result,
         errors=bounded_errors,
     )
+
+
+def activate_metric(
+    registry: MetricLifecycleRegistry,
+    report: MetricDryRunReport,
+    *,
+    scope: AuthorizationScope,
+    created_at: datetime,
+) -> MetricDefinitionVersion:
+    """Persist and activate exactly one current, valid dry-run definition."""
+    if not report.valid:
+        raise ValueError("invalid metric dry run cannot be activated")
+    versions = registry.versions(report.metric_id, scope=scope)
+    expected_version = max((item.version for item in versions), default=0) + 1
+    if report.proposed_version != expected_version:
+        raise ValueError("metric dry run is stale")
+    definition = MetricDefinitionVersion(
+        metric_id=report.metric_id,
+        tenant_id=scope.tenant_id,
+        version=report.proposed_version,
+        expression=report.canonical_expression,
+        content_hash=report.content_hash,
+        output_unit=report.output_unit,
+        state="draft",
+        created_by=scope.user_id,
+        created_at=created_at,
+    )
+    return registry.add_and_activate(definition, scope=scope)
+
+
+def retire_metric(registry: MetricLifecycleRegistry, metric_id: str, *, scope: AuthorizationScope) -> None:
+    """Retire a metric through the registry's owner and tenant authorization boundary."""
+    registry.retire(metric_id, scope=scope)
 
 
 def _to_decimal(value: Decimal | int | float) -> Decimal:

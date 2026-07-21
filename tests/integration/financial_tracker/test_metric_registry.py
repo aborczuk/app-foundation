@@ -89,15 +89,13 @@ def test_metric_definition_persists_and_enforces_owner_scope(postgres_connection
     )
     owner_scope = AuthorizationScope(owner_id, tenant_id, "owner", frozenset(), frozenset())
     peer_scope = AuthorizationScope(peer_id, tenant_id, "peer", frozenset(), frozenset())
-    PostgresMetricRegistry(postgres_connection).add_version(definition, scope=owner_scope)
-
     with pytest.raises(AuthorizationError):
-        PostgresMetricRegistry(postgres_connection).activate(
-            "custom_margin", version=1, scope=peer_scope
+        PostgresMetricRegistry(postgres_connection).add_and_activate(
+            definition, scope=peer_scope
         )
 
     registry = PostgresMetricRegistry(postgres_connection)
-    registry.activate("custom_margin", version=1, scope=owner_scope)
+    registry.add_and_activate(definition, scope=owner_scope)
     persisted = PostgresMetricRegistry(postgres_connection).get_version(
         "custom_margin", version=1, scope=owner_scope
     )
