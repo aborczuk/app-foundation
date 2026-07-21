@@ -144,6 +144,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T023-f56cb4c:runbook -->
 - T023 dry-run service implemented with restricted validation, safe Decimal AST evaluation, bounded dependency/error projections, deterministic content hashing, next-version proposal, and no persistence during dry run; full metric unit suite 17 passed, Ruff clean, Pyright 0 errors, QA PASS.
 
+
+<!-- speckit_implement_docs:entry_id=T024-e5c1a66:runbook -->
+- T024 lifecycle orchestration implemented with atomic add-and-activate for in-memory and PostgreSQL registries, stale/invalid dry-run rejection, exact content propagation, owner authorization, and retirement preserving history; full metric suite 19 passed, live PostgreSQL activation path 1 passed in 0.14s, Ruff/Pyright clean, QA PASS.
+
 ## Decision Log
 
 
@@ -212,3 +216,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T023-f56cb4c:decision_log -->
 - T023 verification evidence: pytest_guard reported 17 passed for expression, registry, and service suites; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS after boundary fixes; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T024-e5c1a66:decision_log -->
+- T024 verification evidence: full metric pytest suite reported 19 passed; live PostgreSQL registry integration reported 1 passed in 0.14s; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS; offline QA handoff PASS.
