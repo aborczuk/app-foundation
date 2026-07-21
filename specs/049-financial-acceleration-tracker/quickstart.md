@@ -132,6 +132,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T020-5a015f7:runbook -->
 - Closed T020: added red lifecycle coverage for immutable metric-definition versions, tenant authorization, retirement, and historical observation selection. Registry behavior remains intentionally red until T022; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T021-03efc65:runbook -->
+- T021 metric expression validator implemented with AST allowlisting, unit inference, zero-division rejection, expression/AST/dependency bounds, and iterative cycle detection; guarded tests 7 passed and Ruff clean; live PostgreSQL not applicable to this parser task.
+
 ## Decision Log
 
 
@@ -191,3 +195,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T020-5a015f7:decision_log -->
 - Metric definition versions are immutable content identities; retirement removes active selection without deleting historical versions or observations, and reactivation is prohibited.
+
+<!-- speckit_implement_docs:entry_id=T021-03efc65:decision_log -->
+- T021 validation evidence: pytest_guard reported 7 passed in 0.01s; ruff_guard reported All checks passed; persistent QA agent PASS after fixes; offline QA handoff PASS.
