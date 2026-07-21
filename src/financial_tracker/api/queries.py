@@ -25,12 +25,12 @@ class AuthorizedQueryService:
         memberships: Mapping[UUID, Iterable[UUID]],
     ) -> None:
         """Bind stable resources and server-owned portfolio memberships."""
-        self._issuers = tuple(issuers)
+        self._issuers = tuple(sorted(issuers, key=lambda issuer: (issuer.legal_name, str(issuer.id))))
         self._issuer_by_id = {issuer.id: issuer for issuer in self._issuers}
-        self._portfolios = tuple(portfolios)
+        self._portfolios = tuple(sorted(portfolios, key=lambda portfolio: (portfolio.name, str(portfolio.id))))
         self._portfolio_by_id = {portfolio.id: portfolio for portfolio in self._portfolios}
         self._memberships = {
-            portfolio_id: tuple(issuer_ids)
+            portfolio_id: tuple(sorted(issuer_ids, key=str))
             for portfolio_id, issuer_ids in memberships.items()
         }
 
@@ -82,8 +82,9 @@ class AuthorizedQueryService:
         portfolio = self._portfolio_by_id.get(portfolio_id)
         if portfolio is None or portfolio.owner_id != scope.user_id:
             raise AuthorizationError("portfolio is outside the authenticated user's scope")
-        return tuple(
+        companies = (
             self._issuer_by_id[issuer_id]
             for issuer_id in self._memberships.get(portfolio_id, ())
             if issuer_id in scope.issuer_ids and issuer_id in self._issuer_by_id
         )
+        return tuple(sorted(companies, key=lambda issuer: (issuer.legal_name, str(issuer.id))))

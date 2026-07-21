@@ -18,25 +18,30 @@ def test_authorized_query_facade_filters_companies_and_universes_by_scope() -> N
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     user_id = uuid4()
     issuer = Issuer(uuid4(), "0000320193", "Example Corp", now)
+    second_issuer = Issuer(uuid4(), "0000789018", "Another Corp", now)
     foreign_issuer = Issuer(uuid4(), "0000789019", "Foreign Corp", now)
     portfolio = Portfolio(uuid4(), user_id, "Core", PortfolioKind.PORTFOLIO, now)
+    secondary_portfolio = Portfolio(uuid4(), user_id, "Growth", PortfolioKind.WATCHLIST, now)
     foreign_portfolio = Portfolio(uuid4(), uuid4(), "Other", PortfolioKind.WATCHLIST, now)
     scope = AuthorizationScope(
         user_id=user_id,
         tenant_id="tenant-a",
         subject_id="subject-a",
-        portfolio_ids=frozenset({portfolio.id}),
-        issuer_ids=frozenset({issuer.id}),
+        portfolio_ids=frozenset({portfolio.id, secondary_portfolio.id}),
+        issuer_ids=frozenset({issuer.id, second_issuer.id}),
     )
     service = AuthorizedQueryService(
-        issuers=(issuer, foreign_issuer),
-        portfolios=(portfolio, foreign_portfolio),
-        memberships={portfolio.id: (issuer.id, foreign_issuer.id)},
+        issuers=(issuer, foreign_issuer, second_issuer),
+        portfolios=(portfolio, foreign_portfolio, secondary_portfolio),
+        memberships={
+            portfolio.id: (issuer.id, foreign_issuer.id, second_issuer.id),
+            secondary_portfolio.id: (second_issuer.id,),
+        },
     )
 
-    assert service.list_companies(scope) == (issuer,)
-    assert service.list_portfolios(scope) == (portfolio,)
-    assert service.list_portfolio_companies(scope, portfolio.id) == (issuer,)
+    assert service.list_companies(scope) == (second_issuer, issuer)
+    assert service.list_portfolios(scope) == (portfolio, secondary_portfolio)
+    assert service.list_portfolio_companies(scope, portfolio.id) == (second_issuer, issuer)
 
 
 def test_authorized_query_facade_denies_foreign_portfolio_access() -> None:
