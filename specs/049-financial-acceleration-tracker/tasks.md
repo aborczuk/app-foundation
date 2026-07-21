@@ -34,7 +34,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 **Purpose**: Implement design slice PL-01, Financial Foundation and Provenance. No user-story task can start before these seams are stable.
 
-- [ ] T003 Define typed domain entities for users, portfolios, issuers, filings, fiscal periods, facts, and provenance with mappings owned by `src/financial_tracker/persistence/models.py`
+- [X] T003 Define typed domain entities for users, portfolios, issuers, filings, fiscal periods, facts, and provenance with mappings owned by `src/financial_tracker/persistence/models.py`
 - [ ] T004 Add migrations and uniqueness, supersession, analysis-run, and work-item constraints in `src/financial_tracker/persistence/migrations/`
 - [ ] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
 - [ ] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`

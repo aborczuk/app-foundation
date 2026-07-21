@@ -64,6 +64,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T002-e5f0546:runbook -->
 - Closed T002: added the real PostgreSQL harness, disposable Compose service with healthcheck, and SELECT 1 live-backend verification.
 
+
+<!-- speckit_implement_docs:entry_id=T003-615bea6:runbook -->
+- Closed T003: added frozen typed entities and explicit PostgreSQL table mappings for identity, portfolios, filings, periods, facts, and provenance; model tests and Ruff passed.
+
 ## Decision Log
 
 
@@ -72,3 +76,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T002-e5f0546:decision_log -->
 - T002 uses PostgreSQL Compose only as disposable local infrastructure; the application contract remains an environment-configured PostgreSQL URL.
+
+<!-- speckit_implement_docs:entry_id=T003-615bea6:decision_log -->
+- T003 keeps domain entities as immutable dataclasses and leaves database constraints to the migration seam in T004.
