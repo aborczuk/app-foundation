@@ -9,6 +9,7 @@ from dataclasses import dataclass
 _MAX_EXPRESSION_LENGTH = 4096
 _MAX_AST_NODES = 256
 _MAX_AST_DEPTH = 64
+_MAX_DEPENDENCY_NODES = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,8 +52,12 @@ def validate_expression(
     inferred_unit = _infer_unit(tree.body, approved_inputs, errors)
     if inferred_unit != output_unit and inferred_unit != "unknown":
         errors.add("unit_mismatch")
-    if dependency_graph is not None and _has_cycle(metric_id, dependency_graph):
-        errors.add("dependency_cycle")
+    if dependency_graph is not None:
+        cycle_state = _has_cycle(metric_id, dependency_graph)
+        if cycle_state is True:
+            errors.add("dependency_cycle")
+        elif cycle_state is None:
+            errors.add("dependency_graph_too_large")
     canonical = ast.unparse(tree.body)
     return ValidationReport(not errors, canonical, dependencies, tuple(sorted(errors)))
 
@@ -104,21 +109,26 @@ def _infer_unit(node: ast.AST, approved_inputs: Mapping[str, str], errors: set[s
     return "unknown"
 
 
-def _has_cycle(root: str, graph: Mapping[str, Sequence[str]]) -> bool:
-    """Detect a dependency cycle reachable from one metric identifier."""
+def _has_cycle(root: str, graph: Mapping[str, Sequence[str]]) -> bool | None:
+    """Detect a reachable cycle without recursing through an unbounded graph."""
     visiting: set[str] = set()
     visited: set[str] = set()
-
-    def visit(node: str) -> bool:
+    pending: list[tuple[str, bool]] = [(root, False)]
+    inspected = 0
+    while pending:
+        node, exiting = pending.pop()
+        if exiting:
+            visiting.remove(node)
+            visited.add(node)
+            continue
         if node in visiting:
             return True
         if node in visited:
-            return False
+            continue
+        inspected += 1
+        if inspected > _MAX_DEPENDENCY_NODES:
+            return None
         visiting.add(node)
-        if any(visit(dependency) for dependency in graph.get(node, ())):
-            return True
-        visiting.remove(node)
-        visited.add(node)
-        return False
-
-    return visit(root)
+        pending.append((node, True))
+        pending.extend((dependency, False) for dependency in graph.get(node, ()))
+    return False

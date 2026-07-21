@@ -91,3 +91,19 @@ def test_rejects_oversized_expression() -> None:
 
     assert report.valid is False
     assert report.errors == ("unsafe_syntax",)
+
+
+def test_rejects_oversized_dependency_graph() -> None:
+    """A deep dependency graph fails validation without exhausting recursion."""
+    graph = {f"metric_{index}": (f"metric_{index + 1}",) for index in range(1024)}
+    graph["metric_1024"] = ()
+    report = validate_expression(
+        "revenue",
+        metric_id="metric_0",
+        approved_inputs={"revenue": "USD"},
+        output_unit="USD",
+        dependency_graph=graph,
+    )
+
+    assert report.valid is False
+    assert report.errors == ("dependency_graph_too_large",)
