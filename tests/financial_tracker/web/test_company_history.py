@@ -106,10 +106,18 @@ def test_company_history_preserves_gaps_outliers_amendments_and_provenance() -> 
     issuer_id = uuid4()
     scope = _scope(issuer_id)
     periods = tuple(_period(issuer_id, quarter) for quarter in range(1, 5))
+    prior_filing = _filing(issuer_id, periods[3].id, amendment=False)
+    restated_filing = _filing(
+        issuer_id,
+        periods[3].id,
+        amendment=False,
+        supersedes=prior_filing.id,
+    )
     filings = (
         _filing(issuer_id, periods[0].id, amendment=False),
         _filing(issuer_id, periods[1].id, amendment=True),
-        _filing(issuer_id, periods[3].id, amendment=False, supersedes=uuid4()),
+        prior_filing,
+        restated_filing,
     )
     observations = (
         _observation(
@@ -129,7 +137,7 @@ def test_company_history_preserves_gaps_outliers_amendments_and_provenance() -> 
         _observation(
             issuer_id,
             periods[3].id,
-            filings[2],
+            filings[3],
             quality_state=QualityState.VERIFIED,
             value=Decimal("0.90"),
         ),
@@ -152,12 +160,14 @@ def test_company_history_preserves_gaps_outliers_amendments_and_provenance() -> 
         "2025 Q4",
     ]
     assert history[0].source_accessions == (filings[0].accession,)
+    assert history[0].definition_version == "3"
     assert history[1].is_amendment is True
     assert history[1].calculation_status == "invalid"
     assert history[2].is_gap is True
     assert history[2].value is None
     assert history[3].is_restated is True
     assert history[3].is_outlier is True
+    assert history[3].source_accessions == (filings[3].accession,)
     assert history[3].value == Decimal("0.90")
 
 
