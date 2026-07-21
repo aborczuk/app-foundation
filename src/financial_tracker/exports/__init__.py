@@ -1,1 +1,2 @@
-"""Authorized financial result export adapters."""
+"""Export adapters for deterministic files and explicitly scoped destinations."""
+
