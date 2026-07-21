@@ -84,6 +84,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T007-994ff02:runbook -->
 - Closed T007: added transactional idempotency and structured audit handoff for normalized fixture ingestion; unit QA passed.
 
+
+<!-- speckit_implement_docs:entry_id=T008-c9a5b89:runbook -->
+- Closed T008: added durable work-item transitions and coordinator lease ownership; unit QA passed.
+
 ## Decision Log
 
 
@@ -107,3 +111,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T007-994ff02:decision_log -->
 - Idempotency keys are normalized before transaction checks, and audit events are emitted only after normalized fact/provenance writes succeed.
+
+<!-- speckit_implement_docs:entry_id=T008-c9a5b89:decision_log -->
+- Work ownership is enforced by unexpired coordinator leases; expired work returns to retry_wait for recovery.

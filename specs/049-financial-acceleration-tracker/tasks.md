@@ -12,6 +12,8 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 **Task format**: `- [ ] T0NN [P?] [USn?] <action> in <exact path>`
 
+**Implementation stack boundary**: Backend, ingestion, persistence, and analysis code default to Python. Browser-facing seams may use JavaScript or TypeScript and the adopted frontend libraries from `spec.md`, including TanStack Table for sortable/filterable collections and Recharts for metric-history visualizations. SEC seams may use EdgarTools, export seams may use XlsxWriter or gspread, and Arelle remains validation/failure fallback-only. `xang1234/stock-screener` is reusable app-shell pattern input rather than a runtime dependency; adapt only verified patterns and remove unlicensed market-data assumptions. Do not rewrite a browser seam into Python solely to satisfy the backend default; declare the selected package and verify its behavior in the seam's tests.
+
 ## Path Conventions
 
 - Python package: `src/financial_tracker/`
@@ -39,7 +41,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
 - [X] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`
 - [X] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
-- [ ] T008 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`
+- [X] T008 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`
 - [ ] T009 Add real-PostgreSQL identity and provenance tests in `tests/integration/financial_tracker/test_foundation.py`
 - [ ] T010 Add real-PostgreSQL idempotent-ingestion and work-transition tests in `tests/integration/financial_tracker/test_foundation.py`
 
@@ -129,13 +131,13 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Implement the SEC filing discovery adapter with User-Agent, timeout, and rate-budget policy in `src/financial_tracker/sec/adapter.py`
-- [ ] T030 [US3] Add classified retry and circuit-open behavior to the SEC adapter in `src/financial_tracker/sec/adapter.py`
+- [ ] T029 [US3] Implement the SEC filing discovery adapter with a reviewed EdgarTools integration seam, direct SEC transport, User-Agent, timeout, and rate-budget policy in `src/financial_tracker/sec/adapter.py`
+- [ ] T030 [US3] Add classified retry and circuit-open behavior around the direct and EdgarTools SEC adapter paths in `src/financial_tracker/sec/adapter.py`
 - [ ] T031 [US3] Implement amendment detection and targeted refresh orchestration in `src/financial_tracker/sec/refresh.py`
 - [ ] T032 [US3] Implement worker leasing and coordinator-owned running state in `src/financial_tracker/work/coordinator.py`
 - [ ] T033 [US3] Implement retry-wait, dead-letter, and expired-lease recovery in `src/financial_tracker/work/coordinator.py`
 - [ ] T034 [US3] Add refresh metrics, structured failure artifacts, and operator continuity guidance in `docs/financial-tracker-operations.md`
-- [ ] T035 [US3] Add the bounded live-SEC compatibility and outage-path integration tests in `tests/integration/financial_tracker/test_live_sec.py`
+- [ ] T035 [US3] Add bounded live-SEC compatibility and outage-path integration tests for direct SEC and EdgarTools extraction, keeping Arelle validation fallback-only, in `tests/integration/financial_tracker/test_live_sec.py`
 
 **Checkpoint**: US3 is independently demonstrable with safe refresh, amendment history, retry recovery, and operator-visible degradation.
 
@@ -162,8 +164,8 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 - [ ] T037 [US4] Implement authenticated company, watchlist, and portfolio query endpoints in `src/financial_tracker/api/queries.py`
 - [ ] T038 [US4] Implement authenticated metric-history query endpoints and version filters in `src/financial_tracker/api/queries.py`
-- [ ] T039 [US4] Implement deterministic XLSX generation and immutable export manifests in `src/financial_tracker/exports/xlsx.py`
-- [ ] T040 [US4] Implement the separately authorized Google Sheets delivery adapter in `src/financial_tracker/exports/google_sheets.py`
+- [ ] T039 [US4] Implement deterministic XLSX generation with XlsxWriter and immutable export manifests in `src/financial_tracker/exports/xlsx.py`
+- [ ] T040 [US4] Implement the separately authorized Google Sheets delivery adapter with gspread in `src/financial_tracker/exports/google_sheets.py`
 
 **Checkpoint**: US4 is independently demonstrable with parity across dashboard/API/export read contracts and authorization boundaries.
 
@@ -188,7 +190,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 ### Implementation for User Story 5
 
 - [ ] T042 [US5] Implement the company history query with freshness and provenance state in `src/financial_tracker/query/company_history.py`
-- [ ] T043 [US5] Implement the server-rendered company detail and trend visualization preserving gaps and outliers in `src/financial_tracker/web/company_history.py`
+- [ ] T043 [US5] Implement the company detail and trend visualization, using Recharts where the browser surface requires it, while preserving gaps and outliers in `src/financial_tracker/web/company_history.py`
 
 **Checkpoint**: US5 is independently demonstrable from historical query through trustworthy company detail rendering.
 
@@ -204,7 +206,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [ ] T045 [US3] Implement scheduled discovery registration, cadence, and feature-flag enforcement in `src/financial_tracker/work/scheduler.py`
 - [ ] T046 [US3] Implement refresh and delivery observability events, metrics, correlation fields, and alert policy in `src/financial_tracker/observability/runtime.py`
 - [ ] T047 [US4] Implement authorized watchlist and portfolio lifecycle operations with membership validation in `src/financial_tracker/api/universes.py`
-- [ ] T048 [US4] Implement the sortable and filterable dashboard collection read model and server-rendered states in `src/financial_tracker/web/dashboard.py`
+- [ ] T048 [US4] Implement the sortable and filterable dashboard collection read model and server-rendered states, using TanStack Table and Recharts where the browser surface requires them, in `src/financial_tracker/web/dashboard.py`
 
 ### Acceptance and Rollout
 
