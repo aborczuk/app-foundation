@@ -156,6 +156,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T026:runbook -->
 - T026 validated active-default and explicit historical metric observation selection with scope authorization, full identity/content conflict detection, and registry hash verification. Focused tests: 9 passed; full financial_tracker suite: 46 passed, 1 skipped without database URL; live PostgreSQL metric registry selection: 1 passed.
 
+
+<!-- speckit_implement_docs:entry_id=T027:runbook -->
+- T027 validated the callable metric-definition API contract facade for bounded validation, structured invalid_definition/forbidden responses, correlation IDs, activation revalidation, tenant authorization, and immutable version history. Focused tests: 12 passed; full financial_tracker suite: 51 passed, 1 skipped without database URL; QA PASS.
+
 ## Decision Log
 
 
@@ -233,3 +237,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T026:decision_log -->
 - Historical reads resolve the active registry version by default; explicit version requests may select retired history, but mismatched definition hashes or conflicting observation identities are rejected.
+
+<!-- speckit_implement_docs:entry_id=T027:decision_log -->
+- MetricDefinitionAPI is a callable Python boundary over the domain service, not an HTTP server. It re-runs dry-run validation during activation and exposes only bounded response fields; HTTP transport remains a later API seam.

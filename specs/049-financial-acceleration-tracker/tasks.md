@@ -106,7 +106,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T024 [US2] Implement metric activation and retirement lifecycle orchestration in `src/financial_tracker/metrics/service.py`
 - [X] T025 [US2] Implement dependency-aware targeted recalculation enqueueing in `src/financial_tracker/recalculation/metric_runs.py`
 - [X] T026 [US2] Implement versioned historical observation selection in `src/financial_tracker/recalculation/metric_runs.py`
-- [ ] T027 [US2] Add metric-definition API contract tests for validation, authorization, dry run, and version history in `tests/financial_tracker/metrics/test_api.py`
+- [X] T027 [US2] Add metric-definition API contract tests for validation, authorization, dry run, and version history in `tests/financial_tracker/metrics/test_api.py`
 
 **Checkpoint**: US2 is independently demonstrable with a user-authored metric definition that can evolve without rewriting history.
 
