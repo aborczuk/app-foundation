@@ -303,6 +303,63 @@ def test_retry_repeats_transient_429_with_bounded_jitter() -> None:
     assert sleeps == [1.0]
 
 
+@pytest.mark.parametrize("status_code", [408, 500])
+def test_retry_repeats_transient_http_statuses(status_code: int) -> None:
+    """Timeout and server failures are retried before a successful response."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient(
+        [
+            httpx.Response(status_code, request=request),
+            httpx.Response(200, json={"filings": {"recent": {}}}, request=request),
+        ]
+    )
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            retry_policy=adapter.SECRetryPolicy(
+                max_attempts=2,
+                base_delay_seconds=0.0,
+                max_delay_seconds=0.0,
+                jitter_ratio=0.0,
+            )
+        ),
+        http_client=client,
+        sleep=lambda _: None,
+    )
+
+    discovery.fetch_submissions("0000320193")
+
+    assert client.calls == 2
+
+
+def test_retry_delay_never_exceeds_cap_after_positive_jitter() -> None:
+    """Positive jitter cannot push a backoff above its configured maximum."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient(
+        [
+            httpx.Response(429, request=request),
+            httpx.Response(200, json={"filings": {"recent": {}}}, request=request),
+        ]
+    )
+    sleeps: list[float] = []
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            retry_policy=adapter.SECRetryPolicy(
+                max_attempts=2,
+                base_delay_seconds=1.0,
+                max_delay_seconds=1.0,
+                jitter_ratio=1.0,
+            )
+        ),
+        http_client=client,
+        sleep=sleeps.append,
+        random_value=lambda: 1.0,
+    )
+
+    discovery.fetch_submissions("0000320193")
+
+    assert sleeps == [1.0]
+
+
 def test_retry_does_not_repeat_permanent_http_errors() -> None:
     """Permanent client errors fail immediately without consuming retry attempts."""
     request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
@@ -313,6 +370,24 @@ def test_retry_does_not_repeat_permanent_http_errors() -> None:
     )
 
     with pytest.raises(httpx.HTTPStatusError):
+        discovery.fetch_submissions("0000320193")
+
+    assert client.calls == 1
+
+
+def test_retry_attempts_consume_the_rate_budget() -> None:
+    """A retry cannot bypass the per-attempt SEC request budget."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient([httpx.Response(429, request=request)])
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            max_requests=1,
+            retry_policy=adapter.SECRetryPolicy(max_attempts=2),
+        ),
+        http_client=client,
+    )
+
+    with pytest.raises(adapter.RateBudgetExceeded):
         discovery.fetch_submissions("0000320193")
 
     assert client.calls == 1
@@ -350,6 +425,41 @@ def test_circuit_opens_after_exhausted_failures_and_recovers() -> None:
     now[0] = 11.0
     discovery.fetch_submissions("0000320193")
     assert client.calls == 3
+
+
+def test_circuit_state_is_shared_across_direct_and_provider_sources() -> None:
+    """A direct outage opens the same circuit used by the EdgarTools path."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient([httpx.Response(503, request=request)])
+    source = StubEdgarToolsSource(
+        (
+            {
+                "accession": "0000320193-25-000008",
+                "form_type": "10-K",
+                "filed_at": "2025-11-07",
+                "source_url": "https://www.sec.gov/Archives/edgar/data/example",
+            },
+        )
+    )
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            retry_policy=adapter.SECRetryPolicy(
+                max_attempts=1,
+                circuit_failure_threshold=1,
+                circuit_recovery_seconds=60.0,
+            )
+        ),
+        http_client=client,
+        edgar_tools=source,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        discovery.discover_filings("0000320193", source="direct")
+    with pytest.raises(adapter.CircuitOpenError):
+        discovery.discover_filings("0000320193", source="edgar_tools")
+
+    assert client.calls == 1
+    assert source.calls == []
 
 
 def test_edgar_tools_path_retries_transient_provider_failures() -> None:

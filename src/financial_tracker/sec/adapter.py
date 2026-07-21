@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from typing import Any, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar
 
 import httpx
 
@@ -174,15 +174,20 @@ class SECDiscoveryAdapter:
         cik: str,
         *,
         forms: Sequence[str] = ("10-Q", "10-K"),
+        source: Literal["auto", "direct", "edgar_tools"] = "auto",
     ) -> tuple[SECFilingRecord, ...]:
-        """Return normalized filing records from EdgarTools or direct SEC JSON."""
+        """Return normalized filing records from the selected SEC source."""
         normalized_cik = _normalize_cik(cik)
         normalized_forms = _normalize_forms(forms)
-        source = self._edgar_tools
-        if source is not None:
+        if source not in {"auto", "direct", "edgar_tools"}:
+            raise ValueError("source must be auto, direct, or edgar_tools")
+        provider = self._edgar_tools if source != "direct" else None
+        if source == "edgar_tools" and provider is None:
+            raise ValueError("edgar_tools source is not configured")
+        if provider is not None:
             source_records = self._run_with_retry(
                 lambda: self._fetch_provider_filings(
-                    source, normalized_cik, normalized_forms
+                    provider, normalized_cik, normalized_forms
                 )
             )
             return tuple(
@@ -263,9 +268,9 @@ class SECDiscoveryAdapter:
     def _retry_delay(self, attempt: int) -> float:
         """Calculate capped exponential backoff with bounded symmetric jitter."""
         policy = self._policy.retry_policy
-        delay = min(policy.max_delay_seconds, policy.base_delay_seconds * 2 ** (attempt - 1))
+        delay = policy.base_delay_seconds * 2 ** (attempt - 1)
         jitter = (self._random_value() * 2 - 1) * policy.jitter_ratio
-        return max(0.0, delay * (1 + jitter))
+        return min(policy.max_delay_seconds, max(0.0, delay * (1 + jitter)))
 
     def _consume_budget(self) -> None:
         """Reserve one request slot and reject calls outside the current window."""
