@@ -2076,3 +2076,5 @@
 {"actor": "implement", "attempt": 2, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t046-20260721T235249Z", "task_id": "T046", "timestamp_utc": "2026-07-21T23:53:03.120355Z"}
 {"actor": "implement", "attempt": 2, "commit_sha": "8219552", "event": "commit_created", "feature_id": "049", "task_id": "T046", "timestamp_utc": "2026-07-21T23:53:03.174077Z"}
 {"actor": "implement", "attempt": 2, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T046", "timestamp_utc": "2026-07-21T23:53:03.217258Z"}
+{"actor": "implement", "attempt": 1, "details": "Implement authorized watchlist and portfolio lifecycle operations with membership validation", "event": "task_started", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-21T23:53:47.556492Z"}
+{"actor": "implement", "attempt": 1, "details": "Universe API contract is red against the placeholder module; log .speckit/test-logs/pytest-20260721T235619Z.log", "event": "tests_failed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-21T23:56:28.806157Z"}
