@@ -88,6 +88,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T008-c9a5b89:runbook -->
 - Closed T008: added durable work-item transitions and coordinator lease ownership; unit QA passed.
 
+
+<!-- speckit_implement_docs:entry_id=T009-1248955:runbook -->
+- Closed T009: added live PostgreSQL identity and provenance constraint coverage; the guarded test passed against the disposable local service.
+
 ## Decision Log
 
 
@@ -114,3 +118,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T008-c9a5b89:decision_log -->
 - Work ownership is enforced by unexpired coordinator leases; expired work returns to retry_wait for recovery.
+
+<!-- speckit_implement_docs:entry_id=T009-1248955:decision_log -->
+- Live foundation verification requires an explicit FINANCIAL_TRACKER_TEST_DATABASE_URL and fails setup when psycopg is unavailable; missing URL is the only skip condition.

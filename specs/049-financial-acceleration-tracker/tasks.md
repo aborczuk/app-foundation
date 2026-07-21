@@ -42,7 +42,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`
 - [X] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
 - [X] T008 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`
-- [ ] T009 Add real-PostgreSQL identity and provenance tests in `tests/integration/financial_tracker/test_foundation.py`
+- [X] T009 Add real-PostgreSQL identity and provenance tests in `tests/integration/financial_tracker/test_foundation.py`
 - [ ] T010 Add real-PostgreSQL idempotent-ingestion and work-transition tests in `tests/integration/financial_tracker/test_foundation.py`
 
 **Checkpoint**: PL-01 is independently verifiable with fixture input, immutable provenance, authorization scope, and durable retry-safe work state.
