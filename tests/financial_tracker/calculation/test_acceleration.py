@@ -30,11 +30,10 @@ def test_calculates_second_difference_and_applies_materiality() -> None:
 
 def test_returns_only_finite_quality_states() -> None:
     """Valid, incomplete, and ambiguous inputs map to explicit enum states."""
-    states = {
-        acceleration.quality_state_for(value=Decimal("1"), inputs_complete=True),
-        acceleration.quality_state_for(value=None, inputs_complete=False),
-        acceleration.quality_state_for(value=Decimal("1"), inputs_complete=True, ambiguous=True),
-    }
+    verified = acceleration.quality_state_for(value=Decimal("1"), inputs_complete=True)
+    incomplete = acceleration.quality_state_for(value=None, inputs_complete=False)
+    ambiguous = acceleration.quality_state_for(value=Decimal("1"), inputs_complete=True, ambiguous=True)
 
-    assert states == {QualityState.VERIFIED, QualityState.INCOMPLETE, QualityState.AMBIGUOUS}
-    assert all(isinstance(state, QualityState) for state in states)
+    assert verified is QualityState.VERIFIED
+    assert incomplete is QualityState.INCOMPLETE
+    assert ambiguous is QualityState.AMBIGUOUS
