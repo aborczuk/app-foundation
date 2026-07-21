@@ -15,6 +15,7 @@ from financial_tracker.metrics.service import (
     MetricLifecycleRegistry,
     activate_metric,
     dry_run_metric,
+    retire_metric,
 )
 
 
@@ -36,7 +37,7 @@ class MetricDefinitionAPIResponse:
 
 
 class MetricDefinitionAPI:
-    """Expose validation, activation, and history without owning domain state."""
+    """Expose validation, lifecycle operations, and history without owning state."""
 
     def __init__(self, registry: MetricLifecycleRegistry) -> None:
         """Bind the contract facade to an authorized lifecycle registry."""
@@ -110,6 +111,23 @@ class MetricDefinitionAPI:
     def history(self, metric_id: str, *, scope: AuthorizationScope) -> tuple[MetricDefinitionVersion, ...]:
         """Return immutable tenant-scoped definition history in version order."""
         return self._registry.versions(metric_id, scope=scope)
+
+    def retire(
+        self,
+        metric_id: str,
+        *,
+        scope: AuthorizationScope,
+        correlation_id: str | None = None,
+    ) -> MetricDefinitionAPIResponse:
+        """Retire owner-authorized versions while retaining their history."""
+        correlation = correlation_id or str(uuid4())
+        try:
+            retire_metric(self._registry, metric_id, scope=scope)
+        except AuthorizationError:
+            return _error_response(metric_id, "forbidden", correlation)
+        except KeyError:
+            return _error_response(metric_id, "not_found", correlation)
+        return _definition_response(self._registry.versions(metric_id, scope=scope)[-1], correlation)
 
 
 def _report_response(report: MetricDryRunReport, *, correlation_id: str | None) -> MetricDefinitionAPIResponse:

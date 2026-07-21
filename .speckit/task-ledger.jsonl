@@ -2036,3 +2036,6 @@
 {"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T043", "timestamp_utc": "2026-07-21T23:18:33.751807Z"}
 {"actor": "implement", "attempt": 1, "event": "task_started", "feature_id": "049", "task_id": "T044", "timestamp_utc": "2026-07-21T23:19:07.850181Z"}
 {"actor": "implement", "attempt": 1, "event": "tests_failed", "feature_id": "049", "task_id": "T044", "timestamp_utc": "2026-07-21T23:24:47.750100Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "2501192", "event": "story_red_committed", "feature_id": "049", "story_id": "T044", "task_id": "T044", "timestamp_utc": "2026-07-21T23:25:13.031932Z"}
+{"actor": "implement", "attempt": 1, "details": "6 focused metric-definition API tests passed; log .speckit/test-logs/pytest-20260721T232529Z.log", "event": "tests_passed", "feature_id": "049", "task_id": "T044", "timestamp_utc": "2026-07-21T23:25:40.572805Z"}
+{"actor": "implement", "attempt": 1, "details": "Ruff and Pyright passed for metric-definition API seam", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T044", "timestamp_utc": "2026-07-21T23:25:40.737689Z"}
