@@ -26,6 +26,7 @@ class MetricObservation:
     metric_id: str
     definition_version: str
     definition_hash: str
+    definition_state: str
     calculation_version: str
     source_snapshot_hash: str
     analysis_run_id: UUID
@@ -42,6 +43,7 @@ class MetricObservation:
             self.metric_id,
             self.definition_version,
             self.definition_hash,
+            self.definition_state,
             self.calculation_version,
             self.source_snapshot_hash,
             self.freshness,
@@ -91,7 +93,7 @@ class MetricObservation:
             )
             for provenance in self.provenance
         )
-        return (self.value, self.quality_state, self.freshness, provenance_key)
+        return (self.value, self.quality_state, self.freshness, self.definition_state, provenance_key)
 
     def with_value(self, value: Decimal | None) -> Self:
         """Return a new observation candidate with the same calculation identity."""

@@ -26,6 +26,7 @@ def _observation(*, value: str | None = "125.00", quality_state: QualityState = 
         metric_id="revenue_acceleration",
         definition_version="3",
         definition_hash="definition-v3",
+        definition_state="active",
         calculation_version="calc-1",
         source_snapshot_hash="snapshot-1",
         analysis_run_id=uuid4(),

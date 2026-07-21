@@ -21,6 +21,7 @@ class AnalysisRow:
     metric_id: str
     definition_version: str
     definition_hash: str
+    definition_state: str
     value: Decimal | None
     quality_state: QualityState
     analysis_run_id: UUID
@@ -55,6 +56,7 @@ def _project_observation(observation: MetricObservation, *, correlation_id: str 
         metric_id=observation.metric_id,
         definition_version=observation.definition_version,
         definition_hash=observation.definition_hash,
+        definition_state=observation.definition_state,
         value=observation.value,
         quality_state=observation.quality_state,
         analysis_run_id=observation.analysis_run_id,

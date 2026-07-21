@@ -23,6 +23,7 @@ def _observation(*, tenant_id: str, issuer_id) -> MetricObservation:
         metric_id="revenue_acceleration",
         definition_version="3",
         definition_hash="definition-v3",
+        definition_state="active",
         calculation_version="calc-1",
         source_snapshot_hash="snapshot-1",
         analysis_run_id=uuid4(),
@@ -51,16 +52,24 @@ def test_authorized_analysis_projection_exposes_provenance_contract() -> None:
     user = User(user_id, "tenant-a", "subject-a", "analyst", datetime.now(timezone.utc))
     scope = build_authorization_scope(user, [portfolio], {portfolio.id: [issuer_id]})
 
-    rows = read_analysis(scope, [_observation(tenant_id="tenant-a", issuer_id=issuer_id)], issuer_id=issuer_id, correlation_id="corr-1")
+    observation = _observation(tenant_id="tenant-a", issuer_id=issuer_id)
+    tenant_outsider = _observation(tenant_id="tenant-b", issuer_id=issuer_id)
+    rows = read_analysis(scope, [observation, tenant_outsider], issuer_id=issuer_id, correlation_id="corr-1")
 
     assert len(rows) == 1
     row = rows[0]
     assert row.metric_id == "revenue_acceleration"
     assert row.definition_version == "3"
+    assert row.definition_hash == "definition-v3"
+    assert row.definition_state == "active"
     assert row.value == Decimal("25.00")
     assert row.quality_state is QualityState.VERIFIED
     assert row.freshness == "current"
     assert row.correlation_id == "corr-1"
+    assert row.issuer_id == observation.issuer_id
+    assert row.fiscal_period_id == observation.fiscal_period_id
+    assert row.analysis_run_id == observation.analysis_run_id
+    assert row.calculated_at == observation.calculated_at
     assert row.source_accessions == ("000001-25-000001",)
     assert row.source_fact_selectors == ("RevenueFromContractWithCustomerExcludingAssessedTax",)
 
