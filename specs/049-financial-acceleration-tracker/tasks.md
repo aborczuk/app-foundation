@@ -95,8 +95,8 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Write red tests for expression parsing, unit checks, unsafe operations, and dependency cycles in `tests/financial_tracker/metrics/test_expression.py`
-- [ ] T020 [P] [US2] Write red tests for version activation, retirement, authorization, and historical observation selection in `tests/financial_tracker/metrics/test_registry.py`
+- [X] T019 [P] [US2] Write red tests for expression parsing, unit checks, unsafe operations, and dependency cycles in `tests/financial_tracker/metrics/test_expression.py`
+- [X] T020 [P] [US2] Write red tests for version activation, retirement, authorization, and historical observation selection in `tests/financial_tracker/metrics/test_registry.py`
 
 ### Implementation for User Story 2
 

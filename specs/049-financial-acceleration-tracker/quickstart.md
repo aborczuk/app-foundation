@@ -128,6 +128,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T018-48855da:runbook -->
 - Closed T018: added a real PostgreSQL filing-backed analysis integration test. With FINANCIAL_TRACKER_TEST_DATABASE_URL set to the local Docker service, the guarded test passed 1 test in 0.18s; without the URL it explicitly skipped. The test persists and rereads filing facts/provenance before selection, observation, authorization, and projection.
 
+
+<!-- speckit_implement_docs:entry_id=T020-5a015f7:runbook -->
+- Closed T020: added red lifecycle coverage for immutable metric-definition versions, tenant authorization, retirement, and historical observation selection. Registry behavior remains intentionally red until T022; Ruff passed.
+
 ## Decision Log
 
 
@@ -184,3 +188,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T018-48855da:decision_log -->
 - T018 is the first live proof of the analysis seam; no live PostgreSQL result is claimed when the database URL is absent, and the observed host-authorized run passed against localhost:55432.
+
+<!-- speckit_implement_docs:entry_id=T020-5a015f7:decision_log -->
+- Metric definition versions are immutable content identities; retirement removes active selection without deleting historical versions or observations, and reactivation is prohibited.
