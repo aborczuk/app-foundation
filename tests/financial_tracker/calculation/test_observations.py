@@ -1,5 +1,6 @@
 """Red fixture coverage for immutable metric observations."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -49,9 +50,10 @@ def test_observation_identity_is_idempotent_and_provenance_complete() -> None:
     """Retrying the same calculation identity returns one immutable observation."""
     store = InMemoryObservationStore()
     observation = _observation()
+    retry_candidate = replace(observation, id=uuid4(), calculated_at=datetime(2025, 5, 3, tzinfo=timezone.utc))
 
     first = store.put(observation)
-    retry = store.put(observation)
+    retry = store.put(retry_candidate)
 
     assert retry is first
     assert store.all() == (observation,)

@@ -52,6 +52,15 @@ class MetricObservation:
             raise ValueError("observation value must be finite")
         if not self.provenance:
             raise ValueError("observation requires filing provenance")
+        if any(
+            not provenance.accession.strip()
+            or not provenance.source_url.strip()
+            or not provenance.selector.strip()
+            or not isinstance(provenance.captured_at, datetime)
+            or provenance.captured_at.tzinfo is None
+            for provenance in self.provenance
+        ):
+            raise ValueError("observation provenance fields must be complete")
 
     @property
     def identity_key(self) -> tuple[object, ...]:
@@ -67,6 +76,22 @@ class MetricObservation:
             self.source_snapshot_hash,
             self.analysis_run_id,
         )
+
+    @property
+    def content_key(self) -> tuple[object, ...]:
+        """Return semantic content used to compare idempotent retries."""
+        provenance_key = tuple(
+            (
+                provenance.filing_id,
+                provenance.accession,
+                provenance.source_url,
+                provenance.selector,
+                provenance.captured_at,
+                provenance.source_fact_id,
+            )
+            for provenance in self.provenance
+        )
+        return (self.value, self.quality_state, self.freshness, provenance_key)
 
     def with_value(self, value: Decimal | None) -> Self:
         """Return a new observation candidate with the same calculation identity."""
@@ -84,7 +109,7 @@ class InMemoryObservationStore:
         """Insert an observation once or reject a changed retry for the same identity."""
         existing = self._observations.get(observation.identity_key)
         if existing is not None:
-            if existing != observation:
+            if existing.content_key != observation.content_key:
                 raise ObservationConflictError("observation identity already has different content")
             return existing
         self._observations[observation.identity_key] = observation
