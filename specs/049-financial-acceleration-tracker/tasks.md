@@ -137,7 +137,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T032 [US3] Implement worker leasing and coordinator-owned running state in `src/financial_tracker/work/coordinator.py`
 - [X] T033 [US3] Implement retry-wait, dead-letter, and expired-lease recovery in `src/financial_tracker/work/coordinator.py`
 - [X] T034 [US3] Add refresh metrics, structured failure artifacts, and operator continuity guidance in `docs/financial-tracker-operations.md`
-- [ ] T035 [US3] Add bounded live-SEC compatibility and outage-path integration tests for direct SEC and EdgarTools extraction, keeping Arelle validation fallback-only, in `tests/integration/financial_tracker/test_live_sec.py`
+- [X] T035 [US3] Add bounded live-SEC compatibility and outage-path integration tests for direct SEC and EdgarTools extraction, keeping Arelle validation fallback-only, in `tests/integration/financial_tracker/test_live_sec.py`
 
 **Checkpoint**: US3 is independently demonstrable with safe refresh, amendment history, retry recovery, and operator-visible degradation.
 
