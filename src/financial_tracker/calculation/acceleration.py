@@ -10,13 +10,15 @@ from financial_tracker.persistence.models import QualityState
 
 def calculate_operating_margin(operating_income: Decimal, revenue: Decimal) -> Decimal | None:
     """Return operating income divided by revenue, or unavailable for zero revenue."""
-    if revenue == 0:
+    if not operating_income.is_finite() or not revenue.is_finite() or revenue == 0:
         return None
     return operating_income / revenue
 
 
 def calculate_improvement_streak(values: Sequence[Decimal]) -> int:
     """Count consecutive increases ending at the latest metric value."""
+    if not all(value.is_finite() for value in values):
+        return 0
     streak = 0
     for current, prior in zip(reversed(values), reversed(values[:-1])):
         if current <= prior:
@@ -27,7 +29,7 @@ def calculate_improvement_streak(values: Sequence[Decimal]) -> int:
 
 def calculate_acceleration(values: Sequence[Decimal], *, materiality: Decimal) -> Decimal | None:
     """Return the latest second difference when it meets the materiality threshold."""
-    if len(values) < 3:
+    if len(values) < 3 or not materiality.is_finite() or not all(value.is_finite() for value in values):
         return None
     latest_change = values[-1] - values[-2]
     prior_change = values[-2] - values[-3]

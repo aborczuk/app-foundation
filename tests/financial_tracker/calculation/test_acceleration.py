@@ -37,3 +37,13 @@ def test_returns_only_finite_quality_states() -> None:
     assert verified is QualityState.VERIFIED
     assert incomplete is QualityState.INCOMPLETE
     assert ambiguous is QualityState.AMBIGUOUS
+
+
+def test_rejects_non_finite_numeric_inputs() -> None:
+    """Non-finite inputs are unavailable rather than emitted as metric values."""
+    non_finite = Decimal("NaN")
+
+    assert acceleration.calculate_operating_margin(non_finite, Decimal("100")) is None
+    assert acceleration.calculate_improvement_streak([Decimal("100"), non_finite]) == 0
+    assert acceleration.calculate_acceleration([Decimal("100"), non_finite, Decimal("120")], materiality=Decimal("1")) is None
+    assert acceleration.quality_state_for(value=non_finite, inputs_complete=True) is QualityState.FAILED
