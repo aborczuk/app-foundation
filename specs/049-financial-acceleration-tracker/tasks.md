@@ -74,7 +74,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T015 [US1] Implement streak, acceleration classification, and finite quality-state calculations in `src/financial_tracker/calculation/acceleration.py`
 - [X] T016 [US1] Persist immutable metric observations with source snapshot, calculation version, and complete provenance in `src/financial_tracker/calculation/observations.py`
 - [X] T017 [US1] Implement the authorized filing-analysis read model and response contract in `src/financial_tracker/query/analysis.py`
-- [ ] T018 [US1] Add the filing-backed analysis integration test against real PostgreSQL fixtures in `tests/integration/financial_tracker/test_analysis.py`
+- [X] T018 [US1] Add the filing-backed analysis integration test against real PostgreSQL fixtures in `tests/integration/financial_tracker/test_analysis.py`
 
 **Checkpoint**: US1 is independently demonstrable from fixture ingestion through a provenance-complete acceleration result.
 

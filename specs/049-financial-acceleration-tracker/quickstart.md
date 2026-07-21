@@ -124,6 +124,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T017-7c52ef7:runbook -->
 - Closed T017: added tenant- and issuer-authorized analysis projections carrying company/period identity, metric definition version/hash/state, value or finite quality, analysis run, freshness, accessions, selectors, calculated timestamp, and correlation ID. Focused query/observation suite passed 5 tests; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T018-48855da:runbook -->
+- Closed T018: added a real PostgreSQL filing-backed analysis integration test. With FINANCIAL_TRACKER_TEST_DATABASE_URL set to the local Docker service, the guarded test passed 1 test in 0.18s; without the URL it explicitly skipped. The test persists and rereads filing facts/provenance before selection, observation, authorization, and projection.
+
 ## Decision Log
 
 
@@ -177,3 +181,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T017-7c52ef7:decision_log -->
 - Authorization is enforced before projection and tenant filtering occurs before output; the shared AnalysisRow remains provider-payload-free for API, dashboard, and export reuse.
+
+<!-- speckit_implement_docs:entry_id=T018-48855da:decision_log -->
+- T018 is the first live proof of the analysis seam; no live PostgreSQL result is claimed when the database URL is absent, and the observed host-authorized run passed against localhost:55432.
