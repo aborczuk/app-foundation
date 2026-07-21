@@ -221,3 +221,40 @@ def test_company_history_excludes_foreign_tenant_observations_for_authorized_iss
 
     assert history[0].is_gap is True
     assert history[0].source_accessions == ()
+
+
+def test_company_history_duplicate_selection_is_order_independent() -> None:
+    """Duplicate observations with equal run timestamps select the same result."""
+    from financial_tracker.query.company_history import read_company_history
+
+    issuer_id = uuid4()
+    scope = _scope(issuer_id)
+    period = _period(issuer_id, 1)
+    filing = _filing(issuer_id, period.id, amendment=False)
+    first = _observation(
+        issuer_id,
+        period.id,
+        filing,
+        quality_state=QualityState.VERIFIED,
+        value=Decimal("0.12"),
+    )
+    second = replace(first, id=uuid4(), value=Decimal("0.13"))
+
+    forward = read_company_history(
+        scope,
+        (period,),
+        (first, second),
+        (filing,),
+        issuer_id=issuer_id,
+        metric_id="operating_margin",
+    )
+    reversed_history = read_company_history(
+        scope,
+        (period,),
+        (second, first),
+        (filing,),
+        issuer_id=issuer_id,
+        metric_id="operating_margin",
+    )
+
+    assert forward == reversed_history

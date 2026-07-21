@@ -87,9 +87,19 @@ def _select_observations(
     return selected
 
 
-def _observation_key(observation: MetricObservation) -> tuple[object, str]:
+def _observation_key(observation: MetricObservation) -> tuple[object, ...]:
     """Return a stable recency key for duplicate quarter observations."""
-    return observation.calculated_at, observation.analysis_run_id.hex
+    return (
+        observation.calculated_at,
+        observation.analysis_run_id.hex,
+        observation.definition_version,
+        observation.definition_hash,
+        "" if observation.value is None else str(observation.value),
+        str(observation.quality_state),
+        observation.freshness,
+        tuple(item.accession for item in observation.provenance),
+        observation.id.hex,
+    )
 
 
 def _project_point(
