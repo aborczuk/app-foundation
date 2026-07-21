@@ -148,6 +148,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T024-e5c1a66:runbook -->
 - T024 lifecycle orchestration implemented with atomic add-and-activate for in-memory and PostgreSQL registries, stale/invalid dry-run rejection, exact content propagation, owner authorization, and retirement preserving history; full metric suite 19 passed, live PostgreSQL activation path 1 passed in 0.14s, Ruff/Pyright clean, QA PASS.
 
+
+<!-- speckit_implement_docs:entry_id=T025:runbook -->
+- T025 validated dependency-aware targeted recalculation planning with scope authorization, bounded dependency traversal, deterministic ordering, per-metric definition identities, and idempotent work-item enqueueing. Focused tests: 7 passed; broader financial_tracker tests: 44 passed, 1 live harness test skipped without database URL; explicit live PostgreSQL harness: 1 passed.
+
 ## Decision Log
 
 
@@ -219,3 +223,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T024-e5c1a66:decision_log -->
 - T024 verification evidence: full metric pytest suite reported 19 passed; live PostgreSQL registry integration reported 1 passed in 0.14s; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T025:decision_log -->
+- T025 uses an injected queue boundary with an in-memory reference implementation; PostgreSQL queue persistence remains a later coordinator seam.
