@@ -1956,3 +1956,9 @@
 {"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t030-20260721T204502Z", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.265630Z"}
 {"actor": "implement", "attempt": 1, "commit_sha": "bfbd1e1", "event": "commit_created", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.307335Z"}
 {"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.347770Z"}
+{"actor": "implement", "attempt": 1, "details": "Start filing refresh persistence and targeted recalculation seam", "event": "task_started", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T20:46:45.074949Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.506253Z"}
+{"actor": "implement", "attempt": 1, "event": "offline_qa_started", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.559038Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t031-20260721T210044Z", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.614595Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "816517f", "event": "commit_created", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.660031Z"}
+{"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.704575Z"}

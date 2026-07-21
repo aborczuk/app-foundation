@@ -133,7 +133,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 - [X] T029 [US3] Implement the SEC filing discovery adapter with a reviewed EdgarTools integration seam, direct SEC transport, User-Agent, timeout, and rate-budget policy in `src/financial_tracker/sec/adapter.py`
 - [X] T030 [US3] Add classified retry and circuit-open behavior around the direct and EdgarTools SEC adapter paths in `src/financial_tracker/sec/adapter.py`
-- [ ] T031 [US3] Implement amendment detection and targeted refresh orchestration in `src/financial_tracker/sec/refresh.py`
+- [X] T031 [US3] Implement amendment detection and targeted refresh orchestration in `src/financial_tracker/sec/refresh.py`
 - [ ] T032 [US3] Implement worker leasing and coordinator-owned running state in `src/financial_tracker/work/coordinator.py`
 - [ ] T033 [US3] Implement retry-wait, dead-letter, and expired-lease recovery in `src/financial_tracker/work/coordinator.py`
 - [ ] T034 [US3] Add refresh metrics, structured failure artifacts, and operator continuity guidance in `docs/financial-tracker-operations.md`
