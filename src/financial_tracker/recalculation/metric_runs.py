@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID, uuid4
 
+from financial_tracker.calculation.observations import MetricObservation
 from financial_tracker.identity.resolver import AuthorizationScope, require_issuer_access
+from financial_tracker.metrics.registry import MetricDefinitionVersion
 from financial_tracker.work.state import WorkItem
 
 _MAX_DEPENDENCY_NODES = 1024
@@ -21,6 +23,29 @@ class RecalculationQueue(Protocol):
 
     def enqueue(self, target: "MetricRecalculationTarget") -> WorkItem:
         """Enqueue one target and return its durable work-item projection."""
+        ...
+
+
+class DefinitionSelectionSource(Protocol):
+    """Registry read boundary required for versioned observation selection."""
+
+    def active_version(
+        self,
+        metric_id: str,
+        *,
+        scope: AuthorizationScope,
+    ) -> MetricDefinitionVersion | None:
+        """Return the current active definition for one authorized metric."""
+        ...
+
+    def get_version(
+        self,
+        metric_id: str,
+        *,
+        version: int,
+        scope: AuthorizationScope,
+    ) -> MetricDefinitionVersion:
+        """Return one explicitly requested definition version."""
         ...
 
 
@@ -148,6 +173,75 @@ def enqueue_targeted_recalculation(
 ) -> tuple[WorkItem, ...]:
     """Plan affected metrics and enqueue each target through the queue boundary."""
     return tuple(queue.enqueue(target) for target in plan_recalculation_targets(request, dependency_graph))
+
+
+def select_versioned_observation(
+    registry: DefinitionSelectionSource,
+    observations: Iterable[MetricObservation],
+    *,
+    metric_id: str,
+    scope: AuthorizationScope,
+    issuer_id: UUID,
+    fiscal_period_id: UUID,
+    analysis_run_id: UUID,
+    definition_version: int | str | float | None = None,
+) -> MetricObservation | None:
+    """Select active-default or explicit historical output without mixing versions."""
+    require_issuer_access(scope, issuer_id)
+    definition = _resolve_definition(
+        registry,
+        metric_id,
+        scope=scope,
+        definition_version=definition_version,
+    )
+    if definition is None:
+        return None
+    matches = tuple(
+        observation
+        for observation in observations
+        if (
+            observation.tenant_id == scope.tenant_id
+            and observation.issuer_id == issuer_id
+            and observation.fiscal_period_id == fiscal_period_id
+            and observation.metric_id == metric_id
+            and observation.definition_version == str(definition.version)
+            and observation.analysis_run_id == analysis_run_id
+        )
+    )
+    if not matches:
+        return None
+    first = matches[0]
+    if any(item.definition_hash != definition.content_hash for item in matches):
+        raise ValueError("observation definition hash does not match the selected version")
+    if any(item.identity_key != first.identity_key for item in matches[1:]):
+        raise ValueError("multiple observations conflict for one calculation identity")
+    if any(item.content_key != first.content_key for item in matches[1:]):
+        raise ValueError("multiple observations conflict for one calculation identity")
+    return first
+
+
+def _resolve_definition(
+    registry: DefinitionSelectionSource,
+    metric_id: str,
+    *,
+    scope: AuthorizationScope,
+    definition_version: int | str | float | None,
+) -> MetricDefinitionVersion | None:
+    """Resolve either the authorized active definition or one historical version."""
+    if definition_version is None:
+        return registry.active_version(metric_id, scope=scope)
+    if isinstance(definition_version, bool) or not isinstance(definition_version, (int, str)):
+        raise ValueError("definition_version must be a positive integer")
+    if isinstance(definition_version, str):
+        candidate = definition_version.strip()
+        if not candidate.isdecimal():
+            raise ValueError("definition_version must be a positive integer")
+        version = int(candidate)
+    else:
+        version = definition_version
+    if version < 1:
+        raise ValueError("definition_version must be a positive integer")
+    return registry.get_version(metric_id, version=version, scope=scope)
 
 
 class InMemoryMetricRunQueue:

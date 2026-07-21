@@ -1,16 +1,22 @@
 """Contract coverage for dependency-aware targeted recalculation enqueueing."""
 
 from dataclasses import replace
+from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
 
+from financial_tracker.calculation.observations import MetricObservation
 from financial_tracker.identity.resolver import AuthorizationError, AuthorizationScope
+from financial_tracker.metrics.registry import MetricDefinitionVersion, MetricRegistry
+from financial_tracker.persistence.models import Provenance, QualityState
 from financial_tracker.recalculation.metric_runs import (
     InMemoryMetricRunQueue,
     MetricRecalculationRequest,
     enqueue_targeted_recalculation,
     plan_recalculation_targets,
+    select_versioned_observation,
 )
 from financial_tracker.work.state import WorkState
 
@@ -146,3 +152,193 @@ def test_idempotency_key_encodes_fields_without_delimiter_collisions() -> None:
     other = replace(target, definition_version="2", definition_hash="3:hash:2")
 
     assert target.idempotency_key != other.idempotency_key
+
+
+def _historical_definition(version: int, owner_id) -> MetricDefinitionVersion:
+    """Build one registry definition for historical-selection tests."""
+    return MetricDefinitionVersion(
+        metric_id="margin",
+        tenant_id="tenant-a",
+        version=version,
+        expression="revenue / operating_income",
+        content_hash=f"margin-hash-{version}",
+        output_unit="ratio",
+        state="draft",
+        created_by=owner_id,
+        created_at=datetime(2025, version, 1, tzinfo=timezone.utc),
+    )
+
+
+def _historical_observation(
+    version: int,
+    *,
+    issuer_id,
+    fiscal_period_id,
+    analysis_run_id,
+    value: str = "0.20",
+) -> MetricObservation:
+    """Build one observation pinned to a fixed version and calculation identity."""
+    return MetricObservation(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        issuer_id=issuer_id,
+        fiscal_period_id=fiscal_period_id,
+        metric_id="margin",
+        definition_version=str(version),
+        definition_hash=f"margin-hash-{version}",
+        definition_state="active",
+        calculation_version="calc-1",
+        source_snapshot_hash=f"snapshot-{version}",
+        analysis_run_id=analysis_run_id,
+        value=Decimal(value),
+        quality_state=QualityState.VERIFIED,
+        freshness="current",
+        provenance=(
+            Provenance(
+                uuid4(),
+                uuid4(),
+                "000001-25-000001",
+                "https://sec.test/source",
+                "Revenue",
+                datetime(2025, 5, 1, tzinfo=timezone.utc),
+            ),
+        ),
+        calculated_at=datetime(2025, 5, 2, tzinfo=timezone.utc),
+    )
+
+
+def test_selects_active_default_and_explicit_historical_version() -> None:
+    """Default reads use the newest active version while explicit reads preserve history."""
+    owner_id = uuid4()
+    issuer_id = uuid4()
+    fiscal_period_id = uuid4()
+    analysis_run_id = uuid4()
+    scope = AuthorizationScope(owner_id, "tenant-a", "subject-a", frozenset(), frozenset({issuer_id}))
+    registry = MetricRegistry()
+    for version in (1, 2):
+        registry.add_version(_historical_definition(version, owner_id), scope=scope)
+        registry.activate("margin", version=version, scope=scope)
+    observations = (
+        _historical_observation(
+            1,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        ),
+        _historical_observation(
+            2,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        ),
+    )
+
+    assert (
+        select_versioned_observation(
+            registry,
+            observations,
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        )
+        is observations[1]
+    )
+    assert (
+        select_versioned_observation(
+            registry,
+            observations,
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+            definition_version="1",
+        )
+        is observations[0]
+    )
+
+
+def test_rejects_hash_conflicts_and_unauthorized_historical_reads() -> None:
+    """Versioned reads reject corrupt content and never bypass issuer scope."""
+    owner_id = uuid4()
+    issuer_id = uuid4()
+    fiscal_period_id = uuid4()
+    analysis_run_id = uuid4()
+    scope = AuthorizationScope(owner_id, "tenant-a", "subject-a", frozenset(), frozenset({issuer_id}))
+    registry = MetricRegistry()
+    registry.add_version(_historical_definition(1, owner_id), scope=scope)
+    registry.activate("margin", version=1, scope=scope)
+    observation = _historical_observation(
+        1,
+        issuer_id=issuer_id,
+        fiscal_period_id=fiscal_period_id,
+        analysis_run_id=analysis_run_id,
+    )
+    with pytest.raises(ValueError, match="hash"):
+        select_versioned_observation(
+            registry,
+            (replace(observation, definition_hash="tampered"),),
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        )
+
+    assert (
+        select_versioned_observation(
+            registry,
+            (observation, observation),
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        )
+        is observation
+    )
+    with pytest.raises(ValueError, match="identity"):
+        select_versioned_observation(
+            registry,
+            (observation, replace(observation, source_snapshot_hash="other")),
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        )
+    with pytest.raises(ValueError, match="calculation identity"):
+        select_versioned_observation(
+            registry,
+            (observation, replace(observation, value=Decimal("0.21"))),
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        )
+
+    with pytest.raises(ValueError, match="positive integer"):
+        select_versioned_observation(
+            registry,
+            (observation,),
+            metric_id="margin",
+            scope=scope,
+            issuer_id=issuer_id,
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+            definition_version=1.9,
+        )
+
+    with pytest.raises(AuthorizationError):
+        select_versioned_observation(
+            registry,
+            (observation,),
+            metric_id="margin",
+            scope=scope,
+            issuer_id=uuid4(),
+            fiscal_period_id=fiscal_period_id,
+            analysis_run_id=analysis_run_id,
+        )

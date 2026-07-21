@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
+from financial_tracker.calculation.observations import MetricObservation
 from financial_tracker.identity.resolver import AuthorizationError, AuthorizationScope
 from financial_tracker.metrics.registry import (
     MetricDefinitionVersion,
     PostgresMetricRegistry,
 )
+from financial_tracker.persistence.models import Provenance, QualityState
+from financial_tracker.recalculation.metric_runs import select_versioned_observation
 
 MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[3]
@@ -59,7 +63,7 @@ def _reset_schema(connection) -> None:
 
 
 def test_metric_definition_persists_and_enforces_owner_scope(postgres_connection) -> None:
-    """A fresh registry instance reads persisted content and honors owner authorization."""
+    """A fresh registry reads persisted content, honors scope, and selects active history."""
     _reset_schema(postgres_connection)
     now = datetime(2025, 5, 1, tzinfo=timezone.utc)
     owner_id = uuid4()
@@ -101,3 +105,49 @@ def test_metric_definition_persists_and_enforces_owner_scope(postgres_connection
     )
     assert persisted.content_hash == definition.content_hash
     assert persisted.state == "active"
+    issuer_id = uuid4()
+    fiscal_period_id = uuid4()
+    analysis_run_id = uuid4()
+    observation = MetricObservation(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        issuer_id=issuer_id,
+        fiscal_period_id=fiscal_period_id,
+        metric_id="custom_margin",
+        definition_version="1",
+        definition_hash=definition.content_hash,
+        definition_state="active",
+        calculation_version="calc-1",
+        source_snapshot_hash="snapshot-live-v1",
+        analysis_run_id=analysis_run_id,
+        value=Decimal("0.20"),
+        quality_state=QualityState.VERIFIED,
+        freshness="current",
+        provenance=(
+            Provenance(
+                uuid4(),
+                uuid4(),
+                "000001-25-000001",
+                "https://sec.test/source",
+                "Revenue",
+                now,
+            ),
+        ),
+        calculated_at=now,
+    )
+    selected = select_versioned_observation(
+        PostgresMetricRegistry(postgres_connection),
+        (observation,),
+        metric_id="custom_margin",
+        scope=AuthorizationScope(
+            owner_id,
+            tenant_id,
+            "owner",
+            frozenset(),
+            frozenset({issuer_id}),
+        ),
+        issuer_id=issuer_id,
+        fiscal_period_id=fiscal_period_id,
+        analysis_run_id=analysis_run_id,
+    )
+    assert selected is observation
