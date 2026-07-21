@@ -112,6 +112,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T014-1a6fd47:runbook -->
 - Closed T014: implemented exact-decimal operating margin, trailing improvement streak, second-difference acceleration with materiality, and finite quality-state mapping. Focused calculation and period suite passed 10 tests; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T015-66d3c2d:runbook -->
+- Closed T015: added explicit accelerating, decelerating, stable, and unavailable classifications with equality-as-material threshold semantics and invalid-input handling. Focused acceleration suite passed 11 tests; Ruff passed.
+
 ## Decision Log
 
 
@@ -156,3 +160,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T014-1a6fd47:decision_log -->
 - Non-finite Decimal inputs are rejected at each numeric calculation boundary and map to FAILED quality rather than allowing NaN or infinity into metric observations.
+
+<!-- speckit_implement_docs:entry_id=T015-66d3c2d:decision_log -->
+- Acceleration materiality equality is treated as material consistently by raw calculation and display classification; negative or non-finite thresholds are unavailable.
