@@ -38,7 +38,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T004 Add migrations and uniqueness, supersession, analysis-run, and work-item constraints in `src/financial_tracker/persistence/migrations/`
 - [X] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
 - [X] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`
-- [ ] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
+- [X] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
 - [ ] T008 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`
 - [ ] T009 Add real-PostgreSQL identity and provenance tests in `tests/integration/financial_tracker/test_foundation.py`
 - [ ] T010 Add real-PostgreSQL idempotent-ingestion and work-transition tests in `tests/integration/financial_tracker/test_foundation.py`

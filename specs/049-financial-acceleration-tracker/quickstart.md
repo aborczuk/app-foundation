@@ -80,6 +80,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T006-f2c8fb2:runbook -->
 - Closed T006: added exact-decimal fixture normalization and immutable fact/provenance callback writes; unit QA passed.
 
+
+<!-- speckit_implement_docs:entry_id=T007-994ff02:runbook -->
+- Closed T007: added transactional idempotency and structured audit handoff for normalized fixture ingestion; unit QA passed.
+
 ## Decision Log
 
 
@@ -100,3 +104,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T006-f2c8fb2:decision_log -->
 - Fixture ingestion rejects binary floats and non-finite values, preserving exact numeric representation and explicit quality states.
+
+<!-- speckit_implement_docs:entry_id=T007-994ff02:decision_log -->
+- Idempotency keys are normalized before transaction checks, and audit events are emitted only after normalized fact/provenance writes succeed.
