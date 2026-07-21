@@ -104,6 +104,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T012-080fa18:runbook -->
 - Closed T012: added red fixture coverage for exact-decimal operating margin, trailing improvement streak, second-difference materiality, and one-to-one finite quality-state mappings. The guarded pytest run intentionally remains red at collection until T014/T015 add acceleration.py; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T013-2c13f0b:runbook -->
+- Closed T013: implemented explicit fiscal-period classification, evidence-gated cumulative/annual standalone derivation, approved concept priority, issuer/quality filtering, and accepted-filing amendment precedence. Focused selector fixtures passed 5 tests; Ruff passed.
+
 ## Decision Log
 
 
@@ -142,3 +146,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T012-080fa18:decision_log -->
 - Red arithmetic fixtures are kept separate from implementation so T013-T015 must prove the same contract green; expected red collection failures are recorded explicitly rather than counted as runtime verification.
+
+<!-- speckit_implement_docs:entry_id=T013-2c13f0b:decision_log -->
+- Selector precedence is newest accepted filing snapshot first, then approved concept rank within that snapshot; this preserves amendment semantics when taxonomy changes between filings.
