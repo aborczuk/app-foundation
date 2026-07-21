@@ -57,15 +57,13 @@ class FilingRefreshCoordinator:
 
     def process(self, request: FilingRefreshRequest) -> FilingRefreshResult:
         """Apply one filing delivery atomically and return its durable outcome."""
+        _validate_fact_identity(request)
         affected_metrics = _affected_metric_ids(
             request.changed_concepts,
             request.tracked_metric_ids,
             request.metric_dependencies,
         )
-        work_keys = tuple(
-            _work_item_key(request.filing.id, metric_id, request.source_snapshot_hash)
-            for metric_id in affected_metrics
-        )
+        work_keys = tuple(_work_item_key(request.filing, metric_id) for metric_id in affected_metrics)
         try:
             with self._connection.cursor() as cursor:
                 cursor.execute(
@@ -87,6 +85,7 @@ class FilingRefreshCoordinator:
                         change_kind=request.change_kind,
                     )
 
+                _validate_lineage(cursor, request.filing)
                 _insert_filing(cursor, request.filing)
                 _insert_facts(cursor, request.facts)
                 work_item_ids = _enqueue_work_items(
@@ -125,6 +124,30 @@ def _affected_metric_ids(
                 affected.add(metric_id)
                 changed = True
     return tuple(dict.fromkeys(metric_id for metric_id in tracked_metric_ids if metric_id in affected))
+
+
+def _validate_fact_identity(request: FilingRefreshRequest) -> None:
+    """Reject facts that cannot belong to the filing's issuer and snapshot."""
+    for fact in request.facts:
+        if fact.issuer_id != request.filing.issuer_id:
+            raise ValueError("fact issuer_id must match filing issuer_id")
+        if fact.filing_id != request.filing.id:
+            raise ValueError("fact filing_id must match filing id")
+
+
+def _validate_lineage(cursor: Any, filing: Filing) -> None:
+    """Require supersession to reference an existing filing in the same identity scope."""
+    if filing.supersedes_filing_id is None:
+        return
+    cursor.execute(
+        "SELECT issuer_id, authority FROM financial_tracker.filings WHERE id = %s",
+        (filing.supersedes_filing_id,),
+    )
+    prior = cursor.fetchone()
+    if prior is None:
+        raise ValueError("superseded filing must already exist")
+    if prior[0] != filing.issuer_id or prior[1] != filing.authority:
+        raise ValueError("superseded filing must share issuer and authority")
 
 
 def _insert_filing(cursor: Any, filing: Filing) -> None:
@@ -172,9 +195,9 @@ def _insert_facts(cursor: Any, facts: Sequence[FinancialFact]) -> None:
         )
 
 
-def _work_item_key(filing_id: UUID, metric_id: str, snapshot_hash: str) -> str:
-    """Build the stable work identity for one filing and affected metric."""
-    return f"filing-refresh:{filing_id}:{metric_id}:{snapshot_hash}"
+def _work_item_key(filing: Filing, metric_id: str) -> str:
+    """Build a stable work identity from immutable filing authority and accession."""
+    return f"filing-refresh:{filing.authority}:{filing.accession}:{metric_id}"
 
 
 def _enqueue_work_items(

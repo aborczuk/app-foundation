@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -43,6 +44,7 @@ def _load_psycopg():
 def postgres_connection():
     """Yield a disposable PostgreSQL connection for one refresh scenario."""
     psycopg = _load_psycopg()
+    connection: Any
     with psycopg.connect(_database_url(), connect_timeout=5) as connection:
         with connection.cursor() as cursor:
             cursor.execute("DROP SCHEMA IF EXISTS financial_tracker CASCADE")
@@ -258,9 +260,17 @@ def test_duplicate_delivery_is_idempotent(postgres_connection) -> None:
     filing = _filing(issuer_id, period_id, "0000000001-25-000006")
     request = _request(tenant_id, filing, period_id, source_snapshot_hash="snapshot-duplicate")
     coordinator = _coordinator(postgres_connection)
+    reconstructed_filing = _filing(issuer_id, period_id, filing.accession)
 
     first = coordinator.process(request)
-    second = coordinator.process(request)
+    second = coordinator.process(
+        _request(
+            tenant_id,
+            reconstructed_filing,
+            period_id,
+            source_snapshot_hash="snapshot-duplicate",
+        )
+    )
 
     assert first.status == "queued"
     assert second.status == "duplicate"
@@ -272,6 +282,56 @@ def test_duplicate_delivery_is_idempotent(postgres_connection) -> None:
         assert cursor.fetchone()[0] == 1
         cursor.execute("SELECT COUNT(*) FROM financial_tracker.work_items")
         assert cursor.fetchone()[0] == 2
+
+
+def test_refresh_rejects_cross_issuer_fact_identity(postgres_connection) -> None:
+    """A fact from another issuer cannot be attached to the filing transaction."""
+    tenant_id = "tenant-refresh-identity"
+    _, issuer_id, period_id = _seed_identity(postgres_connection, tenant_id)
+    filing = _filing(issuer_id, period_id, "0000000001-25-000008")
+    request = _request(tenant_id, filing, period_id, source_snapshot_hash="snapshot-identity")
+    request = replace(
+        request,
+        facts=(
+            FinancialFact(
+                id=uuid4(),
+                issuer_id=uuid4(),
+                filing_id=filing.id,
+                fiscal_period_id=period_id,
+                concept="revenue",
+                value=Decimal("100"),
+                unit="USD",
+                quality_state=QualityState.VERIFIED,
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="issuer_id"):
+        _coordinator(postgres_connection).process(request)
+
+
+def test_refresh_rejects_missing_superseded_filing(postgres_connection) -> None:
+    """An amendment cannot claim lineage from a filing absent from PostgreSQL."""
+    tenant_id = "tenant-refresh-lineage"
+    _, issuer_id, period_id = _seed_identity(postgres_connection, tenant_id)
+    amendment = _filing(
+        issuer_id,
+        period_id,
+        "0000000001-25-000009",
+        is_amendment=True,
+        supersedes_filing_id=uuid4(),
+    )
+
+    with pytest.raises(ValueError, match="superseded filing"):
+        _coordinator(postgres_connection).process(
+            _request(
+                tenant_id,
+                amendment,
+                period_id,
+                source_snapshot_hash="snapshot-lineage",
+                change_kind="amendment",
+            )
+        )
 
 
 def test_targeted_recalculation_excludes_unrelated_metric(postgres_connection) -> None:
