@@ -92,6 +92,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T009-1248955:runbook -->
 - Closed T009: added live PostgreSQL identity and provenance constraint coverage; the guarded test passed against the disposable local service.
 
+
+<!-- speckit_implement_docs:entry_id=T010-c0e11e3:runbook -->
+- Closed T010: added live PostgreSQL idempotent-ingestion and durable work-transition coverage; the guarded suite passed with 2 tests.
+
 ## Decision Log
 
 
@@ -121,3 +125,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T009-1248955:decision_log -->
 - Live foundation verification requires an explicit FINANCIAL_TRACKER_TEST_DATABASE_URL and fails setup when psycopg is unavailable; missing URL is the only skip condition.
+
+<!-- speckit_implement_docs:entry_id=T010-c0e11e3:decision_log -->
+- Integration tests use a minimal PostgreSQL-backed fixture store to exercise the existing ingestion coordinator while keeping production storage adapters out of scope for the foundation seam.
