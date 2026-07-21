@@ -185,7 +185,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 5
 
-- [ ] T041 [P] [US5] Write red company-history tests for gaps, outliers, amendments, and provenance labels in `tests/financial_tracker/web/test_company_history.py`
+- [X] T041 [P] [US5] Write red company-history tests for gaps, outliers, amendments, and provenance labels in `tests/financial_tracker/web/test_company_history.py`
 
 ### Implementation for User Story 5
 
