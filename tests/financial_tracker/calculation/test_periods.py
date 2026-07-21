@@ -29,7 +29,15 @@ def _period(
     )
 
 
-def _fact(*, issuer_id: UUID, filing_id: UUID, fiscal_period_id: UUID, concept: str, value: str) -> models.FinancialFact:
+def _fact(
+    *,
+    issuer_id: UUID,
+    filing_id: UUID,
+    fiscal_period_id: UUID,
+    concept: str,
+    value: str,
+    quality_state: models.QualityState = models.QualityState.VERIFIED,
+) -> models.FinancialFact:
     """Build an exact-decimal fact fixture for selector tests."""
     return models.FinancialFact(
         id=uuid4(),
@@ -39,6 +47,7 @@ def _fact(*, issuer_id: UUID, filing_id: UUID, fiscal_period_id: UUID, concept: 
         concept=concept,
         value=Decimal(value),
         unit="USD",
+        quality_state=quality_state,
     )
 
 
@@ -143,7 +152,13 @@ def test_prefers_amendment_without_discarding_prior_fact() -> None:
     amendment_filing_id = uuid4()
     issuer_id = uuid4()
     period_id = uuid4()
-    original = _fact(issuer_id=issuer_id, filing_id=original_filing_id, fiscal_period_id=period_id, concept="Revenues", value="100")
+    original = _fact(
+        issuer_id=issuer_id,
+        filing_id=original_filing_id,
+        fiscal_period_id=period_id,
+        concept="RevenueFromContractWithCustomerExcludingAssessedTax",
+        value="100",
+    )
     amendment = _fact(issuer_id=issuer_id, filing_id=amendment_filing_id, fiscal_period_id=period_id, concept="Revenues", value="110")
     filings = {
         original_filing_id: _filing(
@@ -167,3 +182,34 @@ def test_prefers_amendment_without_discarding_prior_fact() -> None:
 
     assert selected is amendment
     assert original.value == Decimal("100")
+
+
+def test_rejects_incoherent_or_unusable_facts() -> None:
+    """Facts from another issuer or an unusable quality state are unavailable."""
+    issuer_id = uuid4()
+    filing_id = uuid4()
+    period_id = uuid4()
+    filing = _filing(
+        issuer_id=issuer_id,
+        filing_id=filing_id,
+        accession="000001-25-000003",
+        accepted_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        is_amendment=False,
+    )
+    incoherent = _fact(
+        issuer_id=uuid4(),
+        filing_id=filing_id,
+        fiscal_period_id=period_id,
+        concept="Revenues",
+        value="100",
+    )
+    ambiguous = _fact(
+        issuer_id=issuer_id,
+        filing_id=filing_id,
+        fiscal_period_id=period_id,
+        concept="Revenues",
+        value="100",
+        quality_state=models.QualityState.AMBIGUOUS,
+    )
+
+    assert periods.select_preferred_fact([incoherent, ambiguous], filings={filing_id: filing}) is None

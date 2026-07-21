@@ -73,11 +73,12 @@ def select_preferred_fact(
         for fact in facts
         if fact.concept in rank
         and fact.filing_id in filings
+        and fact.issuer_id == filings[fact.filing_id].issuer_id
         and fact.quality_state not in _UNUSABLE_QUALITY_STATES
     ]
     if not candidates:
         return None
-    return min(candidates, key=lambda fact: (rank[fact.concept], -_filing_timestamp(filings[fact.filing_id])))
+    return min(candidates, key=lambda fact: (-_filing_timestamp(filings[fact.filing_id]), rank[fact.concept]))
 
 
 def _supports_derivation(current_period: FiscalPeriod, prior_period: FiscalPeriod) -> bool:
