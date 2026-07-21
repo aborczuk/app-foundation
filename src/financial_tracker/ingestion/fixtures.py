@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, ContextManager, Protocol
 from uuid import UUID, uuid4
 
 from financial_tracker.persistence.models import FinancialFact, Provenance, QualityState
@@ -22,6 +22,46 @@ class NormalizedFixture:
 
     fact: FinancialFact
     provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class IngestionAuditEvent:
+    """Structured audit handoff for one idempotent fixture ingestion."""
+
+    id: UUID
+    tenant_id: str
+    event_type: str
+    idempotency_key: str
+    payload: Mapping[str, int | str]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class IngestionResult:
+    """Outcome of one fixture ingestion attempt."""
+
+    fact_count: int
+    duplicate: bool
+    audit_event: IngestionAuditEvent | None
+
+
+class TransactionalFixtureStore(Protocol):
+    """Storage contract required by the transactional ingestion coordinator."""
+
+    def transaction(self) -> ContextManager["TransactionalFixtureStore"]:
+        """Return a transaction context that rolls back on exceptions."""
+
+    def has_ingestion(self, tenant_id: str, idempotency_key: str) -> bool:
+        """Return whether the tenant/idempotency key was already accepted."""
+
+    def write_fact(self, fact: FinancialFact) -> None:
+        """Persist one normalized financial fact."""
+
+    def write_provenance(self, provenance: Provenance) -> None:
+        """Persist one immutable provenance record."""
+
+    def write_audit_event(self, event: IngestionAuditEvent) -> None:
+        """Persist one structured ingestion audit event."""
 
 
 def parse_decimal(value: Any) -> Decimal:
@@ -134,3 +174,36 @@ def write_normalized_records(
         provenance_writer(record.provenance)
         count += 1
     return count
+
+
+def ingest_fixture_batch(
+    records: Iterable[NormalizedFixture],
+    *,
+    tenant_id: str,
+    idempotency_key: str,
+    store: TransactionalFixtureStore,
+) -> IngestionResult:
+    """Persist one idempotent fixture batch and its structured audit handoff."""
+    if not tenant_id.strip() or not idempotency_key.strip():
+        raise FixtureParseError("tenant_id and idempotency_key must be non-empty")
+    normalized_tenant_id = tenant_id.strip()
+    normalized_idempotency_key = idempotency_key.strip()
+    normalized_records = tuple(records)
+    with store.transaction() as transaction:
+        if transaction.has_ingestion(normalized_tenant_id, normalized_idempotency_key):
+            return IngestionResult(fact_count=0, duplicate=True, audit_event=None)
+        fact_count = write_normalized_records(
+            normalized_records,
+            fact_writer=transaction.write_fact,
+            provenance_writer=transaction.write_provenance,
+        )
+        event = IngestionAuditEvent(
+            id=uuid4(),
+            tenant_id=normalized_tenant_id,
+            event_type="fixture_ingestion_completed",
+            idempotency_key=normalized_idempotency_key,
+            payload={"fact_count": fact_count, "provenance_count": fact_count},
+            created_at=datetime.now(timezone.utc),
+        )
+        transaction.write_audit_event(event)
+    return IngestionResult(fact_count=fact_count, duplicate=False, audit_event=event)

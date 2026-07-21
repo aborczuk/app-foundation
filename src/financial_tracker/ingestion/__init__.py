@@ -2,7 +2,11 @@
 
 from .fixtures import (
     FixtureParseError,
+    IngestionAuditEvent,
+    IngestionResult,
     NormalizedFixture,
+    TransactionalFixtureStore,
+    ingest_fixture_batch,
     normalize_fixture_record,
     parse_decimal,
     parse_fixture_records,
@@ -11,7 +15,11 @@ from .fixtures import (
 
 __all__ = [
     "FixtureParseError",
+    "IngestionAuditEvent",
+    "IngestionResult",
     "NormalizedFixture",
+    "TransactionalFixtureStore",
+    "ingest_fixture_batch",
     "normalize_fixture_record",
     "parse_decimal",
     "parse_fixture_records",
