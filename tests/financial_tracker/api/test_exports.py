@@ -26,7 +26,13 @@ def _scope(issuer_id) -> AuthorizationScope:
     )
 
 
-def _observation(issuer_id, *, quality_state: QualityState, freshness: str) -> MetricObservation:
+def _observation(
+    issuer_id,
+    *,
+    quality_state: QualityState,
+    freshness: str,
+    metric_id: str = "revenue_acceleration",
+) -> MetricObservation:
     """Build one deterministic observation containing visible provenance."""
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     filing_id = uuid4()
@@ -35,7 +41,7 @@ def _observation(issuer_id, *, quality_state: QualityState, freshness: str) -> M
         tenant_id="tenant-a",
         issuer_id=issuer_id,
         fiscal_period_id=uuid4(),
-        metric_id="revenue_acceleration",
+        metric_id=metric_id,
         definition_version="3",
         definition_hash="hash-v3",
         definition_state="active",
@@ -84,7 +90,9 @@ def test_api_projection_and_xlsx_export_preserve_the_same_rows() -> None:
         schema_version="1",
     )
 
-    assert artifact.rows == rows
+    assert {row.analysis_run_id for row in artifact.rows} == {
+        row.analysis_run_id for row in rows
+    }
     assert artifact.manifest.schema_version == "1"
     assert artifact.manifest.filters == {
         "issuer_id": str(issuer_id),
@@ -106,6 +114,52 @@ def test_api_projection_and_xlsx_export_preserve_the_same_rows() -> None:
     )
     assert repeated.content == artifact.content
     assert repeated.manifest == artifact.manifest
+
+    reordered = exporter.export(
+        tuple(reversed(rows)),
+        scope=scope,
+        filters={"issuer_id": str(issuer_id), "metric_id": "revenue_acceleration"},
+        requested_by=scope.user_id,
+        schema_version="1",
+    )
+    assert reordered.content == artifact.content
+
+
+def test_xlsx_export_applies_projection_filters_before_rendering() -> None:
+    """Manifest filters select only matching authorized projection rows."""
+    from financial_tracker.exports.xlsx import XlsxExportService
+
+    issuer_id = uuid4()
+    scope = _scope(issuer_id)
+    rows = read_analysis(
+        scope,
+        [
+            _observation(
+                issuer_id,
+                quality_state=QualityState.VERIFIED,
+                freshness="fresh",
+                metric_id="revenue_acceleration",
+            ),
+            _observation(
+                issuer_id,
+                quality_state=QualityState.VERIFIED,
+                freshness="fresh",
+                metric_id="margin_expansion",
+            ),
+        ],
+        issuer_id=issuer_id,
+    )
+
+    artifact = XlsxExportService().export(
+        rows,
+        scope=scope,
+        filters={"metric_id": "revenue_acceleration"},
+        requested_by=scope.user_id,
+        schema_version="1",
+    )
+
+    assert len(artifact.rows) == 1
+    assert artifact.rows[0].metric_id == "revenue_acceleration"
 
 
 def test_api_projection_denies_an_issuer_outside_authenticated_scope() -> None:

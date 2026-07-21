@@ -53,13 +53,17 @@ class XlsxExportService:
             raise AuthorizationError("export requester does not match authenticated scope")
         normalized_filters = _normalize_filters(filters)
         issuer_filter = normalized_filters.get("issuer_id")
-        filtered_issuer = _parse_issuer_filter(issuer_filter, scope)
-        export_rows = tuple(rows)
-        for row in export_rows:
+        _parse_issuer_filter(issuer_filter, scope)
+        candidate_rows = tuple(rows)
+        for row in candidate_rows:
             if row.issuer_id not in scope.issuer_ids:
                 raise AuthorizationError("export row is outside the authenticated issuer scope")
-            if filtered_issuer is not None and row.issuer_id != filtered_issuer:
-                raise AuthorizationError("export row conflicts with the issuer filter")
+        export_rows = tuple(
+            sorted(
+                _apply_filters(candidate_rows, normalized_filters),
+                key=_row_sort_key,
+            )
+        )
         content = _render_workbook(export_rows)
         manifest = ExportManifest(
             requester_id=requested_by,
@@ -78,6 +82,55 @@ class XlsxExportService:
 def _normalize_filters(filters: Mapping[str, str]) -> dict[str, str]:
     """Normalize export filters into a stable string-keyed mapping."""
     return dict(sorted((str(key), str(value)) for key, value in filters.items()))
+
+
+_FILTER_FIELDS = frozenset(
+    {
+        "issuer_id",
+        "fiscal_period_id",
+        "metric_id",
+        "definition_version",
+        "definition_hash",
+        "definition_state",
+        "quality_state",
+        "analysis_run_id",
+        "freshness",
+        "correlation_id",
+    }
+)
+
+
+def _apply_filters(
+    rows: tuple[AnalysisRow, ...], filters: Mapping[str, str]
+) -> tuple[AnalysisRow, ...]:
+    """Apply the supported projection filters before serializing the workbook."""
+    unsupported = set(filters) - _FILTER_FIELDS
+    if unsupported:
+        raise ValueError(f"unsupported export filters: {sorted(unsupported)}")
+    return tuple(
+        row
+        for row in rows
+        if all(_row_filter_value(row, key) == value for key, value in filters.items())
+    )
+
+
+def _row_filter_value(row: AnalysisRow, key: str) -> str:
+    """Return one stable string representation for an export filter field."""
+    value = getattr(row, key)
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _row_sort_key(row: AnalysisRow) -> tuple[str, ...]:
+    """Return a stable total-order key for deterministic workbook rows."""
+    return (
+        str(row.issuer_id),
+        str(row.fiscal_period_id),
+        row.metric_id,
+        row.definition_version,
+        str(row.analysis_run_id),
+    )
 
 
 def _parse_issuer_filter(value: str | None, scope: AuthorizationScope) -> UUID | None:
