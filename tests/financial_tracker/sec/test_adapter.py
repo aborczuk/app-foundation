@@ -25,6 +25,24 @@ class RecordingHTTPClient:
         return httpx.Response(200, json=self.payload, request=httpx.Request("GET", url))
 
 
+class SequenceHTTPClient:
+    """Transport double that returns or raises a sequence of outcomes."""
+
+    def __init__(self, outcomes: list[httpx.Response | Exception]) -> None:
+        """Store ordered HTTP outcomes for retry tests."""
+        self.outcomes = outcomes
+        self.calls = 0
+
+    def get(self, url: str, *, headers: Mapping[str, str], timeout: float) -> httpx.Response:
+        """Return the next outcome while recording the request count."""
+        del headers, timeout
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
 class StubEdgarToolsSource:
     """Injected EdgarTools seam used to prove provider delegation is explicit."""
 
@@ -37,6 +55,29 @@ class StubEdgarToolsSource:
         """Return provider records while recording the normalized lookup request."""
         self.calls.append((cik, forms))
         return self.records
+
+
+class FailingThenEdgarToolsSource:
+    """Provider double that fails once before returning one filing."""
+
+    def __init__(self) -> None:
+        """Initialize the provider call counter."""
+        self.calls = 0
+
+    def get_filings(self, cik: str, forms: tuple[str, ...]) -> tuple[Mapping[str, Any], ...]:
+        """Raise a transient timeout once, then return a valid provider record."""
+        del cik, forms
+        self.calls += 1
+        if self.calls == 1:
+            raise httpx.ReadTimeout("provider timeout", request=httpx.Request("GET", "https://example.com"))
+        return (
+            {
+                "accession": "0000320193-25-000007",
+                "form_type": "10-K",
+                "filed_at": "2025-11-06",
+                "source_url": "https://www.sec.gov/Archives/edgar/data/example",
+            },
+        )
 
 
 def _policy(**overrides: Any) -> adapter.SECRequestPolicy:
@@ -230,3 +271,107 @@ def test_provider_discovery_rejects_missing_source_url() -> None:
 
     with pytest.raises(ValueError, match="source_url"):
         discovery.discover_filings("0000320193", forms=("10-K",))
+
+
+def test_retry_repeats_transient_429_with_bounded_jitter() -> None:
+    """Transient rate limiting retries with the configured delay before success."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient(
+        [
+            httpx.Response(429, request=request),
+            httpx.Response(200, json={"filings": {"recent": {}}}, request=request),
+        ]
+    )
+    sleeps: list[float] = []
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            retry_policy=adapter.SECRetryPolicy(
+                max_attempts=2,
+                base_delay_seconds=1.0,
+                max_delay_seconds=1.0,
+                jitter_ratio=0.0,
+            )
+        ),
+        http_client=client,
+        sleep=sleeps.append,
+        random_value=lambda: 0.5,
+    )
+
+    discovery.fetch_submissions("0000320193")
+
+    assert client.calls == 2
+    assert sleeps == [1.0]
+
+
+def test_retry_does_not_repeat_permanent_http_errors() -> None:
+    """Permanent client errors fail immediately without consuming retry attempts."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient([httpx.Response(404, request=request)])
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(retry_policy=adapter.SECRetryPolicy(max_attempts=3)),
+        http_client=client,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        discovery.fetch_submissions("0000320193")
+
+    assert client.calls == 1
+
+
+def test_circuit_opens_after_exhausted_failures_and_recovers() -> None:
+    """Repeated exhausted failures open the circuit until its recovery window ends."""
+    request = httpx.Request("GET", "https://data.sec.gov/submissions/CIK0000320193.json")
+    client = SequenceHTTPClient(
+        [
+            httpx.Response(503, request=request),
+            httpx.Response(503, request=request),
+            httpx.Response(200, json={"filings": {"recent": {}}}, request=request),
+        ]
+    )
+    now = [0.0]
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            retry_policy=adapter.SECRetryPolicy(
+                max_attempts=1,
+                circuit_failure_threshold=2,
+                circuit_recovery_seconds=10.0,
+            )
+        ),
+        http_client=client,
+        clock=lambda: now[0],
+    )
+
+    for _ in range(2):
+        with pytest.raises(httpx.HTTPStatusError):
+            discovery.fetch_submissions("0000320193")
+    with pytest.raises(adapter.CircuitOpenError):
+        discovery.fetch_submissions("0000320193")
+
+    now[0] = 11.0
+    discovery.fetch_submissions("0000320193")
+    assert client.calls == 3
+
+
+def test_edgar_tools_path_retries_transient_provider_failures() -> None:
+    """EdgarTools discovery uses the same classified retry boundary as direct HTTP."""
+    source = FailingThenEdgarToolsSource()
+    sleeps: list[float] = []
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(
+            retry_policy=adapter.SECRetryPolicy(
+                max_attempts=2,
+                base_delay_seconds=0.25,
+                max_delay_seconds=0.25,
+                jitter_ratio=0.0,
+            )
+        ),
+        edgar_tools=source,
+        sleep=sleeps.append,
+        random_value=lambda: 0.5,
+    )
+
+    records = discovery.discover_filings("0000320193", forms=("10-K",))
+
+    assert len(records) == 1
+    assert source.calls == 2
+    assert sleeps == [0.25]
