@@ -60,8 +60,15 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T001-5dbd832:runbook -->
 - Closed T001: scaffolded the financial_tracker package boundary, exported package metadata, and registered the package for wheel builds; import and Ruff checks passed.
 
+
+<!-- speckit_implement_docs:entry_id=T002-e5f0546:runbook -->
+- Closed T002: added the real PostgreSQL harness, disposable Compose service with healthcheck, and SELECT 1 live-backend verification.
+
 ## Decision Log
 
 
 <!-- speckit_implement_docs:entry_id=T001-5dbd832:decision_log -->
 - T001 package boundary is intentionally metadata-only; domain behavior begins in later foundational tasks.
+
+<!-- speckit_implement_docs:entry_id=T002-e5f0546:decision_log -->
+- T002 uses PostgreSQL Compose only as disposable local infrastructure; the application contract remains an environment-configured PostgreSQL URL.

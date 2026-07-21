@@ -24,7 +24,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 **Purpose**: Establish the isolated Python package and test/runtime configuration required by every design slice.
 
 - [X] T001 Create the financial tracker package boundaries and configuration entry points in `src/financial_tracker/__init__.py`
-- [ ] T002 Configure migration, fixture, and real-PostgreSQL test harness conventions in `tests/financial_tracker/conftest.py`
+- [X] T002 Configure migration, fixture, and real-PostgreSQL test harness conventions in `tests/financial_tracker/conftest.py`
 
 **Checkpoint**: The package imports and the real-PostgreSQL test harness can start without application behavior.
 
