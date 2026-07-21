@@ -1962,3 +1962,9 @@
 {"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t031-20260721T210044Z", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.614595Z"}
 {"actor": "implement", "attempt": 1, "commit_sha": "816517f", "event": "commit_created", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.660031Z"}
 {"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T031", "timestamp_utc": "2026-07-21T21:00:55.704575Z"}
+{"actor": "implement", "attempt": 1, "details": "Start PostgreSQL worker lease and coordinator-owned running-state seam", "event": "task_started", "feature_id": "049", "task_id": "T032", "timestamp_utc": "2026-07-21T21:02:25.026376Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "049", "task_id": "T032", "timestamp_utc": "2026-07-21T21:54:32.818423Z"}
+{"actor": "implement", "attempt": 1, "event": "offline_qa_started", "feature_id": "049", "task_id": "T032", "timestamp_utc": "2026-07-21T21:54:32.868251Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t032-20260721T215423Z", "task_id": "T032", "timestamp_utc": "2026-07-21T21:54:32.923209Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "5b11632", "event": "commit_created", "feature_id": "049", "task_id": "T032", "timestamp_utc": "2026-07-21T21:54:32.969059Z"}
+{"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T032", "timestamp_utc": "2026-07-21T21:54:33.010040Z"}
