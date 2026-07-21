@@ -28,9 +28,14 @@ def _definition(*, version: int, owner_id, tenant_id: str = "tenant-a") -> Metri
     )
 
 
-def _scope(*, user_id, tenant_id: str = "tenant-a") -> AuthorizationScope:
+def _scope(
+    *,
+    user_id,
+    tenant_id: str = "tenant-a",
+    issuer_ids: frozenset | None = None,
+) -> AuthorizationScope:
     """Build a server-derived scope for registry authorization tests."""
-    return AuthorizationScope(user_id, tenant_id, "subject-a", frozenset(), frozenset())
+    return AuthorizationScope(user_id, tenant_id, "subject-a", frozenset(), issuer_ids or frozenset())
 
 
 def _observation(version: str) -> MetricObservation:
@@ -60,24 +65,33 @@ def test_activates_new_versions_without_rewriting_prior_definition() -> None:
     owner_id = uuid4()
     registry = MetricRegistry()
     version_one = _definition(version=1, owner_id=owner_id)
-    registry.add_version(version_one)
-    registry.activate("custom_margin", version=1, scope=_scope(user_id=owner_id))
-    registry.add_version(_definition(version=2, owner_id=owner_id))
-    registry.activate("custom_margin", version=2, scope=_scope(user_id=owner_id))
+    scope = _scope(user_id=owner_id)
+    registry.add_version(version_one, scope=scope)
+    registry.activate("custom_margin", version=1, scope=scope)
+    registry.add_version(_definition(version=2, owner_id=owner_id), scope=scope)
+    registry.activate("custom_margin", version=2, scope=scope)
 
-    assert registry.active_version("custom_margin").version == 2
-    assert registry.get_version("custom_margin", version=1).expression == "revenue / operating_income"
-    assert registry.get_version("custom_margin", version=1).content_hash == version_one.content_hash
-    assert registry.get_version("custom_margin", version=1).state == "active"
+    active = registry.active_version("custom_margin", scope=scope)
+    assert active is not None
+    assert active.version == 2
+    assert registry.get_version("custom_margin", version=1, scope=scope).expression == "revenue / operating_income"
+    assert registry.get_version("custom_margin", version=1, scope=scope).content_hash == version_one.content_hash
+    assert registry.get_version("custom_margin", version=1, scope=scope).state == "active"
     with pytest.raises(ValueError):
-        registry.add_version(replace(version_one, content_hash="tampered"))
+        registry.add_version(replace(version_one, content_hash="tampered"), scope=scope)
+    with pytest.raises(ValueError):
+        registry.add_version(replace(version_one, version=3, state="active"), scope=scope)
 
 
 def test_rejects_activation_outside_tenant_scope() -> None:
     """A caller cannot activate another tenant's metric definition."""
     owner_id = uuid4()
     registry = MetricRegistry()
-    registry.add_version(_definition(version=1, owner_id=owner_id, tenant_id="tenant-b"))
+    foreign_scope = _scope(user_id=owner_id, tenant_id="tenant-b")
+    registry.add_version(
+        _definition(version=1, owner_id=owner_id, tenant_id="tenant-b"),
+        scope=foreign_scope,
+    )
 
     with pytest.raises(AuthorizationError):
         registry.activate("custom_margin", version=1, scope=_scope(user_id=owner_id))
@@ -87,13 +101,68 @@ def test_retirement_preserves_definition_history_and_observation_selection() -> 
     """Retiring a definition changes lifecycle state but does not erase historical results."""
     owner_id = uuid4()
     registry = MetricRegistry()
-    registry.add_version(_definition(version=1, owner_id=owner_id))
-    registry.activate("custom_margin", version=1, scope=_scope(user_id=owner_id))
-    registry.retire("custom_margin", scope=_scope(user_id=owner_id))
+    scope = _scope(user_id=owner_id)
+    registry.add_version(_definition(version=1, owner_id=owner_id), scope=scope)
+    registry.add_version(_definition(version=2, owner_id=owner_id), scope=scope)
+    registry.activate("custom_margin", version=1, scope=scope)
+    registry.retire("custom_margin", scope=scope)
     observations = (_observation("1"), _observation("2"))
 
-    assert registry.active_version("custom_margin") is None
-    assert registry.get_version("custom_margin", version=1).state == "retired"
+    assert registry.active_version("custom_margin", scope=scope) is None
+    assert registry.get_version("custom_margin", version=1, scope=scope).state == "retired"
+    assert registry.get_version("custom_margin", version=2, scope=scope).state == "retired"
     with pytest.raises(ValueError):
-        registry.activate("custom_margin", version=1, scope=_scope(user_id=owner_id))
-    assert select_observation(observations, metric_id="custom_margin", definition_version="1") is observations[0]
+        registry.activate("custom_margin", version=1, scope=scope)
+    with pytest.raises(ValueError):
+        registry.activate("custom_margin", version=2, scope=scope)
+    scope = _scope(user_id=owner_id, issuer_ids=frozenset({observations[0].issuer_id}))
+    assert (
+        select_observation(
+            observations,
+            metric_id="custom_margin",
+            definition_version="1",
+            scope=scope,
+            issuer_id=observations[0].issuer_id,
+            fiscal_period_id=observations[0].fiscal_period_id,
+            analysis_run_id=observations[0].analysis_run_id,
+        )
+        is observations[0]
+    )
+
+
+def test_rejects_same_tenant_non_owner_lifecycle_changes() -> None:
+    """A tenant peer cannot activate or retire another user's definition."""
+    owner_id = uuid4()
+    registry = MetricRegistry()
+    registry.add_version(_definition(version=1, owner_id=owner_id), scope=_scope(user_id=owner_id))
+    peer_scope = _scope(user_id=uuid4())
+
+    with pytest.raises(AuthorizationError):
+        registry.activate("custom_margin", version=1, scope=peer_scope)
+
+
+def test_reads_are_isolated_when_tenants_reuse_metric_identity() -> None:
+    """Tenant-scoped reads select the matching definition when IDs overlap."""
+    owner_a = uuid4()
+    owner_b = uuid4()
+    scope_a = _scope(user_id=owner_a, tenant_id="tenant-a")
+    scope_b = _scope(user_id=owner_b, tenant_id="tenant-b")
+    registry = MetricRegistry()
+    registry.add_version(
+        _definition(version=1, owner_id=owner_a, tenant_id="tenant-a"),
+        scope=scope_a,
+    )
+    registry.add_version(
+        _definition(version=1, owner_id=owner_b, tenant_id="tenant-b"),
+        scope=scope_b,
+    )
+
+    registry.activate("custom_margin", version=1, scope=scope_a)
+    registry.activate("custom_margin", version=1, scope=scope_b)
+
+    active_a = registry.active_version("custom_margin", scope=scope_a)
+    active_b = registry.active_version("custom_margin", scope=scope_b)
+    assert active_a is not None
+    assert active_b is not None
+    assert active_a.tenant_id == "tenant-a"
+    assert active_b.tenant_id == "tenant-b"
