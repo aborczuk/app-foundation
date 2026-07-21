@@ -120,6 +120,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T016-82b22f9:runbook -->
 - Closed T016: added frozen metric observations with source/definition/calculation identity, finite-value and complete-provenance validation, idempotent retry semantics, and conflict-on-mutation behavior. Focused observation suite passed 3 tests; Ruff passed. PostgreSQL durability remains assigned to later integration coverage.
 
+
+<!-- speckit_implement_docs:entry_id=T017-7c52ef7:runbook -->
+- Closed T017: added tenant- and issuer-authorized analysis projections carrying company/period identity, metric definition version/hash/state, value or finite quality, analysis run, freshness, accessions, selectors, calculated timestamp, and correlation ID. Focused query/observation suite passed 5 tests; Ruff passed.
+
 ## Decision Log
 
 
@@ -170,3 +174,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T016-82b22f9:decision_log -->
 - Observation identity excludes generated record ID and calculated timestamp for retry comparison, while semantic value, quality, freshness, and provenance content remain immutable and conflict-checked.
+
+<!-- speckit_implement_docs:entry_id=T017-7c52ef7:decision_log -->
+- Authorization is enforced before projection and tenant filtering occurs before output; the shared AnalysisRow remains provider-payload-free for API, dashboard, and export reuse.
