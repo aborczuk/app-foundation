@@ -65,3 +65,29 @@ def test_rejects_dependency_cycles_before_activation() -> None:
 
     assert report.valid is False
     assert "dependency_cycle" in report.errors
+
+
+def test_rejects_constant_zero_division() -> None:
+    """A scalar zero denominator cannot be activated as a metric definition."""
+    report = validate_expression(
+        "revenue / 0",
+        metric_id="invalid_margin",
+        approved_inputs={"revenue": "USD"},
+        output_unit="USD",
+    )
+
+    assert report.valid is False
+    assert "division_by_zero" in report.errors
+
+
+def test_rejects_oversized_expression() -> None:
+    """Expression validation returns a bounded failure for oversized input."""
+    report = validate_expression(
+        ("revenue + " * 500) + "revenue",
+        metric_id="oversized",
+        approved_inputs={"revenue": "USD"},
+        output_unit="USD",
+    )
+
+    assert report.valid is False
+    assert report.errors == ("unsafe_syntax",)

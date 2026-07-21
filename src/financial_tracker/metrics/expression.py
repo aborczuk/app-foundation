@@ -6,6 +6,10 @@ import ast
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+_MAX_EXPRESSION_LENGTH = 4096
+_MAX_AST_NODES = 256
+_MAX_AST_DEPTH = 64
+
 
 @dataclass(frozen=True, slots=True)
 class ValidationReport:
@@ -27,17 +31,22 @@ def validate_expression(
 ) -> ValidationReport:
     """Parse and validate one bounded expression without evaluating user input."""
     errors: set[str] = set()
+    if len(expression) > _MAX_EXPRESSION_LENGTH:
+        return ValidationReport(False, "", (), ("unsafe_syntax",))
     try:
         tree = ast.parse(expression, mode="eval")
-    except SyntaxError:
+    except (RecursionError, SyntaxError):
         return ValidationReport(False, "", (), ("unsafe_syntax",))
 
-    dependencies = tuple(sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}))
+    nodes = _bounded_ast_nodes(tree)
+    if nodes is None:
+        return ValidationReport(False, "", (), ("unsafe_syntax",))
+    dependencies = tuple(sorted({node.id for node in nodes if isinstance(node, ast.Name)}))
     for dependency in dependencies:
         if dependency not in approved_inputs:
             errors.add(f"unknown_symbol:{dependency}")
     allowed_nodes = (ast.Expression, ast.BinOp, ast.Name, ast.Load, ast.Constant, ast.operator)
-    if any(not isinstance(node, allowed_nodes) for node in ast.walk(tree)):
+    if any(not isinstance(node, allowed_nodes) for node in nodes):
         errors.add("unsafe_syntax")
     inferred_unit = _infer_unit(tree.body, approved_inputs, errors)
     if inferred_unit != output_unit and inferred_unit != "unknown":
@@ -46,6 +55,19 @@ def validate_expression(
         errors.add("dependency_cycle")
     canonical = ast.unparse(tree.body)
     return ValidationReport(not errors, canonical, dependencies, tuple(sorted(errors)))
+
+
+def _bounded_ast_nodes(tree: ast.AST) -> tuple[ast.AST, ...] | None:
+    """Collect AST nodes while enforcing parser resource limits."""
+    nodes: list[ast.AST] = []
+    pending: list[tuple[ast.AST, int]] = [(tree, 0)]
+    while pending:
+        node, depth = pending.pop()
+        if len(nodes) >= _MAX_AST_NODES or depth > _MAX_AST_DEPTH:
+            return None
+        nodes.append(node)
+        pending.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+    return tuple(nodes)
 
 
 def _infer_unit(node: ast.AST, approved_inputs: Mapping[str, str], errors: set[str]) -> str:
@@ -71,6 +93,9 @@ def _infer_unit(node: ast.AST, approved_inputs: Mapping[str, str], errors: set[s
         return f"{left}*{right}"
     if isinstance(node.op, ast.Div):
         if right == "scalar":
+            if isinstance(node.right, ast.Constant) and node.right.value == 0:
+                errors.add("division_by_zero")
+                return "unknown"
             return left
         if left == right:
             return "ratio"
