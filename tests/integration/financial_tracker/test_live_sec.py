@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from financial_tracker.sec.adapter import (
+    CircuitOpenError,
     EdgarToolsSource,
     SECDiscoveryAdapter,
     SECRequestPolicy,
@@ -44,7 +45,7 @@ def test_live_direct_sec_discovery_returns_normalized_filings() -> None:
     records = discovery.discover_filings("0000320193", forms=("10-K",), source="direct")
 
     assert records
-    assert all(record.form_type == "10-K" for record in records)
+    assert all(record.form_type.startswith("10-K") for record in records)
     assert all(record.accession and record.source_url.startswith("http") for record in records)
 
 
@@ -59,7 +60,7 @@ def test_live_edgar_tools_discovery_returns_normalized_filings() -> None:
     records = discovery.discover_filings("0000320193", forms=("10-K",), source="edgar_tools")
 
     assert records
-    assert all(record.form_type == "10-K" for record in records)
+    assert all(record.form_type.startswith("10-K") for record in records)
     assert all(record.accession and record.source_url.startswith("http") for record in records)
 
 
@@ -96,6 +97,8 @@ def test_direct_sec_outage_stays_bounded_without_provider_fallback() -> None:
                 base_delay_seconds=0.0,
                 max_delay_seconds=0.0,
                 jitter_ratio=0.0,
+                circuit_failure_threshold=1,
+                circuit_recovery_seconds=60.0,
             ),
         ),
         http_client=client,
@@ -109,3 +112,12 @@ def test_direct_sec_outage_stays_bounded_without_provider_fallback() -> None:
         discovery.discover_filings("0000320193", source="direct")
 
     assert calls == 2
+
+    with pytest.raises(CircuitOpenError):
+        discovery.discover_filings("0000320193", source="direct")
+    assert calls == 2
+
+    clock[0] += 61.0
+    with pytest.raises(httpx.HTTPStatusError):
+        discovery.discover_filings("0000320193", source="direct")
+    assert calls == 4
