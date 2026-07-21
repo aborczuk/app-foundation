@@ -96,6 +96,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T010-c0e11e3:runbook -->
 - Closed T010: added live PostgreSQL idempotent-ingestion and durable work-transition coverage; the guarded suite passed with 2 tests.
 
+
+<!-- speckit_implement_docs:entry_id=T011-4c079c8:runbook -->
+- Closed T011: added red fixture coverage for standalone, cumulative, and annual fiscal-period classification/derivation, approved default concept selection, and amendment precedence. The guarded pytest run intentionally remains red at collection until T013 adds selectors/periods.py; Ruff passed.
+
 ## Decision Log
 
 
@@ -128,3 +132,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T010-c0e11e3:decision_log -->
 - Integration tests use a minimal PostgreSQL-backed fixture store to exercise the existing ingestion coordinator while keeping production storage adapters out of scope for the foundation seam.
+
+<!-- speckit_implement_docs:entry_id=T011-4c079c8:decision_log -->
+- Red fixture tasks are closed on explicit expected-failure evidence plus lint and QA review; the generic closeout tests_passed ledger event does not mean the pre-implementation behavioral tests are green.
