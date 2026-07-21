@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from decimal import Decimal
+from enum import StrEnum
 
 from financial_tracker.persistence.models import QualityState
+
+
+class AccelerationClassification(StrEnum):
+    """Finite display states for the direction of a material acceleration."""
+
+    ACCELERATING = "accelerating"
+    DECELERATING = "decelerating"
+    STABLE = "stable"
+    UNAVAILABLE = "unavailable"
 
 
 def calculate_operating_margin(operating_income: Decimal, revenue: Decimal) -> Decimal | None:
@@ -37,6 +47,17 @@ def calculate_acceleration(values: Sequence[Decimal], *, materiality: Decimal) -
     if abs(acceleration) < materiality:
         return None
     return acceleration
+
+
+def classify_acceleration(acceleration: Decimal | None, *, materiality: Decimal) -> AccelerationClassification:
+    """Classify acceleration direction while keeping missing and invalid states explicit."""
+    if acceleration is None or not acceleration.is_finite() or not materiality.is_finite() or materiality < 0:
+        return AccelerationClassification.UNAVAILABLE
+    if acceleration == 0 or abs(acceleration) <= materiality:
+        return AccelerationClassification.STABLE
+    if acceleration > 0:
+        return AccelerationClassification.ACCELERATING
+    return AccelerationClassification.DECELERATING
 
 
 def quality_state_for(*, value: Decimal | None, inputs_complete: bool, ambiguous: bool = False) -> QualityState:

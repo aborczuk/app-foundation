@@ -47,3 +47,11 @@ def test_rejects_non_finite_numeric_inputs() -> None:
     assert acceleration.calculate_improvement_streak([Decimal("100"), non_finite]) == 0
     assert acceleration.calculate_acceleration([Decimal("100"), non_finite, Decimal("120")], materiality=Decimal("1")) is None
     assert acceleration.quality_state_for(value=non_finite, inputs_complete=True) is QualityState.FAILED
+
+
+def test_classifies_acceleration_with_a_finite_materiality_boundary() -> None:
+    """Acceleration direction is explicit and immaterial values remain stable."""
+    assert acceleration.classify_acceleration(Decimal("5"), materiality=Decimal("1")) == "accelerating"
+    assert acceleration.classify_acceleration(Decimal("-5"), materiality=Decimal("1")) == "decelerating"
+    assert acceleration.classify_acceleration(Decimal("1"), materiality=Decimal("1")) == "stable"
+    assert acceleration.classify_acceleration(None, materiality=Decimal("1")) == "unavailable"
