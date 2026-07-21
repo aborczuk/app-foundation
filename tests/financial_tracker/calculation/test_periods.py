@@ -10,6 +10,7 @@ from financial_tracker.selectors import periods
 
 def _period(
     *,
+    issuer_id: UUID | None = None,
     start: date,
     end: date,
     fiscal_year: int,
@@ -19,7 +20,7 @@ def _period(
     """Build a fiscal-period fixture with explicit filing metadata."""
     return models.FiscalPeriod(
         id=uuid4(),
-        issuer_id=uuid4(),
+        issuer_id=issuer_id or uuid4(),
         start_date=start,
         end_date=end,
         fiscal_year=fiscal_year,
@@ -73,7 +74,9 @@ def test_classifies_standalone_quarter() -> None:
 
 def test_derives_cumulative_and_annual_standalone_values_only_with_evidence() -> None:
     """Supported prior cumulative evidence produces exact standalone values."""
+    issuer_id = uuid4()
     q2 = _period(
+        issuer_id=issuer_id,
         start=date(2025, 1, 1),
         end=date(2025, 6, 30),
         fiscal_year=2025,
@@ -81,6 +84,7 @@ def test_derives_cumulative_and_annual_standalone_values_only_with_evidence() ->
         period_kind="cumulative",
     )
     q1 = _period(
+        issuer_id=issuer_id,
         start=date(2025, 1, 1),
         end=date(2025, 3, 31),
         fiscal_year=2025,
@@ -88,6 +92,7 @@ def test_derives_cumulative_and_annual_standalone_values_only_with_evidence() ->
         period_kind="cumulative",
     )
     annual = _period(
+        issuer_id=issuer_id,
         start=date(2025, 1, 1),
         end=date(2025, 12, 31),
         fiscal_year=2025,
@@ -95,6 +100,7 @@ def test_derives_cumulative_and_annual_standalone_values_only_with_evidence() ->
         period_kind="annual",
     )
     nine_months = _period(
+        issuer_id=issuer_id,
         start=date(2025, 1, 1),
         end=date(2025, 9, 30),
         fiscal_year=2025,
