@@ -108,6 +108,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T013-2c13f0b:runbook -->
 - Closed T013: implemented explicit fiscal-period classification, evidence-gated cumulative/annual standalone derivation, approved concept priority, issuer/quality filtering, and accepted-filing amendment precedence. Focused selector fixtures passed 5 tests; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T014-1a6fd47:runbook -->
+- Closed T014: implemented exact-decimal operating margin, trailing improvement streak, second-difference acceleration with materiality, and finite quality-state mapping. Focused calculation and period suite passed 10 tests; Ruff passed.
+
 ## Decision Log
 
 
@@ -149,3 +153,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T013-2c13f0b:decision_log -->
 - Selector precedence is newest accepted filing snapshot first, then approved concept rank within that snapshot; this preserves amendment semantics when taxonomy changes between filings.
+
+<!-- speckit_implement_docs:entry_id=T014-1a6fd47:decision_log -->
+- Non-finite Decimal inputs are rejected at each numeric calculation boundary and map to FAILED quality rather than allowing NaN or infinity into metric observations.

@@ -70,7 +70,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 ### Implementation for User Story 1
 
 - [X] T013 [US1] Implement approved fact selectors and fiscal-period classification/derivation in `src/financial_tracker/selectors/periods.py`
-- [ ] T014 [US1] Implement built-in exact-decimal revenue, operating income, and margin calculations in `src/financial_tracker/calculation/acceleration.py`
+- [X] T014 [US1] Implement built-in exact-decimal revenue, operating income, and margin calculations in `src/financial_tracker/calculation/acceleration.py`
 - [ ] T015 [US1] Implement streak, acceleration classification, and finite quality-state calculations in `src/financial_tracker/calculation/acceleration.py`
 - [ ] T016 [US1] Persist immutable metric observations with source snapshot, calculation version, and complete provenance in `src/financial_tracker/calculation/observations.py`
 - [ ] T017 [US1] Implement the authorized filing-analysis read model and response contract in `src/financial_tracker/query/analysis.py`
