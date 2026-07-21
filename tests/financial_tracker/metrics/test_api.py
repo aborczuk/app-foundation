@@ -140,6 +140,46 @@ def test_retirement_is_owner_authorized_and_preserves_history() -> None:
     assert [item.state for item in api.history("custom_margin", scope=owner_scope)] == ["retired", "retired"]
 
 
+def test_retirement_not_found_returns_bounded_error() -> None:
+    """Unknown metric retirement does not expose registry details."""
+    api, scope = _api()
+
+    response = api.retire("missing_metric", scope=scope, correlation_id="corr-missing")
+
+    assert response.valid is False
+    assert response.error_code == "not_found"
+    assert response.errors == ()
+    assert response.correlation_id == "corr-missing"
+
+
+def test_invalid_activation_does_not_mutate_existing_history() -> None:
+    """Invalid activation is rejected before creating a new immutable version."""
+    api, scope = _api()
+    api.activate(
+        metric_id="custom_margin",
+        expression="revenue / operating_income",
+        approved_inputs={"revenue": "USD", "operating_income": "USD"},
+        input_values={"revenue": Decimal("100"), "operating_income": Decimal("40")},
+        output_unit="ratio",
+        scope=scope,
+        created_at=datetime(2025, 5, 1, tzinfo=timezone.utc),
+    )
+
+    response = api.activate(
+        metric_id="custom_margin",
+        expression="__import__('os')",
+        approved_inputs={},
+        input_values={},
+        output_unit="ratio",
+        scope=scope,
+        created_at=datetime(2025, 5, 2, tzinfo=timezone.utc),
+    )
+
+    assert response.valid is False
+    assert response.error_code == "invalid_definition"
+    assert [item.version for item in api.history("custom_margin", scope=scope)] == [1]
+
+
 @pytest.mark.parametrize("expression", ["revenue + operating_income", "revenue / 0"])
 def test_api_contract_rejects_unsafe_or_invalid_calculations(expression: str) -> None:
     """API validation keeps unsupported operations bounded and non-persisting."""
