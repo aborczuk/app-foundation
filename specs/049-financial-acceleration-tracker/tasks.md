@@ -65,7 +65,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 ### Tests for User Story 1
 
 - [X] T011 [P] [US1] Write red fixture tests for fiscal-period derivation, selectors, and amended filing behavior in `tests/financial_tracker/calculation/test_periods.py`
-- [ ] T012 [P] [US1] Write red fixture tests for exact-decimal margin, streak, acceleration, and finite quality states in `tests/financial_tracker/calculation/test_acceleration.py`
+- [X] T012 [P] [US1] Write red fixture tests for exact-decimal margin, streak, acceleration, and finite quality states in `tests/financial_tracker/calculation/test_acceleration.py`
 
 ### Implementation for User Story 1
 

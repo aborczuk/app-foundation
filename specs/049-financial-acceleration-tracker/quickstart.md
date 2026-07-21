@@ -100,6 +100,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T011-4c079c8:runbook -->
 - Closed T011: added red fixture coverage for standalone, cumulative, and annual fiscal-period classification/derivation, approved default concept selection, and amendment precedence. The guarded pytest run intentionally remains red at collection until T013 adds selectors/periods.py; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T012-080fa18:runbook -->
+- Closed T012: added red fixture coverage for exact-decimal operating margin, trailing improvement streak, second-difference materiality, and one-to-one finite quality-state mappings. The guarded pytest run intentionally remains red at collection until T014/T015 add acceleration.py; Ruff passed.
+
 ## Decision Log
 
 
@@ -135,3 +139,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T011-4c079c8:decision_log -->
 - Red fixture tasks are closed on explicit expected-failure evidence plus lint and QA review; the generic closeout tests_passed ledger event does not mean the pre-implementation behavioral tests are green.
+
+<!-- speckit_implement_docs:entry_id=T012-080fa18:decision_log -->
+- Red arithmetic fixtures are kept separate from implementation so T013-T015 must prove the same contract green; expected red collection failures are recorded explicitly rather than counted as runtime verification.
