@@ -89,10 +89,11 @@ During an SEC or worker outage:
 ## Manual Recovery
 
 Manual recovery is limited to recoverable work items identified by idempotency
-key and correlation ID. An operator must not edit immutable filings, facts, or
-observations to repair a queue failure. Re-run the coordinator recovery path,
-verify that the item transitions to `retry_wait` or `dead_letter` as expected,
-then confirm that any resulting recalculation is targeted and idempotent.
+key and current work-item state. Include a correlation ID when T046 has made one
+available. An operator must not edit immutable filings, facts, or observations
+to repair a queue failure. Re-run the coordinator recovery path, verify that
+the item transitions to `retry_wait` or `dead_letter` as expected, then confirm
+that any resulting recalculation is targeted and idempotent.
 
 ## Evidence
 
