@@ -76,6 +76,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T005-5202ea1:runbook -->
 - Closed T005: added normalized CIK/ticker resolution, historical ticker aliases, and owner-derived authorization scopes; unit QA passed.
 
+
+<!-- speckit_implement_docs:entry_id=T006-f2c8fb2:runbook -->
+- Closed T006: added exact-decimal fixture normalization and immutable fact/provenance callback writes; unit QA passed.
+
 ## Decision Log
 
 
@@ -93,3 +97,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T005-5202ea1:decision_log -->
 - Identity resolution returns stable issuer IDs across ticker history, while authorization is derived from authenticated ownership and server-side memberships.
+
+<!-- speckit_implement_docs:entry_id=T006-f2c8fb2:decision_log -->
+- Fixture ingestion rejects binary floats and non-finite values, preserving exact numeric representation and explicit quality states.
