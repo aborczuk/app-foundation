@@ -162,6 +162,7 @@ def test_company_history_preserves_gaps_outliers_amendments_and_provenance() -> 
     assert history[0].source_accessions == (filings[0].accession,)
     assert history[0].definition_version == "3"
     assert history[1].is_amendment is True
+    assert history[1].source_accessions == (filings[1].accession,)
     assert history[1].calculation_status == "invalid"
     assert history[2].is_gap is True
     assert history[2].value is None
