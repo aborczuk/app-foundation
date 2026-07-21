@@ -25,7 +25,7 @@ def test_registration_emits_owned_triggers_at_the_configured_cadence() -> None:
     assert len(triggers) == 1
     assert triggers[0].schedule_id == "sec-discovery"
     assert triggers[0].trigger_owner == "sec-worker"
-    assert triggers[0].scheduled_for == START
+    assert triggers[0].scheduled_for == START + timedelta(hours=1)
     assert triggers[0].next_run_at == START + timedelta(hours=2)
     assert scheduler.due(START + timedelta(hours=1, minutes=30)) == ()
 
@@ -45,6 +45,27 @@ def test_environment_flag_defaults_to_disabled_and_blocks_triggers(monkeypatch: 
 
     assert scheduler.enabled is False
     assert scheduler.due(START + timedelta(days=1)) == ()
+
+
+def test_true_environment_flag_enables_and_runtime_disable_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The explicit enable flag permits triggers while runtime disablement suppresses them."""
+    from financial_tracker.work.scheduler import DiscoveryScheduler
+
+    monkeypatch.setenv("SEC_SCHEDULE_ENABLED", "true")
+    scheduler = DiscoveryScheduler.from_environment()
+    scheduler.register(
+        "sec-discovery",
+        cadence=timedelta(hours=1),
+        trigger_owner="sec-worker",
+        start_at=START,
+    )
+
+    assert scheduler.enabled is True
+    assert len(scheduler.due(START + timedelta(hours=1))) == 1
+    scheduler.set_enabled(False)
+    assert scheduler.due(START + timedelta(hours=2)) == ()
+    scheduler.set_enabled(True)
+    assert len(scheduler.due(START + timedelta(hours=2))) == 1
 
 
 def test_invalid_registration_and_duplicates_are_rejected() -> None:
