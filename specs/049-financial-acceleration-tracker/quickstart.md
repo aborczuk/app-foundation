@@ -68,6 +68,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T003-615bea6:runbook -->
 - Closed T003: added frozen typed entities and explicit PostgreSQL table mappings for identity, portfolios, filings, periods, facts, and provenance; model tests and Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T004-01637b1:runbook -->
+- Closed T004: added the foundation PostgreSQL migration and live constraint smoke coverage; code-scope QA passed.
+
 ## Decision Log
 
 
@@ -79,3 +83,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T003-615bea6:decision_log -->
 - T003 keeps domain entities as immutable dataclasses and leaves database constraints to the migration seam in T004.
+
+<!-- speckit_implement_docs:entry_id=T004-01637b1:decision_log -->
+- Foundation constraints keep immutable filing/fact provenance, analysis-run identities, and retry-safe work-item identities in PostgreSQL.
