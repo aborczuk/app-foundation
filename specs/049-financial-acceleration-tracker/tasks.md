@@ -36,7 +36,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 - [X] T003 Define typed domain entities for users, portfolios, issuers, filings, fiscal periods, facts, and provenance with mappings owned by `src/financial_tracker/persistence/models.py`
 - [X] T004 Add migrations and uniqueness, supersession, analysis-run, and work-item constraints in `src/financial_tracker/persistence/migrations/`
-- [ ] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
+- [X] T005 Implement CIK/ticker identity resolution and authorization scope primitives in `src/financial_tracker/identity/resolver.py`
 - [ ] T006 Implement exact-decimal fixture parsing and normalized fact/provenance writes in `src/financial_tracker/ingestion/fixtures.py`
 - [ ] T007 Add transactional idempotency and structured audit-event handoff in `src/financial_tracker/ingestion/fixtures.py`
 - [ ] T008 Implement durable work-item state transitions and coordinator ownership rules in `src/financial_tracker/work/state.py`

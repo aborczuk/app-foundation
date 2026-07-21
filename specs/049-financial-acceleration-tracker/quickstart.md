@@ -72,6 +72,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T004-01637b1:runbook -->
 - Closed T004: added the foundation PostgreSQL migration and live constraint smoke coverage; code-scope QA passed.
 
+
+<!-- speckit_implement_docs:entry_id=T005-5202ea1:runbook -->
+- Closed T005: added normalized CIK/ticker resolution, historical ticker aliases, and owner-derived authorization scopes; unit QA passed.
+
 ## Decision Log
 
 
@@ -86,3 +90,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T004-01637b1:decision_log -->
 - Foundation constraints keep immutable filing/fact provenance, analysis-run identities, and retry-safe work-item identities in PostgreSQL.
+
+<!-- speckit_implement_docs:entry_id=T005-5202ea1:decision_log -->
+- Identity resolution returns stable issuer IDs across ticker history, while authorization is derived from authenticated ownership and server-side memberships.
