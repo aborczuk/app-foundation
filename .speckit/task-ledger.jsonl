@@ -1950,3 +1950,9 @@
 {"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t029-20260721T203457Z", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.535111Z"}
 {"actor": "implement", "attempt": 1, "commit_sha": "43585fb", "event": "commit_created", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.577269Z"}
 {"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.617554Z"}
+{"actor": "implement", "attempt": 1, "details": "Start SEC classified retry and circuit-open policy seam", "event": "task_started", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:36:03.203457Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.143036Z"}
+{"actor": "implement", "attempt": 1, "event": "offline_qa_started", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.192882Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t030-20260721T204502Z", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.265630Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "bfbd1e1", "event": "commit_created", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.307335Z"}
+{"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T030", "timestamp_utc": "2026-07-21T20:45:13.347770Z"}
