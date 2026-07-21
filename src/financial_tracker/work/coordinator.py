@@ -12,7 +12,10 @@ from .state import (
     WorkItem,
     WorkState,
     complete_work_item,
+    dead_letter_work_item,
     lease_work_item,
+    recover_expired_lease,
+    retry_work_item,
     start_work_item,
 )
 
@@ -74,6 +77,30 @@ class PostgresWorkCoordinator:
         """Complete one running item and clear its coordinator lease."""
         return self._transition(work_item_id, "complete", now=now)
 
+    def retry(self, work_item_id: UUID, *, now: datetime | None = None) -> WorkItem:
+        """Return one running item to retry wait under its current owner."""
+        return self._transition(work_item_id, "retry", now=now)
+
+    def dead_letter(self, work_item_id: UUID, *, now: datetime | None = None) -> WorkItem:
+        """Move one running item to terminal dead-letter state under its owner."""
+        return self._transition(work_item_id, "dead_letter", now=now)
+
+    def recover_expired_lease(self, work_item_id: UUID, *, now: datetime | None = None) -> WorkItem:
+        """Return an expired leased or running item to retry wait for any coordinator."""
+        effective_now = _utc_now(now)
+        try:
+            with self._connection.cursor() as cursor:
+                item = recover_expired_lease(
+                    _load_item(cursor, work_item_id),
+                    now=effective_now,
+                )
+                _persist_item(cursor, item)
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
+        return item
+
     def renew(
         self,
         work_item_id: UUID,
@@ -115,6 +142,10 @@ class PostgresWorkCoordinator:
                     item = start_work_item(item, self._coordinator_id, now=effective_now)
                 elif action == "complete":
                     item = complete_work_item(item, self._coordinator_id, now=effective_now)
+                elif action == "retry":
+                    item = retry_work_item(item, self._coordinator_id, now=effective_now)
+                elif action == "dead_letter":
+                    item = dead_letter_work_item(item, self._coordinator_id, now=effective_now)
                 else:
                     raise ValueError(f"unsupported work transition: {action}")
                 _persist_item(cursor, item)

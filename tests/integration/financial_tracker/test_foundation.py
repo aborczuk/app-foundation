@@ -331,3 +331,58 @@ def test_postgres_coordinator_owns_lease_and_running_state() -> None:
         assert completed.state is WorkState.SUCCEEDED
         assert completed.lease_owner is None
         assert completed.lease_expires_at is None
+
+
+def test_postgres_coordinator_recovers_failed_and_expired_work() -> None:
+    """Live coordinator recovery handles retry, terminal failure, and expiry."""
+    database_url = _require_database_url()
+    psycopg = _load_psycopg()
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    retry_id = uuid4()
+    dead_letter_id = uuid4()
+    expired_id = uuid4()
+
+    from financial_tracker.work.coordinator import PostgresWorkCoordinator
+
+    with psycopg.connect(database_url, connect_timeout=5) as connection:
+        _apply_migration(connection)
+        with connection.cursor() as cursor:
+            for work_id, tenant_id, idempotency_key in (
+                (retry_id, "tenant-retry", "work-retry-1"),
+                (dead_letter_id, "tenant-dead-letter", "work-dead-letter-1"),
+                (expired_id, "tenant-expired", "work-expired-1"),
+            ):
+                cursor.execute(
+                    "INSERT INTO financial_tracker.work_items "
+                    "(id, tenant_id, idempotency_key, kind, state, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (work_id, tenant_id, idempotency_key, "refresh", "queued", now),
+                )
+        owner = PostgresWorkCoordinator(connection, "worker-a")
+        recovery_worker = PostgresWorkCoordinator(connection, "worker-b")
+
+        retry_lease = owner.lease_next("tenant-retry", now=now, lease_seconds=30)
+        assert retry_lease is not None
+        assert retry_lease.id == retry_id
+        assert owner.start(retry_id, now=now).state is WorkState.RUNNING
+        retried = owner.retry(retry_id, now=now)
+        assert retried.state is WorkState.RETRY_WAIT
+        assert retried.lease_owner is None
+        assert retried.lease_expires_at is None
+
+        dead_letter_lease = owner.lease_next("tenant-dead-letter", now=now, lease_seconds=30)
+        assert dead_letter_lease is not None
+        assert dead_letter_lease.id == dead_letter_id
+        assert owner.start(dead_letter_id, now=now).state is WorkState.RUNNING
+        dead_lettered = owner.dead_letter(dead_letter_id, now=now)
+        assert dead_lettered.state is WorkState.DEAD_LETTER
+        assert dead_lettered.lease_owner is None
+        assert dead_lettered.lease_expires_at is None
+
+        expired_lease = owner.lease_next("tenant-expired", now=now, lease_seconds=30)
+        assert expired_lease is not None
+        assert expired_lease.id == expired_id
+        recovered = recovery_worker.recover_expired_lease(expired_id, now=now + timedelta(seconds=31))
+        assert recovered.state is WorkState.RETRY_WAIT
+        assert recovered.lease_owner is None
+        assert recovered.lease_expires_at is None
