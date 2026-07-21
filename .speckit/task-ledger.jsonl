@@ -1944,3 +1944,9 @@
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t028-20260721T191104Z", "task_id": "T028", "timestamp_utc": "2026-07-21T19:11:20.157712Z"}
 {"actor": "codex", "attempt": 1, "commit_sha": "8316cfe", "event": "commit_created", "feature_id": "049", "task_id": "T028", "timestamp_utc": "2026-07-21T19:11:20.204583Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T028", "timestamp_utc": "2026-07-21T19:11:20.250316Z"}
+{"actor": "implement", "attempt": 1, "details": "Start SEC discovery adapter request-policy seam with direct transport and EdgarTools integration boundary", "event": "task_started", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T19:12:01.332502Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.432012Z"}
+{"actor": "implement", "attempt": 1, "event": "offline_qa_started", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.488455Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t029-20260721T203457Z", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.535111Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "43585fb", "event": "commit_created", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.577269Z"}
+{"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T029", "timestamp_utc": "2026-07-21T20:35:17.617554Z"}
