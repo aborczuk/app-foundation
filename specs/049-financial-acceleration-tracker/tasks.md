@@ -102,7 +102,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 - [X] T021 [US2] Implement the restricted typed metric expression parser and validator in `src/financial_tracker/metrics/expression.py`
 - [X] T022 [US2] Implement immutable metric definition/version persistence and scope authorization in `src/financial_tracker/metrics/registry.py`
-- [ ] T023 [US2] Implement metric dry-run validation and bounded validation-report orchestration in `src/financial_tracker/metrics/service.py`
+- [X] T023 [US2] Implement metric dry-run validation and bounded validation-report orchestration in `src/financial_tracker/metrics/service.py`
 - [ ] T024 [US2] Implement metric activation and retirement lifecycle orchestration in `src/financial_tracker/metrics/service.py`
 - [ ] T025 [US2] Implement dependency-aware targeted recalculation enqueueing in `src/financial_tracker/recalculation/metric_runs.py`
 - [ ] T026 [US2] Implement versioned historical observation selection in `src/financial_tracker/recalculation/metric_runs.py`
