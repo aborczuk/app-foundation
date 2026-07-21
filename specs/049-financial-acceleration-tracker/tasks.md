@@ -162,7 +162,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Implement authenticated company, watchlist, and portfolio query endpoints in `src/financial_tracker/api/queries.py`
+- [X] T037 [US4] Implement authenticated company, watchlist, and portfolio query endpoints in `src/financial_tracker/api/queries.py`
 - [ ] T038 [US4] Implement authenticated metric-history query endpoints and version filters in `src/financial_tracker/api/queries.py`
 - [ ] T039 [US4] Implement deterministic XLSX generation with XlsxWriter and immutable export manifests in `src/financial_tracker/exports/xlsx.py`
 - [ ] T040 [US4] Implement the separately authorized Google Sheets delivery adapter with gspread in `src/financial_tracker/exports/google_sheets.py`
