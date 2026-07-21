@@ -113,6 +113,33 @@ def test_activation_is_tenant_scoped_and_history_is_immutable() -> None:
     assert [item.version for item in api.history("custom_margin", scope=owner_scope)] == [1, 2]
 
 
+def test_retirement_is_owner_authorized_and_preserves_history() -> None:
+    """Retirement is owner-only while all immutable versions remain queryable."""
+    api, owner_scope = _api()
+    for day in (1, 2):
+        api.activate(
+            metric_id="custom_margin",
+            expression="revenue / operating_income",
+            approved_inputs={"revenue": "USD", "operating_income": "USD"},
+            input_values={"revenue": Decimal("100"), "operating_income": Decimal("40")},
+            output_unit="ratio",
+            scope=owner_scope,
+            created_at=datetime(2025, 5, day, tzinfo=timezone.utc),
+        )
+
+    peer_response = api.retire("custom_margin", scope=_scope(uuid4()))
+    assert peer_response.valid is False
+    assert peer_response.error_code == "forbidden"
+
+    response = api.retire("custom_margin", scope=owner_scope, correlation_id="corr-retire")
+
+    assert response.valid is True
+    assert response.state == "retired"
+    assert response.version == 2
+    assert response.correlation_id == "corr-retire"
+    assert [item.state for item in api.history("custom_margin", scope=owner_scope)] == ["retired", "retired"]
+
+
 @pytest.mark.parametrize("expression", ["revenue + operating_income", "revenue / 0"])
 def test_api_contract_rejects_unsafe_or_invalid_calculations(expression: str) -> None:
     """API validation keeps unsupported operations bounded and non-persisting."""

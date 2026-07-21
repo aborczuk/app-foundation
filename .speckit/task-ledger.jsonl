@@ -2034,3 +2034,5 @@
 {"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t043-20260721T231813Z", "task_id": "T043", "timestamp_utc": "2026-07-21T23:18:33.653722Z"}
 {"actor": "implement", "attempt": 1, "commit_sha": "970893c", "event": "commit_created", "feature_id": "049", "task_id": "T043", "timestamp_utc": "2026-07-21T23:18:33.704613Z"}
 {"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T043", "timestamp_utc": "2026-07-21T23:18:33.751807Z"}
+{"actor": "implement", "attempt": 1, "event": "task_started", "feature_id": "049", "task_id": "T044", "timestamp_utc": "2026-07-21T23:19:07.850181Z"}
+{"actor": "implement", "attempt": 1, "event": "tests_failed", "feature_id": "049", "task_id": "T044", "timestamp_utc": "2026-07-21T23:24:47.750100Z"}
