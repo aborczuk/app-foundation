@@ -190,7 +190,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 ### Implementation for User Story 5
 
 - [X] T042 [US5] Implement the company history query with freshness and provenance state in `src/financial_tracker/query/company_history.py`
-- [ ] T043 [US5] Implement the company detail and trend visualization, using Recharts where the browser surface requires it, while preserving gaps and outliers in `src/financial_tracker/web/company_history.py`
+- [X] T043 [US5] Implement the company detail and trend visualization, using Recharts where the browser surface requires it, while preserving gaps and outliers in `src/financial_tracker/web/company_history.py`
 
 **Checkpoint**: US5 is independently demonstrable from historical query through trustworthy company detail rendering.
 
