@@ -100,10 +100,16 @@ def test_metric_history_filters_definition_version_and_preserves_authorized_stat
         quality_state=QualityState.STALE,
         freshness="recalculation-pending",
     )
+    foreign_tenant = _history_observation(
+        issuer_id,
+        "2",
+        now.replace(day=2),
+        tenant_id="tenant-b",
+    )
 
     selected = service.list_metric_history(
         scope,
-        (version_one, version_two),
+        (version_one, version_two, foreign_tenant),
         issuer_id=issuer_id,
         metric_id="revenue_acceleration",
         definition_version="2",
@@ -124,11 +130,12 @@ def _history_observation(
     *,
     quality_state: QualityState = QualityState.VERIFIED,
     freshness: str = "fresh",
+    tenant_id: str = "tenant-a",
 ) -> MetricObservation:
     """Build one versioned observation for metric-history query tests."""
     return MetricObservation(
         id=uuid4(),
-        tenant_id="tenant-a",
+        tenant_id=tenant_id,
         issuer_id=issuer_id,
         fiscal_period_id=uuid4(),
         metric_id="revenue_acceleration",

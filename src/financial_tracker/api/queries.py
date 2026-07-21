@@ -135,6 +135,7 @@ class AuthorizedQueryService:
                     row.calculated_at,
                     row.fiscal_period_id,
                     row.definition_version,
+                    row.analysis_run_id,
                 ),
             )
         )
