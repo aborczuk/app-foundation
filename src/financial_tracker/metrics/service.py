@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 from itertools import islice
 from typing import Protocol
 
-from financial_tracker.identity.resolver import AuthorizationScope
+from financial_tracker.identity.resolver import AuthorizationError, AuthorizationScope
 from financial_tracker.metrics.expression import validate_expression
 from financial_tracker.metrics.registry import MetricDefinitionVersion
 
@@ -159,6 +159,8 @@ def activate_metric(
     if not report.valid:
         raise ValueError("invalid metric dry run cannot be activated")
     versions = registry.versions(report.metric_id, scope=scope)
+    if versions and {item.created_by for item in versions} != {scope.user_id}:
+        raise AuthorizationError("metric definition is outside the authenticated user's scope")
     expected_version = max((item.version for item in versions), default=0) + 1
     if report.proposed_version != expected_version:
         raise ValueError("metric dry run is stale")
