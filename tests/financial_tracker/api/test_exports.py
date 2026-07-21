@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from hashlib import sha256
 from uuid import uuid4
 
 import pytest
@@ -93,6 +94,7 @@ def test_api_projection_and_xlsx_export_preserve_the_same_rows() -> None:
         "0000320193-25-000001",
         "0000320193-25-000001",
     )
+    assert artifact.manifest.content_hash == sha256(artifact.content).hexdigest()
     assert artifact.content
 
 
@@ -107,4 +109,27 @@ def test_api_projection_denies_an_issuer_outside_authenticated_scope() -> None:
             scope,
             [_observation(foreign_issuer_id, quality_state=QualityState.VERIFIED, freshness="fresh")],
             issuer_id=foreign_issuer_id,
+        )
+
+
+def test_xlsx_export_denies_rows_outside_authenticated_scope() -> None:
+    """Export authorization cannot be bypassed with foreign rows or filters."""
+    from financial_tracker.exports.xlsx import XlsxExportService
+
+    issuer_id = uuid4()
+    owner_scope = _scope(issuer_id)
+    foreign_scope = _scope(uuid4())
+    rows = read_analysis(
+        owner_scope,
+        [_observation(issuer_id, quality_state=QualityState.VERIFIED, freshness="fresh")],
+        issuer_id=issuer_id,
+    )
+
+    with pytest.raises(AuthorizationError):
+        XlsxExportService().export(
+            rows,
+            scope=foreign_scope,
+            filters={"issuer_id": str(issuer_id)},
+            requested_by=foreign_scope.user_id,
+            schema_version="1",
         )
