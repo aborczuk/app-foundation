@@ -257,9 +257,13 @@ def test_idempotent_ingestion_and_work_transitions() -> None:
         assert second.duplicate is True
         with connection.cursor() as cursor:
             cursor.execute("SELECT count(*) FROM financial_tracker.financial_facts")
-            assert cursor.fetchone()[0] == 1
+            fact_count = cursor.fetchone()
+            assert fact_count is not None
+            assert fact_count[0] == 1
             cursor.execute("SELECT count(*) FROM financial_tracker.audit_events")
-            assert cursor.fetchone()[0] == 1
+            audit_count = cursor.fetchone()
+            assert audit_count is not None
+            assert audit_count[0] == 1
 
         item = WorkItem(work_id, "tenant-a", "work-1", "refresh")
         with connection.cursor() as cursor:
@@ -289,3 +293,41 @@ def test_idempotent_ingestion_and_work_transitions() -> None:
                 (item.id,),
             )
             assert cursor.fetchone() == (WorkState.DEAD_LETTER.value, 2)
+
+
+def test_postgres_coordinator_owns_lease_and_running_state() -> None:
+    """Live coordinator leasing enforces ownership at the database boundary."""
+    database_url = _require_database_url()
+    psycopg = _load_psycopg()
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    work_id = uuid4()
+
+    from financial_tracker.work.coordinator import PostgresWorkCoordinator
+
+    with psycopg.connect(database_url, connect_timeout=5) as connection:
+        _apply_migration(connection)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO financial_tracker.work_items "
+                "(id, tenant_id, idempotency_key, kind, state, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (work_id, "tenant-coordinator", "work-coordinator-1", "refresh", "queued", now),
+            )
+        owner = PostgresWorkCoordinator(connection, "worker-a")
+        contender = PostgresWorkCoordinator(connection, "worker-b")
+
+        leased = owner.lease_next("tenant-coordinator", now=now, lease_seconds=30)
+        assert leased is not None
+        assert leased.id == work_id
+        assert leased.state is WorkState.LEASED
+        assert contender.lease_next("tenant-coordinator", now=now) is None
+
+        started = owner.start(work_id, now=now)
+        assert started.state is WorkState.RUNNING
+        with pytest.raises(CoordinatorOwnershipError):
+            contender.complete(work_id, now=now)
+
+        completed = owner.complete(work_id, now=now)
+        assert completed.state is WorkState.SUCCEEDED
+        assert completed.lease_owner is None
+        assert completed.lease_expires_at is None
