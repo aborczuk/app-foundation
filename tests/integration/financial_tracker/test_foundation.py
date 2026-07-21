@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import os
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+
+from financial_tracker.ingestion.fixtures import ingest_fixture_batch, parse_fixture_records
+from financial_tracker.work import (
+    CoordinatorOwnershipError,
+    WorkItem,
+    WorkState,
+    dead_letter_work_item,
+    lease_work_item,
+    retry_work_item,
+    start_work_item,
+)
 
 MIGRATION_PATH = (
     Path(__file__).resolve().parents[3]
@@ -49,6 +63,90 @@ def _assert_unique_violation(connection, statement: str, values: tuple[object, .
         with connection.transaction():
             with connection.cursor() as cursor:
                 cursor.execute(statement, values)
+
+
+class _PostgresFixtureStore:
+    """Minimal real-PostgreSQL adapter for the transactional fixture contract."""
+
+    def __init__(self, connection) -> None:
+        """Bind the adapter to one disposable test connection."""
+        self._connection = connection
+
+    @contextmanager
+    def transaction(self):
+        """Commit successful fixture writes and roll back failed batches."""
+        try:
+            yield self
+        except Exception:
+            self._connection.rollback()
+            raise
+        else:
+            self._connection.commit()
+
+    def has_ingestion(self, tenant_id: str, idempotency_key: str) -> bool:
+        """Check the durable completion audit event for an idempotency key."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM financial_tracker.audit_events "
+                "WHERE tenant_id = %s AND event_type = %s AND idempotency_key = %s",
+                (tenant_id, "fixture_ingestion_completed", idempotency_key),
+            )
+            return cursor.fetchone() is not None
+
+    def write_fact(self, fact) -> None:
+        """Persist one normalized fact in the live foundation schema."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO financial_tracker.financial_facts "
+                "(id, issuer_id, filing_id, fiscal_period_id, concept, value, unit, dimensions, quality_state) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+                (
+                    fact.id,
+                    fact.issuer_id,
+                    fact.filing_id,
+                    fact.fiscal_period_id,
+                    fact.concept,
+                    fact.value,
+                    fact.unit,
+                    json.dumps(dict(fact.dimensions)),
+                    fact.quality_state.value,
+                ),
+            )
+
+    def write_provenance(self, provenance) -> None:
+        """Persist one immutable provenance record in the live schema."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO financial_tracker.provenance "
+                "(id, filing_id, accession, source_url, selector, captured_at, source_fact_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    provenance.id,
+                    provenance.filing_id,
+                    provenance.accession,
+                    provenance.source_url,
+                    provenance.selector,
+                    provenance.captured_at,
+                    provenance.source_fact_id,
+                ),
+            )
+
+    def write_audit_event(self, event) -> None:
+        """Persist the structured completion event used for idempotency checks."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO financial_tracker.audit_events "
+                "(id, tenant_id, event_type, idempotency_key, payload, created_at) "
+                "VALUES (%s, %s, %s, %s, %s::jsonb, %s)",
+                (
+                    event.id,
+                    event.tenant_id,
+                    event.event_type,
+                    event.idempotency_key,
+                    json.dumps(dict(event.payload)),
+                    event.created_at,
+                ),
+            )
 
 
 def test_foundation_identity_and_provenance_constraints() -> None:
@@ -110,3 +208,84 @@ def test_foundation_identity_and_provenance_constraints() -> None:
             (uuid4(), filing_id, "0000000001-25-000001", "https://example.test/filing", "Revenue", fact_id),
             psycopg,
         )
+
+
+def test_idempotent_ingestion_and_work_transitions() -> None:
+    """Real PostgreSQL preserves ingestion idempotency and durable work state."""
+    database_url = _require_database_url()
+    psycopg = _load_psycopg()
+    issuer_id = uuid4()
+    filing_id = uuid4()
+    fact_id = uuid4()
+    work_id = uuid4()
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    with psycopg.connect(database_url, connect_timeout=5) as connection:
+        _apply_migration(connection)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO financial_tracker.issuers "
+                "(id, cik, legal_name, created_at) VALUES (%s, %s, %s, now())",
+                (issuer_id, "0000000002", "Fixture Corp"),
+            )
+            cursor.execute(
+                "INSERT INTO financial_tracker.filings "
+                "(id, issuer_id, authority, accession, form_type, filed_at, "
+                "is_amendment, source_url) VALUES (%s, %s, %s, %s, %s, now(), %s, %s)",
+                (filing_id, issuer_id, "sec", "0000000002-25-000001", "10-Q", False, "https://example.test/filing"),
+            )
+        records = parse_fixture_records(
+            [
+                {
+                    "fact_id": str(fact_id),
+                    "issuer_id": str(issuer_id),
+                    "filing_id": str(filing_id),
+                    "accession": "0000000002-25-000001",
+                    "source_url": "https://example.test/filing",
+                    "selector": "Revenue",
+                    "concept": "Revenue",
+                    "value": "125.50",
+                    "unit": "USD",
+                }
+            ]
+        )
+        store = _PostgresFixtureStore(connection)
+        first = ingest_fixture_batch(records, tenant_id="tenant-a", idempotency_key="batch-1", store=store)
+        second = ingest_fixture_batch(records, tenant_id=" tenant-a ", idempotency_key=" batch-1 ", store=store)
+        assert first.fact_count == 1
+        assert first.duplicate is False
+        assert second.duplicate is True
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM financial_tracker.financial_facts")
+            assert cursor.fetchone()[0] == 1
+            cursor.execute("SELECT count(*) FROM financial_tracker.audit_events")
+            assert cursor.fetchone()[0] == 1
+
+        item = WorkItem(work_id, "tenant-a", "work-1", "refresh")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO financial_tracker.work_items "
+                "(id, tenant_id, idempotency_key, kind, state, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (item.id, item.tenant_id, item.idempotency_key, item.kind, item.state.value, now),
+            )
+        lease_work_item(item, "worker-a", now=now, lease_seconds=30)
+        start_work_item(item, "worker-a", now=now)
+        with pytest.raises(CoordinatorOwnershipError):
+            retry_work_item(item, "worker-b", now=now)
+        retry_work_item(item, "worker-a", now=now)
+        lease_work_item(item, "worker-b", now=now + timedelta(seconds=1))
+        start_work_item(item, "worker-b", now=now + timedelta(seconds=1))
+        dead_letter_work_item(item, "worker-b", now=now + timedelta(seconds=1))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE financial_tracker.work_items SET state = %s, lease_owner = %s, "
+                "lease_expires_at = %s, attempts = %s WHERE id = %s",
+                (item.state.value, item.lease_owner, item.lease_expires_at, item.attempts, item.id),
+            )
+            connection.commit()
+            cursor.execute(
+                "SELECT state, attempts FROM financial_tracker.work_items WHERE id = %s",
+                (item.id,),
+            )
+            assert cursor.fetchone() == (WorkState.DEAD_LETTER.value, 2)
