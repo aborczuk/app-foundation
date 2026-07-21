@@ -7,8 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 _MAX_EXPRESSION_LENGTH = 4096
-_MAX_AST_NODES = 256
-_MAX_AST_DEPTH = 64
+_MAX_AST_NODES = 512
+_MAX_AST_DEPTH = 128
 _MAX_DEPENDENCY_NODES = 1024
 
 
