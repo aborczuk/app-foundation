@@ -97,6 +97,16 @@ def test_api_projection_and_xlsx_export_preserve_the_same_rows() -> None:
     assert artifact.manifest.content_hash == sha256(artifact.content).hexdigest()
     assert artifact.content
 
+    repeated = exporter.export(
+        rows,
+        scope=scope,
+        filters={"issuer_id": str(issuer_id), "metric_id": "revenue_acceleration"},
+        requested_by=scope.user_id,
+        schema_version="1",
+    )
+    assert repeated.content == artifact.content
+    assert repeated.manifest == artifact.manifest
+
 
 def test_api_projection_denies_an_issuer_outside_authenticated_scope() -> None:
     """Unauthorized company access fails without returning financial rows."""
