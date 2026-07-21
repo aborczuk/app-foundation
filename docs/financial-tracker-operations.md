@@ -25,7 +25,7 @@ filing discovery attempt, work-item transition, and recalculation handoff.
 Metric labels must remain low-cardinality. Use issuer, accession, and full
 error text in the event or artifact, not metric labels.
 
-Required metrics:
+Planned T046 metrics:
 
 | Metric | Required dimensions | Meaning |
 | --- | --- | --- |
@@ -38,14 +38,17 @@ Required metrics:
 | `financial_tracker_sec_circuit_open_total` | `source` | Requests prevented by the shared circuit state. |
 | `financial_tracker_dead_letter_total` | `kind`, `category` | Work that exhausted bounded recovery. |
 
-Alert on a sustained SEC circuit-open state, queue age beyond the service
-objective, repeated refresh failures, or a rising dead-letter count. Alerts
-must include the correlation ID and a link to the bounded failure artifact.
+After T046 is implemented, alert on a sustained SEC circuit-open state, queue
+age beyond the service objective, repeated refresh failures, or a rising
+dead-letter count. Alerts must include the correlation ID and a link to the
+bounded failure artifact. Until then, observability readiness has not passed
+and scheduled refresh must remain disabled.
 
-## Failure Artifacts
+## Planned Failure Artifacts
 
-Every refresh or work-item failure records one compact event and, when more
-detail is needed, one durable artifact. The compact event contains:
+When T046 is implemented, every refresh or work-item failure will record one
+compact event and, when more detail is needed, one durable artifact. The
+compact event must contain:
 
 - `correlation_id`, `operation`, `tenant_scope`, and UTC timestamps
 - issuer identifier and filing accession when applicable
@@ -54,7 +57,7 @@ detail is needed, one durable artifact. The compact event contains:
 - a bounded `message_excerpt` with secrets and response bodies removed
 - `artifact_uri` for the full diagnostic record, when one exists
 
-The full artifact may contain stack details, request timing, response status,
+The planned full artifact may contain stack details, request timing, response status,
 and policy decisions. Do not include authorization headers, credentials,
 portfolio holdings, or unbounded upstream response bodies. Artifact retention
 must follow the repository retention policy and must not be used as a second
@@ -67,7 +70,7 @@ Before enabling scheduled refresh, an operator verifies:
 1. The foundation migration is applied and PostgreSQL is reachable.
 2. The worker can lease, start, renew, complete, retry, and recover work.
 3. The SEC User-Agent, timeout, rate budget, retry, and circuit policies are configured.
-4. Queue age, SEC errors, circuit state, dead letters, and correlation IDs are visible.
+4. The T046 observability events, metrics, alert routing, and failure-artifact path are implemented and visible; otherwise readiness fails.
 5. The last successful observation remains queryable with freshness and quality state.
 6. The rollback action is known and has been exercised against a non-production fixture.
 
@@ -92,7 +95,8 @@ then confirm that any resulting recalculation is targeted and idempotent.
 
 ## Evidence
 
-For a refresh incident, retain the test or run log, the correlation ID, the
-bounded failure artifact URI, the final work-item state, and the last successful
-observation timestamp. A green dashboard without this evidence is not a
-successful operational verification.
+For a refresh incident after T046 is implemented, retain the test or run log,
+the correlation ID, the bounded failure artifact URI, the final work-item
+state, and the last successful observation timestamp. Before T046, retain the
+available bounded test or run log and keep scheduled refresh disabled. A green
+dashboard without this evidence is not a successful operational verification.
