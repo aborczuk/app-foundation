@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -177,3 +178,35 @@ def test_company_history_rejects_an_issuer_outside_authenticated_scope() -> None
             issuer_id=foreign_issuer_id,
             metric_id="operating_margin",
         )
+
+
+def test_company_history_excludes_foreign_tenant_observations_for_authorized_issuer() -> None:
+    """Tenant filtering leaves a same-issuer foreign observation as an explicit gap."""
+    from financial_tracker.query.company_history import read_company_history
+
+    issuer_id = uuid4()
+    scope = _scope(issuer_id)
+    period = _period(issuer_id, 1)
+    filing = _filing(issuer_id, period.id, amendment=False)
+    foreign_observation = replace(
+        _observation(
+            issuer_id,
+            period.id,
+            filing,
+            quality_state=QualityState.VERIFIED,
+            value=Decimal("0.12"),
+        ),
+        tenant_id="tenant-b",
+    )
+
+    history = read_company_history(
+        scope,
+        (period,),
+        (foreign_observation,),
+        (filing,),
+        issuer_id=issuer_id,
+        metric_id="operating_margin",
+    )
+
+    assert history[0].is_gap is True
+    assert history[0].source_accessions == ()
