@@ -152,6 +152,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T025:runbook -->
 - T025 validated dependency-aware targeted recalculation planning with scope authorization, bounded dependency traversal, deterministic ordering, per-metric definition identities, and idempotent work-item enqueueing. Focused tests: 7 passed; broader financial_tracker tests: 44 passed, 1 live harness test skipped without database URL; explicit live PostgreSQL harness: 1 passed.
 
+
+<!-- speckit_implement_docs:entry_id=T026:runbook -->
+- T026 validated active-default and explicit historical metric observation selection with scope authorization, full identity/content conflict detection, and registry hash verification. Focused tests: 9 passed; full financial_tracker suite: 46 passed, 1 skipped without database URL; live PostgreSQL metric registry selection: 1 passed.
+
 ## Decision Log
 
 
@@ -226,3 +230,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T025:decision_log -->
 - T025 uses an injected queue boundary with an in-memory reference implementation; PostgreSQL queue persistence remains a later coordinator seam.
+
+<!-- speckit_implement_docs:entry_id=T026:decision_log -->
+- Historical reads resolve the active registry version by default; explicit version requests may select retired history, but mismatched definition hashes or conflicting observation identities are rejected.
