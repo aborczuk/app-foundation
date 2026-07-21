@@ -38,6 +38,32 @@ def test_events_keep_correlation_and_redact_bounded_failure_context() -> None:
     assert runtime.events == (event,)
 
 
+def test_artifact_uris_are_bounded_and_cannot_embed_credentials() -> None:
+    """Telemetry links use safe opaque references rather than credential-bearing URLs."""
+    from financial_tracker.observability.runtime import AlertPolicy, RuntimeObservability
+
+    runtime = RuntimeObservability()
+    with pytest.raises(ValueError, match="artifact_uri"):
+        runtime.record_event(
+            operation="refresh",
+            tenant_scope="tenant-a",
+            source="direct_sec",
+            message="failed",
+            artifact_uri="https://user:password@example.com/failure",
+        )
+
+    with pytest.raises(ValueError, match="artifact_uri"):
+        AlertPolicy().evaluate(
+            now=NOW,
+            circuit_open_since=NOW - timedelta(minutes=6),
+            queue_age=None,
+            refresh_failures=0,
+            dead_letter_delta=0,
+            correlation_id="corr-uri",
+            artifact_uri="artifact://" + ("x" * 512),
+        )
+
+
 def test_metrics_allow_only_documented_low_cardinality_dimensions() -> None:
     """Metric samples preserve approved dimensions and reject issuer-level labels."""
     from financial_tracker.observability.runtime import RuntimeObservability

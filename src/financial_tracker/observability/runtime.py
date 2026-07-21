@@ -7,9 +7,12 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 MAX_MESSAGE_EXCERPT = 256
+MAX_ARTIFACT_URI = 512
+_ARTIFACT_SCHEMES = frozenset({"artifact", "https", "s3"})
 _SOURCES = frozenset({"direct_sec", "edgar_tools", "fixture"})
 _METRIC_LABELS = {
     "financial_tracker_refresh_total": frozenset({"outcome"}),
@@ -120,7 +123,7 @@ class RuntimeObservability:
             attempt=attempt,
             work_state=work_state,
             message_excerpt=_redact_excerpt(message),
-            artifact_uri=artifact_uri,
+            artifact_uri=_safe_artifact_uri(artifact_uri),
         )
         self._events.append(event)
         return event
@@ -224,6 +227,22 @@ def _redact_excerpt(message: str) -> str:
     return redacted[:MAX_MESSAGE_EXCERPT]
 
 
+def _safe_artifact_uri(value: str | None) -> str | None:
+    """Validate a bounded credential-free URI before exposing it in telemetry."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized or len(normalized) > MAX_ARTIFACT_URI or any(char.isspace() or ord(char) < 32 for char in normalized):
+        raise ValueError("artifact_uri must be bounded and whitespace-free")
+    try:
+        parsed = urlsplit(normalized)
+    except ValueError as exc:
+        raise ValueError("artifact_uri must be a valid URI") from exc
+    if parsed.scheme.lower() not in _ARTIFACT_SCHEMES or parsed.username or parsed.password:
+        raise ValueError("artifact_uri must use a safe credential-free scheme")
+    return normalized
+
+
 def _alert(
     kind: str,
     severity: str,
@@ -232,4 +251,4 @@ def _alert(
     artifact_uri: str | None,
 ) -> RuntimeAlert:
     """Build one consistent correlated alert record."""
-    return RuntimeAlert(kind, severity, message, _required_text(correlation_id, "correlation_id"), artifact_uri)
+    return RuntimeAlert(kind, severity, message, _required_text(correlation_id, "correlation_id"), _safe_artifact_uri(artifact_uri))
