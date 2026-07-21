@@ -110,10 +110,10 @@ def _required_text(value: str, field_name: str) -> str:
 
 
 def _aware_datetime(value: datetime, field_name: str) -> datetime:
-    """Reject naive timestamps so cadence comparisons remain unambiguous."""
+    """Normalize aware timestamps to UTC so cadence comparisons remain unambiguous."""
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must be timezone-aware")
-    return value
+    return value.astimezone(timezone.utc)
 
 
 def _next_occurrence(scheduled_for: datetime, cadence: timedelta, now: datetime) -> datetime:

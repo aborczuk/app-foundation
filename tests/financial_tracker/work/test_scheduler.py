@@ -68,6 +68,28 @@ def test_true_environment_flag_enables_and_runtime_disable_is_safe(monkeypatch: 
     assert len(scheduler.due(START + timedelta(hours=2))) == 1
 
 
+def test_offset_inputs_normalize_to_utc_and_long_gaps_emit_one_trigger() -> None:
+    """Offset timestamps are normalized and stale schedules do not burst catch-up work."""
+    from financial_tracker.work.scheduler import DiscoveryScheduler
+
+    scheduler = DiscoveryScheduler(enabled=True)
+    local_anchor = datetime(2025, 4, 30, 19, tzinfo=timezone(timedelta(hours=-5)))
+    schedule = scheduler.register(
+        "sec-discovery",
+        cadence=timedelta(hours=1),
+        trigger_owner="sec-worker",
+        start_at=local_anchor,
+    )
+
+    assert schedule.next_run_at == START + timedelta(hours=1)
+    assert schedule.next_run_at.tzinfo == timezone.utc
+    triggers = scheduler.due(START + timedelta(days=1))
+
+    assert len(triggers) == 1
+    assert triggers[0].next_run_at == START + timedelta(days=1, hours=1)
+    assert scheduler.due(START + timedelta(days=1)) == ()
+
+
 def test_invalid_registration_and_duplicates_are_rejected() -> None:
     """Invalid cadence, ownership, and duplicate IDs cannot create schedules."""
     from financial_tracker.work.scheduler import DiscoveryScheduler
