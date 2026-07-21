@@ -158,7 +158,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 4
 
-- [ ] T036 [P] [US4] Write red API/export parity and authorization tests in `tests/financial_tracker/api/test_exports.py`
+- [X] T036 [P] [US4] Write red API/export parity and authorization tests in `tests/financial_tracker/api/test_exports.py`
 
 ### Implementation for User Story 4
 
