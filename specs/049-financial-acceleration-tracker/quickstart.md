@@ -160,6 +160,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T027:runbook -->
 - T027 validated the callable metric-definition API contract facade for bounded validation, structured invalid_definition/forbidden responses, correlation IDs, activation revalidation, tenant authorization, and immutable version history. Focused tests: 12 passed; full financial_tracker suite: 51 passed, 1 skipped without database URL; QA PASS.
 
+
+<!-- speckit_implement_docs:entry_id=T028:runbook -->
+- T028 added the red live-PostgreSQL refresh contract for new filings, amendment lineage, restatement history preservation, duplicate delivery idempotency, and targeted metric recalculation. Ruff passed; the refresh boundary remains intentionally unimplemented until the SEC adapter/refresh tasks. QA PASS: offline-qa-t028-20260721T191104Z. Live PostgreSQL was not run because localhost access was blocked by the sandbox.
+
 ## Decision Log
 
 
@@ -240,3 +244,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T027:decision_log -->
 - MetricDefinitionAPI is a callable Python boundary over the domain service, not an HTTP server. It re-runs dry-run validation during activation and exposes only bounded response fields; HTTP transport remains a later API seam.
+
+<!-- speckit_implement_docs:entry_id=T028:decision_log -->
+- Refresh tests use a callable FilingRefreshCoordinator/FilingRefreshRequest boundary and assert durable filings, facts, and work-item projections. The contract intentionally separates red-test evidence from green implementation evidence; no live source/network behavior is claimed at T028.

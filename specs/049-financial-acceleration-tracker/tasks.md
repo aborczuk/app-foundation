@@ -127,7 +127,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] Write red refresh tests for new filings, amendments, restatements, duplicate delivery, and targeted recalculation in `tests/integration/financial_tracker/test_refresh.py`
+- [X] T028 [P] [US3] Write red refresh tests for new filings, amendments, restatements, duplicate delivery, and targeted recalculation in `tests/integration/financial_tracker/test_refresh.py`
 
 ### Implementation for User Story 3
 
