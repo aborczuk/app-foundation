@@ -116,6 +116,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T015-66d3c2d:runbook -->
 - Closed T015: added explicit accelerating, decelerating, stable, and unavailable classifications with equality-as-material threshold semantics and invalid-input handling. Focused acceleration suite passed 11 tests; Ruff passed.
 
+
+<!-- speckit_implement_docs:entry_id=T016-82b22f9:runbook -->
+- Closed T016: added frozen metric observations with source/definition/calculation identity, finite-value and complete-provenance validation, idempotent retry semantics, and conflict-on-mutation behavior. Focused observation suite passed 3 tests; Ruff passed. PostgreSQL durability remains assigned to later integration coverage.
+
 ## Decision Log
 
 
@@ -163,3 +167,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T015-66d3c2d:decision_log -->
 - Acceleration materiality equality is treated as material consistently by raw calculation and display classification; negative or non-finite thresholds are unavailable.
+
+<!-- speckit_implement_docs:entry_id=T016-82b22f9:decision_log -->
+- Observation identity excludes generated record ID and calculated timestamp for retry comparison, while semantic value, quality, freshness, and provenance content remain immutable and conflict-checked.

@@ -1865,3 +1865,9 @@
 {"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t015-20260721T163224Z", "task_id": "T015", "timestamp_utc": "2026-07-21T16:32:29.645608Z"}
 {"actor": "codex", "attempt": 1, "commit_sha": "66d3c2d", "event": "commit_created", "feature_id": "049", "task_id": "T015", "timestamp_utc": "2026-07-21T16:32:29.691694Z"}
 {"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T015", "timestamp_utc": "2026-07-21T16:32:29.740202Z"}
+{"actor": "codex", "attempt": 1, "event": "task_started", "feature_id": "049", "task_id": "T016", "timestamp_utc": "2026-07-21T16:33:05.873657Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "049", "task_id": "T016", "timestamp_utc": "2026-07-21T16:37:54.066434Z"}
+{"actor": "codex", "attempt": 1, "event": "offline_qa_started", "feature_id": "049", "task_id": "T016", "timestamp_utc": "2026-07-21T16:37:54.106673Z"}
+{"actor": "codex", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t016-20260721T163748Z", "task_id": "T016", "timestamp_utc": "2026-07-21T16:37:54.147415Z"}
+{"actor": "codex", "attempt": 1, "commit_sha": "82b22f9", "event": "commit_created", "feature_id": "049", "task_id": "T016", "timestamp_utc": "2026-07-21T16:37:54.193513Z"}
+{"actor": "codex", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T016", "timestamp_utc": "2026-07-21T16:37:54.238570Z"}
