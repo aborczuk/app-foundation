@@ -69,6 +69,7 @@ def test_company_history_view_preserves_gaps_outliers_and_status_labels() -> Non
             freshness="fresh",
             source_accessions=("acc-q3-amend",),
             is_amendment=True,
+            is_restated=True,
             is_outlier=True,
         ),
     )
@@ -91,9 +92,12 @@ def test_company_history_view_preserves_gaps_outliers_and_status_labels() -> Non
         Decimal("0.90"),
     ]
     assert view.chart_points[1].is_gap is True
+    assert view.chart_points[1].quality_state is QualityState.INCOMPLETE
+    assert view.chart_points[1].calculation_status == "missing"
     assert view.chart_points[2].is_outlier is True
-    assert view.rows[2].status_label == "amended; outlier"
+    assert view.rows[2].status_label == "amended; restated; outlier"
     assert view.rows[2].source_accessions == ("acc-q3-amend",)
+    assert view.rows[2].definition_version == "3"
 
 
 def test_company_history_view_does_not_interpolate_an_empty_history() -> None:
