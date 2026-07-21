@@ -136,6 +136,10 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 <!-- speckit_implement_docs:entry_id=T021-03efc65:runbook -->
 - T021 metric expression validator implemented with AST allowlisting, unit inference, zero-division rejection, expression/AST/dependency bounds, and iterative cycle detection; guarded tests 7 passed and Ruff clean; live PostgreSQL not applicable to this parser task.
 
+
+<!-- speckit_implement_docs:entry_id=T022-e8a2a03:runbook -->
+- T022 registry implemented with frozen definition versions, tenant/owner authorization, draft-active-retired lifecycle, exact observation selection, PostgreSQL migration and transactional registry adapter; governed unit tests 5 passed, Ruff clean, Pyright clean, live PostgreSQL integration 1 passed in 0.12s, QA PASS.
+
 ## Decision Log
 
 
@@ -198,3 +202,6 @@ Before enabling scheduled refresh, confirm PostgreSQL migration status, worker r
 
 <!-- speckit_implement_docs:entry_id=T021-03efc65:decision_log -->
 - T021 validation evidence: pytest_guard reported 7 passed in 0.01s; ruff_guard reported All checks passed; persistent QA agent PASS after fixes; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T022-e8a2a03:decision_log -->
+- T022 verification evidence: pytest_guard reported 5 passed for registry contracts; live PostgreSQL pytest_guard reported 1 passed in 0.12s against localhost:55432; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS; offline QA handoff PASS.
