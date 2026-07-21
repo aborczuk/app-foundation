@@ -20,10 +20,11 @@ it must not publish partial filing or external-delivery results.
 
 ## Refresh Signals
 
-Emit structured events with a shared `correlation_id` for each refresh request,
-filing discovery attempt, work-item transition, and recalculation handoff.
-Metric labels must remain low-cardinality. Use issuer, accession, and full
-error text in the event or artifact, not metric labels.
+When T046 is implemented, emit structured events with a shared
+`correlation_id` for each refresh request, filing discovery attempt, work-item
+transition, and recalculation handoff. Metric labels must remain low-cardinality.
+Use issuer, accession, and full error text in the event or artifact, not metric
+labels. Before T046, these events are not a readiness signal.
 
 Planned T046 metrics:
 
@@ -80,10 +81,10 @@ During an SEC or worker outage:
 
 1. Disable `SEC_SCHEDULE_ENABLED` if refresh is not already safely disabled.
 2. Preserve the last successful observation; mark freshness or quality state rather than writing nulls.
-3. Stop unbounded retries. Leave recoverable items in `retry_wait` and inspect dead-letter artifacts.
-4. Check the shared SEC circuit state, queue age, failure categories, and the affected correlation IDs.
-5. Resume only after the dependency and worker readiness checks pass. Expired leases may be recovered by a coordinator; completed writes must not be replayed.
-6. Record the incident outcome and link the relevant failure artifacts.
+3. Stop unbounded retries. Leave recoverable items in `retry_wait` and inspect dead-letter artifacts when T046 is available.
+4. After T046, check the shared SEC circuit state, queue age, failure categories, and affected correlation IDs. Before T046, use bounded run logs and direct work-item state checks instead.
+5. Do not resume scheduled refresh before T046. For manual or fixture recovery, resume only after dependency and worker readiness checks pass. Expired leases may be recovered by a coordinator; completed writes must not be replayed.
+6. Record the incident outcome and link the relevant failure artifact when available; otherwise retain the bounded run log.
 
 ## Manual Recovery
 
