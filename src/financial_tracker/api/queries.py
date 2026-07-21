@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from uuid import UUID
 
+from financial_tracker.calculation.observations import MetricObservation
 from financial_tracker.identity.resolver import (
     AuthorizationError,
     AuthorizationScope,
@@ -12,6 +13,7 @@ from financial_tracker.identity.resolver import (
     require_portfolio_access,
 )
 from financial_tracker.persistence.models import Issuer, Portfolio, PortfolioKind
+from financial_tracker.query.analysis import AnalysisRow, read_analysis
 
 
 class AuthorizedQueryService:
@@ -88,3 +90,51 @@ class AuthorizedQueryService:
             if issuer_id in scope.issuer_ids and issuer_id in self._issuer_by_id
         )
         return tuple(sorted(companies, key=lambda issuer: (issuer.legal_name, str(issuer.id))))
+
+    def list_metric_history(
+        self,
+        scope: AuthorizationScope,
+        observations: Iterable[MetricObservation],
+        *,
+        issuer_id: UUID,
+        metric_id: str,
+        definition_version: str | None = None,
+        correlation_id: str | None = None,
+    ) -> tuple[AnalysisRow, ...]:
+        """Return an authorized metric history with an optional version filter."""
+        require_issuer_access(scope, issuer_id)
+        normalized_metric = metric_id.strip()
+        if not normalized_metric:
+            raise ValueError("metric_id must be non-empty")
+        normalized_version = (
+            definition_version.strip() if definition_version is not None else None
+        )
+        if definition_version is not None and not normalized_version:
+            raise ValueError("definition_version must be non-empty when provided")
+        matching = tuple(
+            observation
+            for observation in observations
+            if observation.tenant_id == scope.tenant_id
+            and observation.issuer_id == issuer_id
+            and observation.metric_id == normalized_metric
+            and (
+                normalized_version is None
+                or observation.definition_version == normalized_version
+            )
+        )
+        rows = read_analysis(
+            scope,
+            matching,
+            issuer_id=issuer_id,
+            correlation_id=correlation_id,
+        )
+        return tuple(
+            sorted(
+                rows,
+                key=lambda row: (
+                    row.calculated_at,
+                    row.fiscal_period_id,
+                    row.definition_version,
+                ),
+            )
+        )
