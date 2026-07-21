@@ -150,6 +150,7 @@ class SECDiscoveryAdapter:
         normalized_cik = _normalize_cik(cik)
         normalized_forms = _normalize_forms(forms)
         if self._edgar_tools is not None:
+            self._consume_budget()
             source_records = self._edgar_tools.get_filings(normalized_cik, normalized_forms)
             return tuple(
                 _normalize_provider_record(normalized_cik, record)

@@ -82,6 +82,30 @@ def test_rate_budget_rejects_requests_beyond_window_limit() -> None:
     assert len(client.calls) == 1
 
 
+def test_rate_budget_applies_to_edgar_tools_discovery() -> None:
+    """Provider discovery consumes the same bounded request budget as direct HTTP."""
+    source = StubEdgarToolsSource(
+        (
+            {
+                "accession": "0000320193-25-000004",
+                "form_type": "10-K",
+                "filed_at": "2025-11-03",
+                "source_url": "https://www.sec.gov/Archives/edgar/data/example",
+            },
+        )
+    )
+    discovery = adapter.SECDiscoveryAdapter(
+        policy=_policy(max_requests=1, window_seconds=60.0),
+        edgar_tools=source,
+    )
+
+    discovery.discover_filings("0000320193", forms=("10-K",))
+    with pytest.raises(adapter.RateBudgetExceeded):
+        discovery.discover_filings("0000320193", forms=("10-K",))
+
+    assert len(source.calls) == 1
+
+
 def test_direct_submission_discovery_normalizes_recent_filings() -> None:
     """Direct SEC submissions become stable filing records with source URLs."""
     client = RecordingHTTPClient(
@@ -169,3 +193,40 @@ def test_policy_rejects_missing_identity_or_unbounded_timeout() -> None:
         _policy(user_agent="")
     with pytest.raises(ValueError, match="timeout_seconds"):
         _policy(timeout_seconds=0)
+
+
+def test_direct_discovery_rejects_malformed_filing_arrays() -> None:
+    """Direct SEC discovery rejects records whose parallel arrays do not align."""
+    client = RecordingHTTPClient(
+        {
+            "filings": {
+                "recent": {
+                    "accessionNumber": ["0000320193-25-000005"],
+                    "form": ["10-K", "10-Q"],
+                    "filingDate": ["2025-11-04"],
+                    "primaryDocument": ["example.htm"],
+                }
+            }
+        }
+    )
+    discovery = adapter.SECDiscoveryAdapter(policy=_policy(), http_client=client)
+
+    with pytest.raises(ValueError, match="equal lengths"):
+        discovery.discover_filings("0000320193", forms=("10-K",))
+
+
+def test_provider_discovery_rejects_missing_source_url() -> None:
+    """Provider discovery rejects metadata that cannot be traced to a source URL."""
+    source: adapter.EdgarToolsFilingSource = StubEdgarToolsSource(
+        (
+            {
+                "accession": "0000320193-25-000006",
+                "form_type": "10-K",
+                "filed_at": "2025-11-05",
+            },
+        )
+    )
+    discovery = adapter.SECDiscoveryAdapter(policy=_policy(), edgar_tools=source)
+
+    with pytest.raises(ValueError, match="source_url"):
+        discovery.discover_filings("0000320193", forms=("10-K",))
