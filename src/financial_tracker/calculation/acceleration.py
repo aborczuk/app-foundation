@@ -39,7 +39,7 @@ def calculate_improvement_streak(values: Sequence[Decimal]) -> int:
 
 def calculate_acceleration(values: Sequence[Decimal], *, materiality: Decimal) -> Decimal | None:
     """Return the latest second difference when it meets the materiality threshold."""
-    if len(values) < 3 or not materiality.is_finite() or not all(value.is_finite() for value in values):
+    if len(values) < 3 or not materiality.is_finite() or materiality < 0 or not all(value.is_finite() for value in values):
         return None
     latest_change = values[-1] - values[-2]
     prior_change = values[-2] - values[-3]
@@ -53,7 +53,7 @@ def classify_acceleration(acceleration: Decimal | None, *, materiality: Decimal)
     """Classify acceleration direction while keeping missing and invalid states explicit."""
     if acceleration is None or not acceleration.is_finite() or not materiality.is_finite() or materiality < 0:
         return AccelerationClassification.UNAVAILABLE
-    if acceleration == 0 or abs(acceleration) <= materiality:
+    if acceleration == 0 or abs(acceleration) < materiality:
         return AccelerationClassification.STABLE
     if acceleration > 0:
         return AccelerationClassification.ACCELERATING
