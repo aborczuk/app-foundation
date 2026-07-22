@@ -2097,3 +2097,7 @@
 {"actor": "implement", "attempt": 2, "details": "Complete dashboard provenance, structured filters, and canonical sorting", "event": "fix_started", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:26:08.700533Z"}
 {"actor": "implement", "attempt": 2, "details": "4 focused dashboard tests passed after QA remediation", "event": "tests_passed", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:28:14.844903Z"}
 {"actor": "implement", "attempt": 2, "details": "Ruff clean; Pyright 0 diagnostics after QA remediation", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:28:15.038250Z"}
+{"actor": "implement", "attempt": 2, "event": "offline_qa_started", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:30:28.867907Z"}
+{"actor": "implement", "attempt": 2, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t048-20260722T002935Z", "task_id": "T048", "timestamp_utc": "2026-07-22T00:30:28.916555Z"}
+{"actor": "implement", "attempt": 2, "commit_sha": "ec73688", "event": "commit_created", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:30:28.971349Z"}
+{"actor": "implement", "attempt": 2, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:30:29.017262Z"}

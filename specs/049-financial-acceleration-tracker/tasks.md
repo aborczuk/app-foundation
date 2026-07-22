@@ -206,7 +206,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T045 [US3] Implement scheduled discovery registration, cadence, and feature-flag enforcement in `src/financial_tracker/work/scheduler.py`
 - [X] T046 [US3] Implement refresh and delivery observability events, metrics, correlation fields, and alert policy in `src/financial_tracker/observability/runtime.py`
 - [X] T047 [US4] Implement authorized watchlist and portfolio lifecycle operations with membership validation in `src/financial_tracker/api/universes.py`
-- [ ] T048 [US4] Implement the sortable and filterable dashboard collection read model and server-rendered states, using TanStack Table and Recharts where the browser surface requires them, in `src/financial_tracker/web/dashboard.py`
+- [X] T048 [US4] Implement the sortable and filterable dashboard collection read model and server-rendered states, using TanStack Table and Recharts where the browser surface requires them, in `src/financial_tracker/web/dashboard.py`
 
 ### Acceptance and Rollout
 
