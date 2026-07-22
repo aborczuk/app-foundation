@@ -10,15 +10,13 @@
 
 ## Run The MVP
 
-Start PostgreSQL and the API in separate terminals:
+Start the complete local stack with one command:
 
 ```bash
-docker compose -f docker-compose.financial-tracker.yml up -d --wait
-export FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://financial_tracker:financial_tracker_dev@localhost:55432/financial_tracker
-uv run uvicorn financial_tracker.app:app --reload --port 8000
+uv run python scripts/dev.py
 ```
 
-In a third terminal, start the browser:
+The launcher starts PostgreSQL, FastAPI, and Vite, waits for readiness, and prints the browser URL. PostgreSQL remains running after Ctrl-C so the next start is fast. To start the frontend manually instead:
 
 ```bash
 cd frontend
