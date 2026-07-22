@@ -13,6 +13,7 @@ from typing import Any, Literal, Protocol, TypeVar
 import httpx
 
 _SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+_SEC_COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 _SEC_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data/{cik_number}/{accession}/{document}"
 ResultT = TypeVar("ResultT")
 
@@ -111,7 +112,7 @@ class SECRequestPolicy:
 
     user_agent: str
     timeout_seconds: float = 10.0
-    max_requests: int = 10
+    max_requests: int = 8
     window_seconds: float = 1.0
     retry_policy: SECRetryPolicy = field(default_factory=SECRetryPolicy)
 
@@ -125,6 +126,8 @@ class SECRequestPolicy:
             raise ValueError("max_requests must be positive")
         if self.window_seconds <= 0:
             raise ValueError("window_seconds must be positive")
+        if self.max_requests / self.window_seconds >= 10:
+            raise ValueError("SEC request budget must remain below 10 requests per second")
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +171,11 @@ class SECDiscoveryAdapter:
         """Fetch one SEC submissions JSON document with bounded request policy."""
         normalized_cik = _normalize_cik(cik)
         return self._run_with_retry(lambda: self._fetch_submissions_once(normalized_cik))
+
+    def fetch_companyfacts(self, cik: str) -> Mapping[str, Any]:
+        """Fetch one SEC company-facts document with the same request policy."""
+        normalized_cik = _normalize_cik(cik)
+        return self._run_with_retry(lambda: self._fetch_companyfacts_once(normalized_cik))
 
     def discover_filings(
         self,
@@ -214,6 +222,21 @@ class SECDiscoveryAdapter:
         payload = response.json()
         if not isinstance(payload, Mapping):
             raise ValueError("SEC submissions response must be an object")
+        return payload
+
+    def _fetch_companyfacts_once(self, cik: str) -> Mapping[str, Any]:
+        """Perform one direct company-facts request under the shared budget."""
+        self._consume_budget()
+        url = _SEC_COMPANYFACTS_URL.format(cik=cik)
+        response = self._http_client.get(
+            url,
+            headers={"User-Agent": self._policy.user_agent.strip()},
+            timeout=self._policy.timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise ValueError("SEC company-facts response must be an object")
         return payload
 
     def _fetch_provider_filings(

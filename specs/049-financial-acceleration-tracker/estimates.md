@@ -84,3 +84,38 @@ Each row closes one implementation seam. A score of 5 is one cohesive seam that 
 - No tasks scored 8 or 13 after breakdown.
 - High uncertainty remains for the greenfield real-PostgreSQL harness, live SEC compatibility path, and separately authorized Google Sheets delivery; these are bounded by dedicated tasks and acceptance coverage.
 - No async lifecycle, state-safety, or transaction-integrity coverage gap was identified in the settled graph; worker recovery, live refresh, and transactional ingestion each have dedicated seams and tests.
+
+## MVP Remaining Estimate
+
+The original 252 points describe the completed internal component graph and are retained as historical context. They do not describe a runnable product. The MVP continuation below is estimated separately so the remaining product work is visible and does not get hidden inside the old total.
+
+**MVP Total**: 40 points | **T-shirt Size**: L | **Owner for human tasks**: `andreborczuk`
+
+| Task ID | Points | Description | Rationale |
+|---|---:|---|---|
+| T054 | 3 | Provide SEC identity `Financial Tracker aborczuk@gmail.com`, confirm AAPL/Apple/CIK `0000320193`, and provide local runtime inputs | Human dependency for a real SEC request and reproducible local acceptance; no code seam. |
+| T055 | 5 | Implement the runnable local application boundary and documented local launch contract | One app seam exposing the existing services through a startable local app, browser at `http://localhost:5173`, and API health at `http://localhost:8000/health`. |
+| T056 | 5 | Connect one real SEC issuer refresh through persistence to filing-backed observations | One vertical data seam from provider request to durable analysis evidence. |
+| T057 | 5 | Expose authenticated metric-definition lifecycle and history routes | One API seam over the existing versioned metric service. |
+| T058 | 5 | Expose authenticated watchlist/portfolio and filing-refresh analysis routes | One API seam for saved universes and filing-derived results; deliberately excludes price/P&L. |
+| T059 | 5 | Build the browser shell and filing-backed dashboard table | One frontend seam using a real JS/TS runtime and TanStack Table. |
+| T060 | 5 | Build company history and trend visualization | One frontend seam using real Recharts bindings while preserving gaps and provenance. |
+| T061 | 5 | Add refresh-to-browser product acceptance | One end-to-end seam proving the product path rather than only unit or fixture coverage. |
+| T062 | 2 | Run live smoke and accept the MVP release | Human release gate after credentials and first issuer are configured. |
+
+### MVP Phase Total
+
+| Phase | Points | Task Count | Parallel Tasks |
+|---|---:|---:|---:|
+| Human inputs | 3 | 1 | 0 |
+| Runnable app and live filing path | 10 | 2 | 0 |
+| Product API seams | 10 | 2 | 2 |
+| Browser seams | 10 | 2 | 2 |
+| Product acceptance | 7 | 2 | 0 |
+| **MVP Total** | **40** | **9** | **2** |
+
+### MVP Estimate Notes
+
+- No MVP task is scored 8 or 13; every implementation row closes one cohesive seam. If a task grows to 8, it must be split before implementation.
+- T054 and T062 are the only human-owned tasks. The remaining tasks are implementation/verification work and are not blocked by Google Sheets or real-time market-data integrations.
+- MVP freshness means the latest accepted filing refresh, not a live quote or continuously marked portfolio value.

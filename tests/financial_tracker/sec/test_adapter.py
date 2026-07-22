@@ -123,6 +123,12 @@ def test_rate_budget_rejects_requests_beyond_window_limit() -> None:
     assert len(client.calls) == 1
 
 
+def test_rate_policy_rejects_sec_limit_or_above() -> None:
+    """The configured client budget stays strictly below the SEC aggregate limit."""
+    with pytest.raises(ValueError, match="below 10 requests per second"):
+        _policy(max_requests=10, window_seconds=1.0)
+
+
 def test_rate_budget_applies_to_edgar_tools_discovery() -> None:
     """Provider discovery consumes the same bounded request budget as direct HTTP."""
     source = StubEdgarToolsSource(

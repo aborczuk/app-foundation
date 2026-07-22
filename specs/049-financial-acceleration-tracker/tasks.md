@@ -216,7 +216,37 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T052 Run metric-definition and version-history acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
 - [X] T053 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
 
-**Checkpoint**: All required red/green acceptance evidence is recorded, operational docs are usable, and no task remains a placeholder.
+**Checkpoint**: The historical component task set is complete. The runnable product MVP is tracked in the continuation phase below and is not complete until its browser and live-SEC acceptance tasks pass.
+
+---
+
+## MVP Product Delivery
+
+This continuation phase closes the gap between the completed internal library seams and a usable filing-backed product. It is intentionally not real-time portfolio tracking. The MVP excludes prices, valuation, P&L, brokerage integrations, Google Sheets, and spreadsheet delivery. `[H]` tasks are assigned to `andreborczuk`.
+
+### Human Inputs
+
+- [X] T054 [H] [US1] Provide the SEC identity/User-Agent value `Financial Tracker aborczuk@gmail.com`, confirm `AAPL` / Apple / CIK `0000320193` as the first issuer, and provide local PostgreSQL connection details needed for live MVP verification (Owner: andreborczuk)
+
+### Runnable App and Live Filing Path
+
+- [X] T055 [US1] Implement the runnable local application boundary, health/readiness route, and documented local development entrypoint around the existing financial-tracker services in `src/financial_tracker/app.py`, `src/financial_tracker/api/routes.py`, `frontend/`, and the local app configuration, with the browser at `http://localhost:5173` and API health at `http://localhost:8000/health`
+- [X] T056 [US1] Connect one explicit SEC issuer refresh from the configured adapter through durable filing/fact persistence and filing-backed observations, with a real-backend acceptance test in `src/financial_tracker/sec/`, `src/financial_tracker/work/`, and `tests/integration/financial_tracker/`
+
+### Product API Seams
+
+- [X] T057 [US2] Expose metric-definition validation, dry run, activation, retirement, and version-history operations as authenticated application API routes over the existing service in `src/financial_tracker/api/metric_definitions.py`
+- [X] T058 [US3] Expose saved watchlist and portfolio membership reads, filing-refresh status, and filing-derived analysis results as authenticated application API routes in `src/financial_tracker/api/universes.py` and `src/financial_tracker/api/queries.py`, with no real-time price or P&L contract
+
+### Browser Seams
+
+- [X] T059 [US1] Build the local browser shell and filing-backed dashboard collection using a real JavaScript/TypeScript frontend and TanStack Table for sorting, filtering, freshness, quality, and accession provenance in `frontend/`
+- [X] T060 [US5] Build the company detail history view using real Recharts data bindings for quarter-aligned metrics, gaps, outliers, amendments, restatements, and source provenance in `frontend/`
+
+### Product Acceptance
+
+- [X] T061 [US1] Add a product end-to-end acceptance path that triggers or consumes the explicit SEC refresh, reads through the application API, and verifies the same filing-derived result is visible in the browser in `tests/e2e/financial_tracker/`
+- [X] T062 [H] [US1] Run the configured live-SEC smoke test in `tests/e2e/financial_tracker/` and accept the MVP only after a real issuer result is visible in the browser with filing freshness and accession provenance (Owner: andreborczuk)
 
 ## Dependencies and Execution Order
 
@@ -230,6 +260,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 6. Phase 6 implements PL-04 delivery and depends on the authorized read model from Phases 3-5.
 7. Phase 7 consumes the same read model and may proceed after Phase 3, with metric-version and refresh states from Phases 4-5.
 8. Phase 8 first closes the five remediation seams, then runs cross-cutting acceptance and rollout checks.
+9. The MVP continuation phase starts with T054, then proceeds T055 -> T056 -> T057/T058 -> T059/T060 -> T061 -> T062. T057 and T058 may proceed in parallel after T056; T059 and T060 may proceed in parallel after their API contracts are stable.
 
 ### Parallel Opportunities
 
@@ -249,3 +280,4 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 | PL-04 Authorized Dashboard, API, and Deterministic Exports | T036-T040, T047-T048 | Universe lifecycle, authorized query contract, dashboard collection, XLSX manifest, Google Sheets adapter, and parity tests |
 | Company-level history contract | T041-T043 | Historical query and visualization for gaps, outliers, amendments, and provenance |
 | Cross-cutting acceptance and rollout | T049-T053 | Real-backend acceptance evidence and operational readiness documentation |
+| MVP Product Delivery | T054-T062 | Runnable local app, explicit live SEC refresh, authenticated product APIs, real browser surfaces, and human release acceptance |

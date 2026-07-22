@@ -3,18 +3,30 @@
 ## Local Preconditions
 
 - Python dependencies are installed through the repository's `uv` workflow.
-- A disposable PostgreSQL instance is available for integration verification.
-- SEC live tests are opt-in and use an environment-backed User-Agent and rate budget.
-- Google Sheets tests use a separately scoped test credential or remain disabled.
+- The local PostgreSQL service is available for the runnable MVP.
+- The SEC User-Agent is `Financial Tracker aborczuk@gmail.com`; no SEC login is required.
+- The MVP tracks AAPL / Apple Inc. (CIK `0000320193`) and uses filing-backed revenue only.
+- Real-time prices, P&L, brokerage connections, Sheets, and scheduled refresh remain deferred.
 
-## Development Sequence
+## Run The MVP
 
-1. Create the isolated `src/financial_tracker/` package and migrations.
-2. Run fixture and real-PostgreSQL foundation tests before calculation work.
-3. Run calculation fixtures, then metric-definition dry-run and version-history tests.
-4. Run SEC adapter compatibility and outage tests with live scheduling disabled.
-5. Run dashboard/API/XLSX/Sheets parity and authorization tests.
-6. Enable scheduled discovery only after the PL-05 readiness checks and operator runbook review pass.
+Start PostgreSQL and the API in separate terminals:
+
+```bash
+docker compose -f docker-compose.financial-tracker.yml up -d --wait
+export FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://financial_tracker:financial_tracker_dev@localhost:55432/financial_tracker
+uv run uvicorn financial_tracker.app:app --reload --port 8000
+```
+
+In a third terminal, start the browser:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The API is at `http://localhost:8000`; `POST /api/v1/refresh/AAPL` performs the explicit SEC refresh, and `GET /health` is the readiness check.
 
 ## Verification Commands
 
@@ -31,16 +43,22 @@ uv run --no-sync python scripts/speckit_plan_gate.py design-artifacts \
 uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker
 ```
 
-Start the disposable PostgreSQL backend before running the live harness:
+Run the backend seam tests against PostgreSQL:
 
 ```bash
 docker compose -f docker-compose.financial-tracker.yml up -d --wait
 export FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://financial_tracker:financial_tracker_dev@localhost:55432/financial_tracker
 uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_harness.py
-docker compose -f docker-compose.financial-tracker.yml down -v
+uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_app.py tests/integration/financial_tracker/test_live_app.py
 ```
 
-Live SEC and Google Sheets verification must be explicit test selections and must not run as an implicit default. The live path must prove User-Agent, timeout, rate budget, bounded retry, outage degradation, duplicate delivery, lease recovery, and credential scoping.
+The live SEC seam is opt-in and uses the supplied User-Agent:
+
+```bash
+FINANCIAL_TRACKER_LIVE_SEC=1 uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/financial_tracker/test_live_app.py
+```
+
+Live SEC verification must remain an explicit selection and must not run as an implicit default. Stop the disposable database with `docker compose -f docker-compose.financial-tracker.yml down -v` when finished.
 
 ## Rollout Flags
 

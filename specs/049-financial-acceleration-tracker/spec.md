@@ -9,6 +9,12 @@
 
 Portfolio analysts identify accelerating filing-based financial performance across watched companies and portfolios.
 
+## MVP Scope (current)
+
+The MVP is a local browser application for filing-backed watchlists and portfolio universes. A portfolio is a saved set of tracked companies, with optional manually maintained membership metadata; it is not a live brokerage account or market-valuation feed. Results are refreshed from accepted SEC filings and show the latest filing-derived metrics, historical observations, quality states, and source provenance.
+
+The MVP explicitly excludes intraday or real-time prices, portfolio valuation, P&L, brokerage integrations, Google Sheets, and spreadsheet delivery. It must use a real browser surface and a real SEC-backed refresh path; an internal Python view model or fixture-only test does not count as product completion.
+
 ## Consumer & Context *(mandatory)*
 
 Analysts, API clients, scheduled jobs, Excel users, and Google Sheets users consume scored company and portfolio trend outputs in browser sessions, APIs, exports, and batch refreshes.
@@ -48,7 +54,7 @@ An authorized analyst defines an additional filing-backed metric from approved s
 
 ### User Story 3 - Refresh Watchlists and Portfolios from New Filings (Priority: P2)
 
-An analyst relies on saved watchlists and portfolios to update automatically when new filings, amendments, or restatements affect tracked companies.
+An analyst relies on saved watchlists and portfolios to update when new filings, amendments, or restatements affect tracked companies; the product does not promise intraday or real-time portfolio pricing.
 
 **Why this priority**: The product must be useful after the first analysis run by keeping tracked universes current and preserving restatement history.
 
@@ -62,6 +68,8 @@ An analyst relies on saved watchlists and portfolios to update automatically whe
 ---
 
 ### User Story 4 - Export and Integrate Results (Priority: P3)
+
+**MVP status**: Deferred. Google Sheets and spreadsheet delivery are not part of the MVP cut.
 
 An analyst sends filtered acceleration results to Excel, Google Sheets, or an API client without losing calculation status, provenance, or chart context.
 

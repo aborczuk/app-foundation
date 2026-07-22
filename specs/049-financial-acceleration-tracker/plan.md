@@ -474,7 +474,13 @@ XLSX and Google Sheets exports use the same authorized query contract as the das
 
 Start with fixture-backed red tests for selector resolution, exact-decimal calculations, fiscal-period derivation, definition parsing/validation, version activation, historical query behavior, idempotent work transitions, and provenance completeness. Add contract tests for API/export parity and a live SEC compatibility test using a bounded known public filing. Integration coverage must use a real PostgreSQL instance and a real SEC fetch path; mocked SEC tests alone are insufficient.
 
-Roll out in this order: internal fixture data; built-in metrics; user-defined metric dry runs; definition activation and targeted recalculation; authenticated dashboard/API; deterministic XLSX; optional Google Sheets delivery; finally scheduled SEC refresh behind an operator-controlled feature flag. Each stage needs migration, rollback, and observability evidence before the next stage opens.
+Roll out the MVP in this order: runnable local app boundary; one real SEC refresh path; authenticated analysis and metric-definition APIs; watchlist/portfolio reads; browser dashboard and company history; product acceptance from refresh to visible result. Defer deterministic XLSX, Google Sheets delivery, and scheduled background refresh until after the MVP. The MVP must not be described as real-time portfolio tracking: freshness is filing-driven and must be visible in the result state.
+
+### MVP Product Cut
+
+- **Included**: local browser app, local PostgreSQL persistence, filing-backed watchlists and portfolio membership, built-in and user-defined metric history, manual or explicitly triggered SEC refresh, sortable dashboard results, company history charts, and end-to-end acceptance from refresh to visible data.
+- **Excluded**: intraday prices, live portfolio valuation or P&L, brokerage connections, Google Sheets, spreadsheet delivery, and background scheduling as a release requirement.
+- **Completion gate**: a configured SEC identity and first issuer refresh must persist filing-derived data and render it in the browser without a fixture-only fallback.
 
 ## Design Slices
 
