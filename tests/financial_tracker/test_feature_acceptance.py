@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from tests.integration.financial_tracker import test_analysis, test_foundation
+from tests.integration.financial_tracker import test_analysis, test_foundation, test_live_sec
 
 
 @pytest.fixture()
@@ -27,3 +27,18 @@ def test_real_postgres_analysis_acceptance(acceptance_postgres_connection: objec
     test_analysis.test_filing_backed_analysis_runs_against_live_postgres(
         acceptance_postgres_connection
     )
+
+
+def test_live_sec_direct_acceptance() -> None:
+    """Run opt-in direct SEC discovery compatibility coverage."""
+    test_live_sec.test_live_direct_sec_discovery_returns_normalized_filings()
+
+
+def test_live_sec_edgar_tools_acceptance() -> None:
+    """Run opt-in EdgarTools discovery compatibility coverage."""
+    test_live_sec.test_live_edgar_tools_discovery_returns_normalized_filings()
+
+
+def test_live_sec_outage_and_recovery_acceptance() -> None:
+    """Run bounded SEC outage, circuit-open, and recovery coverage."""
+    test_live_sec.test_direct_sec_outage_stays_bounded_without_provider_fallback()
