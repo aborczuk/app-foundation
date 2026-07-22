@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -31,6 +32,9 @@ def _record(
     portfolio_id: UUID,
     company_name: str,
     acceleration: str,
+    metric_id: str = "operating_margin",
+    fiscal_period: str = "2025-Q2",
+    improvement_streak: int | None = 2,
     quality_state: QualityState = QualityState.VERIFIED,
 ) -> "DashboardRecord":
     """Build one dashboard collection record with visible provenance."""
@@ -42,14 +46,21 @@ def _record(
         portfolio_id=portfolio_id,
         company_name=company_name,
         ticker=company_name[:4].upper(),
-        metric_id="operating_margin",
-        fiscal_period="2025-Q2",
+        metric_id=metric_id,
+        fiscal_period=fiscal_period,
         value=Decimal("0.25"),
         acceleration=Decimal(acceleration),
-        improvement_streak=2,
+        improvement_streak=improvement_streak,
         quality_state=quality_state,
         freshness="current",
         source_accessions=("0001234567-25-000001",),
+        definition_version="v1",
+        definition_hash="definition-hash",
+        definition_state="active",
+        analysis_run_id=uuid4(),
+        source_fact_selectors=("us-gaap:Revenue",),
+        calculated_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
+        correlation_id="corr-1",
         history=(Decimal("0.10"), Decimal("0.20"), Decimal("0.25")),
     )
 
@@ -97,6 +108,12 @@ def test_dashboard_filters_sorts_and_preserves_chart_and_provenance_data() -> No
     assert view.state is DashboardState.READY
     assert [row.company_name for row in view.rows] == ["Alpha"]
     assert view.rows[0].source_accessions == ("0001234567-25-000001",)
+    assert view.rows[0].definition_version == "v1"
+    assert view.rows[0].definition_hash == "definition-hash"
+    assert view.rows[0].definition_state == "active"
+    assert view.rows[0].source_fact_selectors == ("us-gaap:Revenue",)
+    assert view.rows[0].calculated_at == datetime(2025, 7, 1, tzinfo=timezone.utc)
+    assert view.rows[0].correlation_id == "corr-1"
     assert view.rows[0].sparkline == (
         Decimal("0.10"),
         Decimal("0.20"),
@@ -104,6 +121,59 @@ def test_dashboard_filters_sorts_and_preserves_chart_and_provenance_data() -> No
     )
     assert view.table_adapter == "tanstack-table"
     assert view.chart_adapter == "recharts"
+
+
+def test_dashboard_supports_structured_filters_and_canonical_tie_breaking() -> None:
+    """Structured collection filters and equal-value sorting are stable."""
+    from financial_tracker.web.dashboard import render_dashboard
+
+    owner_id = uuid4()
+    issuer_id = uuid4()
+    first_portfolio = uuid4()
+    second_portfolio = uuid4()
+    scope = _scope(
+        owner_id,
+        issuer_ids=frozenset({issuer_id}),
+        portfolio_ids=frozenset({first_portfolio, second_portfolio}),
+    )
+    first = _record(
+        tenant_id="tenant-a",
+        issuer_id=issuer_id,
+        portfolio_id=first_portfolio,
+        company_name="Same Company",
+        acceleration="0.10",
+        metric_id="revenue_growth",
+        fiscal_period="2025-Q1",
+        improvement_streak=1,
+    )
+    second = _record(
+        tenant_id="tenant-a",
+        issuer_id=issuer_id,
+        portfolio_id=second_portfolio,
+        company_name="Same Company",
+        acceleration="0.10",
+        fiscal_period="2025-Q2",
+        improvement_streak=2,
+    )
+
+    forward = render_dashboard(scope, (first, second), sort_by="acceleration")
+    reversed_input = render_dashboard(scope, (second, first), sort_by="acceleration")
+    filtered = render_dashboard(
+        scope,
+        (first, second),
+        portfolio_ids={second_portfolio},
+        metric_ids={"operating_margin"},
+        fiscal_periods={"2025-Q2"},
+        acceleration_min=Decimal("0.10"),
+        acceleration_max=Decimal("0.10"),
+        streak_min=2,
+        streak_max=2,
+    )
+
+    forward_periods = [row.fiscal_period for row in forward.rows]
+    assert forward_periods == [row.fiscal_period for row in reversed_input.rows]
+    assert set(forward_periods) == {"2025-Q1", "2025-Q2"}
+    assert [row.fiscal_period for row in filtered.rows] == ["2025-Q2"]
 
 
 def test_dashboard_excludes_records_outside_server_scope() -> None:
