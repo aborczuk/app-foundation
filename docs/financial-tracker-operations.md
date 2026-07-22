@@ -1,10 +1,10 @@
 # Financial Tracker Operations
 
-This runbook covers filing refresh, worker recovery, and operator-visible
-degradation. It is the operational contract for the refresh and observability
-runtime. The metric and event emitters are implemented by T046; until then,
-these names and fields are the required interface rather than evidence that a
-live emitter is enabled.
+This runbook covers filing refresh, worker recovery, rollout, rollback, and
+operator-visible degradation. It is the operational contract for the refresh
+and observability runtime. The primary runtime seams are
+`DiscoveryScheduler.from_environment`, `FilingRefreshCoordinator.process`,
+and `RuntimeObservability.record_event` / `record_metric`.
 
 ## Runtime Modes
 
@@ -13,20 +13,21 @@ The safe default is fixture or manual-refresh mode:
 - `SEC_SCHEDULE_ENABLED=false`
 - `GOOGLE_SHEETS_DELIVERY_ENABLED=false`
 
-Do not enable scheduled SEC refresh until PostgreSQL migrations, live-backend
-tests, worker readiness, alert routing, and rollback instructions have passed.
+`DiscoveryScheduler.from_environment` reads `SEC_SCHEDULE_ENABLED` and enables
+only `1`, `true`, `yes`, or `on`; missing or invalid values are disabled. The
+Google Sheets flag is a deployment gate for the explicit delivery path, not a
+replacement for `GoogleSheetsDeliveryService` credential and owner checks.
 A failed readiness check must leave the system in fixture/manual-refresh mode;
 it must not publish partial filing or external-delivery results.
 
 ## Refresh Signals
 
-When T046 is implemented, emit structured events with a shared
-`correlation_id` for each refresh request, filing discovery attempt, work-item
-transition, and recalculation handoff. Metric labels must remain low-cardinality.
-Use issuer, accession, and full error text in the event or artifact, not metric
-labels. Before T046, these events are not a readiness signal.
+Emit `RuntimeEvent` records with a shared `correlation_id` for each refresh
+request, filing discovery attempt, work-item transition, and recalculation
+handoff. Metric labels must remain low-cardinality. Use issuer, accession, and
+full error text in the event or artifact, not metric labels.
 
-Planned T046 metrics:
+Runtime metrics:
 
 | Metric | Required dimensions | Meaning |
 | --- | --- | --- |
@@ -39,17 +40,14 @@ Planned T046 metrics:
 | `financial_tracker_sec_circuit_open_total` | `source` | Requests prevented by the shared circuit state. |
 | `financial_tracker_dead_letter_total` | `kind`, `category` | Work that exhausted bounded recovery. |
 
-After T046 is implemented, alert on a sustained SEC circuit-open state, queue
-age beyond the service objective, repeated refresh failures, or a rising
-dead-letter count. Alerts must include the correlation ID and a link to the
-bounded failure artifact. Until then, observability readiness has not passed
-and scheduled refresh must remain disabled.
+Alert on a sustained SEC circuit-open state, queue age beyond the service
+objective, repeated refresh failures, or a rising dead-letter count. Alerts
+must include the correlation ID and a link to the bounded failure artifact.
 
-## Planned Failure Artifacts
+## Failure Artifacts
 
-When T046 is implemented, every refresh or work-item failure will record one
-compact event and, when more detail is needed, one durable artifact. The
-compact event must contain:
+Every refresh or work-item failure records one compact event and, when more
+detail is needed, one durable artifact. The compact event must contain:
 
 - `correlation_id`, `operation`, `tenant_scope`, and UTC timestamps
 - issuer identifier and filing accession when applicable
@@ -71,9 +69,51 @@ Before enabling scheduled refresh, an operator verifies:
 1. The foundation migration is applied and PostgreSQL is reachable.
 2. The worker can lease, start, renew, complete, retry, and recover work.
 3. The SEC User-Agent, timeout, rate budget, retry, and circuit policies are configured.
-4. The T046 observability events, metrics, alert routing, and failure-artifact path are implemented and visible; otherwise readiness fails.
+4. `RuntimeObservability` events, allowlisted metrics, alert routing, and the failure-artifact path are visible; otherwise readiness fails.
 5. The last successful observation remains queryable with freshness and quality state.
 6. The rollback action is known and has been exercised against a non-production fixture.
+
+## Migration and Rollback
+
+Apply migrations in numeric order: `001_foundation.sql`, then
+`002_metric_definitions.sql`. Verify the `financial_tracker` schema and a
+successful `SELECT 1` before enabling workers. The disposable integration
+harness reapplies both files in sorted order; production uses the repository's
+normal migration runner and must record the applied revision.
+
+There are no destructive down migrations in this feature. For a code or
+configuration rollback, disable both rollout flags, stop scheduled discovery,
+allow in-flight work to finish or recover expired leases, and deploy the last
+known-good application revision. Do not delete immutable filings, facts,
+observations, or metric-definition history. A schema rollback requires the
+database snapshot/restore procedure approved for the environment, followed by
+the foundation and metric-registry live checks.
+
+## Feature-Flag Rollout
+
+1. Keep `SEC_SCHEDULE_ENABLED=false` and
+   `GOOGLE_SHEETS_DELIVERY_ENABLED=false` in fixture/manual-refresh mode.
+2. In a disposable or staging environment, apply migrations, run the guarded
+   real-PostgreSQL suite, and verify worker, SEC, observability, and rollback
+   checks.
+3. Enable `SEC_SCHEDULE_ENABLED=true` for a canary worker only. Confirm due
+   triggers, queue age, circuit behavior, correlation IDs, and last-successful
+   observations before expanding the rollout.
+4. Enable Google Sheets delivery only for an explicitly selected destination
+   with a matching server-owned credential. The delivery adapter must reject
+   owner, requester, issuer, or credential mismatches before any write.
+5. If any check fails, disable the flags and follow the rollback procedure.
+
+## Freshness and Quality States
+
+Freshness is carried on each analysis row and must remain visible in API,
+dashboard, XLSX, and Sheets projections. Current values include `fresh`,
+`current`, and `recalculation-pending`. During an outage, preserve the last
+successful value and update freshness or quality; do not replace it with null.
+Use the finite `QualityState` values: `verified`, `derived`, `ambiguous`,
+`incomplete`, `stale`, `superseded`, or `failed`. A recalculation must carry
+the metric definition version/hash, analysis run ID, source selectors, and
+correlation ID so an operator can distinguish stale data from missing data.
 
 ## Outage Procedure
 
@@ -81,9 +121,9 @@ During an SEC or worker outage:
 
 1. Disable `SEC_SCHEDULE_ENABLED` if refresh is not already safely disabled.
 2. Preserve the last successful observation; mark freshness or quality state rather than writing nulls.
-3. Stop unbounded retries. Leave recoverable items in `retry_wait` and inspect dead-letter artifacts when T046 is available.
-4. After T046, check the shared SEC circuit state, queue age, failure categories, and affected correlation IDs. Before T046, use bounded run logs and direct work-item state checks instead.
-5. Do not resume scheduled refresh before T046. For manual or fixture recovery, resume only after dependency and worker readiness checks pass. Expired leases may be recovered by a coordinator; completed writes must not be replayed.
+3. Stop unbounded retries. Leave recoverable items in `retry_wait` and inspect dead-letter artifacts.
+4. Check the shared SEC circuit state, queue age, failure categories, and affected correlation IDs in `RuntimeObservability`; use bounded run logs when the collector is unavailable.
+5. Resume scheduled refresh only after dependency and worker readiness checks pass. Expired leases may be recovered by a coordinator; completed writes must not be replayed.
 6. Record the incident outcome and link the relevant failure artifact when available; otherwise retain the bounded run log.
 
 ## Manual Recovery
@@ -97,8 +137,7 @@ that any resulting recalculation is targeted and idempotent.
 
 ## Evidence
 
-For a refresh incident after T046 is implemented, retain the test or run log,
-the correlation ID, the bounded failure artifact URI, the final work-item
-state, and the last successful observation timestamp. Before T046, retain the
-available bounded test or run log and keep scheduled refresh disabled. A green
-dashboard without this evidence is not a successful operational verification.
+For every refresh incident, retain the test or run log, the correlation ID, the
+bounded failure artifact URI, the final work-item state, and the last successful
+observation timestamp. A green dashboard without this evidence is not a
+successful operational verification.
