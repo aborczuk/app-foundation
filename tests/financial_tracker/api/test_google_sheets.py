@@ -130,8 +130,9 @@ def test_google_sheets_delivery_preserves_rows_and_scope() -> None:
         worksheet_title="analysis",
     )
 
+    artifact = _artifact(scope, issuer_id)
     receipt = GoogleSheetsDeliveryService(client, credential_id="credential-a").deliver(
-        _artifact(scope, issuer_id),
+        artifact,
         scope=scope,
         destination=destination,
         requested_by=scope.user_id,
@@ -144,15 +145,72 @@ def test_google_sheets_delivery_preserves_rows_and_scope() -> None:
     assert client.spreadsheet.worksheet_value.updated is not None
     assert client.spreadsheet.worksheet_value.updated[0] == "A1"
     assert client.spreadsheet.worksheet_value.updated[2] == {"value_input_option": "RAW"}
+    assert client.spreadsheet.worksheet_value.updated[1] == [
+        [
+            "issuer_id",
+            "fiscal_period_id",
+            "metric_id",
+            "definition_version",
+            "definition_hash",
+            "definition_state",
+            "value",
+            "quality_state",
+            "analysis_run_id",
+            "freshness",
+            "source_accessions",
+            "source_fact_selectors",
+            "calculated_at",
+            "correlation_id",
+        ],
+        [
+            str(artifact.rows[0].issuer_id),
+            str(artifact.rows[0].fiscal_period_id),
+            artifact.rows[0].metric_id,
+            artifact.rows[0].definition_version,
+            artifact.rows[0].definition_hash,
+            artifact.rows[0].definition_state,
+            "" if artifact.rows[0].value is None else str(artifact.rows[0].value),
+            str(artifact.rows[0].quality_state),
+            str(artifact.rows[0].analysis_run_id),
+            artifact.rows[0].freshness,
+            ";".join(artifact.rows[0].source_accessions),
+            ";".join(artifact.rows[0].source_fact_selectors),
+            artifact.rows[0].calculated_at.isoformat(),
+            artifact.rows[0].correlation_id or "",
+        ],
+    ]
 
 
-def test_google_sheets_delivery_rejects_owner_or_credential_mismatch() -> None:
-    """Destination and credential scope are checked before any client operation."""
+def test_google_sheets_delivery_rejects_owner_mismatch() -> None:
+    """Destination ownership is checked before any client operation."""
     issuer_id = uuid4()
     scope = _scope(issuer_id)
     client = _Client()
     destination = GoogleSheetsDestination(
         owner_id=uuid4(),
+        credential_id="credential-b",
+        spreadsheet_id="spreadsheet-a",
+        worksheet_title="analysis",
+    )
+
+    with pytest.raises(AuthorizationError):
+        GoogleSheetsDeliveryService(client, credential_id="credential-a").deliver(
+            _artifact(scope, issuer_id),
+            scope=scope,
+            destination=destination,
+            requested_by=scope.user_id,
+        )
+
+    assert client.opened_key is None
+
+
+def test_google_sheets_delivery_rejects_credential_mismatch() -> None:
+    """Configured credential identity is checked independently of ownership."""
+    issuer_id = uuid4()
+    scope = _scope(issuer_id)
+    client = _Client()
+    destination = GoogleSheetsDestination(
+        owner_id=scope.user_id,
         credential_id="credential-b",
         spreadsheet_id="spreadsheet-a",
         worksheet_title="analysis",

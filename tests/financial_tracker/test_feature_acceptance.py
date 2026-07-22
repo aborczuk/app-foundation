@@ -60,5 +60,6 @@ def test_api_xlsx_authorization_acceptance() -> None:
 def test_google_sheets_delivery_acceptance() -> None:
     """Run canonical Google Sheets delivery and destination contract coverage."""
     test_google_sheets.test_google_sheets_delivery_preserves_rows_and_scope()
-    test_google_sheets.test_google_sheets_delivery_rejects_owner_or_credential_mismatch()
+    test_google_sheets.test_google_sheets_delivery_rejects_owner_mismatch()
+    test_google_sheets.test_google_sheets_delivery_rejects_credential_mismatch()
     test_google_sheets.test_google_sheets_delivery_creates_only_the_requested_new_destination()

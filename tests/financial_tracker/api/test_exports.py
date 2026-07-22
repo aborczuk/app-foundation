@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 from hashlib import sha256
+from html import unescape
+from io import BytesIO
+from re import DOTALL, findall, search
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
 
@@ -13,6 +17,42 @@ from financial_tracker.calculation.observations import MetricObservation
 from financial_tracker.identity.resolver import AuthorizationError, AuthorizationScope
 from financial_tracker.persistence.models import Provenance, QualityState
 from financial_tracker.query.analysis import read_analysis
+
+
+def _serialized_xlsx_rows(content: bytes) -> list[list[str]]:
+    """Read the rendered analysis worksheet values from generated XLSX bytes."""
+    with ZipFile(BytesIO(content)) as archive:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_xml = archive.read("xl/sharedStrings.xml").decode("utf-8")
+            shared_strings = [
+                unescape(
+                    "".join(findall(r"<t\b[^>]*>(.*?)</t>", item, DOTALL))
+                )
+                for item in findall(r"<si\b[^>]*>(.*?)</si>", shared_xml, DOTALL)
+            ]
+        sheet_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        rows: list[list[str]] = []
+        for row_xml in findall(r"<row\b[^>]*>(.*?)</row>", sheet_xml, DOTALL):
+            values: list[str] = []
+            for attributes, cell_xml in findall(
+                r"<c\b([^>]*)>(.*?)</c>", row_xml, DOTALL
+            ):
+                inline = search(r"<is\b[^>]*>(.*?)</is>", cell_xml, DOTALL)
+                value = search(r"<v\b[^>]*>(.*?)</v>", cell_xml, DOTALL)
+                if inline is not None:
+                    text = "".join(
+                        findall(r"<t\b[^>]*>(.*?)</t>", inline.group(1), DOTALL)
+                    )
+                    values.append(unescape(text))
+                elif value is None:
+                    values.append("")
+                elif 't="s"' in attributes:
+                    values.append(shared_strings[int(value.group(1) or "0")])
+                else:
+                    values.append(unescape(value.group(1)))
+            rows.append(values)
+        return rows
 
 
 def _scope(issuer_id) -> AuthorizationScope:
@@ -104,6 +144,43 @@ def test_api_projection_and_xlsx_export_preserve_the_same_rows() -> None:
     )
     assert artifact.manifest.content_hash == sha256(artifact.content).hexdigest()
     assert artifact.content
+    assert _serialized_xlsx_rows(artifact.content) == [
+        [
+            "issuer_id",
+            "fiscal_period_id",
+            "metric_id",
+            "definition_version",
+            "definition_hash",
+            "definition_state",
+            "value",
+            "quality_state",
+            "analysis_run_id",
+            "freshness",
+            "source_accessions",
+            "source_fact_selectors",
+            "calculated_at",
+            "correlation_id",
+        ],
+        *[
+            [
+                str(row.issuer_id),
+                str(row.fiscal_period_id),
+                row.metric_id,
+                row.definition_version,
+                row.definition_hash,
+                row.definition_state,
+                "" if row.value is None else str(row.value),
+                str(row.quality_state),
+                str(row.analysis_run_id),
+                row.freshness,
+                ";".join(row.source_accessions),
+                ";".join(row.source_fact_selectors),
+                row.calculated_at.isoformat(),
+                row.correlation_id or "",
+            ]
+            for row in artifact.rows
+        ],
+    ]
 
     repeated = exporter.export(
         rows,
