@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -53,13 +54,15 @@ def start_processes(database_url: str) -> list[subprocess.Popen[bytes]]:
                 [sys.executable, "-m", "uvicorn", "financial_tracker.app:app", "--host", "127.0.0.1", "--port", "8000"],
                 cwd=PROJECT_ROOT,
                 env=environment,
+                start_new_session=True,
             )
         )
         processes.append(
             subprocess.Popen(
-                ["npm", "run", "dev", "--", "--host", "127.0.0.1"],
+                ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--strictPort"],
                 cwd=FRONTEND_ROOT,
                 env=environment,
+                start_new_session=True,
             )
         )
         return processes
@@ -71,14 +74,27 @@ def start_processes(database_url: str) -> list[subprocess.Popen[bytes]]:
 def stop_processes(processes: list[subprocess.Popen[bytes]]) -> None:
     """Terminate child processes and force-close any that do not exit promptly."""
     for process in reversed(processes):
-        if process.poll() is None:
-            process.terminate()
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
     for process in reversed(processes):
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            process.kill()
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             process.wait()
+
+
+def ensure_processes_alive(processes: list[subprocess.Popen[bytes]]) -> None:
+    """Fail fast when a fixed development port is already occupied."""
+    time.sleep(0.5)
+    failed = [str(process.pid) for process in processes if process.poll() is not None]
+    if failed:
+        raise RuntimeError(f"a development process exited during startup; check whether ports 8000 or 5173 are occupied (PIDs: {', '.join(failed)})")
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,6 +115,7 @@ def main() -> int:
     try:
         start_database()
         processes = start_processes(args.database_url)
+        ensure_processes_alive(processes)
         wait_for_url("http://127.0.0.1:8000/health")
         wait_for_url("http://127.0.0.1:5173/")
         print("Financial Tracker is ready at http://localhost:5173", flush=True)
@@ -108,6 +125,9 @@ def main() -> int:
         return 1
     except KeyboardInterrupt:
         return 0
+    except RuntimeError as exc:
+        print(f"Financial Tracker startup failed: {exc}", file=sys.stderr, flush=True)
+        return 1
     finally:
         stop_processes(processes)
 

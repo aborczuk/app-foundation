@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -64,6 +65,8 @@ class FinancialTrackerRuntime:
         self.database_url = database_url
         self.sec_identity = sec_identity
         self._http_client = http_client
+        self._bootstrap_lock = Lock()
+        self._bootstrapped = False
 
     @classmethod
     def from_environment(cls) -> "FinancialTrackerRuntime":
@@ -85,7 +88,7 @@ class FinancialTrackerRuntime:
     def health(self) -> dict[str, str]:
         """Verify database connectivity and return a bounded readiness payload."""
         with self._connect() as connection:
-            self._bootstrap(connection)
+            self._ensure_bootstrapped(connection)
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
         return {"status": "ok", "database": "ready", "sec_identity": "configured"}
@@ -103,14 +106,14 @@ class FinancialTrackerRuntime:
         point = select_latest_revenue(adapter.fetch_companyfacts(AAPL_CIK))
         metadata = _submission_metadata(submissions, point)
         with self._connect() as connection:
-            self._bootstrap(connection)
+            self._ensure_bootstrapped(connection)
             summary = self._persist_point(connection, point, metadata)
         return summary
 
     def dashboard(self, ticker: str | None = None) -> list[dict[str, Any]]:
         """Return the latest filing-backed revenue row for each tracked issuer."""
         with self._connect() as connection:
-            self._bootstrap(connection)
+            self._ensure_bootstrapped(connection)
             query = """
                 SELECT DISTINCT ON (i.id)
                     i.cik, i.legal_name, COALESCE(t.ticker, ''),
@@ -135,7 +138,7 @@ class FinancialTrackerRuntime:
         """Return quarter-aligned filing-backed revenue history for one ticker."""
         normalized_ticker = ticker.strip().upper()
         with self._connect() as connection:
-            self._bootstrap(connection)
+            self._ensure_bootstrapped(connection)
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
@@ -158,7 +161,7 @@ class FinancialTrackerRuntime:
     def universes(self) -> list[dict[str, Any]]:
         """Return saved local watchlist and portfolio membership summaries."""
         with self._connect() as connection:
-            self._bootstrap(connection)
+            self._ensure_bootstrapped(connection)
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
@@ -181,7 +184,7 @@ class FinancialTrackerRuntime:
         """Open a PostgreSQL metric-definition facade and its connection."""
         connection = self._connect()
         connection.__enter__()
-        self._bootstrap(connection)
+        self._ensure_bootstrapped(connection)
         return MetricDefinitionAPI(PostgresMetricRegistry(connection)), connection
 
     def scope(self) -> AuthorizationScope:
@@ -285,6 +288,15 @@ class FinancialTrackerRuntime:
         except ImportError as exc:
             raise RuntimeError("psycopg is required for the financial tracker app") from exc
         return psycopg.connect(self.database_url, connect_timeout=5)
+
+    def _ensure_bootstrapped(self, connection: Any) -> None:
+        """Apply migrations and seed data once before concurrent route reads."""
+        if self._bootstrapped:
+            return
+        with self._bootstrap_lock:
+            if not self._bootstrapped:
+                self._bootstrap(connection)
+                self._bootstrapped = True
 
     @staticmethod
     def _bootstrap(connection: Any) -> None:
