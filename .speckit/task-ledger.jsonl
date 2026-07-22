@@ -2089,3 +2089,7 @@
 {"actor": "implement", "attempt": 2, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t047-20260722T001446Z", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.352362Z"}
 {"actor": "implement", "attempt": 2, "commit_sha": "b92065b", "event": "commit_created", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.406637Z"}
 {"actor": "implement", "attempt": 2, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.452548Z"}
+{"actor": "implement", "attempt": 1, "details": "Implement dashboard collection read model and server-rendered states", "event": "task_started", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:16:55.998483Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "fa4a46b", "details": "Dashboard collection contract is red before implementation", "event": "story_red_committed", "feature_id": "049", "story_id": "US4", "task_id": "T048", "timestamp_utc": "2026-07-22T00:21:18.124723Z"}
+{"actor": "implement", "attempt": 1, "details": "3 focused dashboard collection tests passed", "event": "tests_passed", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:22:34.685286Z"}
+{"actor": "implement", "attempt": 1, "details": "Ruff clean; Pyright 0 diagnostics", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T048", "timestamp_utc": "2026-07-22T00:22:34.870621Z"}
