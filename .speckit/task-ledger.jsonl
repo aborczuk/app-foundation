@@ -2081,3 +2081,7 @@
 {"actor": "implement", "attempt": 1, "commit_sha": "6b6d2dd", "event": "story_red_committed", "feature_id": "049", "story_id": "T047", "task_id": "T047", "timestamp_utc": "2026-07-21T23:56:48.231590Z"}
 {"actor": "implement", "attempt": 1, "details": "Ruff clean; Pyright 0 diagnostics", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:09:23.091390Z"}
 {"actor": "implement", "attempt": 1, "details": "3 focused universe lifecycle tests passed", "event": "tests_passed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:09:23.107874Z"}
+{"actor": "implement", "attempt": 1, "details": "QA found deterministic list/member ordering was not proven by tests", "event": "offline_qa_failed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:13:21.817192Z"}
+{"actor": "implement", "attempt": 2, "details": "Add focused multi-item ordering coverage for list and members", "event": "fix_started", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:13:21.975061Z"}
+{"actor": "implement", "attempt": 2, "details": "4 focused universe lifecycle tests passed after QA remediation", "event": "tests_passed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:14:02.382414Z"}
+{"actor": "implement", "attempt": 2, "details": "Ruff clean; Pyright 0 diagnostics after QA remediation", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:14:02.540643Z"}

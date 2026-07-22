@@ -80,6 +80,32 @@ def test_foreign_scope_cannot_read_or_mutate_a_universe() -> None:
         api.add_member(foreign_scope, universe.id, issuer.id)
 
 
+def test_universe_listing_and_members_are_deterministically_ordered() -> None:
+    """List and member projections use stable name-then-ID ordering."""
+    from financial_tracker.api.universes import UniverseAPI
+
+    owner_scope = _scope(uuid4())
+    zulu = _issuer("Zulu")
+    alpha = _issuer("Alpha")
+    api = UniverseAPI(issuers=[zulu, alpha])
+    zulu_universe = api.create(owner_scope, name="Zulu", kind=PortfolioKind.PORTFOLIO)
+    alpha_universe = api.create(owner_scope, name="Alpha", kind=PortfolioKind.WATCHLIST)
+    scope = replace(
+        owner_scope,
+        portfolio_ids=frozenset({zulu_universe.id, alpha_universe.id}),
+        issuer_ids=frozenset({zulu.id, alpha.id}),
+    )
+
+    api.add_member(scope, zulu_universe.id, zulu.id)
+    api.add_member(scope, zulu_universe.id, alpha.id)
+
+    assert [universe.name for universe in api.list(scope)] == ["Alpha", "Zulu"]
+    assert [issuer.legal_name for issuer in api.members(scope, zulu_universe.id)] == [
+        "Alpha",
+        "Zulu",
+    ]
+
+
 def test_membership_validation_rejects_out_of_scope_and_duplicate_issuers() -> None:
     """Membership mutation requires a reachable issuer and rejects duplicate additions."""
     from financial_tracker.api.universes import UniverseAPI
