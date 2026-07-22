@@ -214,7 +214,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 - [X] T050 Run live-SEC refresh, outage, and recovery acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
 - [X] T051 Run API, XLSX, and Google Sheets parity acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
 - [X] T052 Run metric-definition and version-history acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
-- [ ] T053 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
+- [X] T053 Document migration, rollback, feature-flag rollout, freshness states, and operator recovery checks in `docs/financial-tracker-operations.md`
 
 **Checkpoint**: All required red/green acceptance evidence is recorded, operational docs are usable, and no task remains a placeholder.
 
