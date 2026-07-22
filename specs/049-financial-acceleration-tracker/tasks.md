@@ -210,7 +210,7 @@ description: "Seam-sized implementation tasks for the financial acceleration tra
 
 ### Acceptance and Rollout
 
-- [ ] T049 Run real-PostgreSQL foundation and analysis acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
+- [X] T049 Run real-PostgreSQL foundation and analysis acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
 - [ ] T050 Run live-SEC refresh, outage, and recovery acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
 - [ ] T051 Run API, XLSX, and Google Sheets parity acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`
 - [ ] T052 Run metric-definition and version-history acceptance coverage in `tests/financial_tracker/test_feature_acceptance.py`

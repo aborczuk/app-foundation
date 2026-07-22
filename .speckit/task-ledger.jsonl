@@ -2104,3 +2104,7 @@
 {"actor": "implement", "attempt": 1, "details": "Run real-PostgreSQL foundation and analysis acceptance coverage", "event": "task_started", "feature_id": "049", "task_id": "T049", "timestamp_utc": "2026-07-22T00:32:58.386980Z"}
 {"actor": "implement", "attempt": 1, "details": "Live acceptance selector passed 2 tests against PostgreSQL at localhost:55432", "event": "tests_passed", "feature_id": "049", "task_id": "T049", "timestamp_utc": "2026-07-22T00:34:14.467986Z"}
 {"actor": "implement", "attempt": 1, "details": "Acceptance file Ruff and Pyright passed; guarded live test passed", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T049", "timestamp_utc": "2026-07-22T00:34:14.627748Z"}
+{"actor": "implement", "attempt": 1, "event": "offline_qa_started", "feature_id": "049", "task_id": "T049", "timestamp_utc": "2026-07-22T00:37:31.052249Z"}
+{"actor": "implement", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t049-20260722T003529Z", "task_id": "T049", "timestamp_utc": "2026-07-22T00:37:31.107007Z"}
+{"actor": "implement", "attempt": 1, "commit_sha": "90040c6", "event": "commit_created", "feature_id": "049", "task_id": "T049", "timestamp_utc": "2026-07-22T00:37:31.156971Z"}
+{"actor": "implement", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T049", "timestamp_utc": "2026-07-22T00:37:31.201882Z"}
