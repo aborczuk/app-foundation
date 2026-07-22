@@ -2085,3 +2085,7 @@
 {"actor": "implement", "attempt": 2, "details": "Add focused multi-item ordering coverage for list and members", "event": "fix_started", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:13:21.975061Z"}
 {"actor": "implement", "attempt": 2, "details": "4 focused universe lifecycle tests passed after QA remediation", "event": "tests_passed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:14:02.382414Z"}
 {"actor": "implement", "attempt": 2, "details": "Ruff clean; Pyright 0 diagnostics after QA remediation", "event": "quality_guards_passed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:14:02.540643Z"}
+{"actor": "implement", "attempt": 2, "event": "offline_qa_started", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.303856Z"}
+{"actor": "implement", "attempt": 2, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "049", "qa_run_id": "offline-qa-t047-20260722T001446Z", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.352362Z"}
+{"actor": "implement", "attempt": 2, "commit_sha": "b92065b", "event": "commit_created", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.406637Z"}
+{"actor": "implement", "attempt": 2, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "049", "task_id": "T047", "timestamp_utc": "2026-07-22T00:16:02.452548Z"}
