@@ -7,7 +7,13 @@ from collections.abc import Iterator
 import pytest
 
 from tests.financial_tracker.api import test_exports, test_google_sheets
-from tests.integration.financial_tracker import test_analysis, test_foundation, test_live_sec
+from tests.financial_tracker.metrics import test_api as test_metric_api
+from tests.integration.financial_tracker import (
+    test_analysis,
+    test_foundation,
+    test_live_sec,
+    test_metric_registry,
+)
 
 
 @pytest.fixture()
@@ -63,3 +69,24 @@ def test_google_sheets_delivery_acceptance() -> None:
     test_google_sheets.test_google_sheets_delivery_rejects_owner_mismatch()
     test_google_sheets.test_google_sheets_delivery_rejects_credential_mismatch()
     test_google_sheets.test_google_sheets_delivery_creates_only_the_requested_new_destination()
+
+
+def test_metric_definition_api_acceptance() -> None:
+    """Run metric-definition validation, activation, retirement, and history contracts."""
+    test_metric_api.test_dry_run_returns_bounded_contract_response_without_persistence()
+    test_metric_api.test_invalid_definition_returns_structured_error_without_side_effect()
+    test_metric_api.test_activation_is_tenant_scoped_and_history_is_immutable()
+    test_metric_api.test_retirement_is_owner_authorized_and_preserves_history()
+    test_metric_api.test_retirement_not_found_returns_bounded_error()
+    test_metric_api.test_invalid_activation_does_not_mutate_existing_history()
+    for expression in ("revenue + operating_income", "revenue / 0"):
+        test_metric_api.test_api_contract_rejects_unsafe_or_invalid_calculations(expression)
+
+
+def test_live_metric_definition_version_history_acceptance(
+    acceptance_postgres_connection: object,
+) -> None:
+    """Run immutable metric-definition persistence and version selection on PostgreSQL."""
+    test_metric_registry.test_metric_definition_persists_and_enforces_owner_scope(
+        acceptance_postgres_connection
+    )
