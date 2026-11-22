@@ -13,7 +13,7 @@
 
 **Purpose**: Establish executable configuration assertions before changing behavior.
 
-- [ ] T001 Create failing configuration assertions for MCP registrations and approval policies in `tests/unit/test_codex_config.py`
+- [X] T001 Create failing configuration assertions for MCP registrations and approval policies in `tests/unit/test_codex_config.py`
 
 **Checkpoint**: The requested configuration behavior is represented by targeted assertions.
 
@@ -32,11 +32,11 @@
 
 ### Tests for User Story 1
 
-- [ ] T002 [US1] Extend `tests/unit/test_codex_config.py` with failing CodeGraph and codebase-LSP registration assertions
+- [X] T002 [US1] Extend `tests/unit/test_codex_config.py` with failing CodeGraph and codebase-LSP registration assertions
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Register CodeGraph and codebase-LSP without altering unrelated settings in `.codex/config.toml`
+- [X] T003 [US1] Register CodeGraph and codebase-LSP without altering unrelated settings in `.codex/config.toml`
 
 **Checkpoint**: Both code-intelligence MCP registrations parse and pass their targeted assertions.
 
@@ -55,11 +55,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T004 [US2] Extend `tests/unit/test_codex_config.py` with failing Semble approval assertions
+- [X] T004 [US2] Extend `tests/unit/test_codex_config.py` with failing Semble approval assertions
 
 ### Implementation for User Story 2
 
-- [ ] T005 [US2] Set only Semble `search` and `find_related` approval modes to `auto` in `.codex/config.toml`
+- [X] T005 [US2] Set only Semble `search` and `find_related` approval modes to `auto` in `.codex/config.toml`
 
 **Checkpoint**: Read-only Semble discovery calls have the configured automatic approval policy.
 
@@ -78,11 +78,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T006 [US3] Extend `tests/unit/test_codex_config.py` with the technology-guidance assertion for `AGENTS.md`
+- [X] T006 [US3] Extend `tests/unit/test_codex_config.py` with the technology-guidance assertion for `AGENTS.md`
 
 ### Implementation for User Story 3
 
-- [ ] T007 [US3] Update the technology-choice sentence in `AGENTS.md`
+- [X] T007 [US3] Update the technology-choice sentence in `AGENTS.md`
 
 **Checkpoint**: The instruction wording is precise and its targeted assertion passes.
 
@@ -92,8 +92,8 @@
 
 **Purpose**: Validate the one coherent configuration change.
 
-- [ ] T008 Run configuration assertions and TOML parsing for `.codex/config.toml` and `tests/unit/test_codex_config.py`
-- [ ] T009 Review the scoped diff for `.codex/config.toml`, `AGENTS.md`, and `tests/unit/test_codex_config.py` to confirm no unrelated configuration changed
+- [X] T008 Run configuration assertions and TOML parsing for `.codex/config.toml` and `tests/unit/test_codex_config.py`
+- [X] T009 Review the scoped diff for `.codex/config.toml`, `AGENTS.md`, and `tests/unit/test_codex_config.py` to confirm no unrelated configuration changed
 
 ## Dependencies & Execution Order
 

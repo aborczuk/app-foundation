@@ -1731,3 +1731,56 @@
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/050-codebase-mcp-registration/tasks.md", "event": "task_registered", "feature_id": "050", "task_id": "T008", "timestamp_utc": "2026-11-22T22:30:57.877870Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/050-codebase-mcp-registration/tasks.md", "event": "task_registered", "feature_id": "050", "task_id": "T009", "timestamp_utc": "2026-11-22T22:30:57.886487Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "queued by 050-codebase-mcp-registration-implement", "event": "task_started", "feature_id": "050", "task_id": "T001", "timestamp_utc": "2026-11-22T22:32:13.719918Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T001", "timestamp_utc": "2026-11-22T23:30:01.096798Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T001", "timestamp_utc": "2026-11-22T23:30:01.136686Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t001-20261122T232601Z", "task_id": "T001", "timestamp_utc": "2026-11-22T23:30:01.175986Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T001", "timestamp_utc": "2026-11-22T23:30:01.218702Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T001", "timestamp_utc": "2026-11-22T23:30:01.258719Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T002", "timestamp_utc": "2026-11-22T23:30:10.095654Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T002", "timestamp_utc": "2026-11-22T23:30:10.371279Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T002", "timestamp_utc": "2026-11-22T23:30:10.411482Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t002-20261122T232910Z", "task_id": "T002", "timestamp_utc": "2026-11-22T23:30:10.453231Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T002", "timestamp_utc": "2026-11-22T23:30:10.493729Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T002", "timestamp_utc": "2026-11-22T23:30:10.534307Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T003", "timestamp_utc": "2026-11-22T23:30:19.386964Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T003", "timestamp_utc": "2026-11-22T23:30:19.630634Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T003", "timestamp_utc": "2026-11-22T23:30:19.670922Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t003-20261122T232910Z", "task_id": "T003", "timestamp_utc": "2026-11-22T23:30:19.710889Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T003", "timestamp_utc": "2026-11-22T23:30:19.753331Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T003", "timestamp_utc": "2026-11-22T23:30:19.793262Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T004", "timestamp_utc": "2026-11-22T23:30:28.690837Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T004", "timestamp_utc": "2026-11-22T23:30:28.935519Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T004", "timestamp_utc": "2026-11-22T23:30:28.976168Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t004-20261122T232910Z", "task_id": "T004", "timestamp_utc": "2026-11-22T23:30:29.018235Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T004", "timestamp_utc": "2026-11-22T23:30:29.059330Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T004", "timestamp_utc": "2026-11-22T23:30:29.099017Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T005", "timestamp_utc": "2026-11-22T23:30:37.969960Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T005", "timestamp_utc": "2026-11-22T23:30:38.213773Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T005", "timestamp_utc": "2026-11-22T23:30:38.254269Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t005-20261122T232910Z", "task_id": "T005", "timestamp_utc": "2026-11-22T23:30:38.295292Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T005", "timestamp_utc": "2026-11-22T23:30:38.336662Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T005", "timestamp_utc": "2026-11-22T23:30:38.377574Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T006", "timestamp_utc": "2026-11-22T23:30:47.296935Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T006", "timestamp_utc": "2026-11-22T23:30:47.543952Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T006", "timestamp_utc": "2026-11-22T23:30:47.585290Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t006-20261122T232910Z", "task_id": "T006", "timestamp_utc": "2026-11-22T23:30:47.625720Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T006", "timestamp_utc": "2026-11-22T23:30:47.667616Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T006", "timestamp_utc": "2026-11-22T23:30:47.707211Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T007", "timestamp_utc": "2026-11-22T23:30:56.604451Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T007", "timestamp_utc": "2026-11-22T23:30:56.848182Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T007", "timestamp_utc": "2026-11-22T23:30:56.889154Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t007-20261122T232910Z", "task_id": "T007", "timestamp_utc": "2026-11-22T23:30:56.930296Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T007", "timestamp_utc": "2026-11-22T23:30:56.972746Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T007", "timestamp_utc": "2026-11-22T23:30:57.013016Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T008", "timestamp_utc": "2026-11-22T23:31:05.956545Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T008", "timestamp_utc": "2026-11-22T23:31:06.227848Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T008", "timestamp_utc": "2026-11-22T23:31:06.268774Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t008-20261122T232910Z", "task_id": "T008", "timestamp_utc": "2026-11-22T23:31:06.311266Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T008", "timestamp_utc": "2026-11-22T23:31:06.352270Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T008", "timestamp_utc": "2026-11-22T23:31:06.392578Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "task_started", "feature_id": "050", "task_id": "T009", "timestamp_utc": "2026-11-22T23:31:15.277437Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "050", "task_id": "T009", "timestamp_utc": "2026-11-22T23:31:15.525315Z"}
+{"actor": "andreborczuk", "attempt": 1, "event": "offline_qa_started", "feature_id": "050", "task_id": "T009", "timestamp_utc": "2026-11-22T23:31:15.566366Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "050", "qa_run_id": "offline-qa-t009-20261122T232910Z", "task_id": "T009", "timestamp_utc": "2026-11-22T23:31:15.607512Z"}
+{"actor": "andreborczuk", "attempt": 1, "commit_sha": "d94eddf", "event": "commit_created", "feature_id": "050", "task_id": "T009", "timestamp_utc": "2026-11-22T23:31:15.649614Z"}
+{"actor": "andreborczuk", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "050", "task_id": "T009", "timestamp_utc": "2026-11-22T23:31:15.690606Z"}
