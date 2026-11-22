@@ -66,7 +66,7 @@ Never read `.speckit/*-ledger.jsonl` files directly. All access routes through s
 - Do not write runtime docs as architecture prose only; they must be usable as an operator and debugging reference.
 
 ## Technology choices
-- all new code should be written in python so it is viable in codegraph. No bash or other direct shell scripting languages
+- all new code should be written in a codegraph acceptable language, preferring more common languages like python. No bash or other direct shell scripting languages
 
 ## Operational Bootstrap
 
