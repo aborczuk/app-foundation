@@ -63,11 +63,3 @@
 {"actor": "codex", "critical_count": 0, "event": "analysis_completed", "feature_id": "029", "phase": "solution", "timestamp_utc": "2026-05-09T02:24:22.104795Z"}
 {"actor": "codex", "event": "e2e_generated", "feature_id": "029", "phase": "", "timestamp_utc": "2026-05-11T17:38:25.084247Z"}
 {"actor": "codex", "event": "implementation_completed", "feature_id": "029", "phase": "", "timestamp_utc": "2026-05-11T17:38:34.989438Z"}
-{"actor": "codex", "event": "backlog_registered", "feature_id": "050", "phase": "", "timestamp_utc": "2026-11-22T22:22:26.042807Z"}
-{"actor": "codex", "event": "spec_clarified", "feature_id": "050", "phase": "", "timestamp_utc": "2026-11-22T22:22:26.088711Z"}
-{"actor": "codex", "event": "research_completed", "feature_id": "050", "phase": "", "timestamp_utc": "2026-11-22T22:22:26.134599Z"}
-{"actor": "codex", "event": "plan_started", "feature_id": "050", "phase": "", "timestamp_utc": "2026-11-22T22:22:26.180699Z"}
-{"actor": "codex", "event": "planreview_completed", "feature_id": "050", "fq_count": 0, "phase": "", "questions_asked": 0, "timestamp_utc": "2026-11-22T22:22:39.162608Z"}
-{"actor": "codex", "details": "Single low-risk configuration slice approved.", "event": "plan_approved", "feasibility_required": "false", "feature_id": "050", "phase": "", "spec_json_path": "specs/050-codebase-mcp-registration/spec.json", "timestamp_utc": "2026-11-22T22:22:39.208909Z"}
-{"actor": "codex", "estimate_points": 12, "event": "tasking_completed", "feature_id": "050", "phase": "", "story_count": 3, "task_count": 9, "timestamp_utc": "2026-11-22T22:32:25.041870Z"}
-{"actor": "codex", "details": "Nine validated tasks estimated at 12 points; no task is 8 or 13 points.", "estimate_points": 12, "event": "solution_approved", "feature_id": "050", "phase": "", "story_count": 3, "task_count": 9, "timestamp_utc": "2026-11-22T22:32:25.087668Z"}
