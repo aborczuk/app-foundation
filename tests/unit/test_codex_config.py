@@ -32,5 +32,39 @@ def test_codex_config_registers_semble_mcp_server() -> None:
     assert semble["command"] == "uv"
     assert semble["args"] == ["run", "semble", "--content", "all"]
     assert semble["cwd"] == "/Users/andreborczuk/app-foundation"
-    assert semble["tools"]["search"]["approval_mode"] == "approve"
-    assert semble["tools"]["find_related"]["approval_mode"] == "approve"
+    assert semble["tools"]["search"]["approval_mode"] == "auto"
+    assert semble["tools"]["find_related"]["approval_mode"] == "auto"
+
+
+def test_codex_config_registers_codegraph_and_codebase_lsp_servers() -> None:
+    """The repo-local config should register the code intelligence MCP servers."""
+    config = tomllib.loads(Path(".codex/config.toml").read_text(encoding="utf-8"))
+    codegraph = config["mcp_servers"]["codegraph"]
+    codebase_lsp = config["mcp_servers"]["codebase-lsp"]
+
+    assert codegraph == {
+        "command": "uv",
+        "args": ["run", "cgc", "mcp", "start"],
+        "cwd": "/Users/andreborczuk/app-foundation",
+    }
+    assert codebase_lsp["command"] == "uv"
+    assert codebase_lsp["args"] == ["run", "python", "-m", "mcp_codebase"]
+    assert codebase_lsp["cwd"] == "/Users/andreborczuk/app-foundation"
+    assert codebase_lsp["tools"]["get_diagnostics"]["approval_mode"] == "approve"
+
+
+def test_codex_config_makes_semble_discovery_automatic() -> None:
+    """Semble's read-only discovery tools should not require approval."""
+    config = tomllib.loads(Path(".codex/config.toml").read_text(encoding="utf-8"))
+    semble_tools = config["mcp_servers"]["semble"]["tools"]
+
+    assert semble_tools["search"]["approval_mode"] == "auto"
+    assert semble_tools["find_related"]["approval_mode"] == "auto"
+
+
+def test_agents_language_guidance_prefers_codegraph_compatible_languages() -> None:
+    """The technology guidance should prefer compatible languages and forbid shell code."""
+    instructions = Path("AGENTS.md").read_text(encoding="utf-8")
+
+    assert "codegraph acceptable language, preferring more common languages like python" in instructions
+    assert "No bash or other direct shell scripting languages" in instructions
