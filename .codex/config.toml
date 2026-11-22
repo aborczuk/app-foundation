@@ -41,20 +41,7 @@ cwd = "/Users/andreborczuk/app-foundation"
 env = { SEMBLE_CACHE_LOCATION = "/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache" }
 
 [mcp_servers.semble.tools.search]
-approval_mode = "auto"
+approval_mode = "approve"
 
 [mcp_servers.semble.tools.find_related]
-approval_mode = "auto"
-
-[mcp_servers.codegraph]
-command = "uv"
-args = ["run", "cgc", "mcp", "start"]
-cwd = "/Users/andreborczuk/app-foundation"
-
-[mcp_servers.codebase-lsp]
-command = "uv"
-args = ["run", "python", "-m", "mcp_codebase"]
-cwd = "/Users/andreborczuk/app-foundation"
-
-[mcp_servers.codebase-lsp.tools.get_diagnostics]
 approval_mode = "approve"
