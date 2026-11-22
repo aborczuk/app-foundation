@@ -1,0 +1,66 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/050-codebase-mcp-registration/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "low",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Update `.codex/config.toml` to retain all existing settings while setting Semble `search` and `find_related` to `auto`, adding the existing CodeGraph and codebase-LSP registrations, and retaining diagnostics approval; update the one technology-guidance sentence in `AGENTS.md`; add targeted TOML/config assertions.",
+      "slice_id": "PL-01",
+      "title": "Register existing code-intelligence MCP services",
+      "why": ""
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "ops governance": "The change controls which code-intelligence tools Codex may invoke and the approval policy for those invocations."
+    },
+    "relevant": [
+      "ops governance"
+    ]
+  },
+  "feature_id": "050",
+  "risk": {
+    "external_dependency_uncertainty": "low",
+    "human_operator_dependency": "low",
+    "overall": "low",
+    "repo_uncertainty": "low",
+    "requirement_clarity": "low",
+    "runtime_side_effect_risk": "low",
+    "state_data_migration_risk": "low"
+  },
+  "routing": {
+    "architecture_diagram": false,
+    "external_research": false,
+    "plan_level": "simple",
+    "relevant_domains": [
+      "ops governance"
+    ],
+    "routing_reason": "Repository evidence is sufficient for one small configuration slice; no new architecture, external research, or expanded design notes are needed.",
+    "sketch_level": "core"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": false,
+    "architecture_strategy": false,
+    "expanded_design_notes": false,
+    "external_research": false,
+    "net_new_surface": false,
+    "strategy_reason": "Repository evidence is sufficient for one small configuration slice; no new architecture, external research, or expanded design notes are needed."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [],
+    "duplicate_reason": "The requested Codex registrations and approval settings are absent from main.",
+    "risk_level": "low",
+    "tshirt_size": "xs"
+  }
+}

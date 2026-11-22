@@ -22,3 +22,15 @@ def test_codex_config_registers_composio_mcp_server() -> None:
     assert composio["url"] == "https://connect.composio.dev/mcp"
     assert "http_headers" not in composio
     assert "env_http_headers" not in composio
+
+
+def test_codex_config_registers_semble_mcp_server() -> None:
+    """The repo-local Codex config should retain Semble's registered command."""
+    config = tomllib.loads(Path(".codex/config.toml").read_text(encoding="utf-8"))
+    semble = config["mcp_servers"]["semble"]
+
+    assert semble["command"] == "uv"
+    assert semble["args"] == ["run", "semble", "--content", "all"]
+    assert semble["cwd"] == "/Users/andreborczuk/app-foundation"
+    assert semble["tools"]["search"]["approval_mode"] == "approve"
+    assert semble["tools"]["find_related"]["approval_mode"] == "approve"
