@@ -139,7 +139,7 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
         if ok is not False:
             raise ValueError("exit_code=2 (error) requires ok=False")
 
-    return {
+    parsed = {
         "schema_version": schema_version,
         "ok": ok,
         "exit_code": exit_code,
@@ -150,6 +150,12 @@ def parse_step_result(step_result: Mapping[str, Any] | dict[str, Any]) -> dict[s
         "next_phase": next_phase,
         "debug_path": debug_path,
     }
+    feature_id = payload.get("feature_id")
+    if feature_id is not None:
+        if not isinstance(feature_id, str) or not feature_id.strip():
+            raise ValueError("feature_id must be a non-empty string when provided")
+        parsed["feature_id"] = feature_id.strip()
+    return parsed
 
 
 def normalize_driver_mode(raw_mode: Any) -> str:

@@ -930,6 +930,54 @@ def test_run_step_routes_blocked_envelope() -> None:
     assert result["reasons"] == ["fq_count_nonzero"]
 
 
+def test_run_step_preserves_bootstrap_feature_id() -> None:
+    """A canonical bootstrap result remains a single successful step result."""
+    correlation_id = "bootstrap:specify:analytics"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json; print(json.dumps({"
+            "'schema_version':'1.0.0','ok':True,'exit_code':0,"
+            f"'correlation_id':'{correlation_id}','next_phase':'specify',"
+            "'feature_id':'055-agent-analytics-otel'"
+            "}))"
+        ),
+    ]
+
+    result = pipeline_driver.run_step(
+        command,
+        timeout_seconds=5,
+        correlation_id=correlation_id,
+    )
+
+    assert result["ok"] is True
+    assert result["feature_id"] == "055-agent-analytics-otel"
+
+
+def test_specify_bootstrap_passes_its_correlation_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bootstrap child receives the same correlation id the driver validates."""
+    captured_command: list[str] = []
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_run_step(command: list[str], **kwargs: object) -> dict[str, object]:
+        captured_command.extend(command)
+        captured_kwargs.update(kwargs)
+        return {"ok": True, "exit_code": 0}
+
+    monkeypatch.setattr(pipeline_driver, "run_step", fake_run_step)
+
+    pipeline_driver._run_specify_bootstrap_step(
+        feature_description="Create an analytics view",
+        short_name="agent-analytics-otel",
+        timeout_seconds=300,
+    )
+
+    correlation_index = captured_command.index("--correlation-id")
+    assert captured_command[correlation_index + 1] == captured_kwargs["correlation_id"]
+    assert "allow_correlation_mismatch" not in captured_kwargs
+
+
 def test_run_step_timeout_routes_runtime_failure(tmp_path: Path) -> None:
     sidecar_dir = tmp_path / "runtime-failures"
     result = pipeline_driver.run_step(
@@ -1719,15 +1767,15 @@ def test_main_bootstraps_description_requests(monkeypatch, capsys) -> None:
     assert payload["feature_id"] == "028-universal-backlog"
     assert payload["phase_state"]["phase"] == "specify"
     assert payload["step_result"]["feature_id"] == "028-universal-backlog"
-    assert payload["step_result"]["pipeline_event"] == "backlog_registered"
-    assert append_called["feature_id"] == "028-universal-backlog"
-    assert append_called["phase"] == "specify"
-    assert append_called["command_id"] == "speckit.specify"
-    assert called["allow_correlation_mismatch"] is True
+    assert "pipeline_event" not in payload["step_result"]
+    assert append_called == {}
+    assert called["allow_correlation_mismatch"] is False
     assert called["timeout_seconds"] == 300
     command = called.get("command")
     assert isinstance(command, list)
     assert str(command[1]).endswith("speckit_specify_step.py")
+    correlation_index = command.index("--correlation-id")
+    assert command[correlation_index + 1] == called["correlation_id"]
     assert command[-1] == "create a universal backlog jsonl for all registered tasks"
 
 

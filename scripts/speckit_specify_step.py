@@ -397,8 +397,9 @@ def _run_bootstrap_only_mode(
     description: str,
     short_name: str,
     env: dict[str, str],
+    correlation_id: str,
 ) -> dict[str, Any]:
-    """Bootstrap the scaffold and return the metadata needed for manual spec writing."""
+    """Bootstrap one scaffold and return a canonical driver result."""
     _trace(f"_run_bootstrap_only_mode start description={description!r} short_name={short_name!r}")
     bootstrap = _run_bootstrap_mode(description, short_name, env)
     feature_id = str(bootstrap.get("BRANCH_NAME") or bootstrap.get("FEATURE_NUM") or "").strip()
@@ -406,6 +407,7 @@ def _run_bootstrap_only_mode(
         "schema_version": "1.0.0",
         "ok": True,
         "exit_code": 0,
+        "correlation_id": correlation_id,
         "phase": "specify",
         "feature_id": feature_id,
         "branch_name": str(bootstrap.get("BRANCH_NAME") or ""),
@@ -416,6 +418,7 @@ def _run_bootstrap_only_mode(
             "path": str(bootstrap.get("SPEC_FILE") or ""),
             "completion_marker": SPEC_COMPLETION_MARKER,
         },
+        "next_phase": "specify",
         "next_step": "fill_spec_scaffold",
     }
     _trace(
@@ -543,6 +546,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Specify bootstrap and deterministic step runner")
     parser.add_argument("--json", action="store_true", help="Emit JSON summary output")
     parser.add_argument("--short-name", default="", help="Optional short name for the feature")
+    parser.add_argument("--correlation-id", default="", help="Pipeline-driver correlation identifier")
     parser.add_argument(
         "feature_description",
         nargs="?",
@@ -575,6 +579,8 @@ def main(argv: list[str]) -> int:
             description=description,
             short_name=str(args.short_name).strip(),
             env=env,
+            correlation_id=str(args.correlation_id).strip()
+            or build_correlation_id("bootstrap", "specify"),
         )
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

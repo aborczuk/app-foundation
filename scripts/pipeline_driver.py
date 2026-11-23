@@ -1468,15 +1468,15 @@ def _run_specify_bootstrap_step(
 ) -> dict[str, Any]:
     """Bootstrap a new feature through the specify step runner."""
     specify_step = Path(__file__).resolve().with_name("speckit_specify_step.py")
-    command = [sys.executable, str(specify_step)]
+    correlation_id = _build_bootstrap_correlation_id(feature_description)
+    command = [sys.executable, str(specify_step), "--correlation-id", correlation_id]
     if short_name.strip():
         command.extend(["--short-name", short_name.strip()])
     command.append(feature_description)
     return run_step(
         command,
         timeout_seconds=timeout_seconds,
-        correlation_id=_build_bootstrap_correlation_id(feature_description),
-        allow_correlation_mismatch=True,
+        correlation_id=correlation_id,
     )
 
 
@@ -1657,6 +1657,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             short_name=str(args.short_name),
             timeout_seconds=300,
         )
+        if int(step_result.get("exit_code", 1)) != 0:
+            emit_human_status(step_result)
+            if args.output_json:
+                print(
+                    json.dumps(
+                        {
+                            "feature_id": "",
+                            "feature_request": bootstrap_description,
+                            "step_result": step_result,
+                        },
+                        sort_keys=True,
+                    )
+                )
+            return int(step_result.get("exit_code", 1))
+
         bootstrapped_feature_id = str(step_result.get("feature_id") or "").strip()
         if not bootstrapped_feature_id:
             step_result = {
@@ -1684,55 +1699,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return 2
 
-        if int(step_result.get("exit_code", 1)) != 0 and not step_result.get("error_code"):
-            bootstrap_error_code = "bootstrap_step_failed"
-            bootstrap_gate = step_result.get("gate")
-            if isinstance(bootstrap_gate, str) and bootstrap_gate.strip():
-                bootstrap_error_code = bootstrap_gate.strip()
-            bootstrap_reasons = step_result.get("reasons")
-            if isinstance(bootstrap_reasons, list) and bootstrap_reasons:
-                first_reason = str(bootstrap_reasons[0]).strip()
-                if first_reason:
-                    bootstrap_error_code = f"{bootstrap_error_code}:{first_reason}"
-            step_result["error_code"] = bootstrap_error_code
-
-        append_result = append_pipeline_success_event(
-            feature_id=bootstrapped_feature_id,
-            phase="specify",
-            command_id="speckit.specify",
-        )
-        if not append_result.get("ok"):
-            step_result = {
-                "schema_version": "1.0.0",
-                "ok": False,
-                "exit_code": 2,
-                "correlation_id": str(step_result.get("correlation_id") or ""),
-                "gate": None,
-                "reasons": ["pipeline_event_append_failed"],
-                "error_code": append_result.get("error_code", "pipeline_event_append_failed"),
-                "next_phase": None,
-                "debug_path": None,
-            }
-            emit_human_status(step_result)
-            if args.output_json:
-                print(
-                    json.dumps(
-                        {
-                            "feature_id": bootstrapped_feature_id,
-                            "feature_request": bootstrap_description,
-                            "step_result": step_result,
-                        },
-                        sort_keys=True,
-                    )
-                )
-            return 2
-
         phase_state = resolve_phase_state(
             bootstrapped_feature_id,
             pipeline_state={"phase": "specify", "dry_run": False},
         )
-        if append_result.get("appended"):
-            step_result["pipeline_event"] = append_result.get("event")
         emit_human_status(step_result)
         if args.output_json:
             print(
