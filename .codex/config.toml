@@ -1,4 +1,4 @@
-model_auto_compact_token_limit = 60000
+model_auto_compact_token_limit = 120000
 tool_output_token_limit = 4000
 compact_prompt = """
 You are a context compaction engine for Codex. Your job is to condense the conversation history without losing execution state.
