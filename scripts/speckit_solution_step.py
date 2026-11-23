@@ -368,10 +368,12 @@ def _validate_tasks_artifact(tasks_path: Path) -> None:
         raise RuntimeError("tasks_artifact_missing")
 
 
-def _event_request(*, task_count: int, story_count: int, estimate_points: int) -> dict[str, Any]:
-    """Build the driver-owned solution event request payload."""
+def _event_request(
+    *, task_count: int, story_count: int, estimate_points: int, event_name: str
+) -> dict[str, Any]:
+    """Build the driver-owned completion event request for the selected phase."""
     return {
-        "event": "solution_approved",
+        "event": event_name,
         "fields": {
             "task_count": task_count,
             "story_count": story_count,
@@ -390,7 +392,7 @@ def _load_spec_details(feature_dir: Path) -> dict[str, Any]:
 
 
 def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "solution") -> dict[str, Any]:
-    """Validate, stabilize, and finalize the generative solution artifact set."""
+    """Validate, stabilize, and finalize the legacy or canonical tasking artifact set."""
     repo_root, feature_dir, plan_path = _resolve_solution_paths(feature_id)
     bootstrap_summary = bootstrap_session(repo_root)
     if not bootstrap_summary["bootstrap_ok"]:
@@ -405,9 +407,19 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
 
     stages: list[dict[str, Any]] = []
 
-    tasking_chain = _run_tasking_stabilization(repo_root=repo_root, feature_dir=feature_dir)
-    stages.append({"stage": "tasking_chain_validate", "result": tasking_chain})
-    if not bool(tasking_chain.get("ok", False)):
+    if phase == "tasking":
+        tasking_stabilization = {
+            "ok": True,
+            "mode": "generative_direct",
+            "validated_by": "speckit.estimate",
+        }
+    else:
+        tasking_stabilization = _run_tasking_stabilization(
+            repo_root=repo_root,
+            feature_dir=feature_dir,
+        )
+    stages.append({"stage": "tasking_stabilization", "result": tasking_stabilization})
+    if not bool(tasking_stabilization.get("ok", False)):
         raise RuntimeError("tasking_stabilization_incomplete")
 
     tasks_gate = _run_tasks_gate(repo_root=repo_root, feature_dir=feature_dir)
@@ -455,6 +467,7 @@ def finalize_solution(feature_id: str, correlation_id: str, *, phase: str = "sol
             task_count=task_count,
             story_count=story_count,
             estimate_points=estimate_points,
+            event_name="tasking_completed" if phase == "tasking" else "solution_approved",
         ),
     }
     result["pipeline_event_request"]["fields"].update(

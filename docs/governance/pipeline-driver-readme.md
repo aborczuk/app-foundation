@@ -89,7 +89,7 @@ Reading it left to right:
 - `pipeline_driver_state.py` reads the feature ledger, derives the current phase from the most recent event, checks for drift, and marks the feature blocked when the ledger and the feature artifacts disagree.
 - `pipeline_driver.py` then asks `pipeline_driver_contracts.py` how the current phase should be routed.
 - If the manifest says the command is `deterministic`, the driver runs the declared script path with a timeout.
-- If the manifest says the command is `generative`, the driver builds a handoff payload, runs the handoff runner, validates the generated artifact, and only then appends a success event.
+- If the manifest says the command is `generative`, the driver either runs the handoff runner or, for `execution_owner: command_agent`, returns a direct command handoff; the command agent owns generative execution and finalization.
 - If the manifest says the command is `legacy` or has no usable route metadata, the driver falls back to the legacy blocked path instead of pretending the migration is complete.
 - After a successful routed step, `pipeline_driver.py` calls back into `pipeline_ledger.py` to append the manifest-selected success event, then refreshes phase state from the ledger again so `next_phase` is computed from the committed state, not from the caller's guess.
 
@@ -102,7 +102,7 @@ Reading it left to right:
 5. Enforce approval breakpoints when the route requires them.
 6. Execute the route:
    - deterministic route: run the script declared by the manifest
-   - generative route: run the handoff runner and validate the generated artifact
+   - generative route: run the handoff runner and validate the generated artifact, or return the direct command for a command-agent-owned route
    - legacy route: return a blocked legacy response
 7. Append the success event to `scripts/pipeline_ledger.py` when the route succeeds.
 8. Emit compact human status and optional JSON for downstream tooling.

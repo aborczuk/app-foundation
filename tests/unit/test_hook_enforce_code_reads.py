@@ -36,6 +36,18 @@ def test_read_code_window_limit_comes_from_env_var() -> None:
     assert "over 12 are denied" in decision["permissionDecisionReason"]
 
 
+def test_read_code_window_default_limit_is_40_lines() -> None:
+    """The default hook policy should deny windows larger than 40 lines."""
+    stdout = _run_hook(
+        "uv run python scripts/read_code.py window scripts/read_code.py 1 41",
+    )
+
+    assert stdout
+    decision = json.loads(stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "over 40 are denied" in decision["permissionDecisionReason"]
+
+
 def test_read_code_window_limit_uses_bounded_span_not_end_line() -> None:
     """A later window under the limit should not be denied just because the end line is large."""
     stdout = _run_hook(
@@ -70,6 +82,7 @@ def test_direct_code_file_read_guidance_points_to_semble_first() -> None:
     reason = decision["permissionDecisionReason"]
     assert "semble search" in reason
     assert "semble find-related" in reason
+    assert "max-snippet-lines 10" in reason
     assert "window <file> <start_line> <end_line>" in reason
 
 

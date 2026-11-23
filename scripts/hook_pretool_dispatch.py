@@ -62,7 +62,7 @@ def _grep_guard(command: str) -> str | None:
     if re.search(r"(?<!\S)git\s+grep(?:\s|$)", command):
         return (
             "Direct `git grep` is denied. For repo search use Semble first "
-            "(`uv run --no-sync semble search <query> . -k 5 --max-snippet-lines 0`) "
+            "(`uv run --no-sync semble search <query> . -k 5 --max-snippet-lines 10`) "
             "to get file/line anchors, then use bounded read_code windows. "
             "For remote/history inspection use `uv run python scripts/github_guard.py run -- gh ...` "
             "or bounded `git log -S/-G` history queries."

@@ -82,7 +82,16 @@ ALLOWED_TRANSITIONS = {
     "task_started": {None, "task_registered"},
     "discovery_completed": {"task_started", "discovery_completed"},
     "lld_recorded": {"discovery_completed"},
-    "quality_guards_passed": {"discovery_completed", "lld_recorded", "human_action_verified"},
+    # Closeout records commit metadata before the terminal task event; allow
+    # the guard evidence to be recorded at that point without weakening the
+    # requirement that it precede functional completion and test evidence.
+    "quality_guards_passed": {
+        "discovery_completed",
+        "lld_recorded",
+        "human_action_verified",
+        "commit_created",
+        "offline_qa_passed",
+    },
     "functional_goal_achieved": {"discovery_completed", "lld_recorded", "quality_guards_passed", "human_action_verified"},
     "tests_failed": {
         "task_started", "discovery_completed", "lld_recorded", "quality_guards_passed",

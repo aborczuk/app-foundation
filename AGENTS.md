@@ -151,9 +151,9 @@ Read code by intent, not by guessing file windows.
 
 First use Semble to get anchors without body dumps:
 
-- MCP: `search(query, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
-- MCP: `find_related(file_path, line, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
-- CLI fallback: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 0 --content all`
+- MCP: `search(query, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=10)`
+- MCP: `find_related(file_path, line, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=10)`
+- CLI fallback: `SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache uv run --no-sync semble search "<query>" . -k 5 --max-snippet-lines 10 --content all`
 
 Then use the guarded CLI read surface for exact bounded inspection:
 
@@ -166,13 +166,13 @@ The Semble MCP server keeps model/index state warm for the agent session. The CL
 
 0. **Start with Semble**
    - Use Semble `search` for natural-language queries, symbols, strings, docs, config, or the best matching seam.
-   - Keep `max_snippet_lines=0` until you choose a candidate; this returns file and line anchors without code/body dumps.
+   - Use `max_snippet_lines=10` for a compact preview; select the candidate, then read only its bounded local window.
    - If the first anchor is close but not enough, use Semble `find_related` from the candidate file and line.
 
    Examples:
 
-   - `search("task validator format gate", repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
-   - `find_related("scripts/speckit_tasks_gate.py", 75, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=0)`
+   - `search("task validator format gate", repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=10)`
+   - `find_related("scripts/speckit_tasks_gate.py", 75, repo="/Users/andreborczuk/app-foundation", top_k=5, max_snippet_lines=10)`
 
 1. **Use read-code `context` only when needed**
    - Use `read_code.py context` when Semble is unavailable, when you need read-code's semantic reader specifically, or when a Semble anchor needs a focused semantic follow-up.

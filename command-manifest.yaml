@@ -1,8 +1,8 @@
-version: 1.1.9
-last_updated: '2026-07-13T00:00:00Z'
+version: 1.1.10
+last_updated: '2026-07-20T16:32:15Z'
 manifest:
-  version: 1.1.10
-  updated_utc: '2026-07-13T00:00:00Z'
+  version: 1.1.11
+  updated_utc: '2026-07-20T16:32:15Z'
   ledger_sync_policy:
     - If pipeline_ledger.py, task_ledger.py, .speckit/*-ledger.jsonl schema, or any
       emitted event contract changes, update this manifest in the same PR.
@@ -113,12 +113,10 @@ commands:
     - output_path: ${FEATURE_DIR}/plan.md
       template: plan-template.md
       consumed_by:
-      - speckit.solution
       - speckit.tasking
       produced_by: scripts/speckit_plan_step.py
     - output_path: ${FEATURE_DIR}/spec.json
       consumed_by:
-      - speckit.solution
       - speckit.tasking
       - speckit.implement
       produced_by: scripts/speckit_plan_step.py
@@ -169,17 +167,17 @@ commands:
       required_fields:
       - failed_fq
   speckit.tasking:
-    description: Decompose approved plan.md design slices into tasks.md, scaffold HUD tickets
-      deterministically, fill them generatively, then stabilize the task graph and acceptance artifacts
+    description: Act as the canonical interface between approved plan.md design slices and seam-sized tasks.md, then stabilize the task graph and acceptance artifacts
     driver:
       mode: generative
+      execution_owner: command_agent
+      script_path: scripts/speckit_tasking_step.py
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
       - .specify/scripts/python/check_prerequisites.py
       - .specify/scripts/pipeline-scaffold.py
-      - scripts/speckit_tasking_chain.py
-      - scripts/speckit_tasking_codex_runner.py
+      - scripts/speckit_tasking_step.py
       - .specify/scripts/acceptance-test-scaffold.py
       - scripts/speckit_tasks_gate.py
       - scripts/pipeline_ledger.py
@@ -190,11 +188,7 @@ commands:
       - speckit.estimate
       - speckit.breakdown
       - speckit.implement
-    emits:
-    - event: tasking_completed
-      required_fields:
-      - task_count
-      - story_count
+    emits: []
   speckit.sketch:
     description: Legacy sketch command retained for compatibility; design slices now live in plan.md
     mode: legacy
@@ -211,22 +205,33 @@ commands:
     - event: sketch_completed
       required_fields: []
   speckit.estimate:
-    description: Estimate fibonacci complexity for each task by evaluating codebase
-    mode: legacy
+    description: Generatively estimate and break down seam-sized tasks until no task scores 8 or 13, then finalize tasking
+    driver:
+      mode: generative
+      execution_owner: command_agent
+      timeout_seconds: 900
+      canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - .specify/scripts/pipeline-scaffold.py
+    - scripts/speckit_tasking_step.py
+    - .specify/scripts/acceptance-test-scaffold.py
+    - scripts/speckit_tasks_gate.py
+    - scripts/task_ledger.py
     - scripts/pipeline_ledger.py
     artifacts:
     - output_path: ${FEATURE_DIR}/estimates.md
       template: estimates-template.md
     emits:
     - event: estimation_completed
+      required_fields: []
+      compatibility_only: true
+    - event: tasking_completed
       required_fields:
-      - estimate_points
+      - task_count
+      - story_count
   speckit.breakdown:
-    description: "Break down 8 or 13-point tasks in estimates.md into smaller pieces\
-      \ (\u22645 points each)"
+    description: Compatibility substep; use speckit.estimate for the complete generative estimate/breakdown loop
     mode: legacy
     scripts:
     - .specify/scripts/python/check_prerequisites.py
@@ -266,12 +271,11 @@ commands:
       - critical_count
       - high_count
   speckit.solution:
-    description: Generate tasks from plan design slices and finalize solution approval without a Codex subrunner
+    description: Legacy compatibility command; use speckit.tasking as the canonical plan-slice-to-task interface
     driver:
       mode: generative
       script_path: scripts/speckit_solution_step.py
       timeout_seconds: 300
-      canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/python/check_prerequisites.py
     - scripts/speckit_solution_step.py
@@ -292,15 +296,16 @@ commands:
       - story_count
       - estimate_points
   speckit.implement:
-    description: Execute the next registered task through command-agent-owned builder
-      and QA subagent orchestration plus script-owned QA and closeout sequencing
+    description: Execute the next registered task through driver-owned approval, validation,
+      QA, and closeout sequencing
     driver:
-      mode: generative
-      execution_owner: command_agent
+      mode: deterministic
+      script_path: scripts/speckit_implement_step.py
       timeout_seconds: 300
       canonical_trigger: speckit.run
     scripts:
     - .specify/scripts/python/check_prerequisites.py
+    - scripts/speckit_implement_step.py
     - scripts/speckit_gate_status.py
     - scripts/speckit_implement_gate.py
     - scripts/speckit_prepare_ignores.py

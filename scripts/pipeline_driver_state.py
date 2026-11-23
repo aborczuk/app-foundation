@@ -24,12 +24,12 @@ EVENT_TO_PHASE: dict[str, str] = {
     "feasibility_spike_completed": "plan",
     "feasibility_spike_failed": "plan",
     "plan_approved": "plan",
-    "sketch_completed": "solution",
-    "solutionreview_completed": "solution",
-    "estimation_completed": "solution",
-    "tasking_completed": "solution",
-    "solution_approved": "solution",
-    "analysis_completed": "solution",
+    "sketch_completed": "tasking",
+    "solutionreview_completed": "tasking",
+    "estimation_completed": "tasking",
+    "tasking_completed": "tasking",
+    "solution_approved": "tasking",
+    "analysis_completed": "tasking",
     "e2e_generated": "implement",
     "feature_closed": "closed",
 }
@@ -37,11 +37,20 @@ EVENT_TO_PHASE: dict[str, str] = {
 PHASE_TRANSITIONS: dict[str, str] = {
     "specify": "plan",
     "research": "plan",
-    "plan": "solution",
+    "plan": "tasking",
+    "tasking": "implement",
     "solution": "implement",
     "implement": "closed",
 }
-PHASE_SEQUENCE: tuple[str, ...] = ("specify", "research", "plan", "solution", "implement", "closed")
+PHASE_SEQUENCE: tuple[str, ...] = (
+    "specify",
+    "research",
+    "plan",
+    "tasking",
+    "solution",
+    "implement",
+    "closed",
+)
 PHASE_INDEX: dict[str, int] = {phase: index for index, phase in enumerate(PHASE_SEQUENCE)}
 
 

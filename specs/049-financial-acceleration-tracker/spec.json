@@ -1,0 +1,154 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/049-financial-acceleration-tracker/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "high",
+      "file_symbol_seams": [
+        "src/financial_tracker/domain/",
+        "src/financial_tracker/persistence/",
+        "src/financial_tracker/identity/",
+        "src/financial_tracker/ingestion/",
+        "tests/financial_tracker/"
+      ],
+      "file_symbol_seams_raw": "`src/financial_tracker/domain/`, `src/financial_tracker/persistence/`, `src/financial_tracker/identity/`, `src/financial_tracker/ingestion/`, `tests/financial_tracker/`",
+      "implementation_directive": "Create migrations and typed Python domain services for users, portfolios, issuers, filings, fiscal periods, exact-decimal facts, provenance, analysis runs, and durable work items. Implement CIK/ticker identity resolution and fixture ingestion with transactional idempotency constraints, structured audit events, and red-green tests against a real PostgreSQL test instance.",
+      "slice_id": "PL-01",
+      "title": "Financial Foundation and Provenance",
+      "why": "Establish the isolated Python package, PostgreSQL schema, authorization primitives, immutable filing/fact/provenance model, and fixture-only ingestion path that every later capability depends on."
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [
+        "src/financial_tracker/calculation/",
+        "src/financial_tracker/selectors/",
+        "src/financial_tracker/quality/",
+        "tests/financial_tracker/calculation/"
+      ],
+      "file_symbol_seams_raw": "`src/financial_tracker/calculation/`, `src/financial_tracker/selectors/`, `src/financial_tracker/quality/`, `tests/financial_tracker/calculation/`",
+      "implementation_directive": "Implement approved fact selectors, fiscal-period classification/derivation, margin/streak/acceleration calculations, finite quality states, and immutable observation writes keyed by source snapshot and calculation version. Add fixture tests for expected values, amended filings, incomplete facts, and complete provenance for every observation.",
+      "slice_id": "PL-02",
+      "title": "Calculation and Built-In Metric Observations",
+      "why": "Deliver trusted filing-backed acceleration analysis before exposing user-authored formulas."
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [
+        "src/financial_tracker/metrics/",
+        "src/financial_tracker/recalculation/",
+        "src/financial_tracker/api/metric_definitions.py",
+        "tests/financial_tracker/metrics/"
+      ],
+      "file_symbol_seams_raw": "`src/financial_tracker/metrics/`, `src/financial_tracker/recalculation/`, `src/financial_tracker/api/metric_definitions.py`, `tests/financial_tracker/metrics/`",
+      "implementation_directive": "Build a restricted typed metric-expression parser and validator, immutable definition/version persistence, definition authorization, dry-run evaluation, activation/retirement transitions, dependency-cycle checks, and targeted recalculation enqueueing. Ensure historical observations keep their producing version and API responses require or report the selected definition version/hash.",
+      "slice_id": "PL-03",
+      "title": "Versioned User-Defined Metric Registry",
+      "why": "Provide the requested way to define additional metrics over time without compromising reproducibility or tenant isolation."
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [
+        "src/financial_tracker/web/",
+        "src/financial_tracker/api/",
+        "src/financial_tracker/query/",
+        "src/financial_tracker/exports/",
+        "tests/financial_tracker/api/"
+      ],
+      "file_symbol_seams_raw": "`src/financial_tracker/web/`, `src/financial_tracker/api/`, `src/financial_tracker/query/`, `src/financial_tracker/exports/`, `tests/financial_tracker/api/`",
+      "implementation_directive": "Implement versioned authenticated query endpoints and server-rendered dashboard pages with quality/provenance/freshness states. Generate XLSX from the identical read model, persist an immutable export manifest, and add contract tests proving dashboard/API/export parity, authorization boundaries, and explicit stale/recalculation-pending behavior. Keep Google Sheets as a separately tested adapter behind the export service.",
+      "slice_id": "PL-04",
+      "title": "Authorized Dashboard, API, and Deterministic Exports",
+      "why": "Deliver one coherent read contract to browser users, API clients, Excel, and Google Sheets without exposing unauthorized portfolios or stale results as current."
+    },
+    {
+      "estimate": "high",
+      "file_symbol_seams": [
+        "src/financial_tracker/sec/",
+        "src/financial_tracker/work/",
+        "src/financial_tracker/observability/",
+        "docs/financial-tracker-operations.md",
+        "tests/integration/financial_tracker/"
+      ],
+      "file_symbol_seams_raw": "`src/financial_tracker/sec/`, `src/financial_tracker/work/`, `src/financial_tracker/observability/`, `docs/financial-tracker-operations.md`, `tests/integration/financial_tracker/`",
+      "implementation_directive": "Implement the direct SEC adapter and reviewed EdgarTools adapter, rate budget, User-Agent, timeout/retry/circuit policy, scheduled discovery, amendment detection, worker lease recovery, metrics/logs/alerts, and operator runbook. Add a bounded live-SEC compatibility test plus failure-path tests for 429, source outage, malformed filings, duplicate delivery, queue recovery, and export retry.",
+      "slice_id": "PL-05",
+      "title": "SEC Refresh, Operations, and Continuity",
+      "why": "Safely move from controlled fixtures to repeatable live filing refreshes and recoverable production operations."
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "api integration": "The product exposes authorized browser and API reads, ingests SEC data, and synchronizes Google Sheets with explicit external return paths.",
+      "client/UI": "Dashboards, filters, charts, data-quality visibility, and a constrained metric-definition surface are user-facing and authorization-aware.",
+      "compute": "Filing discovery, extraction, recomputation, and exports are background work with retry, idempotency, resource, and restart concerns.",
+      "data modeling": "Immutable filings, fiscal periods, facts, definition versions, observations, analysis runs, and exports require explicit schemas and invariants.",
+      "identity": "Metric-definition mutations, watchlists, portfolios, API access, and export destinations require server-enforced roles and scopes.",
+      "observability": "Analysts and operators need correlation, bounded error states, refresh visibility, and audit evidence for external and calculation failures.",
+      "security": "The feature accepts user-authored declarative definitions and Google authorization, so it requires strict input validation, least privilege, and secret isolation.",
+      "storage": "The product needs durable provenance, idempotent refresh records, version-pinned observations, migrations, and queryable dashboard state.",
+      "testing": "Financial calculations, definition validation, data migrations, authorization, retries, and at least one live SEC path need deterministic and live-backed verification."
+    },
+    "relevant": [
+      "api integration",
+      "data modeling",
+      "storage",
+      "client/UI",
+      "compute",
+      "observability",
+      "testing",
+      "identity",
+      "security"
+    ]
+  },
+  "feature_id": "049",
+  "risk": {
+    "external_dependency_uncertainty": "high",
+    "human_operator_dependency": "medium",
+    "overall": "high",
+    "repo_uncertainty": "high",
+    "requirement_clarity": "medium",
+    "runtime_side_effect_risk": "high",
+    "state_data_migration_risk": "high"
+  },
+  "routing": {
+    "architecture_diagram": true,
+    "external_research": true,
+    "plan_level": "comprehensive",
+    "relevant_domains": [
+      "api integration",
+      "data modeling",
+      "storage",
+      "client/UI",
+      "compute",
+      "observability",
+      "testing",
+      "identity",
+      "security"
+    ],
+    "routing_reason": "This is a net-new product surface. Existing repository code provides governance tooling but no reusable filing, finance, dashboard, job, authorization, or export implementation; the plan must establish safe boundaries and verify live dependency, license, and external-service assumptions.",
+    "sketch_level": "expanded"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": true,
+    "architecture_strategy": true,
+    "expanded_design_notes": true,
+    "external_research": true,
+    "net_new_surface": false,
+    "strategy_reason": "This is a net-new product surface. Existing repository code provides governance tooling but no reusable filing, finance, dashboard, job, authorization, or export implementation; the plan must establish safe boundaries and verify live dependency, license, and external-service assumptions."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [],
+    "duplicate_reason": "No existing feature provides filing-driven financial analytics or a related runtime implementation. Current matched repository modules are governance, control-plane, and Tetris surfaces, not an application foundation for this product.",
+    "risk_level": "high",
+    "tshirt_size": "xl"
+  }
+}

@@ -1,0 +1,265 @@
+# Financial Acceleration Tracker Quickstart
+
+## Local Preconditions
+
+- Python dependencies are installed through the repository's `uv` workflow.
+- The local PostgreSQL service is available for the runnable MVP.
+- The SEC User-Agent is `Financial Tracker aborczuk@gmail.com`; no SEC login is required.
+- The MVP tracks AAPL / Apple Inc. (CIK `0000320193`) and uses filing-backed revenue only.
+- Real-time prices, P&L, brokerage connections, Sheets, and scheduled refresh remain deferred.
+
+## Run The MVP
+
+Start the complete local stack with one command:
+
+```bash
+uv run python scripts/dev.py
+```
+
+The launcher starts PostgreSQL, FastAPI, and Vite, waits for readiness, and prints the browser URL. PostgreSQL remains running after Ctrl-C so the next start is fast. To start the frontend manually instead:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The API is at `http://localhost:8000`; `POST /api/v1/refresh/AAPL` performs the explicit SEC refresh, and `GET /health` is the readiness check.
+
+## Verification Commands
+
+Use the repository guards rather than raw test or lint commands:
+
+```bash
+uv run --no-sync python scripts/speckit_tasks_gate.py validate-format \
+  --tasks-file specs/049-financial-acceleration-tracker/tasks.md --json
+uv run --no-sync python scripts/speckit_plan_gate.py plan-sections \
+  --plan-file specs/049-financial-acceleration-tracker/plan.md \
+  --spec-file specs/049-financial-acceleration-tracker/spec.md --json
+uv run --no-sync python scripts/speckit_plan_gate.py design-artifacts \
+  --feature-dir specs/049-financial-acceleration-tracker --require-contracts --json
+uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker
+```
+
+Run the backend seam tests against PostgreSQL:
+
+```bash
+docker compose -f docker-compose.financial-tracker.yml up -d --wait
+export FINANCIAL_TRACKER_TEST_DATABASE_URL=postgresql://financial_tracker:financial_tracker_dev@localhost:55432/financial_tracker
+uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_harness.py
+uv run --no-sync python scripts/pytest_guard.py run -- tests/financial_tracker/test_app.py tests/integration/financial_tracker/test_live_app.py
+```
+
+The live SEC seam is opt-in and uses the supplied User-Agent:
+
+```bash
+FINANCIAL_TRACKER_LIVE_SEC=1 uv run --no-sync python scripts/pytest_guard.py run -- tests/integration/financial_tracker/test_live_app.py
+```
+
+Live SEC verification must remain an explicit selection and must not run as an implicit default. Stop the disposable database with `docker compose -f docker-compose.financial-tracker.yml down -v` when finished.
+
+## Rollout Flags
+
+Keep `SEC_SCHEDULE_ENABLED=false` and `GOOGLE_SHEETS_DELIVERY_ENABLED=false` until migrations, real-backend tests, authorization tests, parity tests, observability, and rollback instructions are verified. A failed readiness check leaves the feature in fixture/manual-refresh mode and does not expose partial external delivery.
+
+## Operator Checks
+
+Before enabling scheduled refresh, confirm PostgreSQL migration status, worker readiness, queue age, SEC rate/error metrics, alert routing, and correlation IDs. During an outage, preserve the last successful observation with freshness and quality state, stop unbounded retries, and resume only from recoverable work items.
+
+## Deterministic Operator Runbook Notes
+
+### Recovery Delta Validation Notes
+
+
+
+
+<!-- speckit_implement_docs:entry_id=T001-5dbd832:runbook -->
+- Closed T001: scaffolded the financial_tracker package boundary, exported package metadata, and registered the package for wheel builds; import and Ruff checks passed.
+
+
+<!-- speckit_implement_docs:entry_id=T002-e5f0546:runbook -->
+- Closed T002: added the real PostgreSQL harness, disposable Compose service with healthcheck, and SELECT 1 live-backend verification.
+
+
+<!-- speckit_implement_docs:entry_id=T003-615bea6:runbook -->
+- Closed T003: added frozen typed entities and explicit PostgreSQL table mappings for identity, portfolios, filings, periods, facts, and provenance; model tests and Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T004-01637b1:runbook -->
+- Closed T004: added the foundation PostgreSQL migration and live constraint smoke coverage; code-scope QA passed.
+
+
+<!-- speckit_implement_docs:entry_id=T005-5202ea1:runbook -->
+- Closed T005: added normalized CIK/ticker resolution, historical ticker aliases, and owner-derived authorization scopes; unit QA passed.
+
+
+<!-- speckit_implement_docs:entry_id=T006-f2c8fb2:runbook -->
+- Closed T006: added exact-decimal fixture normalization and immutable fact/provenance callback writes; unit QA passed.
+
+
+<!-- speckit_implement_docs:entry_id=T007-994ff02:runbook -->
+- Closed T007: added transactional idempotency and structured audit handoff for normalized fixture ingestion; unit QA passed.
+
+
+<!-- speckit_implement_docs:entry_id=T008-c9a5b89:runbook -->
+- Closed T008: added durable work-item transitions and coordinator lease ownership; unit QA passed.
+
+
+<!-- speckit_implement_docs:entry_id=T009-1248955:runbook -->
+- Closed T009: added live PostgreSQL identity and provenance constraint coverage; the guarded test passed against the disposable local service.
+
+
+<!-- speckit_implement_docs:entry_id=T010-c0e11e3:runbook -->
+- Closed T010: added live PostgreSQL idempotent-ingestion and durable work-transition coverage; the guarded suite passed with 2 tests.
+
+
+<!-- speckit_implement_docs:entry_id=T011-4c079c8:runbook -->
+- Closed T011: added red fixture coverage for standalone, cumulative, and annual fiscal-period classification/derivation, approved default concept selection, and amendment precedence. The guarded pytest run intentionally remains red at collection until T013 adds selectors/periods.py; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T012-080fa18:runbook -->
+- Closed T012: added red fixture coverage for exact-decimal operating margin, trailing improvement streak, second-difference materiality, and one-to-one finite quality-state mappings. The guarded pytest run intentionally remains red at collection until T014/T015 add acceleration.py; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T013-2c13f0b:runbook -->
+- Closed T013: implemented explicit fiscal-period classification, evidence-gated cumulative/annual standalone derivation, approved concept priority, issuer/quality filtering, and accepted-filing amendment precedence. Focused selector fixtures passed 5 tests; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T014-1a6fd47:runbook -->
+- Closed T014: implemented exact-decimal operating margin, trailing improvement streak, second-difference acceleration with materiality, and finite quality-state mapping. Focused calculation and period suite passed 10 tests; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T015-66d3c2d:runbook -->
+- Closed T015: added explicit accelerating, decelerating, stable, and unavailable classifications with equality-as-material threshold semantics and invalid-input handling. Focused acceleration suite passed 11 tests; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T016-82b22f9:runbook -->
+- Closed T016: added frozen metric observations with source/definition/calculation identity, finite-value and complete-provenance validation, idempotent retry semantics, and conflict-on-mutation behavior. Focused observation suite passed 3 tests; Ruff passed. PostgreSQL durability remains assigned to later integration coverage.
+
+
+<!-- speckit_implement_docs:entry_id=T017-7c52ef7:runbook -->
+- Closed T017: added tenant- and issuer-authorized analysis projections carrying company/period identity, metric definition version/hash/state, value or finite quality, analysis run, freshness, accessions, selectors, calculated timestamp, and correlation ID. Focused query/observation suite passed 5 tests; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T018-48855da:runbook -->
+- Closed T018: added a real PostgreSQL filing-backed analysis integration test. With FINANCIAL_TRACKER_TEST_DATABASE_URL set to the local Docker service, the guarded test passed 1 test in 0.18s; without the URL it explicitly skipped. The test persists and rereads filing facts/provenance before selection, observation, authorization, and projection.
+
+
+<!-- speckit_implement_docs:entry_id=T020-5a015f7:runbook -->
+- Closed T020: added red lifecycle coverage for immutable metric-definition versions, tenant authorization, retirement, and historical observation selection. Registry behavior remains intentionally red until T022; Ruff passed.
+
+
+<!-- speckit_implement_docs:entry_id=T021-03efc65:runbook -->
+- T021 metric expression validator implemented with AST allowlisting, unit inference, zero-division rejection, expression/AST/dependency bounds, and iterative cycle detection; guarded tests 7 passed and Ruff clean; live PostgreSQL not applicable to this parser task.
+
+
+<!-- speckit_implement_docs:entry_id=T022-e8a2a03:runbook -->
+- T022 registry implemented with frozen definition versions, tenant/owner authorization, draft-active-retired lifecycle, exact observation selection, PostgreSQL migration and transactional registry adapter; governed unit tests 5 passed, Ruff clean, Pyright clean, live PostgreSQL integration 1 passed in 0.12s, QA PASS.
+
+
+<!-- speckit_implement_docs:entry_id=T023-f56cb4c:runbook -->
+- T023 dry-run service implemented with restricted validation, safe Decimal AST evaluation, bounded dependency/error projections, deterministic content hashing, next-version proposal, and no persistence during dry run; full metric unit suite 17 passed, Ruff clean, Pyright 0 errors, QA PASS.
+
+
+<!-- speckit_implement_docs:entry_id=T024-e5c1a66:runbook -->
+- T024 lifecycle orchestration implemented with atomic add-and-activate for in-memory and PostgreSQL registries, stale/invalid dry-run rejection, exact content propagation, owner authorization, and retirement preserving history; full metric suite 19 passed, live PostgreSQL activation path 1 passed in 0.14s, Ruff/Pyright clean, QA PASS.
+
+
+<!-- speckit_implement_docs:entry_id=T025:runbook -->
+- T025 validated dependency-aware targeted recalculation planning with scope authorization, bounded dependency traversal, deterministic ordering, per-metric definition identities, and idempotent work-item enqueueing. Focused tests: 7 passed; broader financial_tracker tests: 44 passed, 1 live harness test skipped without database URL; explicit live PostgreSQL harness: 1 passed.
+
+
+<!-- speckit_implement_docs:entry_id=T026:runbook -->
+- T026 validated active-default and explicit historical metric observation selection with scope authorization, full identity/content conflict detection, and registry hash verification. Focused tests: 9 passed; full financial_tracker suite: 46 passed, 1 skipped without database URL; live PostgreSQL metric registry selection: 1 passed.
+
+
+<!-- speckit_implement_docs:entry_id=T027:runbook -->
+- T027 validated the callable metric-definition API contract facade for bounded validation, structured invalid_definition/forbidden responses, correlation IDs, activation revalidation, tenant authorization, and immutable version history. Focused tests: 12 passed; full financial_tracker suite: 51 passed, 1 skipped without database URL; QA PASS.
+
+
+<!-- speckit_implement_docs:entry_id=T028:runbook -->
+- T028 added the red live-PostgreSQL refresh contract for new filings, amendment lineage, restatement history preservation, duplicate delivery idempotency, and targeted metric recalculation. Ruff passed; the refresh boundary remains intentionally unimplemented until the SEC adapter/refresh tasks. QA PASS: offline-qa-t028-20260721T191104Z. Live PostgreSQL was not run because localhost access was blocked by the sandbox.
+
+## Decision Log
+
+
+<!-- speckit_implement_docs:entry_id=T001-5dbd832:decision_log -->
+- T001 package boundary is intentionally metadata-only; domain behavior begins in later foundational tasks.
+
+<!-- speckit_implement_docs:entry_id=T002-e5f0546:decision_log -->
+- T002 uses PostgreSQL Compose only as disposable local infrastructure; the application contract remains an environment-configured PostgreSQL URL.
+
+<!-- speckit_implement_docs:entry_id=T003-615bea6:decision_log -->
+- T003 keeps domain entities as immutable dataclasses and leaves database constraints to the migration seam in T004.
+
+<!-- speckit_implement_docs:entry_id=T004-01637b1:decision_log -->
+- Foundation constraints keep immutable filing/fact provenance, analysis-run identities, and retry-safe work-item identities in PostgreSQL.
+
+<!-- speckit_implement_docs:entry_id=T005-5202ea1:decision_log -->
+- Identity resolution returns stable issuer IDs across ticker history, while authorization is derived from authenticated ownership and server-side memberships.
+
+<!-- speckit_implement_docs:entry_id=T006-f2c8fb2:decision_log -->
+- Fixture ingestion rejects binary floats and non-finite values, preserving exact numeric representation and explicit quality states.
+
+<!-- speckit_implement_docs:entry_id=T007-994ff02:decision_log -->
+- Idempotency keys are normalized before transaction checks, and audit events are emitted only after normalized fact/provenance writes succeed.
+
+<!-- speckit_implement_docs:entry_id=T008-c9a5b89:decision_log -->
+- Work ownership is enforced by unexpired coordinator leases; expired work returns to retry_wait for recovery.
+
+<!-- speckit_implement_docs:entry_id=T009-1248955:decision_log -->
+- Live foundation verification requires an explicit FINANCIAL_TRACKER_TEST_DATABASE_URL and fails setup when psycopg is unavailable; missing URL is the only skip condition.
+
+<!-- speckit_implement_docs:entry_id=T010-c0e11e3:decision_log -->
+- Integration tests use a minimal PostgreSQL-backed fixture store to exercise the existing ingestion coordinator while keeping production storage adapters out of scope for the foundation seam.
+
+<!-- speckit_implement_docs:entry_id=T011-4c079c8:decision_log -->
+- Red fixture tasks are closed on explicit expected-failure evidence plus lint and QA review; the generic closeout tests_passed ledger event does not mean the pre-implementation behavioral tests are green.
+
+<!-- speckit_implement_docs:entry_id=T012-080fa18:decision_log -->
+- Red arithmetic fixtures are kept separate from implementation so T013-T015 must prove the same contract green; expected red collection failures are recorded explicitly rather than counted as runtime verification.
+
+<!-- speckit_implement_docs:entry_id=T013-2c13f0b:decision_log -->
+- Selector precedence is newest accepted filing snapshot first, then approved concept rank within that snapshot; this preserves amendment semantics when taxonomy changes between filings.
+
+<!-- speckit_implement_docs:entry_id=T014-1a6fd47:decision_log -->
+- Non-finite Decimal inputs are rejected at each numeric calculation boundary and map to FAILED quality rather than allowing NaN or infinity into metric observations.
+
+<!-- speckit_implement_docs:entry_id=T015-66d3c2d:decision_log -->
+- Acceleration materiality equality is treated as material consistently by raw calculation and display classification; negative or non-finite thresholds are unavailable.
+
+<!-- speckit_implement_docs:entry_id=T016-82b22f9:decision_log -->
+- Observation identity excludes generated record ID and calculated timestamp for retry comparison, while semantic value, quality, freshness, and provenance content remain immutable and conflict-checked.
+
+<!-- speckit_implement_docs:entry_id=T017-7c52ef7:decision_log -->
+- Authorization is enforced before projection and tenant filtering occurs before output; the shared AnalysisRow remains provider-payload-free for API, dashboard, and export reuse.
+
+<!-- speckit_implement_docs:entry_id=T018-48855da:decision_log -->
+- T018 is the first live proof of the analysis seam; no live PostgreSQL result is claimed when the database URL is absent, and the observed host-authorized run passed against localhost:55432.
+
+<!-- speckit_implement_docs:entry_id=T020-5a015f7:decision_log -->
+- Metric definition versions are immutable content identities; retirement removes active selection without deleting historical versions or observations, and reactivation is prohibited.
+
+<!-- speckit_implement_docs:entry_id=T021-03efc65:decision_log -->
+- T021 validation evidence: pytest_guard reported 7 passed in 0.01s; ruff_guard reported All checks passed; persistent QA agent PASS after fixes; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T022-e8a2a03:decision_log -->
+- T022 verification evidence: pytest_guard reported 5 passed for registry contracts; live PostgreSQL pytest_guard reported 1 passed in 0.12s against localhost:55432; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T023-f56cb4c:decision_log -->
+- T023 verification evidence: pytest_guard reported 17 passed for expression, registry, and service suites; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS after boundary fixes; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T024-e5c1a66:decision_log -->
+- T024 verification evidence: full metric pytest suite reported 19 passed; live PostgreSQL registry integration reported 1 passed in 0.14s; edit-code validation reported Ruff clean and Pyright 0 errors; persistent QA agent PASS; offline QA handoff PASS.
+
+<!-- speckit_implement_docs:entry_id=T025:decision_log -->
+- T025 uses an injected queue boundary with an in-memory reference implementation; PostgreSQL queue persistence remains a later coordinator seam.
+
+<!-- speckit_implement_docs:entry_id=T026:decision_log -->
+- Historical reads resolve the active registry version by default; explicit version requests may select retired history, but mismatched definition hashes or conflicting observation identities are rejected.
+
+<!-- speckit_implement_docs:entry_id=T027:decision_log -->
+- MetricDefinitionAPI is a callable Python boundary over the domain service, not an HTTP server. It re-runs dry-run validation during activation and exposes only bounded response fields; HTTP transport remains a later API seam.
+
+<!-- speckit_implement_docs:entry_id=T028:decision_log -->
+- Refresh tests use a callable FilingRefreshCoordinator/FilingRefreshRequest boundary and assert durable filings, facts, and work-item projections. The contract intentionally separates red-test evidence from green implementation evidence; no live source/network behavior is claimed at T028.

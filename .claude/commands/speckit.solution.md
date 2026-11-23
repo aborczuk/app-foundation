@@ -8,6 +8,8 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+> **Legacy compatibility:** `/speckit.tasking` is now the canonical interface between plan design slices and implementation tasks. Use this command only to replay or support older solution-phase histories; it is not part of the canonical pathway.
+
 ## Contract
 
 Use [`scripts/speckit_solution_step.py`](/Users/andreborczuk/app-foundation/scripts/speckit_solution_step.py) only as a local scaffold and validation helper.
@@ -21,6 +23,7 @@ uv run python scripts/speckit_solution_step.py prepare-tasking --feature-id "$FE
 2. Open `tasks.md`.
    - Treat `plan.md` and its `## Design Slices` section as the authoritative source of solutioning.
    - Solve each design slice before writing tasks. Do not only restate the slice title or directive.
+   - Write `tasks.md` entries that implement that slice.
    - Decompose the plan slices directly into the upstream Spec Kit `tasks.md` structure.
 
 3. Fill `tasks.md` directly.
@@ -31,34 +34,12 @@ uv run python scripts/speckit_solution_step.py prepare-tasking --feature-id "$FE
    - Carry forward only the detail needed to execute the task list: goal, independent test, acceptance criteria, task lines, dependencies, and parallel markers.
    - Produce the actual number of tasks required by the plan; do not leave template placeholder content behind.
 
-4. Run the estimate/breakdown loop through spawned subagents until the existing stabilization script reports the task graph is settled.
-   - Spawn an `estimate` subagent on `gpt-5.4-mini`.
-   - Use `spawn_agent`.
-   - Do not use `fork_context: true`.
-   - Pass a focused prompt and the specific file references the subagent needs.
-   - Set `model: gpt-5.4-mini`.
-   - Use the `speckit.estimate` command contract and its manifest-declared estimate artifact/template; do not invent an ad hoc `estimates.md` shape during solution.
-   - Instruct it to execute `/speckit.estimate` for this feature and report whether any tasks remain at `8` or `13`.
-   - If any high-point tasks remain, spawn a `breakdown` subagent on `gpt-5.4-mini`.
-   - Use `spawn_agent`.
-   - Do not use `fork_context: true`.
-   - Pass a focused prompt and the specific file references the subagent needs.
-   - Set `model: gpt-5.4-mini`.
-   - Instruct it to execute `/speckit.breakdown` for this feature, then loop back to a fresh `estimate` subagent.
-   - After each pass, validate the settled state with:
+4. Hand the task draft to `/speckit.estimate`.
+   - `/speckit.estimate` is the single generative estimate/breakdown step.
+   - It estimates tasks by seam, breaks down multi-seam `8` or `13` tasks, re-estimates, and repeats until the graph is settled.
+   - It runs finalization directly; do not invoke the deterministic tasking chain, Codex runner, or a separate breakdown agent from `solution`.
 
-```bash
-uv run --no-sync python scripts/speckit_tasking_chain.py --feature-dir "$FEATURE_DIR" --json
-```
-
-   - Continue the loop until that command returns `"ok": true`.
-   - Do not call `scripts/speckit_tasking_codex_runner.py` from `solution`.
-
-5. Run finalize and return the exact JSON it prints:
-
-```bash
-uv run python scripts/speckit_solution_step.py finalize --feature-id "$FEATURE_ID" --phase solution --correlation-id "$CORRELATION_ID"
-```
+5. Do not finalize from `solution`; `/speckit.estimate` finalizes the settled task graph and emits the tasking completion request.
 
 ## Guidance
 

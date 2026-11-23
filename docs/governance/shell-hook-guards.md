@@ -78,7 +78,7 @@ This guard enforces the repo reading contract:
 - broad root-level `find` scans over code/doc files are denied
 - legacy `read_code_symbols` usage is denied
 - direct shell reads of repo-local code/doc files are denied
-- repo-local `read_code` helper windows over the configured max line count are denied
+- repo-local `read_code` helper windows over the 40-line max are denied by default
 - repo-local `read_code` helper usage with `--allow-fallback` is denied
 
 The guard's redirect guidance should point agents to the accepted discovery order:

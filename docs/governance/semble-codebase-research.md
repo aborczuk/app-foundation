@@ -90,16 +90,16 @@ The install was verified with the repo-managed runtime:
 
 ```bash
 SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache \
-  uv run --no-sync semble search "spec workflow governance" . -k 5 --max-snippet-lines 0 --content all
+  uv run --no-sync semble search "spec workflow governance" . -k 5 --max-snippet-lines 10 --content all
 ```
 
-This returned bounded file and line anchors without body dumps.
+This returned bounded file and line anchors with a compact preview.
 
 The related-code surface was verified with:
 
 ```bash
 SEMBLE_CACHE_LOCATION=/Users/andreborczuk/app-foundation/.codegraphcontext/semble-cache \
-  uv run --no-sync semble find-related scripts/hook_pretool_dispatch.py 1 . -k 2 --max-snippet-lines 0 --content code config
+  uv run --no-sync semble find-related scripts/hook_pretool_dispatch.py 1 . -k 2 --max-snippet-lines 10 --content code config
 ```
 
 This returned related file and line anchors.
@@ -136,7 +136,7 @@ The MCP-style entrypoint was verified by launching `uv run semble --content all`
 
 ## Agent Discovery Contract
 
-1. Run Semble `search` first with a focused query and `max_snippet_lines=0`.
+1. Run Semble `search` first with a focused query and `max_snippet_lines=10`.
 2. If a candidate is close but incomplete, run Semble `find_related` from the candidate file and line.
 3. Open a bounded local window only for the selected anchor.
 4. Use `scripts/read_code.py context` only when Semble is unavailable or when a focused semantic follow-up is needed.

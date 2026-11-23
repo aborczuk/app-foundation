@@ -7,6 +7,9 @@ requires-python = ">=3.12"
 dependencies = [
     "mcp>=1.23.0",
     "httpx>=0.27.0",
+    "XlsxWriter>=3.2,<4.0",
+    "gspread>=6.2,<7.0",
+    "edgartools>=5.43,<6",
     "aiosqlite>=0.20,<1.0",
     "pydantic>=2.0,<3.0",
     "pyyaml>=6.0,<7.0",
@@ -29,6 +32,7 @@ dev = [
     "kuzu>=0.11.3",
     "pytest>=8.0,<9.0",
     "pytest-asyncio>=0.24,<0.25",
+    "psycopg[binary]>=3.2,<4.0",
 ]
 
 [tool.pytest.ini_options]
@@ -47,7 +51,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcp_trello", "src/mcp_codebase", "src/clickup_control_plane", "src/mcp_clickup"]
+packages = ["src/mcp_trello", "src/mcp_codebase", "src/clickup_control_plane", "src/mcp_clickup", "src/financial_tracker"]
 
 [tool.ruff]
 line-length = 320
