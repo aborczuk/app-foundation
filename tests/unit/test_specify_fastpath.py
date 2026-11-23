@@ -136,3 +136,64 @@ def test_main_bootstraps_with_short_name_only(
     assert payload["spec_file"] == str(spec_file)
     assert payload["generated_artifact"]["path"] == str(spec_file)
     assert payload["next_step"] == "fill_spec_scaffold"
+
+
+def test_main_dispatches_driver_route_to_existing_feature(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """The driver arguments must invoke step mode with its selected feature."""
+    observed: dict[str, object] = {}
+    monkeypatch.setattr(specify_step, "_build_uv_env", lambda: {"UV_CACHE_DIR": str(tmp_path)})
+
+    def _run_step_mode(**kwargs):  # noqa: ANN001
+        observed.update(kwargs)
+        return {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": kwargs["correlation_id"],
+            "phase": "specify",
+            "feature_id": kwargs["feature_id"],
+            "next_phase": "clarify",
+        }
+
+    monkeypatch.setattr(specify_step, "_run_step_mode", _run_step_mode)
+
+    exit_code = specify_step.main(
+        [
+            "--feature-id",
+            "055-agent-analytics-otel",
+            "--phase",
+            "specify",
+            "--correlation-id",
+            "run-055:speckit.specify",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out.strip())
+
+    assert exit_code == 0
+    assert observed == {
+        "feature_id": "055-agent-analytics-otel",
+        "phase": "specify",
+        "correlation_id": "run-055:speckit.specify",
+        "env": {"UV_CACHE_DIR": str(tmp_path)},
+        "timeout_seconds": 300,
+    }
+    assert payload["feature_id"] == "055-agent-analytics-otel"
+    assert payload["next_phase"] == "clarify"
+
+
+def test_explicit_feature_paths_ignore_checkout_environment(monkeypatch, tmp_path: Path) -> None:
+    """An explicit driver feature must take precedence over checkout-derived paths."""
+    feature_dir = tmp_path / "specs" / "055-agent-analytics-otel"
+    feature_dir.mkdir(parents=True)
+    spec_file = feature_dir / "spec.md"
+    spec_file.write_text("# Agent analytics\n", encoding="utf-8")
+    monkeypatch.setattr(specify_step, "_resolve_feature_dir", lambda _feature_id: feature_dir)
+
+    paths = specify_step._load_feature_paths(
+        {"FEATURE_DIR": "/wrong-feature", "FEATURE_SPEC": "/wrong-feature/spec.md"},
+        feature_id="055",
+    )
+
+    assert paths == {"FEATURE_DIR": str(feature_dir), "FEATURE_SPEC": str(spec_file)}

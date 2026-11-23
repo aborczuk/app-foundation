@@ -18,6 +18,12 @@ The stack also has two gate families:
 - Prerequisite and spec/plan/implement/task gates that block work before execution
 - Runtime driver routing that chooses deterministic, generative, or legacy execution paths
 
+### Bootstrap Contract
+
+A description-only driver invocation creates one specification scaffold. Its child result must carry the driver's correlation id, a non-empty feature id, and `next_phase: "specify"`; the driver preserves that feature id for its response. Bootstrap creates an incomplete scaffold, so it does not append a `specify` success event. Completing the specification remains the separate phase-completion action.
+
+For an existing feature, `pipeline_driver.py` invokes `scripts/speckit_specify_step.py` with `--feature-id`, `--phase specify`, and the driver correlation id. The specify runner resolves `FEATURE_DIR` and `FEATURE_SPEC` from that explicit feature id before it considers checkout-derived paths, then emits the same canonical result envelope consumed by the driver.
+
 ## Files And Roles
 
 - `scripts/pipeline_driver.py`: Main CLI and orchestrator. It resolves the current phase, validates the requested phase, routes the command, runs deterministic or generative work, emits compact status, and appends success events back to the pipeline ledger when a routed step completes.

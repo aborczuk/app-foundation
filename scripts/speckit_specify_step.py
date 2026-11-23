@@ -22,7 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from pipeline_driver import build_correlation_id  # noqa: E402
+from pipeline_driver import _resolve_feature_dir, build_correlation_id  # noqa: E402
 from pipeline_driver_state import determine_next_phase  # noqa: E402
 
 
@@ -160,8 +160,17 @@ def _default_handoff_runner(repo_root: Path) -> str:
     return f"{shlex.quote(sys.executable)} {shlex.quote(str(runner_path))}"
 
 
-def _load_feature_paths(env: dict[str, str]) -> dict[str, str]:
-    """Resolve the current feature paths from the repo-local prerequisite helper."""
+def _load_feature_paths(env: dict[str, str], *, feature_id: str = "") -> dict[str, str]:
+    """Resolve paths for an explicit feature or the current checkout feature."""
+    if feature_id:
+        feature_dir = _resolve_feature_dir(feature_id)
+        if feature_dir is None:
+            raise RuntimeError(f"feature_dir_not_found:{feature_id}")
+        feature_spec = (feature_dir / "spec.md").resolve()
+        if not feature_spec.is_file():
+            raise RuntimeError(f"spec_file_not_found:{feature_spec}")
+        return {"FEATURE_DIR": str(feature_dir), "FEATURE_SPEC": str(feature_spec)}
+
     feature_dir = str(env.get("FEATURE_DIR") or "").strip()
     feature_spec = str(env.get("FEATURE_SPEC") or "").strip()
     if feature_dir and feature_spec:
@@ -397,8 +406,9 @@ def _run_bootstrap_only_mode(
     description: str,
     short_name: str,
     env: dict[str, str],
+    correlation_id: str,
 ) -> dict[str, Any]:
-    """Bootstrap the scaffold and return the metadata needed for manual spec writing."""
+    """Bootstrap one scaffold and return a canonical driver result."""
     _trace(f"_run_bootstrap_only_mode start description={description!r} short_name={short_name!r}")
     bootstrap = _run_bootstrap_mode(description, short_name, env)
     feature_id = str(bootstrap.get("BRANCH_NAME") or bootstrap.get("FEATURE_NUM") or "").strip()
@@ -406,6 +416,7 @@ def _run_bootstrap_only_mode(
         "schema_version": "1.0.0",
         "ok": True,
         "exit_code": 0,
+        "correlation_id": correlation_id,
         "phase": "specify",
         "feature_id": feature_id,
         "branch_name": str(bootstrap.get("BRANCH_NAME") or ""),
@@ -416,6 +427,7 @@ def _run_bootstrap_only_mode(
             "path": str(bootstrap.get("SPEC_FILE") or ""),
             "completion_marker": SPEC_COMPLETION_MARKER,
         },
+        "next_phase": "specify",
         "next_step": "fill_spec_scaffold",
     }
     _trace(
@@ -467,7 +479,7 @@ def _run_step_mode(
     """Run the deterministic specify fill/validation loop."""
     _trace(f"_run_step_mode start feature_id={feature_id!r} phase={phase!r} correlation_id={correlation_id!r}")
     try:
-        paths = _load_feature_paths(env)
+        paths = _load_feature_paths(env, feature_id=feature_id)
     except RuntimeError as exc:
         return _build_step_failure(
             correlation_id=correlation_id,
@@ -539,10 +551,14 @@ def _run_step_mode(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser for bootstrap-only specify runs."""
+    """Build the CLI parser for bootstrap and driver-managed specify runs."""
     parser = argparse.ArgumentParser(description="Specify bootstrap and deterministic step runner")
     parser.add_argument("--json", action="store_true", help="Emit JSON summary output")
     parser.add_argument("--short-name", default="", help="Optional short name for the feature")
+    parser.add_argument("--feature-id", default="", help="Existing feature selected by the pipeline driver")
+    parser.add_argument("--phase", default="", help="Pipeline phase selected by the pipeline driver")
+    parser.add_argument("--correlation-id", default="", help="Pipeline-driver correlation identifier")
+    parser.add_argument("--timeout-seconds", type=int, default=300, help="Handoff timeout in seconds")
     parser.add_argument(
         "feature_description",
         nargs="?",
@@ -553,7 +569,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str]) -> int:
-    """Bootstrap the scaffold and return its metadata for manual spec completion."""
+    """Run bootstrap mode or the pipeline driver's existing-feature specify step."""
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -563,22 +579,56 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    _trace(f"main start short_name={str(args.short_name).strip()!r}")
+    feature_id = str(args.feature_id).strip()
+    phase = str(args.phase).strip()
+    correlation_id = str(args.correlation_id).strip() or build_correlation_id(
+        feature_id or "bootstrap", phase or "specify"
+    )
+    _trace(f"main start feature_id={feature_id!r} phase={phase!r}")
 
-    description = str(args.feature_description).strip()
-    if not description:
-        print("ERROR: No feature description provided", file=sys.stderr)
-        return 1
-
-    try:
-        step_result = _run_bootstrap_only_mode(
-            description=description,
-            short_name=str(args.short_name).strip(),
-            env=env,
-        )
-    except RuntimeError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
+    if feature_id or phase:
+        if not feature_id or phase != "specify":
+            step_result = _build_step_failure(
+                correlation_id=correlation_id,
+                error_code="invalid_driver_route",
+                reason="invalid_driver_route",
+                debug_stage="parse_args",
+                details={"feature_id": feature_id, "phase": phase},
+            )
+        else:
+            step_result = _run_step_mode(
+                feature_id=feature_id,
+                phase=phase,
+                correlation_id=correlation_id,
+                env=env,
+                timeout_seconds=int(args.timeout_seconds),
+            )
+    else:
+        description = str(args.feature_description).strip()
+        if not description:
+            step_result = _build_step_failure(
+                correlation_id=correlation_id,
+                error_code="missing_feature_description",
+                reason="missing_feature_description",
+                debug_stage="parse_args",
+                details={},
+            )
+        else:
+            try:
+                step_result = _run_bootstrap_only_mode(
+                    description=description,
+                    short_name=str(args.short_name).strip(),
+                    env=env,
+                    correlation_id=correlation_id,
+                )
+            except RuntimeError as exc:
+                step_result = _build_step_failure(
+                    correlation_id=correlation_id,
+                    error_code="bootstrap_failed",
+                    reason="bootstrap_failed",
+                    debug_stage="bootstrap",
+                    details={"error": str(exc)},
+                )
 
     _trace(
         "main done "
