@@ -1932,6 +1932,7 @@ def test_main_passes_context_to_specify_step(monkeypatch) -> None:
     assert observed["timeout_seconds"] == 300
     assert observed["correlation_id"] == "run-test:speckit.specify"
     assert observed["command"] == [
+        pipeline_driver.sys.executable,
         "scripts/speckit_specify_step.py",
         "--feature-id",
         "032",

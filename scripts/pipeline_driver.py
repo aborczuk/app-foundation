@@ -1904,7 +1904,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not script_path:
             step_result = route_legacy_step(mapping, correlation_id=correlation_id)
         else:
-            step_command = [str(script_path)]
+            # Manifest routes name Python source files; execute them with the
+            # active interpreter instead of relying on their filesystem mode.
+            step_command = [sys.executable, str(script_path)]
             if mapping.get("command_id") in {
                 "speckit.implement",
                 "speckit.plan",
