@@ -1811,16 +1811,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps({"feature_id": args.feature_id, "phase_state": phase_state, "step_result": step_result}, sort_keys=True))
         return 1
 
-    effective_phase = current_phase if requested_phase is None else requested_phase
+    runnable_phase = phase_state.get("runnable_phase")
+    if not isinstance(runnable_phase, str) or not runnable_phase:
+        runnable_phase = current_phase
+
+    effective_phase = runnable_phase if requested_phase is None else requested_phase
     correlation_id = build_correlation_id(resolved_feature_id, effective_phase)
 
     if (
         requested_phase is not None
-        and current_phase != "unknown"
-        and requested_phase != current_phase
+        and runnable_phase != "unknown"
+        and requested_phase != runnable_phase
         and _requested_phase_exceeds_current(
             requested_phase=requested_phase,
-            current_phase=current_phase,
+            current_phase=runnable_phase,
         )
     ):
             step_result = {
@@ -1831,7 +1835,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "gate": "phase_drift",
                 "reasons": ["requested_phase_mismatch"],
                 "error_code": None,
-                "next_phase": current_phase,
+                "next_phase": runnable_phase,
                 "debug_path": None,
             }
             emit_human_status(step_result)

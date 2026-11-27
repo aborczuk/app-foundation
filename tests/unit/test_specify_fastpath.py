@@ -61,7 +61,8 @@ def test_main_bootstraps_scaffold_without_handoff(
     assert calls == [f"create:tetris-game:{tmp_path / '.uv-cache'}"]
     assert payload["ok"] is True
     assert payload["exit_code"] == 0
-    assert payload["branch_name"] == "028-tetris-game"
+    assert payload["spec_name"] == "028-tetris-game"
+    assert "branch_name" not in payload
     assert payload["feature_num"] == "028"
     assert payload["spec_file"] == str(tmp_path / "specs" / "028-tetris-game" / "spec.md")
     assert payload["generated_artifact"]["path"] == str(
@@ -130,7 +131,8 @@ def test_main_bootstraps_with_short_name_only(
     assert calls == [f"create:make-tetris:{tmp_path / '.uv-cache'}"]
     assert payload["ok"] is True
     assert payload["exit_code"] == 0
-    assert payload["branch_name"] == "032-make-tetris"
+    assert payload["spec_name"] == "032-make-tetris"
+    assert "branch_name" not in payload
     assert payload["feature_num"] == "032"
     assert payload["feature_id"] == "032-make-tetris"
     assert payload["spec_file"] == str(spec_file)

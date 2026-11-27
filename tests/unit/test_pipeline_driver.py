@@ -14,6 +14,9 @@ from tests.support import build_step_result_envelope
 
 
 def _load_script_module(module_name: str, script_name: str):
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
     script_path = scripts_dir / script_name
     scripts_dir_str = str(scripts_dir)
@@ -1490,9 +1493,47 @@ def test_resolve_phase_state_uses_plan_first_path(tmp_path: Path) -> None:
         ledger_path=ledger_path,
     )
     assert state["phase"] == "specify"
+    assert state["runnable_phase"] == "plan"
     assert state["routing_contract"] is not None
     assert state["routing_contract"]["routing"]["plan_profile"] == "skip"
     assert state["next_phase"] == "plan"
+
+
+def test_resolve_phase_state_advances_runnable_phase_after_completion_events(
+    tmp_path: Path,
+) -> None:
+    """Completion events should advance runnable_phase to next_phase while blocking skips."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "event": "backlog_registered",
+                "feature_id": "062",
+                "timestamp_utc": "2026-11-27T20:58:16Z",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plan_state = pipeline_driver_state.resolve_phase_state(
+        "062",
+        pipeline_state={"phase": "plan", "dry_run": True},
+        ledger_path=ledger_path,
+    )
+    assert plan_state["phase"] == "specify"
+    assert plan_state["next_phase"] == "plan"
+    assert plan_state["runnable_phase"] == "plan"
+    assert plan_state["drift_detected"] is False
+
+    skip_state = pipeline_driver_state.resolve_phase_state(
+        "062",
+        pipeline_state={"phase": "tasking", "dry_run": True},
+        ledger_path=ledger_path,
+    )
+    assert skip_state["drift_detected"] is True
+    assert "phase_hint_conflicts_with_ledger" in skip_state["drift_reasons"]
 
 
 def test_resolve_phase_state_reload_spec_routing_after_nonrouting_event(

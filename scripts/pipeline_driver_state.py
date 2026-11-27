@@ -35,6 +35,16 @@ EVENT_TO_PHASE: dict[str, str] = {
     "feature_closed": "closed",
 }
 
+PHASE_COMPLETING_EVENTS: frozenset[str] = frozenset(
+    {
+        "backlog_registered",
+        "plan_approved",
+        "tasking_completed",
+        "solution_approved",
+        "implementation_completed",
+    }
+)
+
 PHASE_TRANSITIONS: dict[str, str] = {
     "specify": "plan",
     "research": "plan",
@@ -70,6 +80,18 @@ def determine_next_phase(
     if current_phase == "research":
         return "plan"
     return advance_phase(current_phase)
+
+
+def resolve_runnable_phase(
+    *,
+    phase: str,
+    last_event: str | None,
+    next_phase: str,
+) -> str:
+    """Return the runnable phase allowed by the latest ledger event."""
+    if last_event in PHASE_COMPLETING_EVENTS and next_phase:
+        return next_phase
+    return phase
 
 
 def _feature_id_candidates(feature_id: str) -> tuple[str, ...]:
@@ -440,26 +462,38 @@ def resolve_phase_state(
         phase = hinted_phase
     else:
         phase = derived_phase
-        if (
-            isinstance(hinted_phase, str)
-            and hinted_phase
-            and hinted_phase != derived_phase
-            and last_event is not None
-            and _hint_exceeds_derived_phase(hinted_phase=hinted_phase, derived_phase=derived_phase)
-        ):
-            drift_reasons.append("phase_hint_conflicts_with_ledger")
-            drift_reason_details.append(
-                {
-                    "code": "phase_hint_conflicts_with_ledger",
-                    "hinted_phase": hinted_phase,
-                    "derived_phase": derived_phase,
-                    "last_event": last_event,
-                }
-            )
 
     if event_count == 0:
         # Empty ledgers bootstrap new features into specify scaffolding first.
         phase = "specify"
+
+    next_phase = determine_next_phase(phase, routing_contract=routing_contract)
+    runnable_phase = resolve_runnable_phase(
+        phase=phase,
+        last_event=last_event,
+        next_phase=next_phase,
+    )
+
+    if (
+        derived_phase != "unknown"
+        and isinstance(hinted_phase, str)
+        and hinted_phase
+        and hinted_phase != runnable_phase
+        and last_event is not None
+        and _hint_exceeds_derived_phase(
+            hinted_phase=hinted_phase,
+            derived_phase=runnable_phase,
+        )
+    ):
+        drift_reasons.append("phase_hint_conflicts_with_ledger")
+        drift_reason_details.append(
+            {
+                "code": "phase_hint_conflicts_with_ledger",
+                "hinted_phase": hinted_phase,
+                "derived_phase": derived_phase,
+                "last_event": last_event,
+            }
+        )
 
     if resolved_feature_dir is not None and last_event in REQUIRED_ARTIFACTS_BY_EVENT:
         for artifact_name in REQUIRED_ARTIFACTS_BY_EVENT[last_event]:
@@ -476,11 +510,11 @@ def resolve_phase_state(
 
     drift_detected = bool(drift_reasons)
     drift_reason_codes = sorted({detail["code"] for detail in drift_reason_details})
-    next_phase = determine_next_phase(phase, routing_contract=routing_contract)
     return {
         "feature_id": feature_id,
         "ledger_feature_id": ledger_feature_id,
         "phase": phase,
+        "runnable_phase": runnable_phase,
         "last_event": last_event,
         "ledger_event_count": event_count,
         "approved_plan": approved_plan,

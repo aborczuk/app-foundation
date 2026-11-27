@@ -269,7 +269,7 @@ def _run_bootstrap_only_mode(
         "correlation_id": correlation_id,
         "phase": "specify",
         "feature_id": feature_id,
-        "branch_name": str(bootstrap.get("BRANCH_NAME") or ""),
+        "spec_name": str(bootstrap.get("BRANCH_NAME") or ""),
         "feature_num": str(bootstrap.get("FEATURE_NUM") or ""),
         "feature_dir": str(bootstrap.get("FEATURE_DIR") or ""),
         "spec_file": str(bootstrap.get("SPEC_FILE") or ""),
@@ -282,7 +282,7 @@ def _run_bootstrap_only_mode(
     }
     _trace(
         "_run_bootstrap_only_mode done "
-        f"feature_id={feature_id!r} branch_name={result['branch_name']!r} "
+        f"feature_id={feature_id!r} spec_name={result['spec_name']!r} "
         f"spec_file={result['spec_file']!r}"
     )
     return result
@@ -490,7 +490,7 @@ def main(argv: list[str]) -> int:
     _trace(
         "main done "
         f"ok={step_result.get('ok')!r} feature_id={step_result.get('feature_id')!r} "
-        f"branch_name={step_result.get('branch_name')!r}"
+        f"spec_name={step_result.get('spec_name')!r}"
     )
     print(json.dumps(step_result, separators=(",", ":")))
     return int(step_result.get("exit_code", 1))

@@ -15,6 +15,9 @@ from tests.support import assert_step_result_envelope
 
 
 def _load_script_module(module_name: str, script_name: str):
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
     scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
     script_path = scripts_dir / script_name
     scripts_dir_str = str(scripts_dir)
@@ -366,7 +369,10 @@ def test_generative_route_blocks_without_completion_append(driver_flow_harness, 
     assert append_called["value"] is False
 
 
-def test_generative_route_realizes_skipped_research_phase(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_generative_route_advances_from_backlog_registered_to_plan(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """After backlog_registered, the driver should route directly to plan and append plan_approved."""
     _write_skip_routing_spec(tmp_path, research_route="skip", plan_profile="core")
     ledger_path = tmp_path / ".speckit" / "pipeline-ledger.jsonl"
     _write_jsonl_ledger(
@@ -405,9 +411,13 @@ def test_generative_route_realizes_skipped_research_phase(tmp_path: Path, monkey
                 "import sys",
                 "from pathlib import Path",
                 "payload = json.loads(sys.stdin.read())",
-                "artifact = Path('spec-output.md')",
-                "artifact.write_text('# Spec\\n\\n## Summary\\nGenerated content\\n', encoding='utf-8')",
-                "print(json.dumps({'artifact_path': str(artifact), 'completion_marker': '## Summary'}))",
+                "artifact = next(Path('specs').glob('019-*')) / 'plan.md'",
+                "artifact.write_text('# Plan\\n\\n## Plan Completion Summary\\nReady\\n', encoding='utf-8')",
+                "print(json.dumps({",
+                "    'artifact_path': str(artifact),",
+                "    'completion_marker': '## Plan Completion Summary',",
+                "    'pipeline_event_request': {'event': 'plan_approved', 'fields': {'feasibility_required': False}},",
+                "}))",
             ]
         )
         + "\n",
@@ -417,20 +427,41 @@ def test_generative_route_realizes_skipped_research_phase(tmp_path: Path, monkey
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SPECKIT_HANDOFF_RUNNER", f"{sys.executable} {runner_script}")
     monkeypatch.setattr(pipeline_driver, "emit_human_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        pipeline_driver,
+        "load_generated_step_result",
+        lambda *, phase, correlation_id: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": correlation_id,
+            "gate": None,
+            "reasons": [],
+            "error_code": None,
+            "debug_path": None,
+            "phase": phase,
+            "next_phase": "tasking",
+            "pipeline_event_request": {
+                "event": "plan_approved",
+                "fields": {"feasibility_required": False},
+            },
+        },
+    )
 
     exit_code = pipeline_driver.main(["--feature-id", "019", "--json"])
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out.strip())
-    assert_step_result_envelope(payload["step_result"], ok=True, exit_code=0, next_phase="plan")
+    assert_step_result_envelope(payload["step_result"], ok=True, exit_code=0, next_phase="tasking")
 
     final_events = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines() if line]
     assert [event["event"] for event in final_events] == [
         "backlog_registered",
-        "research_completed",
+        "plan_approved",
     ]
-    assert payload["phase_state"]["phase"] == "research"
-    assert payload["phase_state"]["next_phase"] == "plan"
+    assert payload["phase_state"]["phase"] == "plan"
+    assert payload["phase_state"]["runnable_phase"] == "tasking"
+    assert payload["phase_state"]["next_phase"] == "tasking"
 
 
 def test_generative_route_can_call_live_codex_cli(tmp_path: Path) -> None:
