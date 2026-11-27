@@ -1,179 +1,122 @@
 # Feature Specification: Stable Semble MCP and Legacy Vector Removal
 
-**Feature Branch**: `061-persistent-repo-research-backends`  
-**Created**: 2026-11-27  
-**Status**: Draft  
-**Input**: User description: "Make the existing local Semble MCP reliable and consistently available in Codex sessions using Semble's standard MCP integration. Fix startup/configuration and approval behavior first. Then remove the duplicate legacy vector-search/read-code semantic discovery machinery that Semble supersedes. Do not add a separate daemon, HTTP service, warmed-reranker service, or duplicate index lifecycle."
+**Feature Branch**: `061-persistent-repo-research-backends`
+**Created**: 2026-11-27
+**Status**: Draft
+**Input**: User description: "Make Semble MCP reliable first, then remove the legacy vector-search/read-code semantic discovery machinery it replaces."
 
 ## One-Line Purpose *(mandatory)*
 
-Use the standard local Semble MCP as the reliable semantic-discovery path, then delete the obsolete vector-search machinery that duplicates it.
+Repository agents use reliable Semble semantic discovery without maintaining a second legacy vector-search stack.
 
 ## Consumer & Context *(mandatory)*
 
-Codex agents and SpecKit workflows need semantic repository discovery that is available immediately, does not repeatedly prompt for read-only searches, and does not depend on custom vector-index lifecycle code. Semble already provides the semantic-search capability through its local MCP integration; the foundation should configure and consume that capability cleanly rather than recreating its process, cache, index, embedding, or reranking lifecycle.
-
-CodeGraph remains responsible for structural graph questions and LSP remains responsible for symbol-precise navigation. This feature does not replace either system.
+Codex agents and SpecKit workflows consume Semble through the repository's standard local MCP integration during code discovery.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Semble MCP Is Reliably Available (Priority: P1)
+### User Story 1 - Reliable Semble MCP (Priority: P1)
 
-As a repository agent, I want the configured local Semble MCP to be available in every Codex session so semantic discovery works without ad hoc recovery or duplicate process management.
+As a repository agent, I can use Semble in fresh Codex sessions without manual recovery or unnecessary approval prompts.
 
-**Why this priority**: Semble is already the intended semantic-discovery system. Reliability of the existing MCP integration must be fixed before deleting the legacy fallback machinery.
+**Why this priority**: The legacy semantic path cannot be removed safely until Semble is dependable.
 
-**Independent Test**: Start fresh Codex sessions against the target repository and verify Semble registers successfully, searches execute through the MCP, and failures identify the actual startup/configuration cause.
+**Independent Test**: Start fresh Codex sessions and verify Semble registers, searches successfully, and reports a concrete startup/configuration failure when unavailable.
 
 **Acceptance Scenarios**:
 
-1. **Given** a correctly configured repository session, **When** Codex starts, **Then** the Semble MCP launches and its expected read-only search tools are registered.
-2. **Given** a healthy Semble MCP, **When** multiple searches execute in one session, **Then** they reuse the existing MCP process/index path rather than spawning one Semble process per search.
-3. **Given** Semble fails to register or launch, **When** readiness is checked, **Then** the failure identifies the relevant configuration, executable/environment, working-directory, repository, or tool-registration cause.
-4. **Given** the intended read-only approval policy, **When** Semble search tools execute, **Then** they do not generate unnecessary approval prompts.
+1. **Given** valid MCP configuration, **When** a fresh Codex session starts, **Then** Semble search tools are available.
+2. **Given** a healthy Semble MCP, **When** five searches run in one session, **Then** they reuse the existing MCP process path rather than intentionally starting one Semble process per query.
+3. **Given** the intended read-only approval policy, **When** Semble searches run, **Then** they do not prompt unnecessarily.
+4. **Given** Semble cannot start or register, **When** readiness is checked, **Then** the failure identifies the relevant configuration, environment/executable, working-directory, process-start, or tool-registration cause.
 
 ---
 
-### User Story 2 - Remove Duplicate Legacy Semantic Discovery (Priority: P2)
+### User Story 2 - Remove Legacy Vector Discovery (Priority: P2)
 
-As a maintainer, I want the old vector-search/read-code semantic-discovery stack removed once Semble is stable so the foundation has one semantic index lifecycle instead of two.
+As a maintainer, I can remove the old vector/read-code semantic-discovery stack after Semble is stable.
 
-**Why this priority**: The legacy path adds substantial initialization, health, refresh, persistence, embedding, reranking, and maintenance code for capability now provided by Semble.
+**Why this priority**: It duplicates Semble and adds index, embedding, reranking, refresh, persistence, and health machinery.
 
-**Independent Test**: Trace all semantic-discovery callers after the Semble MCP is stable, migrate remaining valid consumers, and verify normal discovery no longer initializes or queries the legacy vector backend.
+**Independent Test**: Inventory remaining legacy semantic callers, migrate valid consumers to Semble, and verify normal discovery no longer initializes or queries the legacy vector backend.
 
 **Acceptance Scenarios**:
 
-1. **Given** a normal semantic-discovery request, **When** discovery runs, **Then** it uses Semble rather than the legacy vector/read-code semantic backend.
-2. **Given** legacy vector indexing, embedding, reranking, persistence, refresh, or health code with no remaining demonstrated consumer, **When** cleanup completes, **Then** that code is removed.
-3. **Given** existing strict-read and bounded-evidence guardrails, **When** the legacy vector backend is removed, **Then** those governance constraints remain intact.
-4. **Given** CodeGraph and LSP consumers, **When** semantic cleanup completes, **Then** their structural and symbol-precision responsibilities remain unchanged.
+1. **Given** a normal semantic-discovery request, **When** discovery runs, **Then** it uses Semble rather than the legacy vector backend.
+2. **Given** legacy vector/index/embed/rerank lifecycle code with no remaining consumer, **When** cleanup completes, **Then** that code is removed.
+3. **Given** existing retrieval guardrails, CodeGraph, and LSP behavior, **When** cleanup completes, **Then** those unaffected capabilities continue to pass regression checks.
 
 ### Edge Cases
 
-- A fresh Codex session starts from a repository other than the expected target; Semble must operate against the actual configured repository rather than silently using stale state.
-- Semble is configured but the executable or environment cannot be resolved; the failure must be explicit and bounded.
-- The MCP launches but expected tools are not registered; this is reported as tool-registration failure rather than generic search failure.
-- Multiple searches occur in one session; they must use the already-running MCP path rather than custom batching/process orchestration in the runner.
-- A legacy read-code/vector caller remains after migration; it must be identified explicitly rather than kept as an undocumented fallback.
+- Semble launches but expected tools do not register.
+- A legacy semantic caller remains after migration.
+- A fresh session resolves the wrong repository or working directory.
 
 ## Flowchart *(mandatory)*
 
-```text
-Codex / SpecKit discovery request
-        |
-        v
-Semble MCP available?
-        |
-        +-- no --> report concrete startup/config/tool-registration failure
-        |
-        v
-Semble semantic search
-        |
-        v
-bounded discovery evidence
-        |
-        +--> LSP when symbol precision is needed
-        |
-        +--> CodeGraph when structural dependency/impact analysis is needed
-```
-
-After Semble stability is verified:
-
-```text
-legacy semantic/vector caller
-        |
-        +-- still required --> migrate to Semble or document demonstrated exception
-        |
-        +-- no consumer ----> remove vector/index/embed/rerank lifecycle code
+```mermaid
+flowchart TD
+    A[Discovery request] --> B{Semble MCP ready?}
+    B -- No --> C[Report concrete startup/configuration failure]
+    B -- Yes --> D[Run Semble search]
+    D --> E[Return bounded discovery evidence]
+    E --> F{Legacy semantic caller still exists?}
+    F -- Yes --> G[Migrate caller or document demonstrated exception]
+    F -- No --> H[Remove obsolete vector lifecycle code]
 ```
 
 ## Data & State Preconditions *(mandatory)*
 
-- `FOUNDATION_ROOT` remains distinct from the repository being researched.
-- The Semble MCP is configured through the normal Codex MCP configuration for the target repository.
-- The Semble process owns its own supported cache/index behavior; the runner does not recreate that lifecycle.
-- Read-only Semble tool approval policy is configured intentionally and separately from process-start or sandbox permissions.
+- The target repository is known for the active Codex/SpecKit session.
+- Semble is configured through the standard local MCP integration.
 - Existing CodeGraph and LSP integrations remain available for their current responsibilities.
 
 ## Inputs & Outputs *(mandatory)*
 
-**Inputs**:
-
-- Target repository/workspace.
-- Existing Semble MCP configuration.
-- A semantic discovery query.
-- Codex MCP startup, environment, working-directory, and approval configuration.
-
-**Outputs**:
-
-- A bounded Semble discovery result.
-- A bounded readiness/failure result when the MCP is unavailable.
-- Post-migration inventory showing which legacy vector/read-code semantic components were removed or retained with an explicit consumer.
+| Direction | Description | Format |
+| :-- | :-- | :-- |
+| Input | Repository context and semantic discovery request | Caller-defined |
+| Output | Semble discovery result or concrete MCP readiness failure | Caller-defined |
 
 ## Constraints & Non-Goals *(mandatory)*
 
-**Constraints**:
+**Must NOT**:
+- Add a separate Semble daemon, HTTP service, process pool, batching layer, or duplicate index lifecycle.
+- Preserve the legacy vector backend merely as a fallback after its consumers are migrated.
 
-- Use Semble's standard local MCP integration.
-- The runner MUST NOT add its own Semble process pool, daemon manager, HTTP service, batching service, or index lifecycle.
-- Semantic discovery MUST have one system of record after cleanup: Semble.
-- Strict-read governance and bounded evidence MUST survive removal of the legacy vector backend.
-- CodeGraph structural analysis and LSP symbol analysis remain separate concerns.
+**Adopted dependencies**:
+- Semble MCP provides semantic repository discovery and owns its supported cache/index behavior.
 
-**Non-goals**:
-
-- Building a separate Semble daemon or HTTP service.
-- Creating a persistent warmed read-code/reranker service.
-- Preserving the legacy vector backend merely as a fallback.
-- Reimplementing Semble caching, indexing, embeddings, reranking, or refresh behavior in the foundation runner.
-- Combining Semble, CodeGraph, and LSP into one service.
-- Changing CodeGraph or LSP behavior as part of this feature.
+**Out of scope**:
+- Replacing or redesigning CodeGraph.
+- Replacing or redesigning LSP.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST use the configured local Semble MCP as the normal semantic repository-discovery path.
-- **FR-002**: A fresh Codex session MUST expose the expected Semble read-only search tools when configuration and environment are valid.
-- **FR-003**: Multiple Semble searches in one session MUST use the existing MCP process path and MUST NOT intentionally spawn one Semble process per query.
-- **FR-004**: Semble startup/readiness diagnostics MUST distinguish at minimum configuration, executable/environment resolution, working directory/repository, process startup, and tool-registration failures.
-- **FR-005**: Read-only Semble searches MUST execute without repetitive approval prompts when the configured policy permits them.
-- **FR-006**: The foundation MUST NOT introduce a separate Semble daemon, HTTP service, process pool, custom batching service, or duplicate index/cache lifecycle.
-- **FR-007**: After Semble stability is verified, all callers of legacy semantic vector discovery MUST be inventoried and classified as migrated, explicitly retained for a demonstrated non-Semble requirement, or removed.
-- **FR-008**: Normal semantic discovery MUST no longer initialize or query the legacy vector/read-code semantic backend after migration.
-- **FR-009**: Legacy vector indexing, embedding, reranking, persistence, refresh, startup, and health machinery with no demonstrated remaining consumer MUST be removed.
-- **FR-010**: Strict-read governance, bounded evidence, and repository-scope protections MUST remain enforced after legacy vector removal.
-- **FR-011**: CodeGraph MUST remain the structural dependency/impact path and LSP MUST remain the symbol-precision path; this feature MUST NOT duplicate those responsibilities.
-- **FR-012**: Existing retrieval specs 025, 027, 031, and 035 MUST be reconciled against the post-Semble architecture, and obsolete vector-backend requirements MUST NOT be implemented solely to complete historical checkboxes.
-- **FR-013**: Tests and operator documentation MUST identify Semble as the semantic-discovery system of record after migration.
-- **FR-014**: Feature 059 MUST no longer delegate warmed-reranker or persistent read-code backend ownership to feature 061; those requirements are obsolete under this architecture.
-
-### Key Entities *(include if feature involves data)*
-
-- **Semble MCP readiness**: Whether the configured local MCP process launched and registered the expected read-only search tools for the active repository session.
-- **Semantic discovery request**: A repository search request handled by Semble.
-- **Legacy vector component**: Any foundation-owned indexing, embedding, reranking, persistence, refresh, health, or semantic-query component that duplicates Semble discovery.
-- **Retained retrieval guardrail**: Strict-read, bounded-evidence, repository-scope, or other governance behavior that remains valuable independently of the removed vector backend.
+- **FR-001**: The standard local Semble MCP MUST be the normal semantic repository-discovery path.
+- **FR-002**: Fresh Codex sessions MUST expose Semble search tools when configuration and environment are valid.
+- **FR-003**: Repeated searches in one session MUST use the existing MCP process path without custom per-query Semble process orchestration.
+- **FR-004**: Semble readiness failures MUST identify the relevant startup/configuration category instead of reporting only a generic unavailable state.
+- **FR-005**: Read-only Semble searches MUST run without repetitive approval prompts when the intended policy is configured.
+- **FR-006**: After Semble stability is verified, legacy semantic vector callers MUST be migrated or explicitly justified, and unused vector/index/embed/rerank lifecycle code MUST be removed.
+- **FR-007**: Existing retrieval guardrails, CodeGraph structural analysis, and LSP symbol analysis MUST continue to pass regression checks; feature 059 and related docs MUST stop assigning warmed-reranker ownership to feature 061.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Fresh-session verification succeeds repeatedly with Semble tools registered and usable without manual recovery.
-- **SC-002**: Five searches in one healthy session execute through the existing Semble MCP path with no intentional per-query Semble process startup.
-- **SC-003**: Read-only Semble searches execute without unexpected approval prompts under the intended configured policy.
-- **SC-004**: Every tested MCP startup failure is reported as a concrete configuration/environment/working-directory/process/tool-registration category rather than a generic unavailable state.
-- **SC-005**: Normal post-migration semantic discovery executes without initializing the legacy vector index or reranker.
-- **SC-006**: Every legacy vector/index/embed/rerank lifecycle component remaining after cleanup has a documented active consumer; components without one are removed.
-- **SC-007**: Strict-read and bounded-evidence regression tests continue to pass.
-- **SC-008**: CodeGraph and LSP regression checks continue to pass without being absorbed into the Semble lifecycle.
-- **SC-009**: Feature 059 and related documentation no longer describe feature 061 as the owner of a persistent warmed-reranker/read-code backend.
+- **SC-001**: Fresh-session verification repeatedly exposes working Semble search tools without manual recovery.
+- **SC-002**: Five searches in one healthy session complete through the existing Semble MCP path without intentional per-query process startup.
+- **SC-003**: Read-only Semble searches run without unexpected approval prompts under the configured policy.
+- **SC-004**: Normal post-migration discovery does not initialize or query the legacy vector backend.
+- **SC-005**: Remaining legacy semantic components each have a documented active consumer; unused components are removed and regression checks pass.
 
 ## Definition of Done *(mandatory)*
 
-This feature is shipped when the standard local Semble MCP is consistently available and correctly approved in fresh Codex sessions, repeated searches reuse that MCP path without custom lifecycle machinery, the obsolete legacy vector/read-code semantic-discovery stack has been removed wherever it lacks a demonstrated consumer, retrieval guardrails remain intact, and documentation/spec ownership reflects Semble as the semantic-discovery system of record.
+This feature is shipped when production workflows reliably use the standard Semble MCP for semantic discovery and the superseded legacy vector-search machinery is removed without regressing existing retrieval guardrails, CodeGraph, or LSP behavior.
 
 ## Open Questions *(include if any unresolved decisions exist)*
 
-None. This feature deliberately uses the existing Semble MCP integration and removes duplicate semantic-search infrastructure rather than introducing a new process architecture.
+None.
