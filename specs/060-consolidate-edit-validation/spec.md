@@ -28,6 +28,9 @@ Coding agents and repository maintainers need one predictable validation experie
 - **FR-018**: Existing bounded-read rules, discovery entry points, governance gates, audit trails, continuous-integration checks, and behavioral and semantic quality checks MUST remain effective.
 - **FR-019**: Regression coverage MUST include intermediate-edit behavior, optional and final validation, direct-commit safeguards, freshness detection, and a temporarily inconsistent multi-file change that passes all final checks after consistency is restored.
 - **FR-020**: The workflow MUST produce comparable before-and-after measurements for validator invocations, refresh invocations, validation elapsed time, task completion time, and acceptance-test success rate on equivalent tasks.
+- **FR-021**: Session bootstrap (`scripts/bootstrap_session.py`) MUST NOT invoke `scripts/cgc_safe_index.py` across `scripts`, `src`, `tests`, and `specs` when `codegraph_health_probe` already reports a healthy snapshot.
+- **FR-022**: When session bootstrap does run multi-scope indexing, it MUST aggregate failure state across all scopes (never allowing a later succeeding scope to overwrite an earlier scope's failure) and MUST surface actual subprocess stderr instead of masking failures with a healthy probe detail message.
+- **FR-023**: Repository discovery and indexing entrypoints (including `cgc_safe_index.py`, `read_code.py`, and related local research tools) MUST isolate their config, cache, and database state to repo-local paths rather than reading or writing `~/.codegraphcontext` or other user-home paths outside the workspace sandbox.
 
 ### Key Entities
 
@@ -49,6 +52,7 @@ Coding agents and repository maintainers need one predictable validation experie
 - **SC-006**: In regression coverage, direct commits with missing or mismatched evidence execute the applicable safeguards, while exact matching evidence causes no duplicate validator or refresh invocation.
 - **SC-007**: Before-and-after benchmark results report validator invocations, refresh invocations, validation elapsed time, task completion time, and acceptance-test success rate for equivalent implementation tasks without reducing acceptance-test success.
 - **SC-008**: A review of active workflow documentation finds no contradictory ownership or timing rules for edit tracking, intermediate validation, final validation, discovery refresh, or commit safeguards.
+- **SC-009**: In regression coverage, `bootstrap_session()` triggers zero `cgc_safe_index.py` invocations when the CodeGraph snapshot is already healthy, fails deterministically if any scope fails (even when a later scope succeeds), surfaces actual subprocess stderr on failure, and operates strictly within repo-local paths with zero `~/.codegraphcontext` access.
 
 ## Definition of Done *(mandatory)*
 
@@ -59,3 +63,4 @@ The feature is complete in the production repository workflow when coding agents
 - **OQ-001**: Must reusable validation evidence match only changed content and validator configuration, or the complete dependency and execution environment? **Stakes**: A boundary that is too narrow risks accepting invalid evidence; one that is too broad preserves redundant work.
 - **OQ-002**: Which discovery operations count as authoritative reads and therefore require freshness enforcement before returning results? **Stakes**: An incomplete list can expose stale results, while an overly broad list can reintroduce unnecessary refreshes.
 - **OQ-003**: Which representative implementation tasks and baseline runs will be used for before-and-after measurements? **Stakes**: Without a shared comparison set, efficiency gains may not be comparable or may mask acceptance-quality regressions.
+- **OQ-004**: What is the cleanest way to isolate upstream `codegraphcontext` (and any sibling tools like Semble) from touching user-home directories such as `~/.codegraphcontext` inside workspace-scoped sandboxes (e.g., dedicated env vars, scoped `HOME`/`XDG_*` override, or wrapper config)? **Stakes**: Choosing a brittle override could break tool auth/caches or leave sandboxed runs failing across multiple workflows.
