@@ -1,0 +1,108 @@
+{
+  "artifact_kind": "spec_details",
+  "artifacts": {
+    "plan_md": "/Users/andreborczuk/app-foundation/specs/059-workflow-state-consistency/plan.md"
+  },
+  "design_slices": [
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Replace porcelain-only signature drift in `scripts/read_code_health.py` and `src/mcp_codebase/health.py` (and refresh persistence in `scripts/hook_refresh_indexes.py`) with a deterministic content-based fingerprint over indexed repo files so edit \u2192 refresh \u2192 read \u2192 commit \u2192 verify produces identical fingerprints without false-positive staleness while still detecting genuine post-refresh edits; add unit coverage in `tests/unit/test_read_code_health.py`.",
+      "slice_id": "PL-01",
+      "title": "Deterministic vector edit fingerprinting across reads, refreshes, commits, and verification",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Update `scripts/speckit_plan_step.py` (`apply_strategy` / `_write_selected_scaffold`) to preserve existing populated section content rather than overwriting with blank template stubs, and update `scripts/speckit_solution_step.py` (`prepare_tasking`, exposed via `scripts/speckit_tasking_step.py`) to preserve existing populated `tasks.md` files while still scaffolding missing/empty artifacts from custom templates; add unit tests in `tests/unit/test_plan_step.py` and `tests/unit/test_speckit_solution_step.py`.",
+      "slice_id": "PL-02",
+      "title": "Non-destructive Plan apply-strategy and Solution task creation",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Add a shared `normalize_feature_id()` helper in `scripts/pipeline_ledger.py` that accepts `NNN` or `NNN-slug` and normalizes to canonical `NNN` while rejecting malformed IDs; wire it into `pipeline_ledger.py` (`append`, `assert-phase-complete`, `validate`), `scripts/pipeline_driver.py` (`append_requested_pipeline_event`, `append_pipeline_success_event`), and `scripts/pipeline_driver_state.py` (`resolve_phase_state`) without rewriting historical append-only ledger entries; add unit tests in `tests/unit/test_pipeline_ledger_sequence.py` and `tests/unit/test_pipeline_driver.py`.",
+      "slice_id": "PL-03",
+      "title": "Consistent NNN and NNN-slug feature ID normalization in pipeline ledger and driver",
+      "why": ""
+    },
+    {
+      "estimate": "low",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Reconcile `.claude/commands/speckit.estimate.md`, `command-manifest.yaml`, `.specify/command-manifest.yaml`, `scripts/pipeline_ledger.py`, and `scripts/pipeline_driver_state.py` so `estimation_completed` (compatibility) and `tasking_completed` (canonical, with `task_count` and `story_count`) share identical prerequisites, required fields, and follow-on transitions; verify via `pipeline_ledger.py validate-manifest` and contract tests in `tests/unit/test_pipeline_ledger_sequence.py`.",
+      "slice_id": "PL-04",
+      "title": "Align estimate command, manifests, and ledger transition contract",
+      "why": ""
+    },
+    {
+      "estimate": "medium",
+      "file_symbol_seams": [],
+      "file_symbol_seams_raw": "",
+      "implementation_directive": "Add live-backend verification tests in `tests/integration/test_live_vector_fingerprint_and_read_code.py` exercising real local vector index refresh, fingerprint stability across edit/refresh/commit/verify, and real `read_code.py` execution (separate from mocked unit/contract tests); update `docs/governance/pipeline-driver-readme.md` and `docs/governance/speckit-end-to-end.md` with migration/backward-compatibility guidance and the explicit scope boundary with feature `061`.",
+      "slice_id": "PL-05",
+      "title": "Live-backend verification and migration/compatibility documentation",
+      "why": ""
+    }
+  ],
+  "domains": {
+    "reasoning": {
+      "ops governance": "Pipeline driver routing, command manifests, custom templates, and ledger transition contracts govern every Speckit phase transition.",
+      "storage": "Vector edit fingerprints, populated spec/plan/task artifacts, and append-only pipeline/task ledgers are stateful persistence surfaces that must remain deterministic and non-destructive.",
+      "testing": "Live-backend verification for vector index refresh and read_code.py paths is required alongside mocked contract tests per constitution Principle IV."
+    },
+    "relevant": [
+      "storage",
+      "ops governance",
+      "testing"
+    ]
+  },
+  "feature_id": "059",
+  "risk": {
+    "external_dependency_uncertainty": "low",
+    "human_operator_dependency": "low",
+    "overall": "medium",
+    "repo_uncertainty": "low",
+    "requirement_clarity": "low",
+    "runtime_side_effect_risk": "medium",
+    "state_data_migration_risk": "medium"
+  },
+  "routing": {
+    "architecture_diagram": false,
+    "external_research": false,
+    "plan_level": "core",
+    "relevant_domains": [
+      "storage",
+      "ops governance",
+      "testing"
+    ],
+    "routing_reason": "All four root causes are verified in repository code (`read_code_health.py`, `speckit_plan_step.py`, `speckit_solution_step.py`, `pipeline_ledger.py`, `pipeline_driver.py`, and `command-manifest.yaml`). No external research or net-new operator surface is needed, but explicit architecture strategy is required to preserve append-only audit integrity and non-destructive artifact invariants.",
+    "sketch_level": "core"
+  },
+  "schema_version": "1.0.0",
+  "strategy": {
+    "architecture_diagram": false,
+    "architecture_strategy": true,
+    "expanded_design_notes": false,
+    "external_research": false,
+    "net_new_surface": false,
+    "strategy_reason": "All four root causes are verified in repository code (`read_code_health.py`, `speckit_plan_step.py`, `speckit_solution_step.py`, `pipeline_ledger.py`, `pipeline_driver.py`, and `command-manifest.yaml`). No external research or net-new operator surface is needed, but explicit architecture strategy is required to preserve append-only audit integrity and non-destructive artifact invariants."
+  },
+  "tasking": {
+    "hud_generation": "generative",
+    "mode": "generative",
+    "task_detail_source": "command_fill"
+  },
+  "triage": {
+    "duplicate": false,
+    "duplicate_matches": [],
+    "duplicate_reason": "Confirmed unique scope; persistent warmed-reranker ownership is explicitly separated into feature 061.",
+    "risk_level": "medium",
+    "tshirt_size": "m"
+  }
+}

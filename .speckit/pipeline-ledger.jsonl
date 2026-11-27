@@ -79,3 +79,7 @@
 {"actor": "speckit.estimate", "estimate_points": 227, "event": "tasking_completed", "feature_id": "049", "phase": "", "story_count": 5, "task_count": 48, "timestamp_utc": "2026-07-20T16:54:09.348649Z"}
 {"actor": "codex", "critical_count": 0, "details": "Analysis rerun clean after remediation; 24 functional requirements have direct task coverage, 53 tasks pass format validation, and plan/design/readiness gates pass.", "event": "analysis_completed", "feature_id": "049", "high_count": 0, "phase": "solution", "timestamp_utc": "2026-07-20T18:27:08.843385Z"}
 {"actor": "codex", "event": "implementation_completed", "feature_id": "049", "phase": "implement", "timestamp_utc": "2026-07-22T01:22:50.763545Z"}
+{"actor": "pipeline_driver", "event": "backlog_registered", "feature_id": "059", "phase": "specify", "timestamp_utc": "2026-11-27T17:31:19.660309Z"}
+{"actor": "speckit.plan", "event": "plan_approved", "feasibility_required": "false", "feature_id": "059", "phase": "plan", "spec_json_path": "specs/059-workflow-state-consistency/spec.json", "timestamp_utc": "2026-11-27T17:35:06.844502Z"}
+{"actor": "speckit.estimate", "estimate_points": 37, "event": "tasking_completed", "feature_id": "059", "phase": "tasking", "story_count": 5, "task_count": 13, "timestamp_utc": "2026-11-27T17:35:39.236496Z"}
+{"actor": "speckit.analyze", "critical_count": 0, "event": "analysis_completed", "feature_id": "059", "high_count": 0, "phase": "analyze", "timestamp_utc": "2026-11-27T17:36:12.493522Z"}
