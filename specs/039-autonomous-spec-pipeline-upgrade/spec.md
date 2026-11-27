@@ -2,8 +2,10 @@
 
 **Feature Branch**: `039-autonomous-spec-pipeline-upgrade`  
 **Created**: 2026-07-09  
+**Updated**: 2026-11-26  
 **Status**: Draft
 **Input**: User description: "Upgrade this repository from its current Spec Kit version to the newest upstream version and design an autonomous, resumable spec pipeline. The pipeline starts from a feature prompt, deterministically scaffolds every phase, runs generative work against governed templates, applies deterministic checks, emits durable phase and task events, and lets a future agent rehydrate and continue after interruption or failure. Investigate and incorporate upstream shell-command support, while-loop support, and any other current Spec Kit features that materially help the pipeline continue autonomously until a decision or condition genuinely requires human intervention. Specify the upstream capabilities needed and every required update to the repository's current commands, scripts, templates, gates, ledgers, state-machine contracts, runtime documentation, tests, and migration path. Do not implement the upgrade in this feature specification."
+**Update Input**: "Use the current multi-step runner and its event capabilities without losing custom templates or workflow steps."
 
 ## One-Line Purpose *(mandatory)*
 
@@ -19,16 +21,17 @@ This feature is a migration and completion delta to the existing deterministic p
 
 ### Verified Upstream Capability Baseline
 
-- The locally installed Specify CLI reports version `0.1.13`, an unknown template version, and no `workflow` command as of 2026-07-09.
-- The implementation target is the immutable [`v0.12.9` release](https://github.com/github/spec-kit/releases/tag/v0.12.9), verified as the newest stable release on 2026-07-09; a later release requires an explicit reviewed spec amendment instead of floating to `main` or `latest`.
+- The locally invoked Specify CLI reports CLI version `0.1.13` and template version `1.4.5` but exposes no `workflow` command and rejects the current machine-readable version flags as of 2026-11-26, so the displayed template version is not proof that the multi-step runner is installed.
+- The implementation target is the immutable [`v1.4.5` release](https://github.com/github/spec-kit/releases/tag/v1.4.5), verified as the newest stable release on 2026-11-26; a later release requires an explicit reviewed spec amendment instead of floating to `main` or `latest`.
 - The workflow engine first shipped in [`v0.7.0`](https://github.com/github/spec-kit/releases/tag/v0.7.0), but that minimum is unacceptable because [`v0.8.13`](https://github.com/github/spec-kit/releases/tag/v0.8.13) fixed stale `while`/`do-while` condition output and later releases hardened structured workflow output and validation.
-- The current [workflow reference](https://github.github.com/spec-kit/reference/workflows.html) provides `command`, `prompt`, `shell`, `gate`, `if`, `switch`, `while`, `do-while`, `fan-out`, and `fan-in` steps plus durable status and resume behavior.
+- The current [workflow reference](https://github.com/github/spec-kit/blob/main/docs/reference/workflows.md) provides `command`, `prompt`, `shell`, `github`, `init`, `slot`, `gate`, `if`, `switch`, `while`, `do-while`, `fan-out`, `fan-in`, and nested `workflow` steps plus durable status, definition inspection, and resume behavior.
 - A `shell` step runs with the user's privileges and no capability sandbox, so this repository requires a stricter repo-owned allowlist and input policy than upstream supplies.
-- A pause or failure inside nested control flow can rerun the top-level parent and nested body on resume, so every nested mutation and event write must be idempotent.
+- New runs persist an execution tree containing selected branches, dynamic custom-step expansions, loop iterations, fan-out items, and bound called-workflow definitions; resume retains completed occurrences without reevaluating them, while an effect interrupted before its completion checkpoint may still repeat and therefore remains subject to repository idempotency rules.
 - Reaching a loop's maximum iteration count does not itself prove failure or success, so every loop requires a deterministic post-loop assertion.
 - [`specify version --features --json`](https://github.github.com/spec-kit/reference/core.html) provides a machine-readable capability preflight, while explicit project and feature targeting avoids unattended branch/cwd inference.
-- [Presets](https://github.github.com/spec-kit/reference/presets.html), custom workflow step types, and [bundles](https://github.github.com/spec-kit/reference/bundles.html) can preserve, version, and reinstall this repository's custom commands, templates, scripts, workflow, and governance outside upstream-managed core files.
-- The current [Codex integration](https://github.github.com/spec-kit/reference/integrations.html) installs skills under `.agents/skills` and uses hyphenated invocation, so the repository's `.codex/skills` wrappers and `.claude/commands` ownership require an explicit compatibility migration.
+- [Presets](https://github.github.com/spec-kit/reference/presets.html), extensions, workflow overlays, custom workflow step packages, and [bundles](https://github.github.com/spec-kit/reference/bundles.html) can preserve, version, and reinstall this repository's custom commands, templates, scripts, workflows, and governance outside upstream-managed core files.
+- Upstream structured status and private workflow log events identify nested workflow scope, execution path, and qualified step occurrences, but repository lifecycle events remain a separate durable contract that must be bridged and reconciled explicitly.
+- The current [Codex integration](https://github.github.com/spec-kit/reference/integrations.html) manages rendered skills and extension resources, so the repository's `.codex/skills` wrappers and `.claude/commands` ownership require an explicit compatibility migration rather than a forced refresh.
 
 ### Repository Gap Inventory
 
@@ -48,8 +51,10 @@ This feature is a migration and completion delta to the existing deterministic p
 | Rehydration | State derives the last successful phase and failure sidecars are not a canonical cursor/checkpoint | Correlate run state, ledgers, artifacts, attempts, and diagnostics so another agent resumes the exact safe boundary |
 | Ledgers | Pipeline/task ledgers are success-oriented and lack a shared run/attempt/checkpoint contract | Preserve their authority while adding correlated attempt, pause, resume, failure, and terminal evidence |
 | Runtime results | Manifest-advertised paths and phase helper paths disagree | Publish one canonical bounded result/checkpoint layout with full artifacts behind compact pointers |
+| Workflow events | Repository phase/task events and upstream private step logs have different authority and identity models | Bridge structured run, status, gate, definition, and step-occurrence records into idempotent durable repository events without treating telemetry as completion proof |
 | Concurrency | Feature lock functions exist but production orchestration does not acquire them | Enforce a renewable single-flight feature lease across run, pause, resume, and crash recovery |
 | Agent integration | Canonical procedure lives in Claude command files and Codex wrappers load it indirectly | Establish one integration-neutral source, render supported Codex skills, and test retained compatibility surfaces |
+| Customization packaging | Repo-owned templates, commands, skills, and steps currently live beside or over upstream-managed files | Move ownership to reviewed presets, extensions, overlays, bundles, or equivalent supported seams and prove clean install plus round-trip preservation |
 | Implementation ownership | Manifest, command guidance, and governance docs disagree about deterministic versus command-agent ownership | Select and enforce one owner for orchestration, generation, validation, commit, QA, and closeout |
 | Handoff closure | Feature and task-planning evidence can diverge from phase state | Require handoff reconciliation before workflow completion |
 | Documentation | Runtime, operator, and command guidance describe overlapping pipeline generations | Update the governance map, runbook, command contracts, source-of-truth map, and runtime policy from one tested model |
@@ -102,7 +107,7 @@ A future agent can inspect one compact run envelope and resume from a persisted 
 **Acceptance Scenarios**:
 
 1. **AS-3.1 — Given** the process stops between top-level steps, **When** a future agent requests status and resumes by run ID, **Then** it receives feature, phase, attempt, last validated event, next action, artifact pointers, and reason codes without manual ledger inspection.
-2. **AS-3.2 — Given** the process stops or pauses inside nested control flow, **When** upstream resume reruns the parent boundary, **Then** nested file changes and ledger writes are idempotent and the latest iteration output controls the next condition.
+2. **AS-3.2 — Given** the process stops or pauses inside nested control flow, **When** upstream resume reconstructs the persisted execution tree, **Then** completed occurrences remain completed, any interrupted effect is reconciled idempotently, and the latest persisted iteration output controls the next condition.
 3. **AS-3.3 — Given** run state, artifacts, pipeline ledger, and task ledger disagree, **When** reconciliation runs, **Then** execution blocks with explicit drift reasons rather than choosing silently or emitting completion.
 4. **AS-3.4 — Given** an event committed immediately before a crash but the workflow cursor did not advance, **When** the run resumes, **Then** the idempotency key recognizes the prior commit and advances without duplication.
 
@@ -135,7 +140,7 @@ Operators and automation receive stable machine-readable outcomes and bounded di
 
 **Acceptance Scenarios**:
 
-1. **AS-5.1 — Given** any transition, **When** JSON output is requested, **Then** stdout contains one parseable result while progress and bounded diagnostics use stderr or referenced artifacts.
+1. **AS-5.1 — Given** any run, step, gate, resume, failure, or terminal transition, **When** structured output is requested, **Then** consumers receive a parseable result or lifecycle event with stable run, workflow-scope, and step-occurrence identity while progress and bounded diagnostics use stderr or referenced artifacts.
 2. **AS-5.2 — Given** a state conflict or invalid checkpoint, **When** status is requested, **Then** the result names each conflicting authority, one non-mutating recovery action, and the full diagnostic path.
 3. **AS-5.3 — Given** a failure no declared human authority or automatic policy can resolve, **When** terminal classification runs, **Then** the workflow remains failed with a stable reason and retrieval path rather than looping, pausing ambiguously, or claiming completion.
 
@@ -147,6 +152,8 @@ Operators and automation receive stable machine-readable outcomes and bounded di
 - Nested replay repeats a file mutation, commit, task transition, or event.
 - Process death occurs after validation but before append, or after append but before cursor persistence.
 - An active run's workflow differs from the installed workflow, CLI, preset, extension, integration, or manifest.
+- An installed workflow, overlay, called workflow, or custom step package changes after a run has frozen its effective definition.
+- A structured step event is repeated, delayed, or observed out of order by a repository event consumer.
 - A human edits an artifact while paused and invalidates stored validation.
 - Two agents start/resume the same feature, or a lease expires during a human pause.
 - A helper reports success but its phase-specific gate fails.
@@ -164,8 +171,9 @@ Operators and automation receive stable machine-readable outcomes and bounded di
 flowchart TD
     A[Feature prompt, feature ID, or run ID] --> B{Pinned CLI and required features present?}
     B -->|No: AS-4.2 or AS-4.4| B1[Block with upgrade or compatibility handoff]
-    B -->|Yes: AS-4.1 and AS-4.3| C[Acquire feature lease and reconcile run, ledger, task, and artifact state]
-    C --> D{All state authorities agree?}
+    B -->|Yes: AS-4.1 and AS-4.3| C[Freeze effective workflow and acquire feature lease]
+    C --> C1[Emit structured run event with stable scope identity]
+    C1 --> D{All state authorities agree?}
     D -->|No: AS-3.3 and AS-5.2| D1[Persist deterministic drift block and diagnostic handoff]
     D -->|Yes: AS-1.1| E[Resolve next machine-decidable phase]
     E --> F{Execution primitive and inputs approved by policy?}
@@ -234,13 +242,13 @@ Every decision branch is tied to an acceptance scenario on the edge; the interru
 
 **Adopted dependencies**:
 
-- GitHub Spec Kit `v0.12.9` — pinned workflow engine, Codex integration, feature reporting, run/resume/status, structured output, control flow, presets, custom steps, and bundles.
+- GitHub Spec Kit `v1.4.5` — pinned workflow engine, Codex integration, run/resume/status/definition inspection, persisted execution trees, qualified step events, structured output, control flow, nested workflows, overlays, presets, extensions, custom steps, and bundles.
 - Workflow `command`/`prompt` steps — dispatch bounded generation against repo-owned contracts.
 - Workflow `shell` with structured JSON output — invokes only reviewed deterministic Python adapters.
 - Workflow `while`/`do-while`, `if`/`switch`, and `gate` — implement bounded pre-implementation repair/convergence and classified human pauses.
 - Persisted workflow state and JSON outcomes — own execution cursor/rehydration while remaining subordinate to governance ledgers.
 - Repo pipeline driver, manifest, phase helpers, validators, locks, runtime results, and ledgers — remain the domain contract and are adapted.
-- A versioned project-local preset/extension/bundle or equivalent supported seam — owns customization provenance and clean-install reproduction.
+- Versioned project-local presets, extensions, overlays, bundles, or equivalent supported seams — own customization provenance, retain local templates and workflow steps, and support clean-install reproduction without core-file ownership conflicts.
 
 **Out of scope**:
 
@@ -275,11 +283,11 @@ Every decision branch is tied to an acceptance scenario on the edge; the interru
 - **FR-017**: A versioned human-intervention policy MUST associate each human reason with authority, required information, allowed choices, resume input, prohibited effects, and coverage for material ambiguity, mandated approval, sensitive access, destructive work, external effects, drift, exhausted recovery, and decisions lacking a machine owner.
 - **FR-018**: Ambiguous existing approval events MUST remain human-controlled until a separate approved governance change says otherwise.
 - **FR-019**: A human-required outcome MUST persist before pause; no dependent mutation or external effect may occur until authorized resume; resumed input MUST be validated for authority, choice, type, scope, freshness, and correlation without exposing secrets.
-- **FR-020**: Run state, inputs, logs, and workflow snapshots MUST correlate feature or task, workflow version, run, correlation, attempt, actor, and active engine/workflow compatibility.
+- **FR-020**: Run state, inputs, logs, frozen workflow definitions, and workflow-scope records MUST correlate feature or task, workflow version, run, correlation, attempt, actor, qualified step occurrence, execution path, and active engine/workflow compatibility.
 - **FR-021**: Pipeline ledger MUST remain phase-completion authority, task ledger task authority, and workflow state cursor or telemetry authority only; all ledger access MUST use script-owned interfaces and MUST NOT inspect or edit ledger JSONL directly.
-- **FR-022**: Ledger and manifest contracts MUST expose correlated attempts, pauses, resumes, failures, checkpoints, terminal outcomes, reasons, and idempotency keys without weakening existing transitions.
+- **FR-022**: Ledger, manifest, and event-bridge contracts MUST expose correlated run, step, gate, pause, resume, failure, checkpoint, and terminal lifecycle events with workflow scope, qualified occurrence identity, reasons, evidence pointers, ordering, and idempotency keys without weakening existing transitions or treating upstream log events as governance completion proof.
 - **FR-023**: Start, resume, and each effectful boundary MUST reconcile workflow state, both ledgers, runtime results, artifacts, manifest, versions, and lease; reconciliation MUST block rather than guess and return every drift reason plus one non-mutating next action.
-- **FR-024**: Every replayable effect MUST be idempotent using persisted run, feature or task, phase, attempt, and effect identity; nested-parent replay MUST be safe for generation, validation, event recording, task transitions, and checkpoints.
+- **FR-024**: Every effect that can be retried before its completion checkpoint MUST be idempotent using persisted run, feature or task, workflow scope, qualified occurrence, phase, attempt, and effect identity; resume MUST retain completed occurrences and safely reconcile generation, validation, event recording, task transitions, and checkpoints left incomplete by interruption.
 - **FR-025**: Production orchestration MUST acquire, renew, release, and recover a single-flight feature lease, including defined behavior during human pause.
 - **FR-026**: System MUST return one compact rehydration envelope with identity, status, phase or task attempt, last event, pending reason, permitted action, next step, versions, lease, and diagnostic pointers.
 - **FR-027**: Machine JSON mode MUST emit one stdout object, route progress and diagnostics to stderr, persist full output behind artifact paths, redact secrets, cap output, wrap external errors, and document retention without deleting authoritative evidence.
@@ -287,7 +295,7 @@ Every decision branch is tied to an acceptance scenario on the edge; the interru
 - **FR-029**: Every canonical pre-implementation lifecycle phase MUST resolve non-legacy; direct reruns MUST NOT advance out of order, bypass workflow gates or events, or let a generic runner exceed declared mutation and side-effect scope by staging, committing, pushing, merging, deploying, publishing, contacting external systems, or starting implementation outside the active authorized contract.
 - **FR-030**: Migration MUST update the affected driver, state, contracts, phase helpers, gates, ledgers, locks, result layout, manifest, commands and skills, templates, architecture catalog where applicable, runtime governance docs, and related operator diagnostics.
 - **FR-031**: Verification MUST include deterministic unit and contract coverage for schema, conditions, budgets, assertions, reason routing, allowlisting, path and output validation, reconciliation, idempotency, leases, manifest consistency, rollback, and runtime documentation contracts.
-- **FR-032**: Integration, fault, clean-checkout, and upgrade-rehearsal tests MUST use the pinned live engine and a live supported runner or backend; fake-only tests MUST be labeled contract or simulation; tests MUST prove prompt-to-handoff behavior, preservation, reproducibility, pinning, rollback, safe fresh-process resume, and no duplicate transitions around validation, append, cursor persistence, handoff convergence, loop iteration, and human pause.
+- **FR-032**: Integration, fault, clean-checkout, and upgrade-rehearsal tests MUST use the pinned live engine and a live supported runner or backend; fake-only tests MUST be labeled contract or simulation; tests MUST prove prompt-to-handoff behavior, customization preservation, frozen effective definitions, structured occurrence events, reproducibility, pinning, rollback, safe fresh-process resume, and no duplicate transitions around validation, append, cursor persistence, handoff convergence, nested workflow calls, loop iteration, and human pause.
 - **FR-033**: Fan-out, fan-in, and parallel writes MUST remain disabled until separate live proof covers disjoint files, concurrency, leases, and ledger ordering.
 
 ### Key Entities
@@ -310,16 +318,16 @@ Every decision branch is tied to an acceptance scenario on the edge; the interru
 - **SC-001**: A no-human fixture advances through 100% of machine-decidable pre-implementation phases after one start request with zero generic phase-boundary prompts.
 - **SC-002**: 100% of completion events follow required gates, and zero are emitted for failed validation, loop exhaustion, invalid output, or drift.
 - **SC-003**: Every recoverable fixture converges within budget or exits through explicit failure or human assertion; no cap falls through as success.
-- **SC-004**: Fault injection resumes to the uninterrupted control state with zero duplicate events, handoff transitions, artifacts, or corruption.
+- **SC-004**: Fault injection at every supported checkpoint resumes to the uninterrupted control state with zero re-execution of completed occurrences, duplicate events, handoff transitions, artifacts, or corruption.
 - **SC-005**: 100% of human outcomes pause before protected effects while all ordinary successful and recoverable outcomes continue unattended.
 - **SC-006**: A fresh agent gets complete next-action context from one status request and resumes without direct JSONL inspection or chat reconstruction.
-- **SC-007**: A clean checkout reproduces commands, templates, workflow, gates, and integration from pins with zero manual core edits.
+- **SC-007**: A clean checkout reproduces commands, templates, local workflow steps, overlays, gates, and integration from pins with zero manual upstream-core edits.
 - **SC-008**: Staged upgrade preserves 100% of repo-owned and user-local customization, feature artifacts, and ledger history and restores the old baseline deterministically.
 - **SC-009**: 100% of canonical pre-implementation phases resolve non-legacy with one orchestration owner and one result contract.
 - **SC-010**: Live engine and runner verification passes prompt bootstrap, command validation, bounded repair, pause and resume, crash recovery, handoff convergence, and terminal reconciliation.
 - **SC-011**: Security tests execute zero unapproved commands and detect 100% of traversal, interpolation, cwd, executable, secret, output, and timeout fixtures.
-- **SC-012**: Every transition exposes one parseable envelope correlated to run, feature, attempt, ledger evidence, and full diagnostic path.
+- **SC-012**: Every required run, step, gate, resume, failure, and terminal transition exposes one parseable envelope or lifecycle event correlated to run, feature, workflow scope, qualified occurrence, attempt, ledger evidence, and full diagnostic path.
 
 ## Definition of Done *(mandatory)*
 
-The pinned Spec Kit workflow runs in the production repository from one prompt or run ID through governed implementation-ready handoff, continuing every machine-decidable pre-implementation phase without generic approvals, pausing before every protected effect, and allowing a separate downstream implementation workflow to resume from one compact status envelope with no duplicate ledger, handoff artifact, or external effect.
+The pinned Spec Kit workflow runs in the production repository from one prompt or run ID through governed implementation-ready handoff, preserves all reviewed local templates and workflow steps, emits ordered structured lifecycle events, continues every machine-decidable pre-implementation phase without generic approvals, pauses before every protected effect, and allows a separate downstream implementation workflow to resume from one compact status envelope with no duplicate ledger, handoff artifact, or external effect.
