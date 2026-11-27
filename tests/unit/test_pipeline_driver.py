@@ -2807,3 +2807,34 @@ def test_append_pipeline_success_event_normalizes_slug_and_rejects_malformed(
     assert rejected["ok"] is False
     assert rejected["appended"] is False
     assert rejected["error_code"] == "invalid_feature_id"
+
+
+def test_resolve_phase_state_advances_to_implement_after_analysis_completed(
+    tmp_path: Path,
+) -> None:
+    """analysis_completed must advance runnable_phase to implement without phase drift."""
+    feature_dir = tmp_path / "060-consolidate-edit-validation"
+    feature_dir.mkdir()
+    for name in ("spec.md", "plan.md", "tasks.md", "analysis.md"):
+        (feature_dir / name).write_text("# stub\n", encoding="utf-8")
+
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    events = [
+        {"timestamp_utc": "2026-11-27T00:00:00Z", "feature_id": "060", "phase": "specify", "event": "backlog_registered", "actor": "test"},
+        {"timestamp_utc": "2026-11-27T00:01:00Z", "feature_id": "060", "phase": "plan", "event": "plan_approved", "actor": "test", "feasibility_required": False},
+        {"timestamp_utc": "2026-11-27T00:02:00Z", "feature_id": "060", "phase": "tasking", "event": "tasking_completed", "actor": "test", "task_count": 1, "story_count": 1},
+        {"timestamp_utc": "2026-11-27T00:03:00Z", "feature_id": "060", "phase": "analyze", "event": "analysis_completed", "actor": "test", "critical_count": 0, "high_count": 0},
+    ]
+    ledger_path.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+
+    state = pipeline_driver_state.resolve_phase_state(
+        "060-consolidate-edit-validation",
+        pipeline_state={"phase": "implement", "dry_run": True},
+        ledger_path=ledger_path,
+        feature_dir=feature_dir,
+    )
+    assert state["last_event"] == "analysis_completed"
+    assert state["next_phase"] == "implement"
+    assert state["runnable_phase"] == "implement"
+    assert state["blocked"] is False
+    assert state["drift_detected"] is False

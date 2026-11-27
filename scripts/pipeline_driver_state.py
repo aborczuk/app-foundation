@@ -40,6 +40,7 @@ PHASE_COMPLETING_EVENTS: frozenset[str] = frozenset(
         "backlog_registered",
         "plan_approved",
         "tasking_completed",
+        "analysis_completed",
         "solution_approved",
         "implementation_completed",
     }

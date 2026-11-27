@@ -27,10 +27,9 @@ Coding agents and repository maintainers need one predictable validation experie
 - **FR-017**: Workflow documentation MUST identify one unambiguous owner and execution point for edit tracking, optional validation, mandatory final validation, on-demand freshness, final freshness, and commit fallback safeguards.
 - **FR-018**: Existing bounded-read rules, discovery entry points, governance gates, audit trails, continuous-integration checks, and behavioral and semantic quality checks MUST remain effective.
 - **FR-019**: Regression coverage MUST include intermediate-edit behavior, optional and final validation, direct-commit safeguards, freshness detection, and a temporarily inconsistent multi-file change that passes all final checks after consistency is restored.
-- **FR-020**: The workflow MUST produce comparable before-and-after measurements for validator invocations, refresh invocations, validation elapsed time, task completion time, and acceptance-test success rate on equivalent tasks.
-- **FR-021**: Session bootstrap (`scripts/bootstrap_session.py`) MUST NOT invoke `scripts/cgc_safe_index.py` across `scripts`, `src`, `tests`, and `specs` when `codegraph_health_probe` already reports a healthy snapshot.
-- **FR-022**: When session bootstrap does run multi-scope indexing, it MUST aggregate failure state across all scopes (never allowing a later succeeding scope to overwrite an earlier scope's failure) and MUST surface actual subprocess stderr instead of masking failures with a healthy probe detail message.
-- **FR-023**: Repository discovery and indexing entrypoints (including `cgc_safe_index.py`, `read_code.py`, and related local research tools) MUST isolate their config, cache, and database state to repo-local paths rather than reading or writing `~/.codegraphcontext` or other user-home paths outside the workspace sandbox.
+- **FR-020**: Session bootstrap (`scripts/bootstrap_session.py`) MUST NOT invoke `scripts/cgc_safe_index.py` across `scripts`, `src`, `tests`, and `specs` when `codegraph_health_probe` already reports a healthy snapshot.
+- **FR-021**: When session bootstrap does run multi-scope indexing, it MUST aggregate failure state across all scopes (never allowing a later succeeding scope to overwrite an earlier scope's failure) and MUST surface actual subprocess stderr instead of masking failures with a healthy probe detail message.
+- **FR-022**: Repository discovery and indexing entrypoints (including `cgc_safe_index.py`, `read_code.py`, and related local research tools) MUST isolate their config, cache, and database state to repo-local paths rather than reading or writing `~/.codegraphcontext` or other user-home paths outside the workspace sandbox.
 
 ### Key Entities
 
@@ -50,17 +49,16 @@ Coding agents and repository maintainers need one predictable validation experie
 - **SC-004**: In regression coverage, 100% of authoritative reads that encounter stale discovery state either refresh before returning results or fail without labeling stale results authoritative.
 - **SC-005**: In regression coverage, 100% of closeout attempts containing a failing targeted test, lint error, type error, missing required documentation, or unverifiable affected discovery state are rejected.
 - **SC-006**: In regression coverage, direct commits with missing or mismatched evidence execute the applicable safeguards, while exact matching evidence causes no duplicate validator or refresh invocation.
-- **SC-007**: Before-and-after benchmark results report validator invocations, refresh invocations, validation elapsed time, task completion time, and acceptance-test success rate for equivalent implementation tasks without reducing acceptance-test success.
-- **SC-008**: A review of active workflow documentation finds no contradictory ownership or timing rules for edit tracking, intermediate validation, final validation, discovery refresh, or commit safeguards.
-- **SC-009**: In regression coverage, `bootstrap_session()` triggers zero `cgc_safe_index.py` invocations when the CodeGraph snapshot is already healthy, fails deterministically if any scope fails (even when a later scope succeeds), surfaces actual subprocess stderr on failure, and operates strictly within repo-local paths with zero `~/.codegraphcontext` access.
+- **SC-007**: A review of active workflow documentation finds no contradictory ownership or timing rules for edit tracking, intermediate validation, final validation, discovery refresh, or commit safeguards.
+- **SC-008**: In regression coverage, `bootstrap_session()` triggers zero `cgc_safe_index.py` invocations when the CodeGraph snapshot is already healthy, fails deterministically if any scope fails (even when a later scope succeeds), surfaces actual subprocess stderr on failure, and operates strictly within repo-local paths with zero `~/.codegraphcontext` access.
 
 ## Definition of Done *(mandatory)*
 
-The feature is complete in the production repository workflow when coding agents can assemble temporarily inconsistent multi-file edits without automatic technical validation, every successful closeout passes mandatory quality and discovery-freshness checks, unchanged proven work is not repeated, direct Git activity retains its safeguards, and all measurable outcomes above are demonstrated by regression and benchmark evidence.
+The feature is complete in the production repository workflow when coding agents can assemble temporarily inconsistent multi-file edits without automatic technical validation, every successful closeout passes mandatory quality and discovery-freshness checks, unchanged proven work is not repeated, direct Git activity retains its safeguards, repo-local discovery isolation prevents `~/.codegraphcontext` access, and all measurable outcomes above are demonstrated by regression coverage.
 
-## Open Questions *(include if any unresolved decisions exist)*
+## Resolved Decisions
 
-- **OQ-001**: Must reusable validation evidence match only changed content and validator configuration, or the complete dependency and execution environment? **Stakes**: A boundary that is too narrow risks accepting invalid evidence; one that is too broad preserves redundant work.
-- **OQ-002**: Which discovery operations count as authoritative reads and therefore require freshness enforcement before returning results? **Stakes**: An incomplete list can expose stale results, while an overly broad list can reintroduce unnecessary refreshes.
-- **OQ-003**: Which representative implementation tasks and baseline runs will be used for before-and-after measurements? **Stakes**: Without a shared comparison set, efficiency gains may not be comparable or may mask acceptance-quality regressions.
-- **OQ-004**: What is the cleanest way to isolate upstream `codegraphcontext` (and any sibling tools like Semble) from touching user-home directories such as `~/.codegraphcontext` inside workspace-scoped sandboxes (e.g., dedicated env vars, scoped `HOME`/`XDG_*` override, or wrapper config)? **Stakes**: Choosing a brittle override could break tool auth/caches or leave sandboxed runs failing across multiple workflows.
+- **Validation evidence boundary**: Reuse the existing `scripts/cgc_owner.py` content-fingerprint model combined with relevant validator configuration (`pyproject.toml`, `uv.lock`) and targeted test selection; full Python environment fingerprinting is out of scope.
+- **Authoritative read boundary**: Reuse the existing index-backed freshness checks for `read_code.py` (`context`, `find`, `analyze`), `cgc`, and `semble`; direct disk reads (`read_code.py window`, `read_markdown.py`) do not require index refresh.
+- **Benchmarking**: Dropped from `060` (owned by feature `062`).
+- **Sandbox isolation**: Isolate `codegraphcontext` and sibling local discovery wrappers via repo-local environment/path configuration inside the repo entrypoints.
