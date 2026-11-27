@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import atexit
+import hashlib
 import os
 import subprocess
 import sys
@@ -274,14 +275,62 @@ def record_last_error(error_type: str, exit_code: int, error_detail: str) -> Non
     )
 
 
+def compute_content_edit_fingerprint(repo_root: Path) -> str:
+    """Return a deterministic stdlib-only content fingerprint over non-ignored repo files."""
+    if not repo_root.exists() or not repo_root.is_dir():
+        return ""
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return ""
+    if proc.returncode != 0:
+        return ""
+
+    entries: list[str] = []
+    seen: set[str] = set()
+    for raw in proc.stdout.split(b"\0"):
+        if not raw:
+            continue
+        rel = raw.decode("utf-8", errors="surrogateescape").replace("\\", "/")
+        if rel.startswith("./"):
+            rel = rel[2:]
+        if not rel or rel in seen or rel.startswith(_IGNORED_EDIT_PREFIXES):
+            continue
+        seen.add(rel)
+        full_path = repo_root / rel
+        if full_path.is_symlink():
+            try:
+                target_bytes = os.readlink(full_path).encode("utf-8", errors="surrogateescape")
+                digest = hashlib.sha256(target_bytes).hexdigest()
+            except OSError:
+                digest = "unreadable"
+        elif full_path.is_file():
+            try:
+                digest = hashlib.sha256(full_path.read_bytes()).hexdigest()
+            except OSError:
+                digest = "unreadable"
+        else:
+            digest = "deleted"
+        entries.append(f"{rel}:{digest}")
+    return "\n".join(sorted(entries))
+
+
 def current_edit_signature(repo_root: Path | None = None) -> str:
     """Return a deterministic content-based signature for the current repo edit state."""
-    root = repo_root or REPO_ROOT
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
-    from src.mcp_codebase.health import compute_content_edit_fingerprint
-
-    return compute_content_edit_fingerprint(root)
+    return compute_content_edit_fingerprint(repo_root or REPO_ROOT)
 
 
 def record_edit_signature(repo_root: Path | None = None) -> None:
