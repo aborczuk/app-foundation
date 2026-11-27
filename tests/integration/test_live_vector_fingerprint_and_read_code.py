@@ -112,4 +112,5 @@ def test_live_driver_and_ledger_accept_full_feature_slug() -> None:
     json_line = [line for line in driver_proc.stdout.splitlines() if line.startswith("{")][-1]
     payload = json.loads(json_line)
     assert payload["phase_state"]["ledger_feature_id"] == "059"
-    assert payload["phase_state"]["next_phase"] == "implement"
+    assert payload["phase_state"]["ledger_event_count"] >= 4
+    assert payload["phase_state"]["approved_plan"] is True

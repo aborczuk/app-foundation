@@ -276,9 +276,11 @@ def record_last_error(error_type: str, exit_code: int, error_detail: str) -> Non
 
 def current_edit_signature(repo_root: Path | None = None) -> str:
     """Return a deterministic content-based signature for the current repo edit state."""
+    root = repo_root or REPO_ROOT
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
     from src.mcp_codebase.health import compute_content_edit_fingerprint
 
-    root = repo_root or REPO_ROOT
     return compute_content_edit_fingerprint(root)
 
 

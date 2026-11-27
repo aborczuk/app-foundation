@@ -813,6 +813,8 @@ def _persist_vector_edit_signature(signature: str, project_root: Path | None = N
 
 def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
     """Return the deterministic content-based edit fingerprint for non-ignored repo files."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
     from src.mcp_codebase.health import compute_content_edit_fingerprint
 
     root = project_root or REPO_ROOT
