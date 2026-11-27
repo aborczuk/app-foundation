@@ -546,6 +546,7 @@ def _run_step_mode(
         **handoff_result,
         "next_phase": handoff_result.get("next_phase") or determine_next_phase("specify"),
         "generated_artifact": generated_artifact,
+        "pipeline_event_request": {"event": "backlog_registered", "fields": {}},
         "spec_file": str(spec_file),
     }
 

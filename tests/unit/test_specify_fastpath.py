@@ -183,6 +183,48 @@ def test_main_dispatches_driver_route_to_existing_feature(
     assert payload["next_phase"] == "clarify"
 
 
+def test_step_mode_requests_backlog_event_after_success(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A validated specify result must ask the driver to register the backlog event."""
+    feature_dir = tmp_path / "specs" / "060-consolidate-edit-validation"
+    feature_dir.mkdir(parents=True)
+    spec_file = feature_dir / "spec.md"
+    spec_file.write_text("# Consolidate edit validation\n", encoding="utf-8")
+    monkeypatch.setattr(
+        specify_step,
+        "_load_feature_paths",
+        lambda _env, *, feature_id: {
+            "FEATURE_DIR": str(feature_dir),
+            "FEATURE_SPEC": str(spec_file),
+        },
+    )
+    monkeypatch.setattr(
+        specify_step,
+        "_run_specify_handoff_round",
+        lambda **_kwargs: {
+            "schema_version": "1.0.0",
+            "ok": True,
+            "exit_code": 0,
+            "correlation_id": "run-060:speckit.specify",
+            "next_phase": "plan",
+        },
+    )
+
+    result = specify_step._run_step_mode(
+        feature_id="060",
+        phase="specify",
+        correlation_id="run-060:speckit.specify",
+        env={},
+        timeout_seconds=300,
+    )
+
+    assert result["pipeline_event_request"] == {
+        "event": "backlog_registered",
+        "fields": {},
+    }
+
+
 def test_explicit_feature_paths_ignore_checkout_environment(monkeypatch, tmp_path: Path) -> None:
     """An explicit driver feature must take precedence over checkout-derived paths."""
     feature_dir = tmp_path / "specs" / "055-agent-analytics-otel"
