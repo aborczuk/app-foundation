@@ -186,28 +186,37 @@ def test_main_dispatches_driver_route_to_existing_feature(
 def test_step_mode_requests_backlog_event_after_success(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """A validated specify result must ask the driver to register the backlog event."""
+    """A validated spec.md must pass without any subrunner and request backlog registration."""
     feature_dir = tmp_path / "specs" / "060-consolidate-edit-validation"
     feature_dir.mkdir(parents=True)
     spec_file = feature_dir / "spec.md"
-    spec_file.write_text("# Consolidate edit validation\n", encoding="utf-8")
+    spec_file.write_text(
+        "\n".join(
+            [
+                "# Feature Specification: Consolidate Edit Validation",
+                "",
+                "**Feature Branch**: `060-consolidate-edit-validation`",
+                "**Created**: 2026-11-27",
+                "**Status**: Draft",
+                "",
+                "## One-Line Purpose *(mandatory)*",
+                "",
+                "Maintainers run one deterministic validation flow per edit batch.",
+                "",
+                "## Definition of Done *(mandatory)*",
+                "",
+                "Shipped when validation runs once per edit batch in production.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         specify_step,
         "_load_feature_paths",
         lambda _env, *, feature_id: {
             "FEATURE_DIR": str(feature_dir),
             "FEATURE_SPEC": str(spec_file),
-        },
-    )
-    monkeypatch.setattr(
-        specify_step,
-        "_run_specify_handoff_round",
-        lambda **_kwargs: {
-            "schema_version": "1.0.0",
-            "ok": True,
-            "exit_code": 0,
-            "correlation_id": "run-060:speckit.specify",
-            "next_phase": "plan",
         },
     )
 
@@ -219,10 +228,110 @@ def test_step_mode_requests_backlog_event_after_success(
         timeout_seconds=300,
     )
 
+    assert result["ok"] is True
+    assert result["exit_code"] == 0
+    assert result["next_phase"] == "plan"
     assert result["pipeline_event_request"] == {
         "event": "backlog_registered",
         "fields": {},
     }
+
+
+def test_step_mode_blocks_unfilled_template_without_event(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """An unfilled spec template must block validation and emit no backlog event."""
+    feature_dir = tmp_path / "specs" / "060-consolidate-edit-validation"
+    feature_dir.mkdir(parents=True)
+    spec_file = feature_dir / "spec.md"
+    spec_file.write_text(
+        "\n".join(
+            [
+                "# Feature Specification: [FEATURE NAME]",
+                "",
+                "**Feature Branch**: `[###-feature-name]`",
+                "**Created**: [DATE]",
+                "",
+                "## Definition of Done *(mandatory)*",
+                "",
+                "[Single sentence: observable state in production that means this feature is shipped]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        specify_step,
+        "_load_feature_paths",
+        lambda _env, *, feature_id: {
+            "FEATURE_DIR": str(feature_dir),
+            "FEATURE_SPEC": str(spec_file),
+        },
+    )
+
+    result = specify_step._run_step_mode(
+        feature_id="060",
+        phase="specify",
+        correlation_id="run-060:speckit.specify",
+        env={},
+        timeout_seconds=300,
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert result["gate"] == "spec_validation"
+    assert "spec_has_template_placeholders" in result["reasons"]
+    assert result["next_phase"] == "specify"
+    assert "pipeline_event_request" not in result
+
+
+def test_step_mode_blocks_excess_clarifications_without_event(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """More than three clarification markers must block specify completion."""
+    feature_dir = tmp_path / "specs" / "060-consolidate-edit-validation"
+    feature_dir.mkdir(parents=True)
+    spec_file = feature_dir / "spec.md"
+    spec_file.write_text(
+        "\n".join(
+            [
+                "# Feature Specification: Consolidate Edit Validation",
+                "",
+                "- [NEEDS CLARIFICATION: one]",
+                "- [NEEDS CLARIFICATION: two]",
+                "- [NEEDS CLARIFICATION: three]",
+                "- [NEEDS CLARIFICATION: four]",
+                "",
+                "## Definition of Done *(mandatory)*",
+                "",
+                "Shipped when validation runs once per edit batch in production.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        specify_step,
+        "_load_feature_paths",
+        lambda _env, *, feature_id: {
+            "FEATURE_DIR": str(feature_dir),
+            "FEATURE_SPEC": str(spec_file),
+        },
+    )
+
+    result = specify_step._run_step_mode(
+        feature_id="060",
+        phase="specify",
+        correlation_id="run-060:speckit.specify",
+        env={},
+        timeout_seconds=300,
+    )
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert result["gate"] == "spec_validation"
+    assert "too_many_clarifications" in result["reasons"]
+    assert "pipeline_event_request" not in result
 
 
 def test_explicit_feature_paths_ignore_checkout_environment(monkeypatch, tmp_path: Path) -> None:
@@ -239,3 +348,33 @@ def test_explicit_feature_paths_ignore_checkout_environment(monkeypatch, tmp_pat
     )
 
     assert paths == {"FEATURE_DIR": str(feature_dir), "FEATURE_SPEC": str(spec_file)}
+
+
+def test_driver_run_step_validates_specify_subprocess_without_subrunner() -> None:
+    """pipeline_driver.run_step must execute speckit_specify_step.py live and preserve event request."""
+    import sys
+
+    import scripts.pipeline_driver as pipeline_driver
+
+    result = pipeline_driver.run_step(
+        [
+            sys.executable,
+            str(Path(specify_step.__file__).resolve()),
+            "--feature-id",
+            "049-financial-acceleration-tracker",
+            "--phase",
+            "specify",
+            "--correlation-id",
+            "run-049:speckit.specify",
+        ],
+        timeout_seconds=30,
+        correlation_id="run-049:speckit.specify",
+    )
+
+    assert result["ok"] is True
+    assert result["exit_code"] == 0
+    assert result["next_phase"] == "plan"
+    assert result["pipeline_event_request"] == {
+        "event": "backlog_registered",
+        "fields": {},
+    }

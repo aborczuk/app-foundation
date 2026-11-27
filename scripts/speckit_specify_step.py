@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +23,17 @@ if str(SCRIPTS_ROOT) not in sys.path:
 
 from pipeline_driver import _resolve_feature_dir, build_correlation_id  # noqa: E402
 from pipeline_driver_state import determine_next_phase  # noqa: E402
+from speckit_spec_gate import _extract_clarifications  # noqa: E402
+
+TEMPLATE_PLACEHOLDERS = (
+    "[FEATURE NAME]",
+    "[###-feature-name]",
+    "[DATE]",
+    "[Single sentence: who does what to achieve what outcome]",
+    "[Single sentence: who/what consumes this and in what context]",
+    "[Single sentence: observable state in production that means this feature is shipped]",
+    "[Describe this user journey in plain language]",
+)
 
 
 def _trace(message: str) -> None:
@@ -154,12 +164,6 @@ def _create_feature(description: str, short_name: str, env: dict[str, str]) -> d
 
 
 
-def _default_handoff_runner(repo_root: Path) -> str:
-    """Return the canonical local Codex runner command."""
-    runner_path = (repo_root / "scripts" / "speckit_codex_handoff_runner.py").resolve()
-    return f"{shlex.quote(sys.executable)} {shlex.quote(str(runner_path))}"
-
-
 def _load_feature_paths(env: dict[str, str], *, feature_id: str = "") -> dict[str, str]:
     """Resolve paths for an explicit feature or the current checkout feature."""
     if feature_id:
@@ -192,177 +196,23 @@ def _load_feature_paths(env: dict[str, str], *, feature_id: str = "") -> dict[st
     return {str(key): str(value) for key, value in payload.items()}
 
 
-def _build_specify_instructions(
-    *,
-    feature_description: str,
-    feature_id: str,
-    feature_dir: Path,
-    spec_file: Path,
-) -> str:
-    """Build the Codex instructions used to fill the specify scaffold."""
-    template_path = (REPO_ROOT / ".specify" / "templates" / "spec-template.md").resolve()
-    lines = [
-        "You are filling the scaffolded specification for speckit.specify.",
-        f"Repository root: {REPO_ROOT}",
-        f"Feature id: {feature_id}",
-        f"Feature dir: {feature_dir}",
-        f"Spec file: {spec_file}",
-        f"Template file: {template_path}",
-        "",
-        "Use the scaffolded spec and the user description to write the requirements in place.",
-        "Replace all placeholders with concrete, user-value-focused content.",
-        "Keep the spec limited to feature name, user context, requirements, success criteria, and open questions.",
-        "Preserve the section order from the template.",
-        "Do not create a git commit.",
-        "",
-        f"Original user description: {feature_description or feature_id}",
-    ]
-    return "\n".join(lines).strip() + "\n"
-
-
-def _build_specify_handoff_input(
-    *,
-    feature_id: str,
-    phase: str,
-    correlation_id: str,
-    feature_dir: Path,
-    spec_file: Path,
-    feature_description: str,
-    resume_session: bool = False,
-    retry_index: int = 0,
-    qa_feedback: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build the generic Codex handoff payload for specify fill rounds."""
-    handoff: dict[str, Any] = {
-        "feature_dir": str(feature_dir),
-        "repo_root": str(REPO_ROOT),
-        "step_name": "speckit.specify",
-        "task_action": "fill_spec_scaffold",
-        "output_template_path": str(spec_file),
-        "completion_marker": SPEC_COMPLETION_MARKER,
-        "instructions": _build_specify_instructions(
-            feature_description=feature_description,
-            feature_id=feature_id,
-            feature_dir=feature_dir,
-            spec_file=spec_file,
-        ),
-        "resume_session": resume_session,
-        "retry_index": retry_index,
-    }
-    if qa_feedback is not None:
-        handoff["qa_feedback"] = dict(qa_feedback)
-    return {
-        "feature_id": feature_id,
-        "phase": phase,
-        "correlation_id": correlation_id,
-        "handoff": handoff,
-    }
-
-
-def _run_specify_handoff_round(
-    *,
-    env: dict[str, str],
-    handoff_input: Mapping[str, Any],
-    timeout_seconds: int,
-) -> dict[str, Any]:
-    """Run one Codex handoff round for the specify fill step."""
-    correlation_id = str(handoff_input.get("correlation_id") or "").strip()
-    command = ["python3", "scripts/speckit_codex_handoff_runner.py"]
-
-    try:
-        proc = _run_uv_command(
-            command,
-            env=env,
-            input_payload=json.dumps(dict(handoff_input), sort_keys=True),
-            timeout_seconds=timeout_seconds,
-        )
-    except subprocess.TimeoutExpired as exc:
-        debug_path = _write_debug_payload(
-            correlation_id=correlation_id or "unknown",
-            payload={
-                "stage": "handoff",
-                "error_code": "handoff_timeout",
-                "command": command,
-                "input_payload": dict(handoff_input),
-                "stdout": str(exc.stdout or ""),
-                "stderr": str(exc.stderr or ""),
-            },
-        )
-        return {
-            "schema_version": "1.0.0",
-            "ok": False,
-            "exit_code": 2,
-            "correlation_id": correlation_id or "unknown",
-            "error_code": "handoff_timeout",
-            "reasons": ["handoff_timeout"],
-            "gate": None,
-            "next_phase": None,
-            "debug_path": debug_path,
-        }
-
-    stdout = proc.stdout or ""
-    stderr = proc.stderr or ""
-    try:
-        payload = json.loads(stdout or "{}")
-    except json.JSONDecodeError:
-        debug_path = _write_debug_payload(
-            correlation_id=correlation_id or "unknown",
-            payload={
-                "stage": "handoff",
-                "error_code": "invalid_handoff_json_result",
-                "command": command,
-                "process_exit_code": proc.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-                "input_payload": dict(handoff_input),
-            },
-        )
-        return {
-            "schema_version": "1.0.0",
-            "ok": False,
-            "exit_code": 2,
-            "correlation_id": correlation_id or "unknown",
-            "error_code": "invalid_handoff_json_result",
-            "reasons": ["invalid_handoff_json_result"],
-            "gate": None,
-            "next_phase": None,
-            "debug_path": debug_path,
-        }
-
-    if not isinstance(payload, dict):
-        debug_path = _write_debug_payload(
-            correlation_id=correlation_id or "unknown",
-            payload={
-                "stage": "handoff",
-                "error_code": "invalid_handoff_payload",
-                "command": command,
-                "process_exit_code": proc.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-                "input_payload": dict(handoff_input),
-            },
-        )
-        return {
-            "schema_version": "1.0.0",
-            "ok": False,
-            "exit_code": 2,
-            "correlation_id": correlation_id or "unknown",
-            "error_code": "invalid_handoff_payload",
-            "reasons": ["invalid_handoff_payload"],
-            "gate": None,
-            "next_phase": None,
-            "debug_path": debug_path,
-        }
-
-    payload.setdefault("stdout", stdout)
-    payload.setdefault("stderr", stderr)
-    payload.setdefault("process_exit_code", proc.returncode)
-    payload.setdefault("timed_out", False)
-    if int(payload.get("exit_code") or 0) == 1 and str(payload.get("error_code") or "") == "codex_exec_failed":
-        payload["exit_code"] = 2
-    if not str(payload.get("debug_path") or "").strip():
-        payload["debug_path"] = str(payload.get("runner_log_path") or "")
-    return payload
+def _validate_spec_file(spec_file: Path) -> list[str]:
+    """Validate a locally authored spec.md without invoking any subrunner."""
+    text = spec_file.read_text(encoding="utf-8")
+    reasons: list[str] = []
+    if not text.strip():
+        return ["spec_file_empty"]
+    if SPEC_COMPLETION_MARKER not in text:
+        reasons.append("missing_definition_of_done")
+    if any(placeholder in text for placeholder in TEMPLATE_PLACEHOLDERS):
+        reasons.append("spec_has_template_placeholders")
+    _status, clarification_payload = _extract_clarifications(spec_file)
+    if not clarification_payload.get("ok"):
+        for reason in clarification_payload.get("reasons", []):
+            reason_text = str(reason).strip()
+            if reason_text and reason_text not in reasons:
+                reasons.append(reason_text)
+    return reasons
 
 
 def _run_bootstrap_mode(description: str, short_name: str, env: dict[str, str]) -> dict[str, Any]:
@@ -503,51 +353,57 @@ def _run_step_mode(
             },
         )
 
-    feature_description = _load_spec_description(spec_file) or feature_dir.name
-    handoff_input = _build_specify_handoff_input(
-        feature_id=feature_id,
-        phase=phase,
-        correlation_id=correlation_id,
-        feature_dir=feature_dir,
-        spec_file=spec_file,
-        feature_description=feature_description,
-    )
-
-    handoff_result = _run_specify_handoff_round(
-        env=env,
-        handoff_input=handoff_input,
-        timeout_seconds=timeout_seconds,
-    )
+    generated_artifact = {
+        "path": str(spec_file),
+        "completion_marker": SPEC_COMPLETION_MARKER,
+    }
+    reasons = _validate_spec_file(spec_file)
     _trace(
-        "_run_step_mode handoff complete "
-        f"feature_id={feature_id!r} ok={handoff_result.get('ok')!r} "
+        "_run_step_mode validation complete "
+        f"feature_id={feature_id!r} ok={not reasons!r} reasons={reasons!r} "
         f"spec_file={str(spec_file)!r}"
     )
-    if not handoff_result.get("ok"):
-        if "generated_artifact" not in handoff_result:
-            handoff_result["generated_artifact"] = {
-                "path": str(spec_file),
-                "completion_marker": SPEC_COMPLETION_MARKER,
-            }
-        handoff_result["spec_file"] = str(spec_file)
-        return handoff_result
-
-    generated_artifact = dict(
-        handoff_result.get("generated_artifact")
-        or {
-            "path": str(spec_file),
-            "completion_marker": SPEC_COMPLETION_MARKER,
+    if reasons:
+        debug_path = _write_debug_payload(
+            correlation_id=correlation_id,
+            payload={
+                "stage": "spec_validation",
+                "feature_id": feature_id,
+                "spec_file": str(spec_file),
+                "reasons": reasons,
+            },
+        )
+        return {
+            "schema_version": "1.0.0",
+            "ok": False,
+            "exit_code": 1,
+            "correlation_id": correlation_id,
+            "gate": "spec_validation",
+            "reasons": reasons,
+            "error_code": None,
+            "phase": "specify",
+            "feature_id": feature_id,
+            "next_phase": "specify",
+            "generated_artifact": generated_artifact,
+            "spec_file": str(spec_file),
+            "debug_path": debug_path,
         }
-    )
-    generated_artifact["path"] = str(spec_file)
-    generated_artifact["completion_marker"] = SPEC_COMPLETION_MARKER
 
     return {
-        **handoff_result,
-        "next_phase": handoff_result.get("next_phase") or determine_next_phase("specify"),
+        "schema_version": "1.0.0",
+        "ok": True,
+        "exit_code": 0,
+        "correlation_id": correlation_id,
+        "gate": None,
+        "reasons": [],
+        "error_code": None,
+        "phase": "specify",
+        "feature_id": feature_id,
+        "next_phase": determine_next_phase("specify"),
         "generated_artifact": generated_artifact,
         "pipeline_event_request": {"event": "backlog_registered", "fields": {}},
         "spec_file": str(spec_file),
+        "debug_path": None,
     }
 
 

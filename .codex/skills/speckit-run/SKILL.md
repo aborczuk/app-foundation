@@ -12,13 +12,11 @@ Use this skill as the Codex-native entrypoint for the repo's `speckit.run` workf
 ## Dispatch
 
 **IMMEDIATELY**:
-1. Run `uv run --no-sync python scripts/pipeline_driver.py "$ARGUMENTS"`.
-2. Load `.claude/commands/speckit.run.md`.
-3. Execute that command doc exactly.
+1. Run `uv run --no-sync python scripts/pipeline_driver.py "$ARGUMENTS"` **once**.
+2. Return the driver's result directly. Do not re-dispatch or execute `.claude/commands/speckit.run.md` afterward.
 
 ## Notes
 
-- Do not bypass the driver for phase execution.
-- If the request is a new feature description, let the driver bootstrap specify and continue the ledger-driven phase flow.
-- The command doc owns the actual workflow, handoffs, gates, and outputs.
-- If the command doc is missing, stop and report the missing path.
+- `scripts/pipeline_driver.py` is the sole runtime routing owner; never invoke it twice for one request.
+- For a new feature description, the driver scaffolds `spec.md` on `main` (no branch, no subrunner) and returns `next_phase: "specify"`. Author `spec.md` directly, then run `uv run --no-sync python scripts/pipeline_driver.py --feature-id <feature_id>` to validate it and emit `backlog_registered`.
+- Do not bypass the driver or create feature branches before `implement`.

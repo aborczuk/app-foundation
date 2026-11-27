@@ -22,7 +22,7 @@ The stack also has two gate families:
 
 A description-only driver invocation creates one specification scaffold. Its child result must carry the driver's correlation id, a non-empty feature id, and `next_phase: "specify"`; the driver preserves that feature id for its response. Bootstrap creates an incomplete scaffold, so it does not append a `specify` success event. Completing the specification remains the separate phase-completion action.
 
-For an existing feature, `pipeline_driver.py` invokes `scripts/speckit_specify_step.py` with `--feature-id`, `--phase specify`, and the driver correlation id. The specify runner resolves `FEATURE_DIR` and `FEATURE_SPEC` from that explicit feature id before it considers checkout-derived paths, then emits the same canonical result envelope consumed by the driver.
+For an existing feature, `pipeline_driver.py` invokes `scripts/speckit_specify_step.py` with `--feature-id`, `--phase specify`, and the driver correlation id. The specify runner resolves `FEATURE_DIR` and `FEATURE_SPEC` from that explicit feature id before it considers checkout-derived paths, runs deterministic `spec.md` validation in-process (never spawning a subrunner or creating git commits/branches), and emits the canonical result envelope with `pipeline_event_request: {"event": "backlog_registered", "fields": {}}` only when validation passes.
 
 ## Files And Roles
 
