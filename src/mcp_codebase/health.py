@@ -15,9 +15,8 @@ snapshot is refreshed.
 
 from __future__ import annotations
 
-import hashlib
 import os
-import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -315,58 +314,13 @@ def _read_cached_edit_signature(repo_root: Path) -> str:
 
 
 def compute_content_edit_fingerprint(repo_root: Path) -> str:
-    """Return a deterministic content-based fingerprint over non-ignored repo files."""
-    if not repo_root.exists() or not repo_root.is_dir():
-        return ""
+    """Delegate to the single canonical stdlib content fingerprint in scripts/cgc_owner.py."""
+    scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    from cgc_owner import compute_content_edit_fingerprint as _compute_fingerprint
 
-    try:
-        proc = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo_root),
-                "ls-files",
-                "--cached",
-                "--others",
-                "--exclude-standard",
-                "-z",
-            ],
-            check=False,
-            capture_output=True,
-        )
-    except OSError:
-        return ""
-    if proc.returncode != 0:
-        return ""
-
-    entries: list[str] = []
-    seen: set[str] = set()
-    for raw in proc.stdout.split(b"\0"):
-        if not raw:
-            continue
-        rel = raw.decode("utf-8", errors="surrogateescape").replace("\\", "/")
-        if rel.startswith("./"):
-            rel = rel[2:]
-        if not rel or rel in seen or _is_ignored_edit_path(rel):
-            continue
-        seen.add(rel)
-        full_path = repo_root / rel
-        if full_path.is_symlink():
-            try:
-                target_bytes = os.readlink(full_path).encode("utf-8", errors="surrogateescape")
-                digest = hashlib.sha256(target_bytes).hexdigest()
-            except OSError:
-                digest = "unreadable"
-        elif full_path.is_file():
-            try:
-                digest = hashlib.sha256(full_path.read_bytes()).hexdigest()
-            except OSError:
-                digest = "unreadable"
-        else:
-            digest = "deleted"
-        entries.append(f"{rel}:{digest}")
-
-    return "\n".join(sorted(entries))
+    return _compute_fingerprint(repo_root)
 
 
 def _current_edit_signature(repo_root: Path) -> str:
