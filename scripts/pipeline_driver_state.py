@@ -31,6 +31,7 @@ EVENT_TO_PHASE: dict[str, str] = {
     "solution_approved": "tasking",
     "analysis_completed": "tasking",
     "e2e_generated": "implement",
+    "implementation_completed": "implement",
     "feature_closed": "closed",
 }
 
