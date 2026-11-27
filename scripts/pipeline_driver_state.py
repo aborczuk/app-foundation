@@ -383,12 +383,19 @@ def resolve_phase_state(
     try:
         pipeline_ledger = _load_pipeline_ledger_module()
         all_events = pipeline_ledger.read_events(Path(ledger_path))
-        ledger_feature_id = feature_id
+        try:
+            ledger_feature_id = pipeline_ledger.normalize_feature_id(feature_id)
+        except ValueError:
+            ledger_feature_id = feature_id
         feature_events = [
-            event for event in all_events if str(event.get("feature_id", "")).strip() == feature_id
+            event
+            for event in all_events
+            if str(event.get("feature_id", "")).strip() == ledger_feature_id
         ]
         if not feature_events:
-            for candidate in _feature_id_candidates(feature_id)[1:]:
+            for candidate in _feature_id_candidates(feature_id):
+                if candidate == ledger_feature_id:
+                    continue
                 candidate_events = [
                     event
                     for event in all_events

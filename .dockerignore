@@ -1,0 +1,10 @@
+# Managed by scripts/speckit_prepare_ignores.py
+.git/
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*

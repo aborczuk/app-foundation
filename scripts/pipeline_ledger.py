@@ -31,6 +31,7 @@ except ImportError:
 
 DEFAULT_LEDGER = Path(".speckit/pipeline-ledger.jsonl")
 FEATURE_ID_RE = re.compile(r"^\d{3}$")
+FEATURE_SLUG_RE = re.compile(r"^(?P<num>\d{3})(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?$")
 
 
 def _resolve_manifest_path() -> Path:
@@ -188,7 +189,7 @@ ALLOWED_PIPELINE_TRANSITIONS: dict[str, set[str | None]] = {
         "tasking_completed",
     },
     "solution_approved": {"plan_approved", "tasking_completed"},
-    "analysis_completed": {"solution_approved", "tasking_completed"},
+    "analysis_completed": {"solution_approved", "tasking_completed", "estimation_completed"},
     "e2e_generated": {"analysis_completed"},
     "implementation_completed": {"analysis_completed", "e2e_generated"},
     "feature_closed": {"e2e_generated", "implementation_completed"},
@@ -227,10 +228,24 @@ def fail(message: str) -> NoReturn:
     raise SystemExit(1)
 
 
-def ensure_feature_id(feature_id: str) -> None:
-    """Assert feature_id matches the canonical NNN format."""
-    if not FEATURE_ID_RE.match(feature_id):
-        fail(f"Invalid feature_id {feature_id!r}. Expected format NNN, e.g. 018.")
+def normalize_feature_id(feature_id: str) -> str:
+    """Normalize a numeric (NNN) or slug (NNN-slug) feature ID to canonical NNN."""
+    candidate = str(feature_id or "").strip()
+    match = FEATURE_SLUG_RE.match(candidate)
+    if match is None:
+        raise ValueError(
+            f"Invalid feature_id {feature_id!r}. "
+            "Expected format NNN or NNN-slug, e.g. 018 or 018-gh-cli-guards."
+        )
+    return match.group("num")
+
+
+def ensure_feature_id(feature_id: str) -> str:
+    """Validate and return the canonical NNN feature ID, or terminate on invalid input."""
+    try:
+        return normalize_feature_id(feature_id)
+    except ValueError as exc:
+        fail(str(exc))
 
 
 def resolve_actor(explicit_actor: str | None) -> str:
@@ -395,7 +410,7 @@ def _coerce_json_field(value: Any, *, field_name: str) -> Any:
 def cmd_append(args: argparse.Namespace) -> None:
     """Append one validated immutable pipeline event to the ledger."""
     ledger_path = Path(args.file)
-    ensure_feature_id(args.feature_id)
+    canonical_feature_id = ensure_feature_id(args.feature_id)
 
     if args.event not in VALID_PIPELINE_EVENTS:
         fail(
@@ -407,7 +422,7 @@ def cmd_append(args: argparse.Namespace) -> None:
 
     event: dict[str, Any] = {
         "timestamp_utc": args.timestamp_utc or utc_now_iso(),
-        "feature_id": args.feature_id,
+        "feature_id": canonical_feature_id,
         "phase": args.phase or "",
         "event": args.event,
         "actor": resolve_actor(args.actor),
@@ -456,7 +471,7 @@ def cmd_append(args: argparse.Namespace) -> None:
     with ledger_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(event, sort_keys=True) + "\n")
 
-    print(f"Appended pipeline event {args.event} for feature {args.feature_id}")
+    print(f"Appended pipeline event {args.event} for feature {canonical_feature_id}")
 
 
 def cmd_validate(args: argparse.Namespace) -> None:
@@ -583,7 +598,7 @@ def cmd_validate_manifest(args: argparse.Namespace) -> None:
 def cmd_assert_phase_complete(args: argparse.Namespace) -> None:
     """Assert that a required pipeline phase event has been emitted for a feature."""
     ledger_path = Path(args.file)
-    ensure_feature_id(args.feature_id)
+    canonical_feature_id = ensure_feature_id(args.feature_id)
 
     if args.event not in VALID_PIPELINE_EVENTS:
         fail(
@@ -601,17 +616,17 @@ def cmd_assert_phase_complete(args: argparse.Namespace) -> None:
 
     matched = [
         e for e in events
-        if str(e.get("feature_id")) == args.feature_id
+        if str(e.get("feature_id")) == canonical_feature_id
         and str(e.get("event")) == args.event
     ]
     if not matched:
         fail(
-            f"Phase gate FAILED: no {args.event!r} event found for feature {args.feature_id} "
+            f"Phase gate FAILED: no {args.event!r} event found for feature {canonical_feature_id} "
             f"in {ledger_path}. Run the required pipeline phase before proceeding."
         )
 
     print(
-        f"Phase gate PASSED: {args.event} found for feature {args.feature_id} "
+        f"Phase gate PASSED: {args.event} found for feature {canonical_feature_id} "
         f"(recorded at {matched[-1].get('timestamp_utc', 'unknown')})."
     )
 

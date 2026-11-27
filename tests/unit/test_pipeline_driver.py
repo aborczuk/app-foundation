@@ -2669,3 +2669,100 @@ commands:
     # Should detect divergence: routes changed but timestamp not updated
     assert governance_errors is not None
     assert len(governance_errors) > 0
+
+
+def test_append_requested_pipeline_event_normalizes_feature_slug_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    """append_requested_pipeline_event must normalize NNN-slug to NNN and deduplicate retries."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+
+    first = pipeline_driver.append_requested_pipeline_event(
+        feature_id="059-workflow-state-consistency",
+        phase="specify",
+        event_request={"event": "backlog_registered", "fields": {}},
+        ledger_path=ledger_path,
+    )
+    assert first["ok"] is True
+    assert first["appended"] is True
+
+    lines = [
+        json.loads(line)
+        for line in ledger_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(lines) == 1
+    assert lines[0]["feature_id"] == "059"
+
+    second = pipeline_driver.append_requested_pipeline_event(
+        feature_id="059",
+        phase="specify",
+        event_request={"event": "backlog_registered", "fields": {}},
+        ledger_path=ledger_path,
+    )
+    assert second["ok"] is True
+    assert second["appended"] is False
+    assert second["reason"] == "event_already_recorded"
+
+
+def test_resolve_phase_state_normalizes_new_feature_slug_to_canonical_numeric_id(
+    tmp_path: Path,
+) -> None:
+    """A new feature with zero ledger events must resolve ledger_feature_id to canonical NNN."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    state = pipeline_driver_state.resolve_phase_state(
+        "059-workflow-state-consistency",
+        pipeline_state={"phase": "specify", "dry_run": True},
+        ledger_path=ledger_path,
+    )
+    assert state["ledger_feature_id"] == "059"
+
+
+def test_append_pipeline_success_event_normalizes_slug_and_rejects_malformed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """append_pipeline_success_event must normalize slugs for idempotency and reject bad IDs."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "timestamp_utc": "2026-11-27T00:00:00Z",
+                "feature_id": "059",
+                "phase": "specify",
+                "event": "backlog_registered",
+                "actor": "pipeline_driver",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        pipeline_driver_contracts,
+        "load_driver_routes",
+        lambda manifest_path=None: {
+            "speckit.specify": {
+                "emit_contracts": [{"event": "backlog_registered", "required_fields": []}],
+                "emits": ["backlog_registered"],
+            }
+        },
+    )
+
+    deduped = pipeline_driver.append_pipeline_success_event(
+        feature_id="059-workflow-state-consistency",
+        phase="specify",
+        command_id="speckit.specify",
+        ledger_path=ledger_path,
+    )
+    assert deduped["ok"] is True
+    assert deduped["appended"] is False
+    assert deduped["reason"] == "event_already_recorded"
+
+    rejected = pipeline_driver.append_pipeline_success_event(
+        feature_id="bad-feature-id",
+        phase="specify",
+        command_id="speckit.specify",
+        ledger_path=ledger_path,
+    )
+    assert rejected["ok"] is False
+    assert rejected["appended"] is False
+    assert rejected["error_code"] == "invalid_feature_id"

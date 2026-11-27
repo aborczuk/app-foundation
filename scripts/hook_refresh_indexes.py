@@ -338,6 +338,11 @@ def _record_refresh_side_effects(*, paths: list[Path], refreshed_vector: bool) -
         return
     from scripts import read_code_health
 
+    root = _repo_root()
+    read_code_health._persist_vector_edit_signature(
+        read_code_health.codegraph_current_edit_signature(root),
+        root,
+    )
     read_code_health._remember_healthy_vector_probe()
 
 

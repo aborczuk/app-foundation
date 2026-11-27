@@ -13,7 +13,7 @@
 
 **Purpose**: Establish shared canonical feature-ID normalization and baseline regression harnesses before changing runtime state paths.
 
-- [ ] T001 Add canonical `normalize_feature_id()` helper supporting `NNN` and `NNN-slug` with malformed-ID rejection in `scripts/pipeline_ledger.py`
+- [X] T001 Add canonical `normalize_feature_id()` helper supporting `NNN` and `NNN-slug` with malformed-ID rejection in `scripts/pipeline_ledger.py`
 
 **Checkpoint**: Shared feature-ID normalizer is in place for ledger and driver callers.
 
@@ -33,11 +33,11 @@
 
 ### Tests for User Story 1
 
-- [ ] T002 [P] [US1] Add failing unit tests for deterministic content-based vector edit fingerprinting across edit, refresh, commit, and real post-refresh modification in `tests/unit/test_read_code_health.py`
+- [X] T002 [P] [US1] Add failing unit tests for deterministic content-based vector edit fingerprinting across edit, refresh, commit, and real post-refresh modification in `tests/unit/test_read_code_health.py`
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Replace porcelain-only vector edit signature with a deterministic indexed-content fingerprint across `scripts/read_code_health.py`, `src/mcp_codebase/health.py`, and `scripts/hook_refresh_indexes.py`
+- [X] T003 [US1] Replace porcelain-only vector edit signature with a deterministic indexed-content fingerprint across `scripts/read_code_health.py`, `src/mcp_codebase/health.py`, and `scripts/hook_refresh_indexes.py`
 
 **Checkpoint**: Vector edit fingerprinting is deterministic across edits, refreshes, commits, and reads.
 
@@ -57,12 +57,12 @@
 
 ### Tests for User Story 2
 
-- [ ] T004 [P] [US2] Add failing unit tests verifying `apply_strategy()` preserves populated `plan.md` sections and `prepare_tasking()` preserves populated `tasks.md` in `tests/unit/test_plan_step.py` and `tests/unit/test_speckit_solution_step.py`
+- [X] T004 [P] [US2] Add failing unit tests verifying `apply_strategy()` preserves populated `plan.md` sections and `prepare_tasking()` preserves populated `tasks.md` in `tests/unit/test_plan_step.py` and `tests/unit/test_speckit_solution_step.py`
 
 ### Implementation for User Story 2
 
-- [ ] T005 [US2] Update `_write_selected_scaffold()` and `apply_strategy()` to merge and preserve populated sections instead of overwriting with blank stubs in `scripts/speckit_plan_step.py`
-- [ ] T006 [P] [US2] Guard `prepare_tasking()` to preserve existing populated `tasks.md` files while still scaffolding missing or empty files from custom templates in `scripts/speckit_solution_step.py`
+- [X] T005 [US2] Update `_write_selected_scaffold()` and `apply_strategy()` to merge and preserve populated sections instead of overwriting with blank stubs in `scripts/speckit_plan_step.py`
+- [X] T006 [P] [US2] Guard `prepare_tasking()` to preserve existing populated `tasks.md` files while still scaffolding missing or empty files from custom templates in `scripts/speckit_solution_step.py`
 
 **Checkpoint**: Plan apply-strategy and Solution task creation are non-destructive and preserve custom templates.
 
@@ -82,11 +82,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T007 [P] [US3] Add failing unit tests for `NNN` and `NNN-slug` normalization, malformed-ID rejection, and historical ledger compatibility in `tests/unit/test_pipeline_ledger_sequence.py` and `tests/unit/test_pipeline_driver.py`
+- [X] T007 [P] [US3] Add failing unit tests for `NNN` and `NNN-slug` normalization, malformed-ID rejection, and historical ledger compatibility in `tests/unit/test_pipeline_ledger_sequence.py` and `tests/unit/test_pipeline_driver.py`
 
 ### Implementation for User Story 3
 
-- [ ] T008 [US3] Wire `normalize_feature_id()` into `pipeline_ledger.py`, `scripts/pipeline_driver.py`, and `scripts/pipeline_driver_state.py` without rewriting historical ledger entries
+- [X] T008 [US3] Wire `normalize_feature_id()` into `pipeline_ledger.py`, `scripts/pipeline_driver.py`, and `scripts/pipeline_driver_state.py` without rewriting historical ledger entries
 
 **Checkpoint**: Both `NNN` and `NNN-slug` feature IDs resolve and append identically across driver and ledger commands.
 
@@ -105,11 +105,11 @@
 
 ### Tests for User Story 4
 
-- [ ] T009 [P] [US4] Add contract tests asserting alignment between `.claude/commands/speckit.estimate.md`, `command-manifest.yaml`, `.specify/command-manifest.yaml`, `scripts/pipeline_ledger.py`, and `scripts/pipeline_driver_state.py` in `tests/unit/test_pipeline_ledger_sequence.py`
+- [X] T009 [P] [US4] Add contract tests asserting alignment between `.claude/commands/speckit.estimate.md`, `command-manifest.yaml`, `.specify/command-manifest.yaml`, `scripts/pipeline_ledger.py`, and `scripts/pipeline_driver_state.py` in `tests/unit/test_pipeline_ledger_sequence.py`
 
 ### Implementation for User Story 4
 
-- [ ] T010 [US4] Reconcile estimate/tasking event declarations, required fields, and transition rules across `.claude/commands/speckit.estimate.md`, `command-manifest.yaml`, `.specify/command-manifest.yaml`, `scripts/pipeline_ledger.py`, and `scripts/pipeline_driver_state.py`
+- [X] T010 [US4] Reconcile estimate/tasking event declarations, required fields, and transition rules across `.claude/commands/speckit.estimate.md`, `command-manifest.yaml`, `.specify/command-manifest.yaml`, `scripts/pipeline_ledger.py`, and `scripts/pipeline_driver_state.py`
 
 **Checkpoint**: Estimate command docs, manifests, driver state, and ledger transitions are fully aligned.
 
@@ -128,8 +128,8 @@
 
 ### Tests & Documentation for User Story 5
 
-- [ ] T011 [US5] Add live-backend verification tests for real vector index refresh, commit-invariant fingerprinting, and `read_code.py` paths in `tests/integration/test_live_vector_fingerprint_and_read_code.py`
-- [ ] T012 [P] [US5] Document migration, backward compatibility, and the feature `061` persistent warmed-reranker scope boundary in `docs/governance/pipeline-driver-readme.md` and `docs/governance/speckit-end-to-end.md`
+- [X] T011 [US5] Add live-backend verification tests for real vector index refresh, commit-invariant fingerprinting, and `read_code.py` paths in `tests/integration/test_live_vector_fingerprint_and_read_code.py`
+- [X] T012 [P] [US5] Document migration, backward compatibility, and the feature `061` persistent warmed-reranker scope boundary in `docs/governance/pipeline-driver-readme.md` and `docs/governance/speckit-end-to-end.md`
 
 **Checkpoint**: Live-backend verification passes and operator migration/compatibility documentation is complete.
 
@@ -139,7 +139,7 @@
 
 **Purpose**: Run full targeted test, lint, ledger, and manifest verification across all touched seams.
 
-- [ ] T013 Run targeted unit, contract, and live-backend test suites plus ruff and ledger/manifest validation via `scripts/pytest_guard.py`, `scripts/ruff_guard.py`, and `scripts/pipeline_ledger.py`
+- [X] T013 Run targeted unit, contract, and live-backend test suites plus ruff and ledger/manifest validation via `scripts/pytest_guard.py`, `scripts/ruff_guard.py`, and `scripts/pipeline_ledger.py`
 
 ## Dependencies & Execution Order
 

@@ -307,3 +307,34 @@ def test_run_tasking_stabilization_uses_validation_only_chain(
     assert payload["ok"] is True
     assert "--estimate-command" not in captured_command
     assert "--breakdown-command" not in captured_command
+
+
+def test_prepare_tasking_preserves_existing_populated_tasks_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """prepare_tasking must not overwrite an already populated tasks.md with a blank template."""
+    repo_root = tmp_path / "repo"
+    feature_dir = repo_root / "specs" / "059-workflow-state-consistency"
+    feature_dir.mkdir(parents=True)
+    plan_path = feature_dir / "plan.md"
+    plan_path.write_text(
+        "# Plan\n\n## Design Slices\n\n### Slice PL-01 - Core\n- Implementation Directive: Keep tasks.\n",
+        encoding="utf-8",
+    )
+    (feature_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    (feature_dir / "spec.json").write_text('{"feature_id": "059"}\n', encoding="utf-8")
+    existing_tasks = "# Tasks: Workflow State Consistency\n\n- [ ] T001 Preserve populated tasks in `scripts/a.py`\n"
+    tasks_path = feature_dir / "tasks.md"
+    tasks_path.write_text(existing_tasks, encoding="utf-8")
+
+    monkeypatch.setattr(
+        speckit_solution_step,
+        "_resolve_solution_paths",
+        lambda _feature_id: (repo_root, feature_dir, plan_path),
+    )
+
+    result = speckit_solution_step.prepare_tasking("059")
+
+    assert result["ok"] is True
+    assert result["preserved_existing"] is True
+    assert tasks_path.read_text(encoding="utf-8") == existing_tasks

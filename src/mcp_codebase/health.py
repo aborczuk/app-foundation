@@ -15,6 +15,7 @@ snapshot is refreshed.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 from dataclasses import asdict, dataclass
@@ -313,7 +314,8 @@ def _read_cached_edit_signature(repo_root: Path) -> str:
         return ""
 
 
-def _current_edit_signature(repo_root: Path) -> str:
+def compute_content_edit_fingerprint(repo_root: Path) -> str:
+    """Return a deterministic content-based fingerprint over non-ignored repo files."""
     if not repo_root.exists() or not repo_root.is_dir():
         return ""
 
@@ -323,32 +325,53 @@ def _current_edit_signature(repo_root: Path) -> str:
                 "git",
                 "-C",
                 str(repo_root),
-                "status",
-                "--porcelain",
-                "--untracked-files=normal",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
             ],
             check=False,
             capture_output=True,
-            text=True,
         )
     except OSError:
         return ""
+    if proc.returncode != 0:
+        return ""
 
-    lines: list[str] = []
-    for raw in proc.stdout.splitlines():
-        if not raw.strip():
+    entries: list[str] = []
+    seen: set[str] = set()
+    for raw in proc.stdout.split(b"\0"):
+        if not raw:
             continue
-        line = raw.rstrip("\n")
-        path = line[3:] if len(line) > 3 else ""
-        if " -> " in path:
-            candidates = [part.strip() for part in path.split(" -> ")]
+        rel = raw.decode("utf-8", errors="surrogateescape").replace("\\", "/")
+        if rel.startswith("./"):
+            rel = rel[2:]
+        if not rel or rel in seen or _is_ignored_edit_path(rel):
+            continue
+        seen.add(rel)
+        full_path = repo_root / rel
+        if full_path.is_symlink():
+            try:
+                target_bytes = os.readlink(full_path).encode("utf-8", errors="surrogateescape")
+                digest = hashlib.sha256(target_bytes).hexdigest()
+            except OSError:
+                digest = "unreadable"
+        elif full_path.is_file():
+            try:
+                digest = hashlib.sha256(full_path.read_bytes()).hexdigest()
+            except OSError:
+                digest = "unreadable"
         else:
-            candidates = [path.strip()]
-        if any(_is_ignored_edit_path(candidate) for candidate in candidates if candidate):
-            continue
-        lines.append(line)
+            digest = "deleted"
+        entries.append(f"{rel}:{digest}")
 
-    return "\n".join(sorted(dict.fromkeys(lines)))
+    return "\n".join(sorted(entries))
+
+
+def _current_edit_signature(repo_root: Path) -> str:
+    """Return the deterministic content-based edit signature for freshness checks."""
+    return compute_content_edit_fingerprint(repo_root)
 
 
 def _is_ignored_edit_path(relative_path: str) -> bool:

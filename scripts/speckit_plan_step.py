@@ -785,29 +785,37 @@ def _write_selected_scaffold(
         feature_dir=feature_dir,
         spec_file=spec_file,
     )
+    overrides: dict[str, str] = {
+        "Triage": "\n".join(
+            [
+                f"- duplicate: {str(bool(triage.get('duplicate'))).lower()}",
+                f"- t_shirt_size: {triage.get('tshirt_size') or ''}",
+                f"- risk_level: {triage.get('risk_level') or ''}",
+                f"- reason: {triage.get('duplicate_reason') or strategy.get('strategy_reason') or ''}",
+            ]
+        ),
+        "Relevant Domains": _render_relevant_domains_body(contract),
+        "Strategy Contract": "\n".join(
+            [
+                "```json",
+                _render_contract(contract),
+                "```",
+            ]
+        ),
+        "Internal Discovery": discovery_body or "- No internal discovery results recorded.",
+    }
+    if plan_file.is_file():
+        for section in sections:
+            if section in overrides:
+                continue
+            existing_body = _extract_section_body(plan_file, section)
+            if existing_body:
+                overrides[section] = existing_body
     plan_file.write_text(
         _render_template_subset(
             template_text=template_text,
             keep_sections=[*BASE_TEMPLATE_SECTIONS, *sections],
-            overrides={
-                "Triage": "\n".join(
-                    [
-                        f"- duplicate: {str(bool(triage.get('duplicate'))).lower()}",
-                        f"- t_shirt_size: {triage.get('tshirt_size') or ''}",
-                        f"- risk_level: {triage.get('risk_level') or ''}",
-                        f"- reason: {triage.get('duplicate_reason') or strategy.get('strategy_reason') or ''}",
-                    ]
-                ),
-                "Relevant Domains": _render_relevant_domains_body(contract),
-                "Strategy Contract": "\n".join(
-                    [
-                        "```json",
-                        _render_contract(contract),
-                        "```",
-                    ]
-                ),
-                "Internal Discovery": discovery_body or "- No internal discovery results recorded.",
-            },
+            overrides=overrides,
         ),
         encoding="utf-8",
     )

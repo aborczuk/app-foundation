@@ -201,14 +201,17 @@ def prepare_tasking(feature_id: str) -> dict[str, Any]:
     _validate_plan_design_slices(plan_path)
     if not spec_path.is_file():
         raise RuntimeError("spec_artifact_missing")
-    tasks_path.write_text(_render_tasks_scaffold(feature_dir, plan_path), encoding="utf-8")
+    preserved_existing = tasks_path.is_file() and bool(tasks_path.read_text(encoding="utf-8").strip())
+    if not preserved_existing:
+        tasks_path.write_text(_render_tasks_scaffold(feature_dir, plan_path), encoding="utf-8")
     return {
         "ok": True,
         "feature_dir": str(feature_dir),
         "plan_artifact": str(plan_path),
         "spec_artifact": str(spec_path),
         "tasks_artifact": str(tasks_path),
-        "scaffolded_from_template": str(DEFAULT_TASKS_TEMPLATE),
+        "preserved_existing": preserved_existing,
+        "scaffolded_from_template": None if preserved_existing else str(DEFAULT_TASKS_TEMPLATE),
         "repo_root": str(repo_root),
     }
 

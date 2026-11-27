@@ -99,6 +99,9 @@ Access pattern:
 
 - Do not parse ledger JSONL directly.
 - Use script interfaces (`pipeline_ledger.py`, `task_ledger.py`) for assertions/appends/validation.
+- Both numeric feature IDs (`NNN`) and full feature slugs (`NNN-slug`) are accepted by `pipeline_ledger.py` and `pipeline_driver.py` and normalized to canonical `NNN` without mutating historical append-only entries.
+- `/speckit.estimate` emits `tasking_completed` (`task_count`, `story_count`) canonically; historical/compatibility `estimation_completed` records remain valid and may transition to `tasking_completed` or `analysis_completed`.
+- Persistent warmed-reranker lifecycle ownership is specified separately in feature `061-persistent-repo-research-backends`.
 
 ## Where To Change Things
 

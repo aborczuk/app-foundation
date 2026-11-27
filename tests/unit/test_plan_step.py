@@ -405,3 +405,54 @@ def test_finalize_nonduplicate_requires_design_slice_and_requests_plan_approved(
     routing_payload = json.loads((feature_dir / "spec.json").read_text(encoding="utf-8"))
     assert routing_payload["design_slices"][0]["slice_id"] == "PL-01"
     assert routing_payload["tasking"]["mode"] == "generative"
+
+
+def test_apply_strategy_preserves_existing_populated_plan_sections(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Re-running apply_strategy must preserve authored sections instead of blanking them."""
+    _write_plan_template(tmp_path)
+    _write_domain_doc(tmp_path, "16_ops_governance.md", ["- [ ] Check governance"])
+    feature_dir, plan_file = _write_feature(tmp_path)
+    _write_contract(plan_file, duplicate=False)
+    authored_summary = "Authored summary that must not be overwritten by blank templates."
+    authored_slice = "### Slice PL-01 - Real authored slice\n- Implementation Directive: Keep this."
+    authored_completion = "Authored completion summary."
+    plan_file.write_text(
+        plan_file.read_text(encoding="utf-8")
+        + "\n".join(
+            [
+                "## Summary",
+                "",
+                authored_summary,
+                "",
+                "## Design Slices",
+                "",
+                authored_slice,
+                "",
+                "## Plan Completion Summary",
+                "",
+                authored_completion,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan_step, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        plan_step,
+        "_resolve_feature_paths",
+        lambda feature_id: (feature_dir, feature_dir / "spec.md", plan_file),
+    )
+
+    result = plan_step.apply_strategy("123")
+    updated_text = plan_file.read_text(encoding="utf-8")
+
+    assert result["ok"] is True
+    assert authored_summary in updated_text
+    assert authored_slice in updated_text
+    assert authored_completion in updated_text
+    assert "[summary]" not in updated_text
+    assert "[design slices]" not in updated_text
+    assert "[completion summary]" not in updated_text

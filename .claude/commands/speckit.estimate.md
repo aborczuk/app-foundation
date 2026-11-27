@@ -55,7 +55,7 @@ Load `tasks.md`, `plan.md`, `spec.json`, `spec.md`, and any existing `estimates.
      --json
    ```
 
-8. The finalizer owns task registration, acceptance scaffolding, and the `tasking_completed` event request. Do not append that event before finalization succeeds.
+8. The finalizer owns task registration, acceptance scaffolding, and the canonical `tasking_completed` event request (requiring `task_count` and `story_count`, transitioning from `plan_approved` or `estimation_completed` and advancing to `analysis_completed`). Compatibility `estimation_completed` events remain accepted by `pipeline_ledger.py` (with no required fields) and may also advance to `tasking_completed` or `analysis_completed`. Do not append completion events before finalization succeeds.
 
 ## Guidance
 

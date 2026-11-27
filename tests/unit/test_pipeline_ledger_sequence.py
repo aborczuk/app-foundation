@@ -337,3 +337,150 @@ def test_cmd_validate_manifest_rejects_wrong_domain_events(
 
     captured = capsys.readouterr()
     assert expected_fragment in captured.err
+
+
+def test_normalize_feature_id_accepts_numeric_and_slug_and_rejects_malformed() -> None:
+    """normalize_feature_id must canonicalize NNN and NNN-slug and reject malformed inputs."""
+    assert pipeline_ledger.normalize_feature_id("059") == "059"
+    assert pipeline_ledger.normalize_feature_id("059-workflow-state-consistency") == "059"
+    assert pipeline_ledger.normalize_feature_id(" 018-gh-cli-guards ") == "018"
+
+    for invalid in ("", "59", "0591", "abc", "059-", "059foo", "059/bad", "059-bad/path"):
+        with pytest.raises(ValueError):
+            pipeline_ledger.normalize_feature_id(invalid)
+
+
+def test_cmd_append_and_assert_phase_complete_normalize_feature_slug(tmp_path: Path) -> None:
+    """cmd_append and cmd_assert_phase_complete must normalize NNN-slug to canonical NNN."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    append_args = SimpleNamespace(
+        file=str(ledger_path),
+        feature_id="059-workflow-state-consistency",
+        phase="specify",
+        event="backlog_registered",
+        actor="pipeline_driver",
+        timestamp_utc="2026-11-27T00:00:00Z",
+        fq_count=None,
+        questions_asked=None,
+        spike_artifact=None,
+        failed_fq=None,
+        feasibility_required=None,
+        task_count=None,
+        story_count=None,
+        estimate_points=None,
+        tasks_sketched=None,
+        acceptance_tests_written=None,
+        critical_count=None,
+        high_count=None,
+        e2e_artifact=None,
+        routing=None,
+        risk=None,
+        triage=None,
+        domains=None,
+        strategy=None,
+        design_slices=None,
+        spec_json_path=None,
+        routing_json_path=None,
+        details=None,
+    )
+    pipeline_ledger.cmd_append(append_args)
+
+    recorded = json.loads(ledger_path.read_text(encoding="utf-8").strip())
+    assert recorded["feature_id"] == "059"
+
+    pipeline_ledger.cmd_assert_phase_complete(
+        SimpleNamespace(
+            file=str(ledger_path),
+            feature_id="059",
+            event="backlog_registered",
+        )
+    )
+    pipeline_ledger.cmd_assert_phase_complete(
+        SimpleNamespace(
+            file=str(ledger_path),
+            feature_id="059-workflow-state-consistency",
+            event="backlog_registered",
+        )
+    )
+
+
+def test_cmd_append_rejects_malformed_feature_id_without_mutating_ledger(tmp_path: Path) -> None:
+    """Malformed feature IDs must fail deterministically without writing to the ledger."""
+    ledger_path = tmp_path / "pipeline-ledger.jsonl"
+    append_args = SimpleNamespace(
+        file=str(ledger_path),
+        feature_id="not-a-feature",
+        phase="specify",
+        event="backlog_registered",
+        actor="pipeline_driver",
+        timestamp_utc="2026-11-27T00:00:00Z",
+        fq_count=None,
+        questions_asked=None,
+        spike_artifact=None,
+        failed_fq=None,
+        feasibility_required=None,
+        task_count=None,
+        story_count=None,
+        estimate_points=None,
+        tasks_sketched=None,
+        acceptance_tests_written=None,
+        critical_count=None,
+        high_count=None,
+        e2e_artifact=None,
+        routing=None,
+        risk=None,
+        triage=None,
+        domains=None,
+        strategy=None,
+        design_slices=None,
+        spec_json_path=None,
+        routing_json_path=None,
+        details=None,
+    )
+    with pytest.raises(SystemExit):
+        pipeline_ledger.cmd_append(append_args)
+    assert not ledger_path.exists()
+
+
+def test_estimate_command_manifest_and_ledger_transition_contract_aligned() -> None:
+    """Estimate docs, both manifests, ledger transitions, and driver state must agree."""
+    import yaml
+
+    repo_root = Path(__file__).resolve().parents[2]
+    root_manifest = yaml.safe_load((repo_root / "command-manifest.yaml").read_text(encoding="utf-8"))
+    specify_manifest = yaml.safe_load(
+        (repo_root / ".specify" / "command-manifest.yaml").read_text(encoding="utf-8")
+    )
+    assert root_manifest == specify_manifest
+
+    estimate_emits = root_manifest["commands"]["speckit.estimate"]["emits"]
+    assert estimate_emits[0]["event"] == "tasking_completed"
+    assert set(estimate_emits[0]["required_fields"]) == {"task_count", "story_count"}
+    assert estimate_emits[1]["event"] == "estimation_completed"
+    assert estimate_emits[1].get("compatibility_only") is True
+
+    # Compatibility estimation_completed after plan_approved or tasking_completed can advance to analysis.
+    events_compat = _base_prefix() + [
+        _event("tasking_completed", task_count=10, story_count=3),
+        _event("estimation_completed"),
+        _event("analysis_completed", critical_count=0),
+    ]
+    errors, state = assert_transition_result(events_compat)
+    assert errors == []
+    assert state["019"].analysis_clean is True
+
+    estimate_doc = (repo_root / ".claude" / "commands" / "speckit.estimate.md").read_text(
+        encoding="utf-8"
+    )
+    assert "tasking_completed" in estimate_doc
+    assert "estimation_completed" in estimate_doc
+    assert "task_count" in estimate_doc
+    assert "story_count" in estimate_doc
+
+    scripts_dir = str(repo_root / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import pipeline_driver_state
+
+    assert pipeline_driver_state.EVENT_TO_PHASE["tasking_completed"] == "tasking"
+    assert pipeline_driver_state.EVENT_TO_PHASE["estimation_completed"] == "tasking"

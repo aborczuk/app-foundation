@@ -1259,6 +1259,19 @@ def append_pipeline_success_event(
     if not selected_event:
         return {"ok": True, "appended": False, "event": None}
 
+    from pipeline_ledger import normalize_feature_id
+
+    try:
+        canonical_feature_id = normalize_feature_id(feature_id)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "appended": False,
+            "event": selected_event,
+            "error_code": "invalid_feature_id",
+            "stderr": str(exc),
+        }
+
     ledger_file = (
         Path(ledger_path)
         if ledger_path is not None
@@ -1270,7 +1283,7 @@ def append_pipeline_success_event(
         existing_phase = str(existing_event.get("phase", "")).strip()
         existing_name = str(existing_event.get("event", "")).strip()
         if (
-            existing_feature_id == feature_id
+            existing_feature_id == canonical_feature_id
             and existing_phase == phase
             and existing_name == selected_event
         ):
@@ -1288,7 +1301,7 @@ def append_pipeline_success_event(
         str(ledger_script),
         "append",
         "--feature-id",
-        feature_id,
+        canonical_feature_id,
         "--phase",
         phase,
         "--event",
@@ -1359,12 +1372,23 @@ def append_requested_pipeline_event(
     fields_raw = event_request.get("fields", {})
     fields = dict(fields_raw) if isinstance(fields_raw, Mapping) else {}
 
-    from pipeline_ledger import cmd_append, read_events
+    from pipeline_ledger import cmd_append, normalize_feature_id, read_events
+
+    try:
+        canonical_feature_id = normalize_feature_id(feature_id)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "appended": False,
+            "event": event_name,
+            "error_code": "invalid_feature_id",
+            "stderr": str(exc),
+        }
 
     ledger_file = Path(ledger_path)
     existing_events = read_events(ledger_file)
     if any(
-        str(existing_event.get("feature_id", "")).strip() == feature_id
+        str(existing_event.get("feature_id", "")).strip() == canonical_feature_id
         and str(existing_event.get("phase", "")).strip() == phase
         and str(existing_event.get("event", "")).strip() == event_name
         for existing_event in existing_events
@@ -1378,7 +1402,7 @@ def append_requested_pipeline_event(
 
     append_args = argparse.Namespace(
         file=str(ledger_file),
-        feature_id=feature_id,
+        feature_id=canonical_feature_id,
         phase=phase,
         event=event_name,
         actor=actor,

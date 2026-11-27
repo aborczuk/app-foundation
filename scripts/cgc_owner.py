@@ -275,30 +275,11 @@ def record_last_error(error_type: str, exit_code: int, error_detail: str) -> Non
 
 
 def current_edit_signature(repo_root: Path | None = None) -> str:
-    """Return a stable signature for the current git edit state."""
+    """Return a deterministic content-based signature for the current repo edit state."""
+    from src.mcp_codebase.health import compute_content_edit_fingerprint
+
     root = repo_root or REPO_ROOT
-    result = subprocess.run(
-        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=normal"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return ""
-
-    lines: list[str] = []
-    for raw in result.stdout.splitlines():
-        line = raw.rstrip("\n")
-        if not line.strip():
-            continue
-        path = line[3:] if len(line) > 3 else ""
-        candidates = [part.strip() for part in path.split(" -> ")] if " -> " in path else [path.strip()]
-        if any(candidate.startswith(_IGNORED_EDIT_PREFIXES) for candidate in candidates if candidate):
-            continue
-        lines.append(line)
-
-    unique_sorted = sorted(dict.fromkeys(lines))
-    return "\n".join(unique_sorted)
+    return compute_content_edit_fingerprint(root)
 
 
 def record_edit_signature(repo_root: Path | None = None) -> None:

@@ -812,51 +812,27 @@ def _persist_vector_edit_signature(signature: str, project_root: Path | None = N
 
 
 def codegraph_current_edit_signature(project_root: Path | None = None) -> str:
-    """Return the current non-ignored git status signature."""
+    """Return the deterministic content-based edit fingerprint for non-ignored repo files."""
+    from src.mcp_codebase.health import compute_content_edit_fingerprint
+
     root = project_root or REPO_ROOT
-    proc = _run_command_capture(
-        [
-            "git",
-            "-C",
-            str(root),
-            "status",
-            "--porcelain",
-            "--untracked-files=normal",
-        ]
-    )
-    if proc.returncode != 0:
-        return ""
-
-    ignored_prefixes = (
-        ".codegraphcontext/",
-        ".speckit/",
-        ".uv-cache/",
-        "logs/",
-        "shadow-runs/",
-    )
-    lines: list[str] = []
-    for raw in proc.stdout.splitlines():
-        if not raw.strip():
-            continue
-        line = raw.rstrip("\n")
-        path = line[3:] if len(line) > 3 else ""
-        if " -> " in path:
-            candidates = [part.strip() for part in path.split(" -> ")]
-        else:
-            candidates = [path.strip()]
-        if any(candidate.startswith(ignored_prefixes) for candidate in candidates if candidate):
-            continue
-        lines.append(line)
-
-    return "\n".join(sorted(dict.fromkeys(lines)))
+    return compute_content_edit_fingerprint(root)
 
 
 def _signature_paths(signature: str) -> set[str]:
-    """Extract normalized relative paths from a git porcelain signature string."""
+    """Extract normalized relative paths from content-fingerprint or legacy porcelain lines."""
     paths: set[str] = set()
     for raw in signature.splitlines():
         line = raw.rstrip("\n")
         if not line.strip():
+            continue
+        if ":" in line and not line[:2].strip().startswith(("M", "A", "D", "R", "C", "?", "!")):
+            candidate = line.rsplit(":", 1)[0].strip()
+            normalized = candidate.replace("\\", "/")
+            if normalized.startswith("./"):
+                normalized = normalized[2:]
+            if normalized:
+                paths.add(normalized)
             continue
         if len(line) < 4:
             continue
@@ -1123,7 +1099,10 @@ def vector_index_probe(project_root: Path | None = None) -> _VectorIndexProbe:
                     stale_signal_error="",
                 ),
             )
-        drift_paths = tuple(sorted(_signature_paths(current_signature).symmetric_difference(_signature_paths(cached_signature))))
+        diff_lines = set(current_signature.splitlines()).symmetric_difference(
+            set(cached_signature.splitlines())
+        )
+        drift_paths = tuple(sorted(_signature_paths("\n".join(diff_lines))))
         return _remember_vector_probe(
             session_id,
             _make_vector_probe(

@@ -136,8 +136,18 @@ Reading it left to right:
 These tests exercise the stack end to end:
 
 - `tests/unit/test_pipeline_driver.py`
+- `tests/unit/test_read_code_health.py`
 - `tests/integration/test_pipeline_driver_feature_flow.py`
+- `tests/integration/test_live_vector_fingerprint_and_read_code.py` (live-backend verification for vector edit fingerprinting, `read_code.py`, and slug normalization)
 - `tests/contract/test_pipeline_driver_contract.py`
+
+## Migration, Backward Compatibility, And Scope Boundary (Feature 059)
+
+- **Feature ID normalization (`NNN` vs `NNN-slug`)**: `scripts/pipeline_ledger.py:normalize_feature_id()` accepts either numeric `NNN` (e.g., `059`) or full slug `NNN-slug` (e.g., `059-workflow-state-consistency`) and normalizes to canonical `NNN` at the append-only ledger boundary. Existing historical `.speckit/pipeline-ledger.jsonl` records remain valid without rewriting; malformed IDs fail deterministically with zero ledger mutation.
+- **Non-destructive scaffolding**: `scripts/speckit_plan_step.py:apply_strategy` preserves populated sections in `plan.md` instead of overwriting them with blank template stubs, and `scripts/speckit_solution_step.py:prepare_tasking` preserves already-populated `tasks.md` files while continuing to scaffold missing or empty files from `.specify/templates/`.
+- **Deterministic vector edit fingerprinting**: `src/mcp_codebase/health.py:compute_content_edit_fingerprint` hashes non-ignored indexed repo files so committing already-refreshed files no longer triggers false-positive staleness while genuine post-refresh edits still report bounded drift paths.
+- **Estimate-to-ledger transition contract**: `speckit.estimate` declares `tasking_completed` (`task_count`, `story_count`) as the canonical primary emit and retains `estimation_completed` (`compatibility_only: true`) as an allowed compatibility transition that can advance to `tasking_completed` or `analysis_completed`.
+- **Feature 061 scope boundary**: Persistent warmed-reranker and repo-scoped MCP process ownership is specified separately by feature `061-persistent-repo-research-backends` and is intentionally out of scope for `059`.
 
 ## Practical Reading Order
 
