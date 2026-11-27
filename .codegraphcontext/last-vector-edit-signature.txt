@@ -1,12 +1,3 @@
- M specs/039-autonomous-spec-pipeline-upgrade/estimates.md
- M specs/039-autonomous-spec-pipeline-upgrade/huds/T001.md
- M specs/039-autonomous-spec-pipeline-upgrade/huds/T002.md
- M specs/039-autonomous-spec-pipeline-upgrade/huds/T026a.md
- M specs/039-autonomous-spec-pipeline-upgrade/huds/T027.md
- M specs/039-autonomous-spec-pipeline-upgrade/huds/T029.md
- M specs/039-autonomous-spec-pipeline-upgrade/plan.md
- M specs/039-autonomous-spec-pipeline-upgrade/spec.json
- M specs/039-autonomous-spec-pipeline-upgrade/tasks.md
 ?? specs/056-agent-analytics-otel/
 ?? specs/057-speckit-run-single-dispatch/
 ?? specs/058-upgrade-speckit-use/
