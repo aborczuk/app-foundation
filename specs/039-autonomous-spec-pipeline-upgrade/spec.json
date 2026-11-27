@@ -8,16 +8,16 @@
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Build the non-mutating capability and migration preflight for pinned Spec Kit `v0.12.9`, including current CLI/project/customization inventory, isolated checkout rehearsal, clean-checkout reproduction proof, version/capability JSON validation, and rollback plan that preserves feature artifacts and ledger history.",
+      "implementation_directive": "Build the non-mutating capability and migration preflight for pinned Spec Kit `v1.4.5`, including current CLI, project, and customization inventory; isolated install rehearsal; clean-checkout reproduction proof; feature validation; and rollback that preserves artifacts and ledger history.",
       "slice_id": "PL-01",
-      "title": "Pin and Rehearse Spec Kit Upgrade",
+      "title": "Pin and Rehearse the Spec Kit Upgrade",
       "why": ""
     },
     {
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Convert the command manifest and retained command/skill surfaces into one validated integration-neutral source for pre-implementation lifecycle ownership, route status, workflow step mapping, script adapter, timeout, permission class, artifact, validator, event, version, and provenance.",
+      "implementation_directive": "Make one validated manifest contract authoritative for workflow ownership, route status, step mapping, adapter, timeout, permission class, artifact, validator, event, version, and provenance while retaining supported Codex and Claude entry surfaces.",
       "slice_id": "PL-02",
       "title": "Define Workflow Ownership and Manifest Routing",
       "why": ""
@@ -26,43 +26,43 @@
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Implement the repo-owned deterministic command adapter behind upstream `shell` steps with fixed executable/argv contracts, validated inputs, root cwd, timeouts, output caps, redaction, structured JSON stdout, stderr diagnostics, permission classes, and pre-process rejection for any unreviewed effective command.",
+      "implementation_directive": "Implement a repository-owned adapter behind upstream shell steps using fixed executable and argv contracts, validated structured inputs, root-bounded cwd, timeouts, output caps, redaction, structured results, permission classes, and rejection of unreviewed effective commands.",
       "slice_id": "PL-03",
-      "title": "Build Safe Command and Shell Adapter Contract",
+      "title": "Build the Safe Command Adapter",
       "why": ""
     },
     {
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Wire prompt-to-handoff phases so each generative phase declares template/scaffold, output, mutation scope, runner, validator, diagnostics, success event, and side-effect contract, and ensure scaffold-only or failed generated artifacts cannot emit phase success.",
+      "implementation_directive": "Connect Specify, Plan, and Solution so each phase declares its custom template or scaffold, generation action, output, mutation scope, validator, diagnostics, success event, and side-effect contract; scaffold-only or failed artifacts never emit success.",
       "slice_id": "PL-04",
-      "title": "Implement Pre-Implementation Phase Workflow Adapters",
+      "title": "Wire Pre-Implementation Phase Adapters",
       "why": ""
     },
     {
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Add structured outcome classification, bounded `while`/`do-while` repair/convergence loops, post-loop assertions, human reason-code policy, pause-before-effect behavior, and typed resume input validation for all protected decisions.",
+      "implementation_directive": "Add structured outcome classification, bounded repair and convergence loops, post-loop assertions, human reason codes, pause-before-effect behavior, and typed resume input validation for every protected decision.",
       "slice_id": "PL-05",
-      "title": "Add Loop, Outcome, and Human Pause Policy",
+      "title": "Add Outcome, Loop, and Human-Pause Policy",
       "why": ""
     },
     {
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Correlate workflow state, ledgers, runtime results, artifacts, manifest, versions, attempts, actor, and lease; enforce idempotent replay and drift blocking; and emit one compact implementation-ready handoff envelope for the separate implementation workflow.",
+      "implementation_directive": "Correlate workflow cursor, ledgers, runtime results, artifacts, manifest, versions, attempts, actor, and renewable feature lease; enforce idempotent replay and drift blocking; and emit one compact implementation-ready handoff envelope.",
       "slice_id": "PL-06",
-      "title": "Add Durable Resume, Reconciliation, Lease, and Handoff Envelope",
+      "title": "Add Resume, Reconciliation, Lease, and Handoff State",
       "why": ""
     },
     {
       "estimate": "high",
       "file_symbol_seams": [],
       "file_symbol_seams_raw": "",
-      "implementation_directive": "Add deterministic unit/contract tests plus live pinned-engine verification, fault injection, security fixtures, clean-checkout rehearsal, rollback proof, and fake-only test labeling so prompt-to-handoff behavior is proven without starting implementation.",
+      "implementation_directive": "Add unit and contract coverage plus live pinned-engine verification, fault injection, security fixtures, clean-install rehearsal, rollback proof, and explicit fake-only test labeling so the prompt-to-handoff path is proven without starting implementation.",
       "slice_id": "PL-07",
       "title": "Prove Live Prompt-to-Handoff Safety",
       "why": ""

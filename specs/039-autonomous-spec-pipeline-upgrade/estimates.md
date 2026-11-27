@@ -1,13 +1,13 @@
 # Effort Estimate: Autonomous Spec Pipeline Upgrade
 
-**Date**: 2026-07-10 | **Total Points**: 153 (re-estimated after breakdown) | **T-shirt Size**: XL
+**Date**: 2026-11-26 | **Total Points**: 153 (verified after breakdown) | **T-shirt Size**: XL
 **Estimated by**: AI (`speckit.estimate`) — calibrate against actuals after implementation.
 
 ---
 
 ## Estimation Gate Status
 
-The mandatory point-breakdown gate is **clear**: all 38 current tasks score 5 points or fewer. This re-estimate supersedes the former four 8-point parent tasks (`T009`, `T013`, `T021`, and `T026`) with their completed bounded suffix-task breakdowns. HUD implementation-ticket completeness remains owned by `/speckit.tasking`; this estimate does not alter task or HUD content.
+The mandatory point-breakdown gate is **clear**: all 38 current tasks score 5 points or fewer. This estimate supersedes the former four 8-point parent tasks (`T009`, `T013`, `T021`, and `T026`) with their completed bounded suffix-task breakdowns. All 38 task HUDs exist and pass the repository HUD validator with zero errors; this estimate does not alter task or HUD content.
 
 ## Per-Task Estimates
 
@@ -52,7 +52,7 @@ The mandatory point-breakdown gate is **clear**: all 38 current tasks score 5 po
 | T029 | 3 | Governance documentation | Two governance documents must capture the defined runtime and operator process model. |
 | T030 | 3 | Final solution gates | Executes and records the defined tasking/HUD/acceptance/ledger/prompt-to-handoff readiness evidence. |
 
-Solution sketches for 3+ point tasks are intentionally omitted: their required design details must come from completed HUDs, and estimation must not invent them.
+For every 3+ point task, the matching `huds/<TASK_ID>.md` is the implementation-ticket solution sketch. The validated HUDs record current and target behavior, concrete edits, touched symbols, composition, failing-test assertion shape, applicable domains, dependencies, constraints, and done criteria. The 2-point documentation task `T012` also has a validated HUD. Estimation preserves those tasking-owned directives rather than duplicating or inventing implementation design here.
 
 ---
 
@@ -73,10 +73,12 @@ Solution sketches for 3+ point tasks are intentionally omitted: their required d
 
 - No current task scores 8 or 13 points; the mandatory breakdown/re-estimate loop is complete for point-based warnings.
 - The feature remains high risk because it spans pinned upstream behavior, command safety, durable multi-authority state, and live-engine verification. The 153-point total is an estimate, not an implementation commitment.
-- Non-point HUD completeness remains governed by `/speckit.tasking`; this command intentionally preserves HUD content rather than adding missing implementation design.
+- All 38 HUDs pass `scripts/speckit_remake_huds.py validate`; no missing-ticket or unresolved-placeholder warning remains.
 
 ## Changes from Previous Estimate
 
+- This verification run did not add, remove, or rescore any task; the current graph remains 38 tasks and 153 points.
+- Historical breakdown retained from the preceding estimate:
 - Replaced `T009` (8) with `T009a` (3), `T009b` (3), and `T009c` (3).
 - Replaced `T013` (8) with `T013a` (3), `T013b` (3), and `T013c` (5).
 - Replaced `T021` (8) with `T021a` (3), `T021b` (5), and `T021c` (5).
@@ -85,4 +87,4 @@ Solution sketches for 3+ point tasks are intentionally omitted: their required d
 
 ## Required Next Action
 
-Run `/speckit.implement` when the tasking-owned HUD completeness gate is satisfied. No `estimation_completed` event was emitted in this run because the requested scope is limited to the command-owned estimate artifact.
+The estimate and HUD completeness gates are satisfied. The solution finalizer carries the settled 153-point total into `solution_approved`; the ledger transition contract treats estimate/breakdown stabilization as internal to tasking rather than a standalone phase gate. After finalization, the suggested next command is `/speckit.implement`.

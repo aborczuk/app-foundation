@@ -75,11 +75,11 @@ _Artifact: `plan.md`_
 - matches: true
 - exit_code: 0
 - files:
-  - `/Users/andreborczuk/app-foundation/src/mcp_clickup/artifact_parser.py`
+  - `/Users/andreborczuk/app-foundation/scripts/validate_command_script_coverage.py`
 
 stderr:
 ```text
-[07/10/26 12:07:21] INFO     Processing request of type            server.py:727
+[11/26/26 21:38:42] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
                     INFO     Processing request of type            server.py:727
                              ListToolsRequest                                   
@@ -90,12 +90,19 @@ stderr:
                     INFO     vector-index: embedded 1/1 texts in   chroma.py:586
                              0.00s                                              
                     INFO     vector-index: embedding backend       chroma.py:592
-                             returned 1 vectors in 0.01s                        
-[07/10/26 12:07:22] INFO     Processing request of type            server.py:727
+                             returned 1 vectors in 0.00s                        
+[11/26/26 21:38:43] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
-
-Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]
-Loading weights: 100%|██████████| 393/393 [00:00<00:00, 9617.27it/s]
+                    INFO     HTTP Request: HEAD                  _client.py:1025
+                             https://huggingface.co/BAAI/bge-rer                
+                             anker-v2-m3/resolve/main/config.jso                
+                             n "HTTP/1.1 307 Temporary Redirect"                
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+                    WARNING  Warning: You are sending               _http.py:904
+                             unauthenticated requests to the HF                 
+                             Hub. Please set a HF_TOKEN to enable               
+                             higher rate limits and faster                      
+                             downloads.                                         
 ```
 
 ### Term: autonomous
@@ -107,35 +114,11 @@ Loading weights: 100%|██████████| 393/393 [00:00<00:00, 9617
 
 stderr:
 ```text
-[07/10/26 12:07:21] INFO     Processing request of type            server.py:727
-                             CallToolRequest                                    
-                    INFO     Processing request of type            server.py:727
-                             ListToolsRequest                                   
-                    INFO     Processing request of type            server.py:727
-                             CallToolRequest                                    
-                    INFO     vector-index: embedding 1 texts in    chroma.py:580
-                             batches of 1                                       
-                    INFO     vector-index: embedded 1/1 texts in   chroma.py:586
-                             0.00s                                              
-                    INFO     vector-index: embedding backend       chroma.py:592
-                             returned 1 vectors in 0.01s                        
-[07/10/26 12:07:22] INFO     Processing request of type            server.py:727
-                             CallToolRequest                                    
-
-Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]
-Loading weights: 100%|██████████| 393/393 [00:00<00:00, 9278.96it/s]
-```
-
-### Term: resumable
-
-- matches: true
-- exit_code: 0
-- files:
-  - `/Users/andreborczuk/app-foundation/scripts/speckit_codex_handoff_runner.py`
-
-stderr:
-```text
-[07/10/26 12:07:21] INFO     Processing request of type            server.py:727
+Building app-foundation @ file:///Users/andreborczuk/app-foundation
+      Built app-foundation @ file:///Users/andreborczuk/app-foundation
+Uninstalled 1 package in 0.78ms
+Installed 1 package in 1ms
+[11/26/26 21:38:42] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
                     INFO     Processing request of type            server.py:727
                              ListToolsRequest                                   
@@ -147,11 +130,51 @@ stderr:
                              0.01s                                              
                     INFO     vector-index: embedding backend       chroma.py:592
                              returned 1 vectors in 0.01s                        
-[07/10/26 12:07:22] INFO     Processing request of type            server.py:727
+[11/26/26 21:38:43] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
+                    INFO     HTTP Request: HEAD                  _client.py:1025
+                             https://huggingface.co/BAAI/bge-rer                
+                             anker-v2-m3/resolve/main/config.jso                
+                             n "HTTP/1.1 307 Temporary Redirect"                
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+                    WARNING  Warning: You are sending               _http.py:904
+                             unauthenticated requests to the HF                 
+                             Hub. Please set
+```
 
-Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]
-Loading weights: 100%|██████████| 393/393 [00:00<00:00, 8071.34it/s]
+### Term: resumable
+
+- matches: true
+- exit_code: 0
+- files:
+  - `/Users/andreborczuk/app-foundation/scripts/speckit_codex_handoff_runner.py`
+
+stderr:
+```text
+[11/26/26 21:38:42] INFO     Processing request of type            server.py:727
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:727
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:727
+                             CallToolRequest                                    
+                    INFO     vector-index: embedding 1 texts in    chroma.py:580
+                             batches of 1                                       
+                    INFO     vector-index: embedded 1/1 texts in   chroma.py:586
+                             0.00s                                              
+                    INFO     vector-index: embedding backend       chroma.py:592
+                             returned 1 vectors in 0.01s                        
+[11/26/26 21:38:43] INFO     Processing request of type            server.py:727
+                             CallToolRequest                                    
+                    INFO     HTTP Request: HEAD                  _client.py:1025
+                             https://huggingface.co/BAAI/bge-rer                
+                             anker-v2-m3/resolve/main/config.jso                
+                             n "HTTP/1.1 307 Temporary Redirect"                
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+                    WARNING  Warning: You are sending               _http.py:904
+                             unauthenticated requests to the HF                 
+                             Hub. Please set a HF_TOKEN to enable               
+                             higher rate limits and faster                      
+                             downloads.                                         
 ```
 
 ### Term: spec
@@ -163,7 +186,7 @@ Loading weights: 100%|██████████| 393/393 [00:00<00:00, 8071
 
 stderr:
 ```text
-[07/10/26 12:07:21] INFO     Processing request of type            server.py:727
+[11/26/26 21:38:42] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
                     INFO     Processing request of type            server.py:727
                              ListToolsRequest                                   
@@ -174,12 +197,19 @@ stderr:
                     INFO     vector-index: embedded 1/1 texts in   chroma.py:586
                              0.00s                                              
                     INFO     vector-index: embedding backend       chroma.py:592
-                             returned 1 vectors in 0.01s                        
-[07/10/26 12:07:22] INFO     Processing request of type            server.py:727
+                             returned 1 vectors in 0.00s                        
+[11/26/26 21:38:43] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
-
-Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]
-Loading weights: 100%|██████████| 393/393 [00:00<00:00, 8902.65it/s]
+                    INFO     HTTP Request: HEAD                  _client.py:1025
+                             https://huggingface.co/BAAI/bge-rer                
+                             anker-v2-m3/resolve/main/config.jso                
+                             n "HTTP/1.1 307 Temporary Redirect"                
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+                    WARNING  Warning: You are sending               _http.py:904
+                             unauthenticated requests to the HF                 
+                             Hub. Please set a HF_TOKEN to enable               
+                             higher rate limits and faster                      
+                             downloads.                                         
 ```
 
 ### Term: pipeline
@@ -191,7 +221,7 @@ Loading weights: 100%|██████████| 393/393 [00:00<00:00, 8902
 
 stderr:
 ```text
-[07/10/26 12:07:21] INFO     Processing request of type            server.py:727
+[11/26/26 21:38:42] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
                     INFO     Processing request of type            server.py:727
                              ListToolsRequest                                   
@@ -202,12 +232,20 @@ stderr:
                     INFO     vector-index: embedded 1/1 texts in   chroma.py:586
                              0.00s                                              
                     INFO     vector-index: embedding backend       chroma.py:592
-                             returned 1 vectors in 0.01s                        
-[07/10/26 12:07:22] INFO     Processing request of type            server.py:727
+                             returned 1 vectors in 0.00s                        
+[11/26/26 21:38:43] INFO     Processing request of type            server.py:727
                              CallToolRequest                                    
-
-Loading weights:   0%|          | 0/393 [00:00<?, ?it/s]
-Loading weights: 100%|██████████| 393/393 [00:00<00:00, 8614.11it/s]
+                    INFO     HTTP Request: HEAD                  _client.py:1025
+                             https://huggingface.co/BAAI/bge-rer                
+                             anker-v2-m3/resolve/main/config.jso                
+                             n "HTTP/1.1 307 Temporary Redirect"                
+                    INFO     HTTP Request: HEAD                  _client.py:1025
+                             https://huggingface.co/api/resolve-                
+                             cache/models/BAAI/bge-reranker-v2-m                
+                             3/953dc6f6f85a1b2dbfca4c34a2796e7dd                
+                             e08d41e/config.json "HTTP/1.1 200                  
+                             OK"                                                
+                    INFO     HTTP Request: HEAD         
 ```
 
 ## Relevant Domains
@@ -344,109 +382,104 @@ Loading weights: 100%|██████████| 393/393 [00:00<00:00, 8614
 
 ## Summary
 
-Upgrade the repository from the current old Specify/Spec Kit surface to a pinned Spec Kit `v0.12.9` workflow model that autonomously advances pre-implementation phases from prompt to implementation-ready handoff. The plan keeps upstream workflow state as the durable cursor while preserving repository authority for ledgers, phase validation, human decisions, shell safety, and handoff reconciliation.
-
-Implementation should proceed as a staged migration rather than a forced refresh: first inventory and pin upstream/project state, then build repo-owned workflow adapters and safety contracts, then add durable resume/reconciliation, and finally prove the complete prompt-to-handoff path with live engine, fault, security, and clean-checkout verification. The terminal boundary is a governed handoff envelope for a separate implementation workflow, not implementation execution.
+Upgrade the repository from one-phase driver dispatch to a durable Spec Kit `v1.4.5` workflow cursor while preserving repository-owned templates, commands, validation gates, ledgers, and implementation boundaries. Keep the existing pipeline driver as the phase adapter and event bridge, add safe workflow and command adapters around it, and finish with a reconciled implementation-ready handoff rather than starting implementation automatically.
 
 ## Internal Research
 
-- Feature 023 is the baseline for deterministic phase orchestration, validate-before-emit, idempotency, and ledger authority. This feature extends that baseline with durable upstream workflow state, bounded repair loops, human pauses, and implementation-ready handoff.
-- `scripts/pipeline_driver.py` currently resolves one phase and exits with `next_phase`; it should become a repo-owned phase adapter/event bridge beneath the upstream cursor, or be replaced by an equivalently single-owned boundary.
-- `scripts/speckit_specify_step.py` currently scaffolds a spec and exits; the new flow must fill and validate the generated artifact before emitting success.
-- `command-manifest.yaml` contains deterministic, generative, and legacy route ownership. The plan must consolidate command ownership before enabling routes so direct reruns cannot bypass workflow gates.
-- Existing pipeline/task ledgers remain authoritative and must be accessed only through script-owned interfaces. Upstream workflow logs and state are telemetry/cursor evidence, not completion proof.
-- Feature locks and runtime result helpers exist but are not yet a complete production lease/result layout for prompt-to-handoff orchestration.
-- The generic runner has implementation-specific side effects that are out of scope for this workflow; the new pre-implementation runner contract must prohibit implicit staging, commit, push, deploy, publication, or implementation start.
+- Feature 023 already defines deterministic phase routing, validate-before-emit behavior, feature locking helpers, and idempotent pipeline event append; feature 039 is a completion and migration layer, not a second orchestrator.
+- The current driver selects and executes one ledger-authoritative phase per process. Its Specify route invokes the adapter as an executable, while the tracked file is not executable and its entrypoint still requires a new description instead of honoring the existing-feature arguments.
+- Plan, Solution, and phase-gate helpers already provide useful deterministic artifact contracts, but their direct workflow composition and result/event correlation are incomplete.
+- The two command-manifest copies describe route ownership but have divergent outer and inner version metadata and do not yet model one complete durable multi-step workflow.
+- Pipeline and task ledgers remain the completion authority. Upstream workflow status and logs are cursor and telemetry evidence, not substitutes for repository validation or lifecycle events.
+- Existing Codex skills, Claude commands, Specify templates, and repository scripts are custom assets that must move through supported package or overlay seams and survive upgrade rehearsal byte-for-byte or through an explicitly reviewed render transformation.
+- The generic handoff runner has implementation-oriented side effects, so pre-implementation orchestration must explicitly prohibit staging, committing, pushing, publishing, deploying, or beginning implementation.
 
 ## External Research
 
-- Pin to GitHub Spec Kit `v0.12.9`; do not float to `main` or `latest` without a reviewed spec amendment.
-- Use upstream workflow `command`, `prompt`, `shell`, `gate`, `if`, `switch`, `while`, and `do-while` steps, but wrap `shell` in repo-owned allowlisted Python adapters because upstream shell execution runs with user privileges and no capability sandbox.
-- Use upstream status/resume behavior for the durable workflow cursor, while treating repository ledgers as the only phase/task completion authority.
-- Treat nested pause/failure resume as replay-prone: nested workflow bodies and repository side effects must be idempotent because parent boundaries may rerun.
-- Require deterministic post-loop assertions because reaching a loop cap does not itself prove success or failure.
-- Use upstream machine-readable version/capability output and supported customization seams such as presets, custom steps, or bundles to preserve repo customizations without hand-editing upstream core.
-- Account for updated Codex integration paths and invocation conventions, because this repository currently uses `.codex/skills` wrappers and retained `.claude/commands`.
+- Pin the upgrade target to the immutable Spec Kit `v1.4.5` release verified in the specification; do not float to `main` or `latest` without a reviewed specification amendment.
+- Use upstream command, prompt, shell, gate, conditional, loop, fan-out/fan-in, and nested-workflow steps only through repository-owned adapters and policies.
+- Wrap effective shell work in fixed executable and argv contracts because upstream shell execution runs with user privileges and no capability sandbox.
+- Treat upstream status and resume as the durable workflow cursor while retaining pipeline and task ledgers as the only phase and task completion authority.
+- Make every replayable effect idempotent: completed occurrences are retained, but interrupted effects before their completion checkpoint can repeat.
+- Require deterministic post-loop assertions because reaching a maximum iteration count does not prove convergence or failure.
+- Use the machine-readable version-and-features command as the capability preflight and explicit project and feature targeting instead of unattended branch or cwd inference.
+- Package repository customizations through supported presets, extensions, overlays, custom step packages, and bundles so a clean install can restore existing templates and workflow steps.
 
 ## Architecture Strategy
 
 Use a layered orchestration model with one upstream workflow cursor and narrow repository adapters:
 
-- Upstream Spec Kit workflow owns run identity, step cursor, status, resume, structured control flow, and pause mechanics.
-- Repository phase adapters own artifact generation, validation, result shaping, event requests, and handoff construction.
-- Ledger bridge owns idempotent append/reconciliation through existing pipeline/task ledger scripts only.
-- Command adapter owns safe `shell` invocation by translating workflow shell steps into reviewed Python executable/argv contracts with validated inputs, output caps, redaction, timeouts, and permission classes.
-- Human policy adapter owns reason-code classification, pause-before-effect rules, resume input validation, and authority checks.
-- Lease adapter owns single-flight feature ownership across start, continuation, pause, resume, expiry, and crash recovery.
-- Handoff adapter produces one compact implementation-ready envelope with pointers to full artifacts and diagnostics for the separate implementation workflow.
+- Upstream Spec Kit owns run identity, the durable execution tree, step cursor, structured control flow, status, and resume.
+- The repository workflow adapter translates upstream step results into the existing phase contract.
+- Repository phase adapters own artifact generation, deterministic validation, bounded diagnostics, result shaping, and event requests.
+- The ledger bridge owns idempotent append and reconciliation through the existing pipeline and task ledger interfaces only.
+- The command adapter owns safe execution using fixed Python executable and argv contracts, validated inputs, root-bounded cwd, timeouts, output caps, redaction, and permission classes.
+- Human policy owns reason-code classification, pause-before-effect rules, authority requirements, and typed resume input validation.
+- Lease handling owns renewable single-flight feature execution across start, continuation, pause, resume, expiry, and crash recovery.
+- The handoff adapter produces one compact implementation-ready envelope with pointers to full artifacts and diagnostics for the separate implementation workflow.
 
-The migration should preserve old behavior until each route has a live-tested equivalent. Enable routes only after their manifest ownership, workflow step, validator, ledger event, result path, and handoff evidence are all reconciled.
+Migrate route-by-route. A route becomes active only when its manifest ownership, workflow step, adapter, validator, event, runtime result, replay behavior, and live verification agree.
 
 ## Architecture Diagram
 
-```mermaid
-flowchart TD
-    A[Prompt or Run ID] --> B[Canonical Plan/Run Command]
-    B --> C[Spec Kit Workflow Cursor]
-    C --> D[Repo Phase Adapter]
-    D --> E[Template or Scaffold]
-    E --> F[LLM Action]
-    F --> G[Deterministic Validator]
-    G --> H{Outcome}
-    H -->|pass| I[Ledger Bridge]
-    H -->|recoverable| J[Bounded while/do-while Repair]
-    J --> F
-    H -->|human required| K[Human Pause Envelope]
-    H -->|terminal failure| L[Failed Handoff Envelope]
-    I --> M[State/Reconciliation Check]
-    M -->|next pre-implementation phase| C
-    M -->|handoff complete| N[Implementation-Ready Envelope]
-    N --> O[Separate Implementation Workflow]
-```
+Prompt or existing feature
+→ canonical speckit.run trigger
+→ Spec Kit v1.4.5 durable workflow cursor
+→ repository workflow adapter
+→ phase adapter plus custom template
+→ generation or deterministic action
+→ phase-specific validator
+→ pass: idempotent ledger bridge and state reconciliation
+→ recoverable: bounded repair loop back to generation
+→ human required: durable pause envelope
+→ terminal failure: bounded failure envelope
+→ solution complete: implementation-ready handoff
+→ separate implement workflow
 
 ## Expanded Design Notes
 
-- Capability and migration preflight must run before mutation, capture the current CLI/project/customization inventory, verify the pinned upstream version and feature set, and produce deterministic remediation when incompatible.
-- Every workflow step that can mutate files, ledgers, or runtime state must declare identity, inputs, output, validator, effect scope, timeout, and idempotency key before execution.
-- Repair loops must consume the latest persisted validator/task output, not stale prior loop values, and must end in a deterministic assertion that classifies success, recoverable retry, human pause, or terminal failure.
-- Rehydration must not require chat history or direct JSONL inspection. One status call must return identity, phase/attempt, last validated event, pending reason, permitted action, version compatibility, lease state, and artifact pointers.
-- Reconciliation must compare workflow state, pipeline ledger, task/planning evidence, runtime results, manifest route, versions, artifacts, and lease before any effectful boundary. Drift blocks execution and returns one non-mutating next action.
-- Human pauses must be durable and must happen before dependent mutation or external effect. Resume input must be typed, correlated, authorized, fresh, scoped, and secret-safe.
-- Upgrade/reproduction must be staged: inventory, isolated rehearsal, clean checkout reproduction, compatibility proof for active runs, and deterministic rollback without modifying ledger history or feature artifacts.
-- The final output of this workflow is an implementation-ready handoff envelope. It must not run implementation tasks, close tasks, stage/commit/push implementation changes, publish, deploy, merge, or contact external systems.
+The design must enforce these rules:
+
+- Capability and migration preflight happens before mutation and records installed versions, workflow features, project integration, customization inventory, and the pinned target.
+- Repository-owned templates, commands, skills, scripts, overlays, and workflow definitions must survive clean-install rehearsal or an explicitly reviewed transformation.
+- Every effectful step declares identity, inputs, outputs, validator, effect scope, timeout, permission class, idempotency key, and redaction behavior.
+- Repair loops consume the latest persisted validator result and terminate in a deterministic success, retry, human-pause, or terminal-failure assertion.
+- One status operation returns run identity, phase and attempt, last validated event, pending reason, permitted action, version compatibility, lease state, and artifact pointers without depending on chat history.
+- Reconciliation compares workflow state, ledgers, planning evidence, runtime results, manifest route, versions, artifacts, and lease before any new effect. Drift blocks execution and returns one non-mutating next action.
+- Human pauses occur before the protected effect. Resume input is typed, correlated, authorized, fresh, narrowly scoped, and secret-safe.
+- Installation and rollback are rehearsed in isolation and in a clean checkout. Rollback does not rewrite ledger history or feature artifacts.
+- The terminal output is an implementation-ready envelope and cannot execute tasks, stage or commit implementation work, push, publish, deploy, merge, or contact external systems as implementation side effects.
 
 ## Design Slices
 
-### Slice PL-01 - Pin and Rehearse Spec Kit Upgrade
+### Slice PL-01 - Pin and Rehearse the Spec Kit Upgrade
 - Estimate: high
-- Implementation Directive: Build the non-mutating capability and migration preflight for pinned Spec Kit `v0.12.9`, including current CLI/project/customization inventory, isolated checkout rehearsal, clean-checkout reproduction proof, version/capability JSON validation, and rollback plan that preserves feature artifacts and ledger history.
+- Implementation Directive: Build the non-mutating capability and migration preflight for pinned Spec Kit `v1.4.5`, including current CLI, project, and customization inventory; isolated install rehearsal; clean-checkout reproduction proof; feature validation; and rollback that preserves artifacts and ledger history.
 
 ### Slice PL-02 - Define Workflow Ownership and Manifest Routing
 - Estimate: high
-- Implementation Directive: Convert the command manifest and retained command/skill surfaces into one validated integration-neutral source for pre-implementation lifecycle ownership, route status, workflow step mapping, script adapter, timeout, permission class, artifact, validator, event, version, and provenance.
+- Implementation Directive: Make one validated manifest contract authoritative for workflow ownership, route status, step mapping, adapter, timeout, permission class, artifact, validator, event, version, and provenance while retaining supported Codex and Claude entry surfaces.
 
-### Slice PL-03 - Build Safe Command and Shell Adapter Contract
+### Slice PL-03 - Build the Safe Command Adapter
 - Estimate: high
-- Implementation Directive: Implement the repo-owned deterministic command adapter behind upstream `shell` steps with fixed executable/argv contracts, validated inputs, root cwd, timeouts, output caps, redaction, structured JSON stdout, stderr diagnostics, permission classes, and pre-process rejection for any unreviewed effective command.
+- Implementation Directive: Implement a repository-owned adapter behind upstream shell steps using fixed executable and argv contracts, validated structured inputs, root-bounded cwd, timeouts, output caps, redaction, structured results, permission classes, and rejection of unreviewed effective commands.
 
-### Slice PL-04 - Implement Pre-Implementation Phase Workflow Adapters
+### Slice PL-04 - Wire Pre-Implementation Phase Adapters
 - Estimate: high
-- Implementation Directive: Wire prompt-to-handoff phases so each generative phase declares template/scaffold, output, mutation scope, runner, validator, diagnostics, success event, and side-effect contract, and ensure scaffold-only or failed generated artifacts cannot emit phase success.
+- Implementation Directive: Connect Specify, Plan, and Solution so each phase declares its custom template or scaffold, generation action, output, mutation scope, validator, diagnostics, success event, and side-effect contract; scaffold-only or failed artifacts never emit success.
 
-### Slice PL-05 - Add Loop, Outcome, and Human Pause Policy
+### Slice PL-05 - Add Outcome, Loop, and Human-Pause Policy
 - Estimate: high
-- Implementation Directive: Add structured outcome classification, bounded `while`/`do-while` repair/convergence loops, post-loop assertions, human reason-code policy, pause-before-effect behavior, and typed resume input validation for all protected decisions.
+- Implementation Directive: Add structured outcome classification, bounded repair and convergence loops, post-loop assertions, human reason codes, pause-before-effect behavior, and typed resume input validation for every protected decision.
 
-### Slice PL-06 - Add Durable Resume, Reconciliation, Lease, and Handoff Envelope
+### Slice PL-06 - Add Resume, Reconciliation, Lease, and Handoff State
 - Estimate: high
-- Implementation Directive: Correlate workflow state, ledgers, runtime results, artifacts, manifest, versions, attempts, actor, and lease; enforce idempotent replay and drift blocking; and emit one compact implementation-ready handoff envelope for the separate implementation workflow.
+- Implementation Directive: Correlate workflow cursor, ledgers, runtime results, artifacts, manifest, versions, attempts, actor, and renewable feature lease; enforce idempotent replay and drift blocking; and emit one compact implementation-ready handoff envelope.
 
 ### Slice PL-07 - Prove Live Prompt-to-Handoff Safety
 - Estimate: high
-- Implementation Directive: Add deterministic unit/contract tests plus live pinned-engine verification, fault injection, security fixtures, clean-checkout rehearsal, rollback proof, and fake-only test labeling so prompt-to-handoff behavior is proven without starting implementation.
+- Implementation Directive: Add unit and contract coverage plus live pinned-engine verification, fault injection, security fixtures, clean-install rehearsal, rollback proof, and explicit fake-only test labeling so the prompt-to-handoff path is proven without starting implementation.
 
 ## Plan Completion Summary
 
-Selected the broader high-risk plan path because the feature is non-duplicate, net-new operator-facing workflow surface area, and depends on external Spec Kit workflow behavior plus repository ledger, shell, lease, resume, and handoff contracts. The selected sections are sufficient for tasking because the plan identifies ownership boundaries, risk domains, external dependency assumptions, architecture flow, replay and handoff rules, and seven concrete slices that can become implementation tasks without starting implementation in this workflow.
-
-Next phase should create tasks for the seven design slices, preserving the terminal boundary at implementation-ready handoff and keeping implementation execution in a separate downstream workflow.
+The full XL and high-risk plan path is required because the feature adds an operator-facing workflow surface and crosses an upstream engine, local customization packaging, command safety, ledger authority, leases, replay, and live verification. The seven slices define ownership and tasking-ready implementation boundaries while retaining the terminal boundary at an implementation-ready handoff. The Solution phase should convert these slices into ordered, independently verifiable tasks and stop before executing any implementation task.

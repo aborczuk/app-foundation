@@ -14,7 +14,7 @@
 
 **Purpose**: Establish pinned upstream and repo baseline before any migration mutation.
 
-- [ ] T001 [US4] Add pinned Spec Kit capability preflight and version contract in scripts/speckit_workflow_preflight.py covering `specify version --features --json`, approved release `v0.12.9`, project root, feature directory, and no floating `latest` values.
+- [ ] T001 [US4] Add pinned Spec Kit capability preflight and version contract in scripts/speckit_workflow_preflight.py covering the machine-readable version and features command, approved release `v1.4.5`, project root, feature directory, and no floating `latest` values.
 - [ ] T002 [P] [US4] Add unit coverage for preflight pass/fail cases in tests/unit/test_speckit_workflow_preflight.py, including missing workflow support, wrong release, malformed JSON, and ambiguous project root.
 - [ ] T003 [US4] Add upgrade inventory and rehearsal support in scripts/speckit_upgrade_inventory.py for CLI/project/customization files, hashes, clean-checkout reproduction inputs, and rollback evidence.
 - [ ] T004 [P] [US4] Add unit coverage for inventory classification and rollback metadata in tests/unit/test_speckit_upgrade_inventory.py.
@@ -34,7 +34,7 @@
 
 ## Phase 3: Safe Command and Shell Adapter
 
-**Purpose**: Preserve argv safety behind upstream `shell` workflow steps.
+**Purpose**: Preserve argv safety behind upstream shell workflow steps.
 
 - [ ] T009a [US2] Define scripts/speckit_command_adapter.py request and reviewed-command policy contracts for allowlisted executable/argv resolution, validated input schema, repository-root cwd, and permission class so any unreviewed effective command is rejected before process creation.
 - [ ] T009b [US2] Implement the validated-request runner in scripts/speckit_command_adapter.py with root-cwd execution, bounded timeout and output capture, and a single structured JSON stdout result with bounded stderr diagnostics.
@@ -62,7 +62,7 @@
 
 **Purpose**: Make autonomous continuation safe and stop only for classified reasons.
 
-- [ ] T017 [US1] Add loop policy support in scripts/speckit_workflow_loops.py for `while` and `do-while` repair/convergence using latest persisted validator or task output, finite budgets, deterministic conditions, and post-loop assertions.
+- [ ] T017 [US1] Add loop policy support in scripts/speckit_workflow_loops.py for while and do-while repair/convergence using latest persisted validator or task output, finite budgets, deterministic conditions, and post-loop assertions.
 - [ ] T018 [P] [US1] Add loop tests in tests/unit/test_speckit_workflow_loops.py covering stale output, cap exhaustion, malformed condition output, recoverable retry, and no false success.
 - [ ] T019 [US2] Add human intervention policy in scripts/speckit_human_policy.py with reason codes, authority, required information, allowed choices, prohibited effects, and typed resume validation.
 - [ ] T020 [P] [US2] Add human policy tests in tests/unit/test_speckit_human_policy.py for material ambiguity, mandated approval, sensitive access, destructive work, external effect, drift, exhausted recovery, and unauthorized resume.
@@ -81,7 +81,7 @@
 - [ ] T024 [US3] Add implementation-ready handoff envelope generation in scripts/speckit_handoff_envelope.py with identity, phase/task attempt, last event, pending reason, permitted action, next step, versions, lease, and diagnostic pointers.
 - [ ] T025 [P] [US3] Add envelope tests in tests/unit/test_speckit_handoff_envelope.py for compact JSON stdout, stderr diagnostics, artifact pointers, redaction, and downstream implementation workflow handoff.
 
-**Checkpoint**: One status result gives complete next-action context without direct JSONL inspection.
+**Checkpoint**: One status result gives complete next-action context without direct ledger inspection.
 
 ## Phase 7: Live Verification and Documentation
 
@@ -101,7 +101,7 @@
 
 - Phase 1 must complete before any route or adapter mutation.
 - Phase 2 must complete before workflow adapter routes are enabled.
-- Phase 3 must complete before any upstream `shell` step can execute repository commands.
+- Phase 3 must complete before any upstream shell step can execute repository commands.
 - Phase 4 depends on Phases 1 through 3.
 - Phase 5 depends on Phase 4 outcome contracts.
 - Phase 6 depends on ledger, outcome, and adapter contracts from Phases 2 through 5.
@@ -119,8 +119,8 @@
 
 ## Implementation Strategy
 
-1. Deliver the baseline/preflight and manifest ownership first so downstream tasks have stable contracts.
-2. Add safe command execution before any workflow `shell` route is enabled.
+1. Deliver baseline/preflight and manifest ownership first so downstream tasks have stable contracts.
+2. Add safe command execution before any workflow shell route is enabled.
 3. Add phase adapters, loop policy, human policy, and reconciliation in that order.
 4. Finish with live prompt-to-handoff verification and governance docs.
 5. Stop at `/speckit.implement` readiness; do not execute implementation in this workflow.
