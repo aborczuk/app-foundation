@@ -84,3 +84,4 @@
 {"actor": "speckit.estimate", "estimate_points": 37, "event": "tasking_completed", "feature_id": "059", "phase": "tasking", "story_count": 5, "task_count": 13, "timestamp_utc": "2026-11-27T17:35:39.236496Z"}
 {"actor": "speckit.analyze", "critical_count": 0, "event": "analysis_completed", "feature_id": "059", "high_count": 0, "phase": "analyze", "timestamp_utc": "2026-11-27T17:36:12.493522Z"}
 {"actor": "speckit.implement", "event": "implementation_completed", "feature_id": "059", "phase": "implement", "timestamp_utc": "2026-11-27T19:36:11.558554Z"}
+{"actor": "pipeline_driver", "event": "backlog_registered", "feature_id": "062", "phase": "specify", "timestamp_utc": "2026-11-27T20:58:16.683515Z"}
