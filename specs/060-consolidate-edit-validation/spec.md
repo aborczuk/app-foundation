@@ -1,8 +1,121 @@
-# Feature Specification: Consolidate Edit Validation
+# Feature Specification: Consolidate Edit Validation and Refresh
+
+**Feature Branch**: `060-consolidate-edit-validation`
+**Created**: 2026-11-27
+**Status**: Draft
+**Input**: User description: "Make edits cheap: stop validating and refreshing discovery backends after every edit, track changed paths, validate once at explicit checkpoints, and let discovery systems own freshness where they support it."
+
+## One-Line Purpose *(mandatory)*
+
+Coding agents can make multi-file edits without repeated validation or index-refresh work while final handoff still proves the changed state is valid and discoverable.
 
 ## Consumer & Context *(mandatory)*
 
-Coding agents and repository maintainers need one predictable validation experience that permits temporarily inconsistent multi-file work, avoids repeated validation and discovery refreshes, produces a trustworthy final quality decision, and preserves safe commit-time safeguards when governed workflow evidence is unavailable.
+Codex agents and repository workflows consume this behavior during iterative code editing, validation, discovery, and commit/closeout.
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - Edits Stay Cheap (Priority: P1)
+
+As a coding agent, I can make a sequence of edits without Ruff, Pyright, docstring validation, CodeGraph refresh, or vector refresh running after every edit.
+
+**Why this priority**: Per-edit validation and refresh are the main source of duplicated work and make temporarily inconsistent multi-file changes difficult.
+
+**Independent Test**: Make several edits across multiple files and verify the edit hook records the affected paths but runs no technical validator and no discovery refresh.
+
+**Acceptance Scenarios**:
+
+1. **Given** an authorized edit, **When** the edit completes, **Then** the affected paths are tracked and no technical validator runs automatically.
+2. **Given** an authorized edit, **When** the edit completes, **Then** no Semble, vector, or CodeGraph refresh is triggered by the edit hook.
+3. **Given** several temporarily inconsistent edits, **When** work continues before validation, **Then** the workflow does not block merely because an intermediate state is incomplete.
+
+---
+
+### User Story 2 - Validate Once at Explicit Checkpoints (Priority: P2)
+
+As a coding agent, I can request intermediate validation when useful and receive mandatory final validation at task closeout without repeating successful checks against unchanged state.
+
+**Why this priority**: Safety remains mandatory, but validation should happen at meaningful boundaries rather than after every write.
+
+**Independent Test**: Validate an unchanged state twice and verify mandatory checks run once; change relevant content and verify affected evidence is invalidated.
+
+**Acceptance Scenarios**:
+
+1. **Given** changed code, **When** explicit validation runs, **Then** applicable targeted tests, lint, type, and required documentation checks run against that state.
+2. **Given** unchanged successful validation evidence, **When** closeout runs, **Then** equivalent checks are reused rather than repeated.
+3. **Given** relevant content or validation configuration changes, **When** closeout runs, **Then** affected evidence is invalidated and required checks rerun.
+4. **Given** a mandatory check fails, **When** closeout is attempted, **Then** handoff is rejected.
+
+---
+
+### User Story 3 - Discovery Freshness Has One Owner (Priority: P3)
+
+As a repository agent, I get authoritative discovery results without edit hooks duplicating each backend's freshness lifecycle.
+
+**Why this priority**: Semble already owns its supported cache/index lifecycle, the legacy vector backend is being removed by feature 061, and structural discovery should refresh only when its backend actually requires it.
+
+**Independent Test**: Edit relevant files, perform discovery, and verify no post-edit refresh occurred; Semble works through its MCP-owned lifecycle, the legacy vector backend is not invoked, and any backend that still requires explicit freshness is refreshed only at an authoritative read or closeout boundary.
+
+**Acceptance Scenarios**:
+
+1. **Given** changed files, **When** Semble search runs, **Then** the edit workflow does not perform a separate Semble refresh.
+2. **Given** feature 061 migration is complete, **When** edits occur, **Then** no legacy vector refresh/index/reranker path runs.
+3. **Given** a structural discovery backend that still requires explicit refresh, **When** an authoritative structural read encounters stale state, **Then** only the affected scope is refreshed before authoritative results are returned.
+4. **Given** unchanged current discovery state, **When** authoritative reads repeat, **Then** no duplicate refresh occurs.
+
+### Edge Cases
+
+- An edit changes files and the task is abandoned before validation.
+- An authoritative structural read occurs between two edits.
+- Direct Git activity occurs outside the governed workflow.
+- Validation succeeds, then relevant content changes before closeout.
+- A discovery backend reports that it cannot establish freshness.
+
+## Flowchart *(mandatory)*
+
+```mermaid
+flowchart TD
+    A[Edit completes] --> B[Record changed paths]
+    B --> C[Continue editing]
+    C --> D{Explicit validation or closeout?}
+    D -- No --> C
+    D -- Yes --> E[Run required validation for changed state]
+    E --> F{Validation passes?}
+    F -- No --> G[Reject checkpoint or closeout]
+    F -- Yes --> H{Authoritative discovery needs explicit freshness?}
+    H -- No --> I[Reuse backend-owned freshness]
+    H -- Yes --> J[Refresh affected scope only]
+    J --> I
+    I --> K[Allow checkpoint or closeout]
+```
+
+## Data & State Preconditions *(mandatory)*
+
+- The governed workflow can identify paths changed since the last proven state.
+- Validation evidence can be tied to the content/configuration state it proves.
+- Discovery backends expose enough readiness/freshness information to avoid presenting known-stale results as authoritative.
+
+## Inputs & Outputs *(mandatory)*
+
+| Direction | Description | Format |
+| :-- | :-- | :-- |
+| Input | Edit events, changed paths, explicit validation/closeout requests, authoritative discovery requests | Caller-defined |
+| Output | Tracked change state, reusable validation evidence, and authoritative discovery results or bounded failures | Caller-defined |
+
+## Constraints & Non-Goals *(mandatory)*
+
+**Must NOT**:
+- Run Ruff, Pyright, docstring validation, Semble refresh, legacy vector refresh, or CodeGraph refresh automatically after every edit.
+- Recreate Semble cache/index lifecycle in the edit workflow.
+- Keep the legacy vector-refresh path after feature 061 removes its consumers.
+
+**Adopted dependencies**:
+- Semble MCP owns semantic-discovery freshness through its supported lifecycle.
+- Structural discovery uses the configured CodeGraph backend; explicit refresh is required only while that backend requires it.
+
+**Out of scope**:
+- Replacing the CodeGraph implementation itself.
+- Changing Semble search semantics.
 
 ## Requirements *(mandatory)*
 
