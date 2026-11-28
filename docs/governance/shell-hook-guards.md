@@ -19,10 +19,12 @@ They exist to:
 - prevent direct shell workflows from bypassing repo-specific process rules
 
 This repo also has an `Edit`/`Write`/`MultiEdit`/`apply_patch` pretool gate and a
-`PostToolUse` edit hook path.
-The pretool gate blocks code edits before they start; the posttool hook validates
-changed files and refreshes read-code state after the edit lands. For
-`apply_patch` payloads, the refresh hook parses patch text to recover changed paths.
+`PostToolUse` edit-tracking hook path.
+The pretool gate blocks unauthorized code edits before they start; the posttool hook
+records changed repo-local paths and marks affected discovery scopes `stale` under
+`.codegraphcontext/workflow-state/` without running technical validators or synchronous
+refreshes. For `apply_patch` payloads, `scripts/hook_edit_paths.py` parses patch text
+to recover changed paths.
 
 ## Active Hook Entry Point
 
@@ -243,31 +245,28 @@ Primary edit hook files:
 
 For `Edit|Write` events, the repo-local Codex hook configuration routes through one repo-local script:
 
-- collect repo-local changed paths from the hook payload
-- run guarded `ruff` validation for changed Python files
-- run guarded `pyright` validation for changed Python files
-- run Python docstring validation for changed Python files
-- refresh CodeGraph for the smallest covering repo-local scope
-- refresh the vector index only for supported changed file types
+- collect repo-local changed paths from the hook payload via `scripts/hook_edit_paths.py`
+- persist the changed-path set in `.codegraphcontext/workflow-state/changed_paths.json` via `scripts/workflow_evidence.py`
+- mark affected CodeGraph and vector discovery scopes `stale` in `.codegraphcontext/workflow-state/freshness.json`
+- run **zero** technical validators (`ruff`, `pyright`, docstring checks) and **zero** synchronous index refreshes on intermediate edits so temporarily inconsistent multi-file work is never blocked
 
-This path is intentionally fail-closed:
+Validation and refresh ownership is consolidated into explicit single-owner seams:
 
-- validation failure stops the edit flow before refresh success can be reported
-- refresh failure stops the edit flow even if validation passed
-- non-Python edits skip Python-only validation but still run scoped refreshes when applicable
-
-The post-edit path checks reuse the same shared helper as the pre-edit branch guard, but the validation and refresh actions remain local to this hook.
+- **Optional intermediate validation**: `scripts/edit_code.py validate` runs guarded `pytest`, `ruff`, `pyright`, and docstring checks and persists content/config/lockfile/selector-bound evidence under `.codegraphcontext/workflow-state/evidence.json`.
+- **Mandatory closeout validation & final freshness**: `scripts/edit_code.py sync` enforces all mandatory checks with no skip bypasses, reuses valid evidence so unchanged validated states run each validator at most once, verifies/refreshes remaining stale discovery scopes, and records commit evidence before `git commit`.
+- **On-demand discovery freshness**: Authoritative `scripts/read_code.py` reads (`context`, `find`, `analyze`) refresh stale affected scopes via `scripts/read_code_health.py`, trigger zero duplicate refreshes on clean state, and fail closed with captured stderr on refresh failure. Direct disk reads (`read_code.py window`, `read_markdown.py`) bypass index refresh.
+- **Bootstrap & sandbox isolation**: `scripts/bootstrap_session.py` skips multi-scope `cgc_safe_index.py` runs when CodeGraph is already healthy and clean, aggregates failures across all scopes with subprocess stderr, and all CodeGraph/discovery subprocesses isolate `HOME`/`XDG_*`/caches inside `.codegraphcontext/` via `scripts/workflow_evidence.py:repo_local_tool_env()`.
 
 Current local registration shape:
 
 - `SessionStart` with matcher `startup|resume` routes to `.codex/hooks/session_start_context.py`
 - `PreToolUse` with matcher `Bash` routes to `scripts/hook_pretool_dispatch.py`
-- `PostToolUse` with matcher `Edit|Write` routes to `scripts/hook_posttool_edit_validation.py`
+- `PostToolUse` with matcher `Edit|Write|MultiEdit|apply_patch` routes to `scripts/hook_posttool_edit_validation.py`
 
-Current Git hook shape:
+Current Git hook shape (fallback safeguards for direct Git commits):
 
-- `.githooks/pre-commit` runs `scripts/git_pre_commit_lint.py`, which lints staged Python files through `scripts/ruff_guard.py`
-- `.githooks/post-commit` runs `scripts/git_post_commit_refresh.py` to refresh scoped repo-local indexes after each commit
+- `.githooks/pre-commit` runs `scripts/git_pre_commit_lint.py`, which skips duplicate lint only when exact verified `ruff` evidence matches the staged files and config, and otherwise runs `scripts/ruff_guard.py`
+- `.githooks/post-commit` runs `scripts/git_post_commit_refresh.py`, which skips duplicate refresh only when exact verified `refresh` evidence matches `HEAD` changes and config, and otherwise runs `scripts/hook_refresh_indexes.py`
 
 ## Practical Reading Order
 

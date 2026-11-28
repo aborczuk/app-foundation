@@ -2318,3 +2318,83 @@
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/060-consolidate-edit-validation/tasks.md", "event": "task_registered", "feature_id": "060", "task_id": "T014", "timestamp_utc": "2026-11-27T22:51:36.024897Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/060-consolidate-edit-validation/tasks.md", "event": "task_registered", "feature_id": "060", "task_id": "T015", "timestamp_utc": "2026-11-27T22:51:36.037163Z"}
 {"actor": "andreborczuk", "attempt": 1, "details": "registered from /Users/andreborczuk/app-foundation/specs/060-consolidate-edit-validation/tasks.md", "event": "task_registered", "feature_id": "060", "task_id": "T016", "timestamp_utc": "2026-11-27T22:51:36.049244Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T001", "timestamp_utc": "2026-11-27T23:27:25.851686Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T001", "timestamp_utc": "2026-11-27T23:28:49.530029Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T001", "timestamp_utc": "2026-11-27T23:28:49.580021Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t001-20261127T232750Z", "task_id": "T001", "timestamp_utc": "2026-11-27T23:28:49.628599Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T001", "timestamp_utc": "2026-11-27T23:28:49.675705Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T002", "timestamp_utc": "2026-11-27T23:28:49.833470Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T002", "timestamp_utc": "2026-11-27T23:29:41.919591Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T002", "timestamp_utc": "2026-11-27T23:29:41.971392Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t002-20261127T232909Z", "task_id": "T002", "timestamp_utc": "2026-11-27T23:29:42.019144Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T002", "timestamp_utc": "2026-11-27T23:29:42.066343Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T003", "timestamp_utc": "2026-11-27T23:29:42.222951Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T003", "timestamp_utc": "2026-11-27T23:31:14.670764Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T003", "timestamp_utc": "2026-11-27T23:31:14.721658Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t003-20261127T233051Z", "task_id": "T003", "timestamp_utc": "2026-11-27T23:31:14.769769Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T003", "timestamp_utc": "2026-11-27T23:31:14.817456Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T004", "timestamp_utc": "2026-11-27T23:31:14.970961Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T004", "timestamp_utc": "2026-11-27T23:32:21.258747Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T004", "timestamp_utc": "2026-11-27T23:32:21.307435Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t004-20261127T233204Z", "task_id": "T004", "timestamp_utc": "2026-11-27T23:32:21.355441Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T004", "timestamp_utc": "2026-11-27T23:32:21.402655Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T005", "timestamp_utc": "2026-11-27T23:32:21.556508Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T005", "timestamp_utc": "2026-11-27T23:33:58.490782Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T005", "timestamp_utc": "2026-11-27T23:33:58.541912Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t005-20261127T233316Z", "task_id": "T005", "timestamp_utc": "2026-11-27T23:33:58.590567Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T005", "timestamp_utc": "2026-11-27T23:33:58.637332Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T006", "timestamp_utc": "2026-11-27T23:33:58.789090Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T006", "timestamp_utc": "2026-11-27T23:35:00.328671Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T006", "timestamp_utc": "2026-11-27T23:35:00.379765Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t006-20261127T233429Z", "task_id": "T006", "timestamp_utc": "2026-11-27T23:35:00.430143Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T006", "timestamp_utc": "2026-11-27T23:35:00.477949Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T007", "timestamp_utc": "2026-11-27T23:35:00.653708Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T007", "timestamp_utc": "2026-11-27T23:35:47.716405Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T007", "timestamp_utc": "2026-11-27T23:35:47.765815Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t007-20261127T233529Z", "task_id": "T007", "timestamp_utc": "2026-11-27T23:35:47.815172Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T007", "timestamp_utc": "2026-11-27T23:35:47.862723Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T008", "timestamp_utc": "2026-11-27T23:35:48.025063Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T008", "timestamp_utc": "2026-11-27T23:37:12.599897Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T008", "timestamp_utc": "2026-11-27T23:37:12.652052Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t008-20261127T233644Z", "task_id": "T008", "timestamp_utc": "2026-11-27T23:37:12.700879Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T008", "timestamp_utc": "2026-11-27T23:37:12.748795Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T009", "timestamp_utc": "2026-11-27T23:37:12.902312Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T009", "timestamp_utc": "2026-11-27T23:41:41.824184Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T009", "timestamp_utc": "2026-11-27T23:41:41.877060Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t009-20261127T234112Z", "task_id": "T009", "timestamp_utc": "2026-11-27T23:41:41.925980Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T009", "timestamp_utc": "2026-11-27T23:41:41.974664Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T010", "timestamp_utc": "2026-11-27T23:41:42.126500Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T010", "timestamp_utc": "2026-11-27T23:42:38.473867Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T010", "timestamp_utc": "2026-11-27T23:42:38.525290Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t010-20261127T234215Z", "task_id": "T010", "timestamp_utc": "2026-11-27T23:42:38.576484Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T010", "timestamp_utc": "2026-11-27T23:42:38.625188Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T011", "timestamp_utc": "2026-11-27T23:42:38.785589Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T011", "timestamp_utc": "2026-11-27T23:43:46.941852Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T011", "timestamp_utc": "2026-11-27T23:43:46.996184Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t011-20261127T234316Z", "task_id": "T011", "timestamp_utc": "2026-11-27T23:43:47.045894Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T011", "timestamp_utc": "2026-11-27T23:43:47.098262Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T012", "timestamp_utc": "2026-11-27T23:43:47.256070Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T012", "timestamp_utc": "2026-11-27T23:44:49.559709Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T012", "timestamp_utc": "2026-11-27T23:44:49.609042Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t012-20261127T234408Z", "task_id": "T012", "timestamp_utc": "2026-11-27T23:44:49.657859Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T012", "timestamp_utc": "2026-11-27T23:44:49.706662Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T013", "timestamp_utc": "2026-11-27T23:44:49.866404Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T013", "timestamp_utc": "2026-11-27T23:46:06.520952Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T013", "timestamp_utc": "2026-11-27T23:46:06.577392Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t013-20261127T234521Z", "task_id": "T013", "timestamp_utc": "2026-11-27T23:46:06.630373Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T013", "timestamp_utc": "2026-11-27T23:46:06.681234Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T014", "timestamp_utc": "2026-11-27T23:46:06.871064Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T014", "timestamp_utc": "2026-11-27T23:48:44.270683Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T014", "timestamp_utc": "2026-11-27T23:48:44.324741Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t014-20261127T234827Z", "task_id": "T014", "timestamp_utc": "2026-11-27T23:48:44.375809Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T014", "timestamp_utc": "2026-11-27T23:48:44.424692Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T015", "timestamp_utc": "2026-11-27T23:48:44.582331Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T015", "timestamp_utc": "2026-11-27T23:50:36.302068Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T015", "timestamp_utc": "2026-11-27T23:50:36.352913Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t015-20261127T235009Z", "task_id": "T015", "timestamp_utc": "2026-11-27T23:50:36.400878Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T015", "timestamp_utc": "2026-11-27T23:50:36.447852Z"}
+{"actor": "antigravity", "attempt": 1, "event": "task_started", "feature_id": "060", "task_id": "T016", "timestamp_utc": "2026-11-27T23:50:36.601670Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded task test evidence", "event": "tests_passed", "feature_id": "060", "task_id": "T016", "timestamp_utc": "2026-11-27T23:51:20.579796Z"}
+{"actor": "antigravity", "attempt": 1, "event": "offline_qa_started", "feature_id": "060", "task_id": "T016", "timestamp_utc": "2026-11-27T23:51:20.628140Z"}
+{"actor": "antigravity", "attempt": 1, "details": "closeout path recorded offline QA pass", "event": "offline_qa_passed", "feature_id": "060", "qa_run_id": "offline-qa-t016-20261127T235057Z", "task_id": "T016", "timestamp_utc": "2026-11-27T23:51:20.673514Z"}
+{"actor": "antigravity", "attempt": 1, "details": "canonical closeout path completed", "event": "task_closed", "feature_id": "060", "task_id": "T016", "timestamp_utc": "2026-11-27T23:51:20.718758Z"}

@@ -19,22 +19,21 @@ def _repo_root() -> Path:
 
 
 def _prepare_environment(repo_root: Path) -> None:
-    """Populate the environment expected by the CodeGraph CLI."""
-    codegraph_context_dir = repo_root / ".codegraphcontext"
-    codegraph_db_dir = codegraph_context_dir / "db"
-    repo_uv_cache = Path(os.environ.get("CGC_UV_CACHE_DIR", str(codegraph_context_dir / ".uv-cache")))
-    codegraph_db_dir.mkdir(parents=True, exist_ok=True)
-    repo_uv_cache.mkdir(parents=True, exist_ok=True)
+    """Populate the repo-local isolated environment expected by the CodeGraph CLI."""
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    import workflow_evidence
 
-    # Force child indexing work onto the target repo's own CodeGraph state.
-    os.environ["UV_CACHE_DIR"] = str(repo_uv_cache)
-    os.environ["DEFAULT_DATABASE"] = "kuzudb"
-    os.environ["FALKORDB_PATH"] = str(codegraph_db_dir / "falkordb")
-    os.environ["FALKORDB_SOCKET_PATH"] = str(codegraph_db_dir / "falkordb.sock")
-    os.environ["KUZUDB_PATH"] = str(codegraph_db_dir / "kuzudb")
-    os.environ["IGNORE_DIRS"] = os.environ.get("IGNORE_DIRS", IGNORE_DIRS_DEFAULT)
-    os.environ["CODEGRAPH_CONTEXT_DIR"] = str(codegraph_context_dir)
-    os.environ["CODEGRAPH_DB_DIR"] = str(codegraph_db_dir)
+    isolated = workflow_evidence.repo_local_tool_env(repo_root, base_env=os.environ)
+    custom_uv_cache = os.environ.get("CGC_UV_CACHE_DIR")
+    if custom_uv_cache:
+        cache_path = Path(custom_uv_cache)
+        cache_path.mkdir(parents=True, exist_ok=True)
+        isolated["UV_CACHE_DIR"] = str(cache_path)
+    isolated["DEFAULT_DATABASE"] = "kuzudb"
+    isolated["IGNORE_DIRS"] = os.environ.get("IGNORE_DIRS", IGNORE_DIRS_DEFAULT)
+    os.environ.update(isolated)
 
 
 def _is_repo_root_target(candidate: str, repo_root: Path) -> bool:

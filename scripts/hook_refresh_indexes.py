@@ -56,12 +56,13 @@ def _repo_uv_cache_dir(root: Path) -> Path:
 
 
 def _refresh_env(*, root: Path, env_overrides: dict[str, str] | None = None) -> dict[str, str]:
-    """Build a subprocess env that prefers repo-local uv cache for sandbox-safe execution."""
-    env = os.environ.copy()
-    if not env.get("UV_CACHE_DIR"):
-        cache_dir = _repo_uv_cache_dir(root)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        env["UV_CACHE_DIR"] = str(cache_dir)
+    """Build a repo-local isolated subprocess env for sandbox-safe index refresh."""
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    import workflow_evidence
+
+    env = workflow_evidence.repo_local_tool_env(root, base_env=os.environ)
     if env_overrides:
         env.update(env_overrides)
     return env
@@ -346,19 +347,55 @@ def _record_refresh_side_effects(*, paths: list[Path], refreshed_vector: bool) -
     read_code_health._remember_healthy_vector_probe()
 
 
+def _update_freshness_for_refresh(
+    *,
+    root: Path,
+    changed_paths: list[Path],
+    backend: str,
+    failures: list[str],
+) -> None:
+    """Persist current or unverifiable freshness status for affected scopes of one backend."""
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    import importlib
+
+    we = importlib.import_module("scripts.workflow_evidence")
+    scopes = we.infer_scopes_for_paths(root, changed_paths).get(backend, [])
+    if failures:
+        detail = "; ".join(failures)
+        for scope in scopes:
+            we.mark_scope_unverifiable(root, backend=backend, scope=scope, error=detail)
+        return
+    for scope in scopes:
+        we.mark_scope_current(root, backend=backend, scope=scope)
+
+
 def run_refresh_request(payload: dict) -> list[str]:
     """Refresh codegraph/vector indexes for the request payload and return any failures."""
     changed_paths = _collect_changed_paths(payload)
     if not changed_paths:
         return []
 
+    root = _repo_root()
     refresh_codegraph, refresh_vector = _refresh_flags(payload)
     failures: list[str] = []
     if refresh_codegraph:
-        failures.extend(_refresh_codegraph(changed_paths))
-    vector_failures: list[str] = []
+        codegraph_failures = _refresh_codegraph(changed_paths)
+        _update_freshness_for_refresh(
+            root=root,
+            changed_paths=changed_paths,
+            backend="codegraph",
+            failures=codegraph_failures,
+        )
+        failures.extend(codegraph_failures)
     if refresh_vector:
         vector_failures = _refresh_vector(changed_paths)
+        _update_freshness_for_refresh(
+            root=root,
+            changed_paths=changed_paths,
+            backend="vector",
+            failures=vector_failures,
+        )
         failures.extend(vector_failures)
     if not failures:
         _record_refresh_side_effects(paths=changed_paths, refreshed_vector=refresh_vector)

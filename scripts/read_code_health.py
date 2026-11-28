@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _SCRIPT_DIR.parent
@@ -1502,23 +1503,51 @@ def vector_refresh_by_state(
     )
 
 
+def _load_workflow_evidence() -> Any:
+    """Import scripts.workflow_evidence lazily for per-scope freshness checks."""
+    scripts_dir = Path(__file__).resolve().parent
+    repo_dir = scripts_dir.parent
+    if str(repo_dir) not in sys.path:
+        sys.path.insert(0, str(repo_dir))
+    return importlib.import_module("scripts.workflow_evidence")
+
+
 def _refresh_indexes_for_read(
     file_path: Path,
     *,
     verbose: bool = False,
     request_is_scoped: bool | None = None,
 ) -> bool:
-    """Run read preflight with a scoped trust fast path before the vector hard-gate."""
+    """Run read preflight enforcing per-scope freshness before the vector trust fast path."""
     if not _is_repo_local_path(file_path):
         return True
     _ensure_codegraph_session_available(file_path)
-    if request_is_scoped is not False and _read_request_trusts_vector_cache(
-        file_path,
-        request_is_scoped=request_is_scoped,
+
+    we = _load_workflow_evidence()
+    if file_path.resolve() == REPO_ROOT.resolve():
+        vector_scopes = we.stale_scopes_for_backend(REPO_ROOT, "vector")
+        scope_stale = bool(vector_scopes)
+    else:
+        affected = we.infer_scopes_for_paths(REPO_ROOT, [file_path])
+        vector_scopes = affected.get("vector", [])
+        freshness = we.load_freshness_state(REPO_ROOT)
+        scope_stale = any(freshness.get_status("vector", scope) != "current" for scope in vector_scopes)
+
+    if (
+        not scope_stale
+        and request_is_scoped is not False
+        and _read_request_trusts_vector_cache(
+            file_path,
+            request_is_scoped=request_is_scoped,
+        )
     ):
         return True
+
     if not vector_refresh_by_state(file_path, verbose=verbose, request_is_scoped=request_is_scoped):
         runtime_note = _consume_vector_runtime_note()
+        error_detail = runtime_note or "read-code preflight requires a healthy vector index."
+        for scope in vector_scopes:
+            we.mark_scope_unverifiable(REPO_ROOT, backend="vector", scope=scope, error=error_detail)
         if runtime_note:
             print(f"ERROR: {runtime_note}", file=sys.stderr)
         print(
@@ -1526,6 +1555,46 @@ def _refresh_indexes_for_read(
             file=sys.stderr,
         )
         return False
+
+    signature = codegraph_current_edit_signature(REPO_ROOT)
+    for scope in vector_scopes:
+        we.mark_scope_current(REPO_ROOT, backend="vector", scope=scope, edit_signature=signature)
+    return True
+
+
+def ensure_codegraph_fresh_for_read(repo_root: Path | None = None) -> bool:
+    """Refresh any stale codegraph scopes before authoritative find/analyze reads, failing closed."""
+    root = (repo_root or REPO_ROOT).resolve()
+    we = _load_workflow_evidence()
+    stale_scopes = we.stale_scopes_for_backend(root, "codegraph")
+    if not stale_scopes:
+        return True
+
+    safe_index = _SCRIPT_DIR / "cgc_safe_index.py"
+    env = we.repo_local_tool_env(root)
+    signature = codegraph_current_edit_signature(root)
+    for scope in stale_scopes:
+        scope_dir = root / scope
+        if not scope_dir.is_dir():
+            we.mark_scope_current(root, backend="codegraph", scope=scope, edit_signature=signature)
+            continue
+        proc = subprocess.run(
+            [sys.executable, str(safe_index), str(scope_dir)],
+            cwd=str(root),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or f"exit code {proc.returncode}").strip()
+            we.mark_scope_unverifiable(root, backend="codegraph", scope=scope, error=detail)
+            print(
+                f"ERROR: codegraph freshness refresh failed for {scope}: {detail}",
+                file=sys.stderr,
+            )
+            return False
+        we.mark_scope_current(root, backend="codegraph", scope=scope, edit_signature=signature)
     return True
 
 

@@ -1,81 +1,37 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: validate changed files and refresh scoped read-code indexes."""
+"""PostToolUse hook: record changed repo-local paths and mark affected discovery scopes stale."""
 
 from __future__ import annotations
 
 import importlib
 import json
-import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 hook_edit_paths = importlib.import_module("scripts.hook_edit_paths")
-hook_refresh_indexes = importlib.import_module("scripts.hook_refresh_indexes")
-
-def _python_paths(paths: Iterable[Path]) -> list[Path]:
-    """Return repo-local changed paths that need Python validation."""
-    return hook_edit_paths.python_paths(paths)
-
-
-def _run_check(command: list[str], label: str) -> str | None:
-    """Run one validation command and return a compact failure summary on error."""
-    proc = subprocess.run(command, capture_output=True, text=True, check=False)
-    if proc.returncode == 0:
-        return None
-
-    stderr = (proc.stderr or "").strip()
-    stdout = (proc.stdout or "").strip()
-    details = stderr or stdout or f"exit code {proc.returncode}"
-    return f"{label} failed: {details}"
-
-
-def _validate_python_paths(paths: list[Path]) -> list[str]:
-    """Run guarded lint, LSP, and docstring checks for changed Python paths."""
-    if not paths:
-        return []
-
-    path_args = [str(path) for path in paths]
-    checks = [
-        (
-            [sys.executable, "scripts/ruff_guard.py", *path_args],
-            "ruff check",
-        ),
-        (
-            [sys.executable, "scripts/pyright_guard.py", *path_args],
-            "pyright check",
-        ),
-        (
-            [sys.executable, "scripts/validate_python_docstrings.py", *path_args],
-            "docstring validation",
-        ),
-    ]
-    failures: list[str] = []
-    for command, label in checks:
-        error = _run_check(command, label)
-        if error:
-            failures.append(error)
-    return failures
+workflow_evidence = importlib.import_module("scripts.workflow_evidence")
 
 
 def run_posttool_request(payload: dict) -> list[str]:
-    """Validate changed files and refresh scoped indexes for a PostToolUse payload."""
+    """Track changed repo-local paths and mark affected discovery scopes stale without blocking."""
     changed_paths = hook_edit_paths.collect_changed_paths(payload, root=ROOT)
     if not changed_paths:
         return []
 
-    failures = _validate_python_paths(_python_paths(changed_paths))
-    if failures:
-        return failures
-    return hook_refresh_indexes.run_refresh_request(payload)
+    try:
+        workflow_evidence.record_changed_paths(ROOT, changed_paths)
+        workflow_evidence.mark_paths_stale(ROOT, changed_paths)
+    except OSError as exc:
+        return [f"edit tracking failed: {exc}"]
+    return []
 
 
 def main() -> int:
-    """Read the hook payload from stdin and enforce post-edit validation plus refresh."""
+    """Read the hook payload from stdin and record changed paths and staleness."""
     try:
         payload = json.load(sys.stdin)
     except Exception:

@@ -15,8 +15,8 @@
 
 **⚠️ CRITICAL**: No user story implementation may begin until this phase is complete.
 
-- [ ] T001 Add failing unit tests for changed-path tracking, evidence digest computation and invalidation (content, config, `uv.lock`, Python minor version, validator identity, selectors), per-backend/per-scope freshness transitions (`current`, `stale`, `unverifiable`), atomic JSON persistence, and `repo_local_tool_env()` zero-`~/.codegraphcontext` path resolution in `tests/unit/test_workflow_evidence.py`
-- [ ] T002 Implement stdlib-only `scripts/workflow_evidence.py` with typed models, atomic JSON persistence under `.codegraphcontext/workflow-state/`, evidence digest helpers reusing `scripts/cgc_owner.py` content fingerprinting, freshness state helpers, and `repo_local_tool_env()` (depends on T001)
+- [X] T001 Add failing unit tests for changed-path tracking, evidence digest computation and invalidation (content, config, `uv.lock`, Python minor version, validator identity, selectors), per-backend/per-scope freshness transitions (`current`, `stale`, `unverifiable`), atomic JSON persistence, and `repo_local_tool_env()` zero-`~/.codegraphcontext` path resolution in `tests/unit/test_workflow_evidence.py`
+- [X] T002 Implement stdlib-only `scripts/workflow_evidence.py` with typed models, atomic JSON persistence under `.codegraphcontext/workflow-state/`, evidence digest helpers reusing `scripts/cgc_owner.py` content fingerprinting, freshness state helpers, and `repo_local_tool_env()` (depends on T001)
 
 **Checkpoint**: Shared workflow evidence, freshness-state persistence, and repo-local tool environment helpers are tested and ready for all downstream seams.
 
@@ -36,11 +36,11 @@
 
 ### Tests for User Story 1
 
-- [ ] T003 [P] [US1] Add failing unit tests verifying `run_posttool_request()` tracks changed repo-local paths and marks affected discovery scopes `stale` with zero technical validator or synchronous refresh invocations in `tests/unit/test_hook_posttool_edit_validation.py`
+- [X] T003 [P] [US1] Add failing unit tests verifying `run_posttool_request()` tracks changed repo-local paths and marks affected discovery scopes `stale` with zero technical validator or synchronous refresh invocations in `tests/unit/test_hook_posttool_edit_validation.py`
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Refactor `scripts/hook_posttool_edit_validation.py` so `run_posttool_request()` records changed paths and marks affected discovery backends/scopes `stale` via `scripts/workflow_evidence.py` without running validators or synchronous refreshes (depends on T002, T003)
+- [X] T004 [US1] Refactor `scripts/hook_posttool_edit_validation.py` so `run_posttool_request()` records changed paths and marks affected discovery backends/scopes `stale` via `scripts/workflow_evidence.py` without running validators or synchronous refreshes (depends on T002, T003)
 
 **Checkpoint**: Temporarily inconsistent multi-file edits succeed without intermediate validator failures or synchronous refreshes, and affected scopes are marked `stale`.
 
@@ -61,12 +61,12 @@
 
 ### Tests for User Story 2
 
-- [ ] T005 [P] [US2] Add failing unit tests for unified `validate`/`sync` checks, removal of closeout skip flags, evidence reuse and invalidation on content/config/dependency/selector changes, closeout discovery-freshness enforcement, and commit-evidence emission in `tests/unit/test_edit_code_consolidation.py`
+- [X] T005 [P] [US2] Add failing unit tests for unified `validate`/`sync` checks, removal of closeout skip flags, evidence reuse and invalidation on content/config/dependency/selector changes, closeout discovery-freshness enforcement, and commit-evidence emission in `tests/unit/test_edit_code_consolidation.py`
 
 ### Implementation for User Story 2
 
-- [ ] T006 [US2] Update `scripts/edit_code.py` so `validate` and `sync` share one validation engine enforcing all mandatory checks, remove closeout skip bypasses from `sync`, and reuse/persist validation evidence via `scripts/workflow_evidence.py` (depends on T002, T005)
-- [ ] T007 [US2] Wire final discovery-freshness verification/refresh and staged/committed commit-evidence persistence into `scripts/edit_code.py` `sync` so unverifiable discovery state blocks handoff (depends on T006)
+- [X] T006 [US2] Update `scripts/edit_code.py` so `validate` and `sync` share one validation engine enforcing all mandatory checks, remove closeout skip bypasses from `sync`, and reuse/persist validation evidence via `scripts/workflow_evidence.py` (depends on T002, T005)
+- [X] T007 [US2] Wire final discovery-freshness verification/refresh and staged/committed commit-evidence persistence into `scripts/edit_code.py` `sync` so unverifiable discovery state blocks handoff (depends on T006)
 
 **Checkpoint**: `edit_code.py` owns optional validation and unskippable closeout with single-run evidence reuse and verified discovery freshness.
 
@@ -86,11 +86,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T008 [P] [US3] Add failing unit tests for on-demand stale refresh, zero duplicate refreshes on clean repeated reads, fail-closed error handling with stderr, and no-refresh `window` reads in `tests/unit/test_read_code_freshness.py`
+- [X] T008 [P] [US3] Add failing unit tests for on-demand stale refresh, zero duplicate refreshes on clean repeated reads, fail-closed error handling with stderr, and no-refresh `window` reads in `tests/unit/test_read_code_freshness.py`
 
 ### Implementation for User Story 3
 
-- [ ] T009 [US3] Update `scripts/read_code_health.py`, `scripts/read_code.py`, and `scripts/hook_refresh_indexes.py` to enforce per-backend/per-scope freshness on authoritative reads, persist `current`/`unverifiable` transitions via `scripts/workflow_evidence.py`, and fail closed on refresh errors (depends on T002, T008)
+- [X] T009 [US3] Update `scripts/read_code_health.py`, `scripts/read_code.py`, and `scripts/hook_refresh_indexes.py` to enforce per-backend/per-scope freshness on authoritative reads, persist `current`/`unverifiable` transitions via `scripts/workflow_evidence.py`, and fail closed on refresh errors (depends on T002, T008)
 
 **Checkpoint**: Authoritative reads are fresh-on-demand, idempotent on clean state, and fail closed on refresh failure.
 
@@ -110,11 +110,11 @@
 
 ### Tests for User Story 4
 
-- [ ] T010 [P] [US4] Add failing unit tests covering direct commits without evidence, mismatched/corrupt evidence fallback, and exact-match evidence skip for `git_pre_commit_lint.py` and `git_post_commit_refresh.py` in `tests/unit/test_git_commit_safeguards.py`
+- [X] T010 [P] [US4] Add failing unit tests covering direct commits without evidence, mismatched/corrupt evidence fallback, and exact-match evidence skip for `git_pre_commit_lint.py` and `git_post_commit_refresh.py` in `tests/unit/test_git_commit_safeguards.py`
 
 ### Implementation for User Story 4
 
-- [ ] T011 [US4] Update `scripts/git_pre_commit_lint.py` and `scripts/git_post_commit_refresh.py` to verify staged/committed content and config hashes against `scripts/workflow_evidence.py` evidence before skipping or running fallback safeguards (depends on T002, T010)
+- [X] T011 [US4] Update `scripts/git_pre_commit_lint.py` and `scripts/git_post_commit_refresh.py` to verify staged/committed content and config hashes against `scripts/workflow_evidence.py` evidence before skipping or running fallback safeguards (depends on T002, T010)
 
 **Checkpoint**: Direct Git activity retains full safeguards while governed commits avoid duplicate pre-commit lint and post-commit refresh work.
 
@@ -134,11 +134,11 @@
 
 ### Tests for User Story 5
 
-- [ ] T012 [P] [US5] Add failing unit tests for healthy-skip `bootstrap_session()`, multi-scope failure aggregation with stderr surfacing, and restricted-HOME zero-`~/.codegraphcontext` isolation in `tests/unit/test_bootstrap_session_isolation.py`
+- [X] T012 [P] [US5] Add failing unit tests for healthy-skip `bootstrap_session()`, multi-scope failure aggregation with stderr surfacing, and restricted-HOME zero-`~/.codegraphcontext` isolation in `tests/unit/test_bootstrap_session_isolation.py`
 
 ### Implementation for User Story 5
 
-- [ ] T013 [US5] Update `scripts/bootstrap_session.py`, `scripts/cgc_safe_index.py`, `scripts/cgc_owner.py`, `scripts/read_code.py`, and `scripts/hook_refresh_indexes.py` to gate bootstrap indexing on health+staleness, aggregate failures with subprocess stderr, and apply `repo_local_tool_env()` to all discovery/indexing subprocesses (depends on T002, T012)
+- [X] T013 [US5] Update `scripts/bootstrap_session.py`, `scripts/cgc_safe_index.py`, `scripts/cgc_owner.py`, `scripts/read_code.py`, and `scripts/hook_refresh_indexes.py` to gate bootstrap indexing on health+staleness, aggregate failures with subprocess stderr, and apply `repo_local_tool_env()` to all discovery/indexing subprocesses (depends on T002, T012)
 
 **Checkpoint**: `bootstrap_session()` skips healthy snapshots, never masks scope failures, and runs cleanly inside workspace-scoped sandboxes without touching `~/.codegraphcontext`.
 
@@ -157,8 +157,8 @@
 
 ### Tests & Documentation for User Story 6
 
-- [ ] T014 [P] [US6] Add live-backend integration tests covering end-to-end multi-file edit consistency, single-run validation evidence, on-demand freshness, git hook fallback, and restricted-HOME `bootstrap_session()` isolation in `tests/integration/test_live_edit_validation_consolidation.py` (depends on T004, T007, T009, T011, T013)
-- [ ] T015 [P] [US6] Consolidate active workflow ownership documentation in `AGENTS.md` and `docs/governance/shell-hook-guards.md` to eliminate contradictory validation and refresh timing rules (depends on T004, T007, T009, T011, T013)
+- [X] T014 [P] [US6] Add live-backend integration tests covering end-to-end multi-file edit consistency, single-run validation evidence, on-demand freshness, git hook fallback, and restricted-HOME `bootstrap_session()` isolation in `tests/integration/test_live_edit_validation_consolidation.py` (depends on T004, T007, T009, T011, T013)
+- [X] T015 [P] [US6] Consolidate active workflow ownership documentation in `AGENTS.md` and `docs/governance/shell-hook-guards.md` to eliminate contradictory validation and refresh timing rules (depends on T004, T007, T009, T011, T013)
 
 **Checkpoint**: Live-backend verification passes and active workflow documentation has a single unambiguous owner per seam.
 
@@ -168,6 +168,6 @@
 
 **Purpose**: Verify all unit tests, live-backend integration tests, lint, static types, and governance gates pass across the entire `060` change set.
 
-- [ ] T016 Run full targeted unit and live-backend pytest suite via `scripts/pytest_guard.py`, `scripts/ruff_guard.py`, `scripts/pyright_guard.py`, and `scripts/validate_python_docstrings.py` across all touched `scripts/` and `tests/` files (depends on T014, T015)
+- [X] T016 Run full targeted unit and live-backend pytest suite via `scripts/pytest_guard.py`, `scripts/ruff_guard.py`, `scripts/pyright_guard.py`, and `scripts/validate_python_docstrings.py` across all touched `scripts/` and `tests/` files (depends on T014, T015)
 
 **Checkpoint**: Feature `060` is verified end-to-end and ready for closeout.

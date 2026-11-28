@@ -90,12 +90,6 @@ def _build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--tests", nargs="+", required=True, help="Targeted pytest selectors.")
     sync.add_argument("--commit-message", required=True, help="Commit message for this edit unit.")
     sync.add_argument("--no-push", action="store_true", help="Commit locally without pushing.")
-    sync.add_argument("--skip-ruff", action="store_true", help="Skip ruff check for touched Python paths.")
-    sync.add_argument(
-        "--skip-pyright",
-        action="store_true",
-        help="Skip pyright diagnostics for touched Python paths.",
-    )
     sync.add_argument("--handoff", action="store_true", help="Run behavioral QA handoff and task closeout before sync.")
     sync.add_argument("--verdict-pass", action="store_true", help="Provide a PASS verdict to resume closeout after a generative pause.")
     sync.add_argument("--feature-id", help="Feature ID for handoff/closeout (required if --handoff or --verdict-pass is set).")
@@ -396,6 +390,34 @@ def _run_git_with_retry(command: list[str], *, label: str, max_attempts: int = 3
     return 1
 
 
+def _workflow_evidence() -> Any:
+    """Import scripts.workflow_evidence lazily with repo root on sys.path."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    import importlib
+
+    return importlib.import_module("scripts.workflow_evidence")
+
+
+def _run_validator_with_evidence(
+    *,
+    validator_id: str,
+    label: str,
+    command: list[str],
+    paths: Sequence[str],
+    selectors: Sequence[str],
+) -> int:
+    """Run one validator only when persisted evidence does not match the current state."""
+    we = _workflow_evidence()
+    if we.has_valid_evidence(REPO_ROOT, validator_id=validator_id, paths=paths, selectors=selectors):
+        print(f"[edit-code] {label} skipped: valid evidence matches current state", flush=True)
+        return 0
+    rc = _run_command(command, label=label)
+    if rc == 0:
+        we.record_validation_evidence(REPO_ROOT, validator_id=validator_id, paths=paths, selectors=selectors)
+    return rc
+
+
 def _run_validate(
     paths: Sequence[str],
     tests: Sequence[str],
@@ -405,7 +427,7 @@ def _run_validate(
     changed_only: bool,
     changed_paths_override: Sequence[str] | None = None,
 ) -> int:
-    """Run the validation loop for one edit batch."""
+    """Run the unified validation loop with reusable content/config/selector evidence."""
     lint_paths = list(paths)
     if changed_only:
         if changed_paths_override is None:
@@ -427,6 +449,7 @@ def _run_validate(
                 )
         else:
             print("[edit-code] changed_only active: no changed paths detected for lint/type checks", flush=True)
+
     if _should_run_pytest(lint_paths):
         pytest_cmd = [
             "uv",
@@ -441,7 +464,13 @@ def _run_validate(
             "--tb=short",
             *tests,
         ]
-        rc = _run_command(pytest_cmd, label="pytest_guard")
+        rc = _run_validator_with_evidence(
+            validator_id="pytest",
+            label="pytest_guard",
+            command=pytest_cmd,
+            paths=lint_paths,
+            selectors=tests,
+        )
         if rc != 0:
             return rc
     else:
@@ -450,22 +479,36 @@ def _run_validate(
             flush=True,
         )
 
-    if skip_ruff and skip_pyright:
-        return 0
-
     python_paths = _python_paths(lint_paths)
     if python_paths and not skip_ruff:
-        rc = _run_command(
-            ["uv", "run", "--no-sync", "python", "scripts/ruff_guard.py", *python_paths],
+        rc = _run_validator_with_evidence(
+            validator_id="ruff",
             label="ruff_check",
+            command=["uv", "run", "--no-sync", "python", "scripts/ruff_guard.py", *python_paths],
+            paths=python_paths,
+            selectors=python_paths,
         )
         if rc != 0:
             return rc
 
     if python_paths and not skip_pyright:
-        rc = _run_command(
-            ["uv", "run", "--no-sync", "python", "scripts/pyright_guard.py", *python_paths],
+        rc = _run_validator_with_evidence(
+            validator_id="pyright",
             label="pyright",
+            command=["uv", "run", "--no-sync", "python", "scripts/pyright_guard.py", *python_paths],
+            paths=python_paths,
+            selectors=python_paths,
+        )
+        if rc != 0:
+            return rc
+
+    if python_paths:
+        rc = _run_validator_with_evidence(
+            validator_id="docstrings",
+            label="docstrings",
+            command=["uv", "run", "--no-sync", "python", "scripts/validate_python_docstrings.py", *python_paths],
+            paths=python_paths,
+            selectors=python_paths,
         )
         if rc != 0:
             return rc
@@ -474,7 +517,7 @@ def _run_validate(
 
 
 def _run_refresh(paths: Sequence[str], *, changed_paths: Sequence[str] | None = None) -> int:
-    """Run the repo refresh hook for changed paths."""
+    """Verify/refresh affected discovery scopes and persist commit refresh evidence."""
     refresh_paths = list(paths)
     if changed_paths is not None:
         refresh_paths = sorted(dict.fromkeys(changed_paths))
@@ -485,12 +528,51 @@ def _run_refresh(paths: Sequence[str], *, changed_paths: Sequence[str] | None = 
         if not _has_path_changes(paths):
             print("[edit-code] refresh_indexes skipped: no local changes in requested paths", flush=True)
             return 0
+
+    we = _workflow_evidence()
+    affected = we.infer_scopes_for_paths(REPO_ROOT, refresh_paths)
+    freshness = we.load_freshness_state(REPO_ROOT)
+    any_stale = any(
+        freshness.get_status(backend, scope) != "current"
+        for backend, scopes in affected.items()
+        for scope in scopes
+    )
+    if not any_stale and we.has_valid_evidence(
+        REPO_ROOT,
+        validator_id="refresh",
+        paths=refresh_paths,
+        selectors=refresh_paths,
+    ):
+        print("[edit-code] refresh_indexes skipped: discovery scopes current with valid evidence", flush=True)
+        return 0
+
     payload = json.dumps({"tool_input": {"paths": refresh_paths}})
-    return _run_command(
+    rc = _run_command(
         ["uv", "run", "--no-sync", "python", "scripts/hook_refresh_indexes.py"],
         label="refresh_indexes",
         stdin_payload=payload,
     )
+    if rc != 0:
+        for backend, scopes in affected.items():
+            for scope in scopes:
+                we.mark_scope_unverifiable(
+                    REPO_ROOT,
+                    backend=backend,
+                    scope=scope,
+                    error=f"refresh_indexes exited with code {rc}",
+                )
+        return rc
+
+    for backend, scopes in affected.items():
+        for scope in scopes:
+            we.mark_scope_current(REPO_ROOT, backend=backend, scope=scope)
+    we.record_validation_evidence(
+        REPO_ROOT,
+        validator_id="refresh",
+        paths=refresh_paths,
+        selectors=refresh_paths,
+    )
+    return 0
 
 
 def _run_sync(
@@ -499,15 +581,13 @@ def _run_sync(
     *,
     commit_message: str,
     no_push: bool,
-    skip_ruff: bool,
-    skip_pyright: bool,
     changed_only: bool,
     handoff: bool = False,
     verdict_pass: bool = False,
     feature_id: str | None = None,
     task_id: str | None = None,
 ) -> int:
-    """Run validate + refresh + git sync in one deterministic flow."""
+    """Run unskippable validate + refresh + git sync in one deterministic flow."""
     if verdict_pass:
         return _resume_sync_closeout(feature_id=feature_id, task_id=task_id, no_push=no_push)
 
@@ -536,8 +616,8 @@ def _run_sync(
     rc = _run_validate(
         paths,
         tests,
-        skip_ruff=skip_ruff,
-        skip_pyright=skip_pyright,
+        skip_ruff=False,
+        skip_pyright=False,
         changed_only=changed_only,
         changed_paths_override=in_scope_dirty,
     )
@@ -559,6 +639,8 @@ def _run_sync(
     rc = _run_git_with_retry(["git", "commit", "-m", commit_message], label="git_commit")
     if rc != 0:
         return rc
+
+    _workflow_evidence().clear_changed_paths(REPO_ROOT)
 
     if handoff and feature_id and task_id:
         # Run Handoff (QA)
@@ -963,8 +1045,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.tests,
             commit_message=args.commit_message,
             no_push=args.no_push,
-            skip_ruff=args.skip_ruff,
-            skip_pyright=args.skip_pyright,
             changed_only=args.changed_only,
             handoff=args.handoff,
             verdict_pass=args.verdict_pass,

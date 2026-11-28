@@ -274,6 +274,17 @@ Examples:
 
 ### Edit Efficiency
 
+**Single-Owner Validation, Freshness, and Commit Lifecycle (Feature 060)**:
+
+| Responsibility | Canonical Owner | Execution Point & Rule |
+|---|---|---|
+| Edit tracking & staleness marking | `scripts/hook_posttool_edit_validation.py` + `scripts/workflow_evidence.py` | `PostToolUse` on `Edit|Write|MultiEdit|apply_patch`. Records changed paths and marks affected discovery scopes `stale` under `.codegraphcontext/workflow-state/`. Runs **zero** validators and **zero** synchronous refreshes so multi-file intermediate edits are never blocked. |
+| Optional intermediate validation | `scripts/edit_code.py validate` | Agent-invoked on demand. Runs `pytest_guard`, `ruff_guard`, `pyright_guard`, and `validate_python_docstrings` using content/config/lockfile/selector-bound evidence in `.codegraphcontext/workflow-state/evidence.json`. |
+| Mandatory closeout validation & final freshness | `scripts/edit_code.py sync` | Task closeout. Runs the same validation engine with **no skip bypasses** (`--skip-ruff` / `--skip-pyright` removed from `sync`), reuses valid evidence so unchanged states run each validator at most once, verifies/refreshes remaining stale discovery scopes, and emits commit evidence before `git commit`. |
+| On-demand discovery freshness | `scripts/read_code_health.py` + `scripts/read_code.py` | Authoritative reads (`context`, `find`, `analyze`) refresh stale affected scopes before returning results, skip duplicate refreshes on clean state, and fail closed with stderr on refresh error. Direct disk reads (`window`, `read_markdown.py`) never trigger index refresh. |
+| Commit fallback safeguards | `.githooks/pre-commit` (`scripts/git_pre_commit_lint.py`) & `.githooks/post-commit` (`scripts/git_post_commit_refresh.py`) | Direct Git commits. Always active; skip duplicate `ruff` or index refresh only when persisted commit evidence matches exact staged/committed content and config. |
+| Session bootstrap & sandbox isolation | `scripts/bootstrap_session.py`, `scripts/cgc_safe_index.py`, `scripts/workflow_evidence.py:repo_local_tool_env` | Skips multi-scope indexing when CodeGraph is already healthy and clean, aggregates multi-scope failures with subprocess stderr, and isolates `HOME`/`XDG_*`/CodeGraph/Semble caches to `.codegraphcontext/` with zero `~/.codegraphcontext` access. |
+
 - Use `scripts/edit_code.py` to edit code in this repo:
 ```bash
 uv run python scripts/edit_code.py validate --paths <touched-paths> --tests <pytest-selectors>
@@ -313,15 +324,13 @@ uv run python scripts/edit_code.py sync --paths <touched-paths> --tests <pytest-
 
 ### Final Edit Handoff
 
-- Finish with local verification, run `uv run python scripts/hook_refresh_indexes.py` once with the batch's changed-path JSON payload on stdin, then commit and push so the branch is synced.
+- Finish with `uv run python scripts/edit_code.py sync --paths <paths> --tests <tests> --commit-message "<message>"` (adding `--no-push` if staying local); `edit_code.py sync` owns mandatory closeout validation, final discovery freshness verification/refresh, commit-evidence emission, and commit/push.
 - Commit once per completed edit unit; small, well-described commits are the basic unit of maintainable code.
 - Commit messages should describe one coherent edit unit clearly and narrowly.
 - Do not split one logical edit across multiple unsynced handoffs unless the user explicitly wants an intermediate checkpoint.
-- Edit-done checklist:
-  - targeted tests for the touched behavior
-  - tests run through `uv run --no-sync python scripts/pytest_guard.py run -- <pytest args>`
-  - `codebase-lsp` diagnostics for touched Python files
-  - `uv run --no-sync python scripts/ruff_guard.py <python-paths>` on touched Python paths when applicable
-  - `uv run python scripts/hook_refresh_indexes.py` with the changed-path JSON payload on stdin
-  - commit the coherent edit unit
-  - push so the branch is synced
+- Edit-done checklist (enforced automatically by `scripts/edit_code.py sync`):
+  - targeted tests for the touched behavior via `scripts/pytest_guard.py`
+  - static type diagnostics via `scripts/pyright_guard.py` / `codebase-lsp`
+  - lint via `scripts/ruff_guard.py` and docstrings via `scripts/validate_python_docstrings.py`
+  - discovery freshness verification/refresh and commit-evidence emission (owned by `edit_code.py sync`; do not invoke `scripts/hook_refresh_indexes.py` directly)
+  - commit the coherent edit unit and push when syncing the branch

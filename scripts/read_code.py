@@ -80,6 +80,7 @@ from read_code_health import (  # noqa: E402
     codegraph_current_edit_signature,
     codegraph_refresh_by_state,
     codegraph_supports_file,
+    ensure_codegraph_fresh_for_read,
     evaluate_read_vector_trust,
     init_codegraph_env,
 )
@@ -1078,8 +1079,10 @@ def _split_verbose_flag(argv: list[str]) -> tuple[list[str], bool]:
 
 
 def _cgc_capture_env() -> dict[str, str]:
-    """Return a stable environment for captured cgc output without narrow-table truncation."""
-    env = os.environ.copy()
+    """Return a repo-local isolated environment for captured cgc output."""
+    import workflow_evidence
+
+    env = workflow_evidence.repo_local_tool_env(REPO_ROOT, base_env=os.environ)
     env.setdefault("COLUMNS", "240")
     env.setdefault("NO_COLOR", "1")
     return env
@@ -3464,6 +3467,8 @@ def read_code_analyze(argv: list[str], *, verbose: bool = False) -> int:
 
     result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     if matches is None:
+        if "--help" not in parsed.forwarded_args and not ensure_codegraph_fresh_for_read():
+            return 1
         init_codegraph_env()
         cmd = ["uv", "run", "--no-sync", "cgc", "analyze", parsed.command] + parsed.forwarded_args
         result = subprocess.run(
@@ -3589,6 +3594,8 @@ def read_code_find(argv: list[str], *, verbose: bool = False) -> int:
 
     result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     if matches is None:
+        if "--help" not in parsed.forwarded_args and not ensure_codegraph_fresh_for_read():
+            return 1
         init_codegraph_env()
         cmd = ["uv", "run", "--no-sync", "cgc", "find", parsed.command] + parsed.forwarded_args
         result = subprocess.run(

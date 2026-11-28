@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 hook_edit_paths = importlib.import_module("scripts.hook_edit_paths")
+workflow_evidence = importlib.import_module("scripts.workflow_evidence")
 
 
 def _staged_paths() -> list[Path]:
@@ -42,9 +43,19 @@ def _staged_paths() -> list[Path]:
 
 
 def run_pre_commit_lint() -> int:
-    """Lint staged Python files through the guarded Ruff wrapper."""
+    """Lint staged Python files unless exact verified ruff evidence already exists."""
     python_paths = hook_edit_paths.python_paths(_staged_paths())
     if not python_paths:
+        return 0
+
+    rel_paths = workflow_evidence.normalize_repo_paths(REPO_ROOT, python_paths)
+    if rel_paths and workflow_evidence.has_valid_evidence(
+        REPO_ROOT,
+        validator_id="ruff",
+        paths=rel_paths,
+        selectors=rel_paths,
+    ):
+        print("[pre-commit-lint] valid ruff evidence matches staged files; skipping duplicate lint", flush=True)
         return 0
 
     proc = subprocess.run(

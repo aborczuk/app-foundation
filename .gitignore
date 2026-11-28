@@ -249,6 +249,9 @@ cython_debug/
 .codegraphcontext/last-edit-signature.txt
 .codegraphcontext/read-code-search-scratchpad-*.json
 .codegraphcontext/.uv-cache/
+.codegraphcontext/home/
+.codegraphcontext/xdg/
+.codegraphcontext/workflow-state/
 *.kuzudb
 *.kuzudb-wal
 *.kuzudb-shm
