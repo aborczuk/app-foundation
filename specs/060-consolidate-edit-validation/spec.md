@@ -108,13 +108,19 @@ flowchart TD
 - Run Ruff, Pyright, docstring validation, Semble refresh, legacy vector refresh, or CodeGraph refresh automatically after every edit.
 - Recreate Semble cache/index lifecycle in the edit workflow.
 - Keep the legacy vector-refresh path after feature 061 removes its consumers.
+- Extend `workflow_evidence.py`, freshness JSON, or backend-specific refresh orchestration into the permanent discovery architecture when feature 061 can delete that lifecycle ownership.
 
 **Adopted dependencies**:
 - Semble MCP owns semantic-discovery freshness through its supported lifecycle.
-- Structural discovery uses the configured CodeGraph backend; explicit refresh is required only while that backend requires it.
+- Structural discovery uses the configured CodeGraph backend only as a transitional compatibility boundary until feature 061 proves and adopts a lifecycle-owning structural backend.
+
+**Transitional ownership boundary**:
+- The changed-path/freshness machinery introduced by 060 exists to make the current backends safe and non-blocking during migration; it is not the target long-term code-reading architecture.
+- Feature 061 owns removal of superseded semantic lifecycle machinery and externalization/removal of repository-owned structural indexing, watching, freshness, persistence, recovery, and refresh orchestration.
+- No new discovery backend should be integrated by adding another repo-owned freshness/index lifecycle to 060.
 
 **Out of scope**:
-- Replacing the CodeGraph implementation itself.
+- Selecting or migrating the structural graph backend; that is owned by feature 061.
 - Changing Semble search semantics.
 
 ## Requirements *(mandatory)*
@@ -171,6 +177,7 @@ The feature is complete in the production repository workflow when coding agents
 
 ## Resolved Decisions
 
+- **Discovery lifecycle is transitional**: 060's repo-owned stale/current evidence and explicit structural refresh paths are compatibility mechanisms for the current backends, not permanent architecture. Feature 061 MUST delete them where lifecycle-owning semantic/structural backends make them unnecessary; do not expand them for new backends.
 - **Validation evidence boundary**: Reuse the existing `scripts/cgc_owner.py` content-fingerprint model combined with relevant validator configuration (`pyproject.toml`, `uv.lock`) and targeted test selection; full Python environment fingerprinting is out of scope.
 - **Authoritative read boundary**: Reuse the existing index-backed freshness checks for `read_code.py` (`context`, `find`, `analyze`), `cgc`, and `semble`; direct disk reads (`read_code.py window`, `read_markdown.py`) do not require index refresh.
 - **Benchmarking**: Dropped from `060` (owned by feature `062`).
